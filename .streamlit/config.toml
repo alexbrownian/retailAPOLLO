@@ -1,0 +1,8 @@
+# Dark terminal theme (matches the analytics-dashboard reference design)
+[theme]
+base = "dark"
+primaryColor = "#e8845c"                 # coral/orange accent
+backgroundColor = "#0e0f11"              # near-black page
+secondaryBackgroundColor = "#16181c"     # cards / sidebar
+textColor = "#d6d8dc"
+font = "monospace"

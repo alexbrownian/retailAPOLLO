@@ -1,0 +1,25 @@
+# --- credentials: never committed ---
+.env
+
+# --- data: everything except the reference cache is machine-local ---
+# raw posts, working aggregates, prices (Bloomberg licensing), snapshots
+data/raw/
+data/processed/
+data/prices/
+# the reference cache IS committed (universe files + word-ticker screening),
+# but the machine-local ledgers/watermarks inside it are not
+data/reference/*_seen.json
+data/reference/abstracted_live_meta.json
+data/reference/gic_live_meta.json
+
+# --- safety net: raw text must never enter the committed data folder ---
+ABSTRACTED_DATA/posts*.parquet
+ABSTRACTED_DATA/*.jsonl*
+ABSTRACTED_DATA/*.zst
+
+# --- logs / runtime ---
+logs/
+__pycache__/
+*.pyc
+.pytest_cache/
+.streamlit/secrets.toml

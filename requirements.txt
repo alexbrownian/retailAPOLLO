@@ -1,0 +1,37 @@
+# retailAPOLLO dependencies.  Install:  pip install -r requirements.txt --user
+# (use the SAME python you will run the pipeline with - multiple installed
+# Pythons is the classic cause of intermittent import failures)
+
+# core data stack
+pandas
+pyarrow
+numpy
+scipy
+
+# ingestion
+zstandard          # streamed (de)compression of the raw post files
+requests           # every fetcher
+huggingface_hub    # historical X dataset downloads (external machine)
+fsspec
+
+# sentiment
+vaderSentiment
+finvader           # optional financial lexicons; engine degrades gracefully without
+joblib             # parallel scoring across CPU cores
+
+# extraction
+wordfreq           # word-ticker screening fallback signal
+
+# dashboard
+streamlit
+plotly
+
+# tests
+pytest
+
+# Windows corporate-proxy TLS (harmless elsewhere)
+pip-system-certs
+
+# blpapi (Bloomberg, for pull_bloomberg_prices.py) is not on PyPI.
+# Install it separately from Bloomberg's own index, with the Terminal running:
+#   python -m pip install --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi --user

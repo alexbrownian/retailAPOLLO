@@ -1,0 +1,23 @@
+# Finance subreddits to download (one per line).
+# Lines starting with # are ignored.
+# In the torrent, each name below has TWO files:
+#   <name>_submissions.zst  and  <name>_comments.zst
+#
+# The 17 names below match the _submissions.zst files in data/raw/ exactly.
+wallstreetbets
+investing
+stocks
+personalfinance
+StockMarket
+options
+dividends
+SecurityAnalysis
+ValueInvesting
+financialindependence
+pennystocks
+Daytrading
+CryptoCurrency
+Bitcoin
+thetagang
+finance
+Bogleheads
