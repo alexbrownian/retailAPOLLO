@@ -52,8 +52,7 @@ from src.config import (ROLL, DERIV_SMOOTH, MIN_TOTAL, CROSS_AT,   # noqa: E402
 from src.themes import THEME_ETFS, THEME_ETF_FALLBACKS             # noqa: E402
 from analytics import overlays                                     # noqa: E402
 from analytics.loaders import (price_series, clip_window,          # noqa: E402
-                               THEME_COUNTS, THEME_CONVICTION,
-                               THEME_SIGNALS)
+                               THEME_COUNTS, THEME_SIGNALS)
 from analytics.overlays import (mention_share_series,              # noqa: E402
                                 chatter_change_series,
                                 conviction_crossings, signal_scorecard,
@@ -66,25 +65,42 @@ ACCENT = "#e8845c"                       # coral - the dashboard accent
 GREEN, RED, PURPLE, BLUE, GRAY = ("#3fb950", "#f85149", "#b58bd8",
                                   ACCENT, "#9aa0a6")
 
-# RetailRadar mark: a small radar sweep in the accent colour - pure
-# inline SVG, no image file needed. The sweep line rotates continuously;
-# the blip pulses once per revolution.
-RR_LOGO_SVG = """
-<svg width="64" height="64" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+# Header mark: the animated bars + orbit (the same mark the pipeline
+# loader uses - the five bars rise one by one, then the orbit line draws
+# itself through the middle and the cycle repeats).
+HEADER_MARK_HTML = """
+<svg width="64" height="64" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
   <style>
-    .rrsweep { transform-origin: 50px 50px;
-               animation: rrspin 4s linear infinite; }
-    .rrblip  { animation: rrpulse 4s ease-out infinite; }
-    @keyframes rrspin  { to { transform: rotate(360deg); } }
-    @keyframes rrpulse { 0%, 55% { opacity: 0; } 60% { opacity: 1; }
-                         100% { opacity: 0; } }
+    .hb { fill:#e8845c; transform-box:fill-box; transform-origin:50% 100%;
+          transform:scaleY(0);
+          animation:hbar 2.6s cubic-bezier(.4,0,.2,1) infinite; }
+    .h1 { animation-delay:0s;   } .h2 { animation-delay:.14s; }
+    .h3 { animation-delay:.28s; } .h4 { animation-delay:.42s; }
+    .h5 { animation-delay:.56s; }
+    .horb { fill:none; stroke:#e8845c; stroke-width:5;
+            stroke-dasharray:155; stroke-dashoffset:155;
+            animation:horbit 2.6s ease-in-out infinite; }
+    @keyframes hbar {
+      0%   { transform:scaleY(0); opacity:1; }
+      18%  { transform:scaleY(1); opacity:1; }
+      82%  { transform:scaleY(1); opacity:1; }
+      95%  { transform:scaleY(1); opacity:0; }
+      100% { transform:scaleY(0); opacity:0; }
+    }
+    @keyframes horbit {
+      0%, 30% { stroke-dashoffset:155; opacity:1; }
+      60%     { stroke-dashoffset:0;   opacity:1; }
+      82%     { stroke-dashoffset:0;   opacity:1; }
+      95%     { stroke-dashoffset:0;   opacity:0; }
+      100%    { stroke-dashoffset:155; opacity:0; }
+    }
   </style>
-  <circle cx="50" cy="50" r="46" fill="none" stroke="#e8845c" stroke-width="2"/>
-  <circle cx="50" cy="50" r="31" fill="none" stroke="#e8845c" stroke-width="1" opacity="0.5"/>
-  <circle cx="50" cy="50" r="16" fill="none" stroke="#e8845c" stroke-width="1" opacity="0.35"/>
-  <line class="rrsweep" x1="50" y1="50" x2="50" y2="5"
-        stroke="#e8845c" stroke-width="3" stroke-linecap="round"/>
-  <circle class="rrblip" cx="68" cy="32" r="4" fill="#3fb950"/>
+  <rect class="hb h1" x="22" y="38" width="8" height="46"/>
+  <rect class="hb h2" x="36" y="26" width="8" height="70"/>
+  <rect class="hb h3" x="50" y="16" width="8" height="90"/>
+  <rect class="hb h4" x="64" y="26" width="8" height="70"/>
+  <rect class="hb h5" x="78" y="38" width="8" height="46"/>
+  <ellipse class="horb" cx="54" cy="61" rx="45" ry="9"/>
 </svg>"""
 
 # Animated loader: five bars rise ONE BY ONE (staggered delays keep their
@@ -355,6 +371,22 @@ def fig_series_vs_price(series, series_name, series_color, px, symbol, title,
     return fig
 
 
+def dim_outside(fig, window_lo, focus_start, label):
+    """Grey out everything BEFORE focus_start so it is obvious that only
+    the recent stretch drives the ranking (the greyed part is context,
+    not input). A dotted line + small label mark the boundary."""
+    if focus_start is None or window_lo is None or focus_start <= window_lo:
+        return fig
+    fig.add_vrect(x0=window_lo, x1=focus_start, fillcolor="#9aa0a6",
+                  opacity=0.13, line_width=0)
+    fig.add_vline(x=focus_start, line_dash="dot", line_color="#9aa0a6",
+                  opacity=0.8)
+    fig.add_annotation(x=focus_start, y=1.02, yref="paper",
+                       yanchor="bottom", xanchor="left", showarrow=False,
+                       text=label, font=dict(size=10, color="#9aa0a6"))
+    return fig
+
+
 def fig_conviction(cz, px, theme, symbol):
     """Conviction z with the +/-CROSS_AT lines; bullish/bearish crossings
     marked as triangles ON THE PRICE LINE (that is where the trade lives)."""
@@ -434,14 +466,33 @@ with h_left:
         'MAARS Global Macro</div>',
         unsafe_allow_html=True)
 with h_right:
-    st.markdown(RR_LOGO_SVG, unsafe_allow_html=True)
+    st.markdown(HEADER_MARK_HTML, unsafe_allow_html=True)
 st.divider()
 
 st.sidebar.title("RetailRadar")
 
 theme_counts = load(THEME_COUNTS)
-conv = load(THEME_CONVICTION)
 sig_file = load(THEME_SIGNALS)
+
+
+@st.cache_data(show_spinner=False)
+def _live_conviction(sent_mtime):
+    """Theme conviction computed LIVE from the sentiment aggregate (not
+    read from the pipeline's conviction file). Why: the file only updates
+    when the analytics recompute runs, so after a maths change the
+    dashboard could silently show stale values. Computing here (cached on
+    the sentiment file's mtime, <1s for 39 themes) guarantees the screen
+    always reflects the current engine - coverage normalisation included."""
+    from analytics.loaders import load as _load, THEME_SENT
+    from analytics.conviction import compute_conviction
+    ts = _load(THEME_SENT)
+    if ts is None:
+        return None
+    return compute_conviction(ts, "theme").tidy("theme")
+
+
+conv = _live_conviction(_mtime(os.path.join(PROCESSED_DIR,
+                                            "daily_theme_sentiment.parquet")))
 prices = _read(PRICES_PATH, _mtime(PRICES_PATH)) if os.path.exists(PRICES_PATH) else None
 priced = set(prices["symbol"]) if prices is not None else set()
 
@@ -451,8 +502,12 @@ if theme_counts is None:
 
 data_max = theme_counts["date"].max()
 today = pd.Timestamp.today().normalize()
-lo = pd.Timestamp(st.sidebar.date_input(
-    "window start", (data_max - pd.Timedelta(days=365)).date()))
+# default view: 1 Jan 2026 onwards (the start of dense backfilled
+# coverage); falls back to trailing-365d if the data ends before that
+_default_lo = pd.Timestamp("2026-01-01")
+if data_max <= _default_lo:
+    _default_lo = data_max - pd.Timedelta(days=365)
+lo = pd.Timestamp(st.sidebar.date_input("window start", _default_lo.date()))
 live_mode = st.sidebar.checkbox("LIVE (to newest data)", value=True)
 hi = None if live_mode else pd.Timestamp(
     st.sidebar.date_input("window end", data_max.date()))
@@ -715,7 +770,7 @@ if sig_file is not None and len(sig_file):
                    > today - pd.Timedelta(days=HOLD_DAYS)).sum())
 _m1.metric("signals in window", _sig_n)
 _m2.metric("open positions", _open_n)
-_m3.metric("themes tracked", int(theme_counts["theme"].nunique()))
+_m3.metric("tradeable themes", int(theme_counts[theme_counts["theme"].isin(THEME_ETFS)]["theme"].nunique()))
 _m4.metric("data through", str(data_max.date()))
 _m5.metric("priced symbols", len(priced))
 
@@ -765,6 +820,11 @@ with st.expander("INSTRUMENT LOOKUP (click to expand) - all suggestions & "
      "Historical checker"])
 
 tc = clip_window(theme_counts, "date", lo, hi)
+# TRADEABLE UNIVERSE ONLY, everywhere: every list/rank/picker on this
+# dashboard is restricted to themes with a firm-approved instrument
+# (THEME_ETFS). Non-tradeable themes (crypto, cannabis, small_caps) are
+# still tracked in the data - they are simply not shown on the desk.
+tc = tc[tc["theme"].isin(THEME_ETFS)]
 
 
 # ---- TRADE DESK: dated live suggestions, most recent first ----
@@ -941,16 +1001,23 @@ with t_emerging:
             chg = chatter_change_series(theme_counts, "theme", theme, lo, hi)
             px = (price_series(prices, symbol, lo, hi)
                   if prices is not None and symbol else None)
-            st.plotly_chart(fig_series_vs_price(
+            fig = fig_series_vs_price(
                 chg, "chatter change (pp, smoothed)", GREEN, px, symbol,
-                f"#{i}  {theme}: change in chatter  vs  {symbol or '-'}"),
-                width="stretch", key=f"emerg_{theme}")
+                f"#{i}  {theme}: change in chatter  vs  {symbol or '-'}")
+            # grey out everything the growth ranking does NOT look at
+            if len(chg.dropna()):
+                focus = chg.dropna().index.max() - pd.Timedelta(days=look)
+                dim_outside(fig, lo, focus, f"ranking uses last {look}d →")
+            st.plotly_chart(fig, width="stretch", key=f"emerg_{theme}")
 
 # ---- CONVICTION ----
 with t_conv:
     st.subheader("Conviction (rank 1 = most abnormal crowd right now)")
     with st.expander("what is conviction? (definition)"):
         st.markdown(CONV_DEF)
+    st.caption("Conviction is computed LIVE from the sentiment aggregates "
+               "(coverage-normalised engine) - it can never lag behind a "
+               "stale file.")
     st.caption("Negative values are not an error: conviction z is measured "
                "against each theme's OWN trailing 84-day normal, so negative "
                "= 'this crowd is quieter / more bearish-active than it has "
@@ -987,8 +1054,14 @@ with t_conv:
             symbol = resolve_anchor(theme, priced)
             px = (price_series(prices, symbol, lo, hi)
                   if prices is not None and symbol else None)
-            st.plotly_chart(fig_conviction(cz, px, f"#{i}  {theme}", symbol),
-                            width="stretch", key=f"conv_{theme}")
+            fig = fig_conviction(cz, px, f"#{i}  {theme}", symbol)
+            # the EWMA's memory is ~3 half-lives; grey out everything older
+            # so the chart matches what the ranking actually weighs
+            if len(cz):
+                focus = cz.index.max() - pd.Timedelta(days=3 * ew_hl)
+                dim_outside(fig, lo, focus,
+                            f"EWMA weight ≈ last {3 * ew_hl}d →")
+            st.plotly_chart(fig, width="stretch", key=f"conv_{theme}")
 
 # ---- AI PULSE (sample placeholders for the future LLM layer) ----
 PULSE_TALK_SAMPLE = (

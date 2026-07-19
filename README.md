@@ -111,7 +111,7 @@ tradeable themes, each anchored to a liquid instrument), `sentiment.py`
 
 | module | replaces | what it does |
 |---|---|---|
-| `analytics/conviction.py` | nb 08, 09 | bull pressure → 7d roll → trailing 84d z, per ticker & theme; divergence flags, weekly heatmap + snail-trail data |
+| `analytics/conviction.py` | nb 08, 09 | bull pressure → **share of day's posts** (coverage-invariant) → 7d roll → trailing 84d z, per ticker & theme; divergence flags, heatmap + snail-trail data |
 | `analytics/signals.py` | nb 10 | the 5-check BUY/SELL engine: crossing triggers, sentiment gate, score ≥ 4/5, 21d cooldown, reasons attached |
 | `analytics/overlays.py` | nb 11–16 | mention share & first derivative vs price, forward-move deciles, lead/lag scan, direction flips, conviction crossings, the signal report card |
 | `analytics/run_analytics.py` | nbconvert | recomputes conviction + signals (in parallel) and writes the same parquet outputs the notebooks wrote |
@@ -144,9 +144,14 @@ tree. Notable chart behaviours, all documented in the code:
   early-warning list, long = the confirmed, sustained-build-up list.
 - **Conviction** ranks by an **EWMA** of conviction z (half-life slider,
   default 10d) with the latest z shown alongside — reactive to where
-  crowds are *now*, unlike a flat 30-day mean. Negative values are
-  information, not errors: the z is relative to each theme's own trailing
-  84-day normal.
+  crowds are *now*, unlike a flat 30-day mean. The z itself is
+  **coverage-normalised** (pressure as a share of the day's scored posts),
+  so a drop in how many posts were *collected* can no longer read as the
+  crowd leaving. Remaining negative values are information: quieter /
+  more bearish-active than that theme's own trailing normal.
+- **Tradeable universe only**: every theme list, ranking and picker on
+  the dashboard is restricted to themes with a firm-approved instrument
+  (`THEME_ETFS`); non-tradeable themes stay in the data but off the desk.
 
 ## Counting rules (the important ones — unchanged from RetailFlow1)
 

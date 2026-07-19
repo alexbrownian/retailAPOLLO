@@ -50,6 +50,15 @@ divergence flags and the dashboard):
   * swarm          - attention z > 1 while the mood improves: a confirmed
                      crowd arriving.
 
+COVERAGE NORMALISATION (an improvement over notebooks 08/09)
+  By default the z inputs are expressed as a SHARE of the day's total
+  scored posts (see compute_conviction's `normalise` parameter). Raw bull
+  pressure scales with how many posts were COLLECTED, and collection
+  volume is not stationary (backfilled months run ~30x the live fetch),
+  so raw z-scores go systematically negative after every coverage drop.
+  Share normalisation removes the collection-volume term - identical in
+  spirit to the share-of-chatter rule the mention charts use.
+
 OUTPUT FILES (identical schema to the notebooks they replace)
   daily_ticker_conviction.parquet   date, ticker, conviction_z
   daily_theme_conviction.parquet    date, theme,  conviction_z
@@ -109,13 +118,34 @@ class ConvictionSet:
         return out
 
 
-def compute_conviction(sent_df: pd.DataFrame, entity_col: str) -> ConvictionSet:
+MIN_DAY_TOTAL = 10   # a day needs at least this many scored posts overall
+                     # before its pressure/attention SHARES mean anything
+
+
+def compute_conviction(sent_df: pd.DataFrame, entity_col: str,
+                       normalise: bool = True) -> ConvictionSet:
     """Build the full conviction set from one daily-sentiment aggregate.
 
     sent_df    : long frame (date, <entity>, n_posts, avg_sentiment,
                  net_bullish) - i.e. daily_ticker_sentiment.parquet or
                  daily_theme_sentiment.parquet.
     entity_col : "ticker" or "theme".
+    normalise  : True (default) = COVERAGE-INVARIANT conviction: bull
+                 pressure and attention are divided by the day's TOTAL
+                 scored posts before the z (each expressed as % of the
+                 day's chatter). WHY THIS MATTERS: collection volume is
+                 not stationary - the 2026 backfill runs at ~1,000 scored
+                 posts/day while the live fetch collects a fraction of
+                 that, so RAW pressure falls off a cliff at the
+                 archive->live boundary and every theme's z reads
+                 negative for the next 84 days purely because fewer posts
+                 were COLLECTED, not because the crowd left. Dividing by
+                 the day's total removes the collection-volume term -
+                 the same share-of-chatter trick the mention charts use.
+                 Days with under MIN_DAY_TOTAL scored posts are treated
+                 as zero-evidence (a 3-post day cannot define a share).
+                 False = the raw-pressure behaviour of RetailFlow1
+                 notebooks 08/09, kept for comparison.
     """
     df = sent_df.copy()
     df["date"] = pd.to_datetime(df["date"])
@@ -130,8 +160,17 @@ def compute_conviction(sent_df: pd.DataFrame, entity_col: str) -> ConvictionSet:
     wide_bp = to_wide(df, entity_col, "bull_pressure", all_days, fill=0.0)
     wide_n = to_wide(df, entity_col, "n_posts", all_days, fill=0.0)
 
-    conviction_z = trailing_z(wide_bp)
-    attention_z = trailing_z(wide_n)
+    if normalise:
+        # coverage-invariant inputs: % of the day's total scored posts
+        day_total = wide_n.sum(axis=1)
+        denom = day_total.where(day_total >= MIN_DAY_TOTAL)
+        z_in_bp = (wide_bp.div(denom, axis=0) * 100).fillna(0.0)
+        z_in_n = (wide_n.div(denom, axis=0) * 100).fillna(0.0)
+    else:
+        z_in_bp, z_in_n = wide_bp, wide_n
+
+    conviction_z = trailing_z(z_in_bp)
+    attention_z = trailing_z(z_in_n)
 
     # Mood level: rolled pressure / rolled volume = the 7-day net-bullish
     # share. Dividing SUMS (not averaging daily ratios) weights every post

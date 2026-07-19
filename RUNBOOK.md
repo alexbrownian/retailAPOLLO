@@ -122,10 +122,16 @@ git push
   7d = twitchy early-warning list, 21d = sustained build-ups only
 - **Conviction** — ranked by an **EWMA of conviction z** (half-life
   slider, default 10d), with the latest z and the old flat 30d average
-  shown alongside. Negative values = crowds quieter than their own
-  trailing 84d normal — information, not an error
+  shown alongside. The z is coverage-normalised (share of the day's
+  scored posts), so collection-volume cliffs at the archive→live
+  boundary no longer drag every theme negative; remaining negatives =
+  crowds genuinely quieter than their own trailing 84d normal. After
+  pulling this change, hit "recompute analytics only" once so the
+  conviction files on disk pick up the new maths
 - **Historical checker** — any window, any theme
 
+Every theme list and picker shows the TRADEABLE universe only (themes
+with a firm-approved instrument in `THEME_ETFS`).
 The sidebar's `items per section` slider controls how many charts each tab
 draws; the window controls at the top drive every tab at once. Chart
 note: days with under `MIN_TOTAL` total mentions are masked as too thin;

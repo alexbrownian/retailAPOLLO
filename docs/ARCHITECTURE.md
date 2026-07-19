@@ -213,8 +213,18 @@ name means a post is scored exactly once, ever.
 
 ### 6.1 Conviction (`analytics/conviction.py`)
 
-`bull_pressure = n_posts × net_bullish` per day → 7-day rolling sum →
-z-score against the SAME name's trailing 84 days (28-day warm-up). The
+`bull_pressure = n_posts × net_bullish` per day → **normalised to a share
+of that day's total scored posts** → 7-day rolling sum → z-score against
+the SAME name's trailing 84 days (28-day warm-up). The share step is an
+improvement over notebooks 08/09: collection volume is not stationary
+(backfilled months run ~30× the live fetch), so a z on RAW pressure goes
+systematically negative after every coverage drop — every theme read
+"quiet" for 84 days after the archive→live boundary purely because fewer
+posts were collected. Dividing by the day's total removes the
+collection-volume term (the same share-of-chatter rule the mention
+charts use); days with under 10 scored posts total are treated as
+zero-evidence. `compute_conviction(..., normalise=False)` restores the
+old raw behaviour for comparison. The
 trailing baseline is the live-parity rule: day *t* uses only data ≤ *t*,
 so backtest and live numbers are the same numbers. Supporting series:
 attention z (volume only), the rolled net-bullish share, its 5-day change,
