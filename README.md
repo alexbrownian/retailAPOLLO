@@ -85,7 +85,7 @@ nothing is fetched, nothing rebuilt. Command cheat-sheet:
 ```
 retailAPOLLO/
 ├── update_data.py            # THE one command (window in src/config.py)
-├── dashboard.py              # "GIC RetailRadar" - all charts + pipeline runner
+├── dashboard.py              # "RetailRadar" - all charts + pipeline runner
 ├── pull_bloomberg_prices.py  # PX_LAST via blpapi (incremental, append-only)
 ├── check_live_ingestion.py   # freshness check, layer by layer
 ├── RUNBOOK.md                # scenario cheat-sheet
@@ -119,14 +119,14 @@ tradeable themes, each anchored to a liquid instrument), `sentiment.py`
 The dashboard renders all overlay analytics **on demand** from the saved
 outputs — "refresh the overlays" is now just moving the window slider.
 
-## The dashboard: GIC RetailRadar
+## The dashboard: RetailRadar
 
 The dashboard shows **themes and their anchor ETFs only** — the desk does
 not trade single tickers, so the individual-ticker overlay views were
 removed. The ticker analytics remain in `analytics/` for research
 (windowed backtests via `run_analytics --what signals --start ... --end ...`).
 
-`dashboard.py` presents everything as **GIC RetailRadar** (Alex Brown —
+`dashboard.py` presents everything as **RetailRadar** (Alex Brown —
 GIP 2026 Project — MAARS Global Macro). Beyond the charts, it can RUN the
 pipelines itself: the sidebar buttons launch them as **background
 processes** with a progress bar, a plain-English stage checklist

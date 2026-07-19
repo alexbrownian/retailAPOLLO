@@ -107,7 +107,7 @@ git push
 3. Open the dashboard, set the same window in the sidebar — every tab
    (overlays included) clips itself to it.
 
-## The dashboard tabs (GIC RetailRadar - all interactive, no notebooks)
+## The dashboard tabs (RetailRadar - all interactive, no notebooks)
 
 - **Trade desk** — the live ledger, scorecard, certainty ranking, signal
   charts with per-trade reasons; INSTRUMENT LOOKUP expander above the
@@ -147,6 +147,16 @@ In a terminal fetch, a `still fetching: Reddit, X` heartbeat line prints
 every ~30s — the pauses are deliberate API rate-limit pacing
 (StockTwits ~1.5s/symbol, X 5s/request, Arctic Shift 1s/page), so a
 quiet minute is normal, not a hang.
+
+**How long should things take?** (also shown on the dashboard buttons)
+
+| Run | Typical time | Where it goes |
+|---|---|---|
+| LIVE pull, first run of the day | ~3–10 min | X rate-limit pacing dominates; Reddit paginates only what is NEW since the last run (per-subreddit watermark, 1-day overlap) |
+| LIVE pull, repeat run | ~2–5 min | mostly the X pass |
+| window rebuild (prices + signals) | ~1–3 min | Bloomberg pull is incremental — covered spans are skipped |
+| analytics only | ~1 min | pure local compute |
+| FULL rebuild | 30 min – hours | raw-text extraction + sentiment over the whole build range (external machine) |
 
 ## Transfer: external → internal
 

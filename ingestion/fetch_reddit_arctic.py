@@ -21,6 +21,17 @@
 #   FetchLayer pulls or previous runs is harmless.
 # PERMANENCE: raw files accumulate forever (nothing is ever re-pulled) and
 #   the fold ledgers guarantee each post enters the pipeline exactly once.
+# SPEED - THE WATERMARK: Arctic Shift archives by CREATION TIME with
+#   complete coverage, so once a subreddit has been fetched through time T,
+#   posts created before T can never appear later - re-fetching them is
+#   pure waste. A per-subreddit watermark (newest created_utc seen, kept in
+#   data/reference/reddit_arctic_watermark.json) lets every run after the
+#   first fetch only what is NEW (minus a 1-day safety overlap for posts
+#   that reach the archive late). A watermark only advances when the sub's
+#   pagination COMPLETED - a run that gave up mid-sub re-covers the window
+#   next time. First run / --lookback-days farther back than the watermark:
+#   behaves exactly as before. Result: a daily run's Reddit pass drops from
+#   many minutes (full week, every sub, every page) to ~1 minute.
 
 import argparse
 import datetime
@@ -46,6 +57,9 @@ SEEN_FILE = os.path.join(PROJECT_ROOT, "data", "reference",
                          "reddit_arctic_seen.json")
 SUBS_FILE = os.path.join(PROJECT_ROOT, "ingestion",
                          "finance_subreddits.txt")
+WATERMARK_FILE = os.path.join(PROJECT_ROOT, "data", "reference",
+                              "reddit_arctic_watermark.json")
+OVERLAP_S = 86400          # 1-day overlap behind the watermark (late arrivals)
 API = "https://arctic-shift.photon-reddit.com/api/posts/search"
 PAGE = 100
 PAUSE_S = 1.0
@@ -78,6 +92,22 @@ def save_seen(seen_list):
     os.replace(SEEN_FILE + ".tmp", SEEN_FILE)
 
 
+def load_watermarks():
+    if os.path.exists(WATERMARK_FILE):
+        try:
+            return json.load(open(WATERMARK_FILE, encoding="utf-8"))
+        except (ValueError, OSError):
+            return {}
+    return {}
+
+
+def save_watermarks(marks):
+    os.makedirs(os.path.dirname(WATERMARK_FILE), exist_ok=True)
+    with open(WATERMARK_FILE + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(marks, f)
+    os.replace(WATERMARK_FILE + ".tmp", WATERMARK_FILE)
+
+
 def fetch_page(sub, after, before, retries=4):
     for attempt in range(retries):
         try:
@@ -92,7 +122,7 @@ def fetch_page(sub, after, before, retries=4):
             print(f"    network hiccup ({e}) - retrying...")
         time.sleep(20 * (attempt + 1))
     print(f"    r/{sub}: giving up this run (next run re-covers the window)")
-    return []
+    return None                    # None = FAILED (vs [] = genuinely empty)
 
 
 def main():
@@ -112,7 +142,7 @@ def main():
     before = (today + datetime.timedelta(days=1)).isoformat()
 
     if args.test:
-        rows = fetch_page(subs[0], after, before)
+        rows = fetch_page(subs[0], after, before) or []
         print(f"TEST: r/{subs[0]} returned {len(rows)} posts "
               f"({after} -> {before}); first titles:")
         for rec in rows[:3]:
@@ -125,18 +155,34 @@ def main():
     stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
     out_path = os.path.join(OUT_DIR, f"reddit_live_arctic_{stamp}.jsonl.zst")
 
+    marks = load_watermarks()
+    lookback_epoch = int(time.time()) - args.lookback_days * 86400
     total = 0
     writer = zstandard.ZstdCompressor().stream_writer(
         open(out_path + ".tmp", "wb"))
     for sub in subs:
+        # INCREMENTAL WINDOW: never before the requested lookback, but if a
+        # watermark exists, start just behind it - everything older was
+        # already fetched (Arctic archives by creation time, complete).
+        sub_after = after
+        wm = marks.get(sub)
+        if wm:
+            sub_after = str(max(lookback_epoch, int(wm) - OVERLAP_S))
         got = 0
+        newest_seen = int(wm) if wm else 0
+        completed = True                      # pagination reached the end?
         cursor = before
         while True:
-            rows = fetch_page(sub, after, cursor)
+            rows = fetch_page(sub, sub_after, cursor)
+            if rows is None:               # gave up after retries: the
+                completed = False          # window was NOT fully covered,
+                break                      # so the watermark must not move
             if not rows:
-                break
+                break                      # clean end: no more posts
             for rec in rows:
                 pid = str(rec.get("id", ""))
+                created = int(rec.get("created_utc", 0) or 0)
+                newest_seen = max(newest_seen, created)
                 if not pid or pid in seen:
                     continue
                 seen.add(pid)
@@ -149,10 +195,15 @@ def main():
                 break
             cursor = str(oldest)
             time.sleep(PAUSE_S)
-        print(f"  r/{sub:<24} {got:>5} new posts")
+        wm_note = " (incremental)" if wm else ""
+        print(f"  r/{sub:<24} {got:>5} new posts{wm_note}")
+        # advance the watermark only on a clean finish with data seen
+        if completed and newest_seen:
+            marks[sub] = newest_seen
         total += got
         time.sleep(PAUSE_S)
     writer.close()
+    save_watermarks(marks)
 
     if total == 0:
         os.remove(out_path + ".tmp")

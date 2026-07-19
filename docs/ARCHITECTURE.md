@@ -106,6 +106,15 @@ re-fetched or rewritten, dedup happens downstream):
   public API: complete per-subreddit coverage, near-real-time, free.
   Paginates each of the 17 tracked subreddits over the lookback window,
   keeps a rolling seen-ids file so re-runs write only new posts.
+  **Watermarked incremental fetch**: Arctic archives by creation time
+  with complete coverage, so once a subreddit is fetched through time T,
+  older posts can never appear later — a per-subreddit watermark
+  (`data/reference/reddit_arctic_watermark.json`) lets every run after
+  the first fetch only what is new, minus a 1-day overlap for late
+  arrivals. The watermark only advances when a subreddit's pagination
+  completed cleanly, so an interrupted run re-covers its window next
+  time. This turns a repeat run's Reddit pass from many minutes into
+  about one.
 - **`fetch_x_live.py`** — FetchLayer (or the official v2 API if a bearer
   token is configured). Two passes: broad DISCOVERY queries first (top
   finance chatter with engagement floors — catches tickers on nobody's
@@ -240,11 +249,13 @@ the signals. **Incremental**: per symbol, only the spans missing from
 switching windows back and forth costs nothing after the first pull. The
 file stays local (licensing).
 
-## 8. The dashboard (`dashboard.py` — "GIC RetailRadar")
+## 8. The dashboard (`dashboard.py` — "RetailRadar")
 
-One Streamlit app (branded **GIC RetailRadar**; credit line: Alex Brown —
-GIP 2026 Project — MAARS Global Macro), dark terminal styling, every
-chart Plotly (hover/zoom/pan). Loading is cached on (path, mtime) so
+One Streamlit app (branded **RetailRadar**, with an animated radar-sweep
+mark; credit line: Alex Brown — GIP 2026 Project — MAARS Global Macro),
+dark terminal styling, every chart Plotly (hover/zoom/pan). The pipeline
+buttons carry rough time estimates in their labels (tooltips explain
+where the time goes), and the progress panel shows elapsed time. Loading is cached on (path, mtime) so
 interaction is instant and the cache self-invalidates when the pipeline
 rewrites a file. All computation is imported from `analytics/` — the
 dashboard never re-implements a formula, so a number on screen is the

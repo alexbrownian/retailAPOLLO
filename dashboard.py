@@ -59,57 +59,58 @@ from analytics.overlays import (mention_share_series,              # noqa: E402
                                 conviction_crossings, signal_scorecard,
                                 trade_desk, certainty_table)
 
-st.set_page_config(page_title="GIC RetailRadar", layout="wide",
+st.set_page_config(page_title="RetailRadar", layout="wide",
                    initial_sidebar_state="expanded")
 
 ACCENT = "#e8845c"                       # coral - the dashboard accent
 GREEN, RED, PURPLE, BLUE, GRAY = ("#3fb950", "#f85149", "#b58bd8",
                                   ACCENT, "#9aa0a6")
 
-# GIC logo: the official file wins if present, otherwise an inline SVG
-# recreation of the mark (navy bars + orbit + wordmark, on a white chip so
-# the navy stays readable on the dark theme)
-GIC_LOGO_PNG = os.path.join(ROOT, "assets", "gic_logo.png")
-GIC_LOGO_SVG = """
-<svg width="118" height="46" viewBox="0 0 260 100" xmlns="http://www.w3.org/2000/svg">
-  <rect width="260" height="100" rx="8" fill="#ffffff"/>
-  <g fill="#12275e">
-    <rect x="30" y="26" width="8" height="48"/>
-    <rect x="44" y="14" width="8" height="72"/>
-    <rect x="58" y="6"  width="8" height="88"/>
-    <rect x="72" y="14" width="8" height="72"/>
-    <rect x="86" y="26" width="8" height="48"/>
-  </g>
-  <ellipse cx="62" cy="50" rx="46" ry="9" fill="none"
-           stroke="#12275e" stroke-width="6"/>
-  <text x="118" y="72" font-family="Arial, Helvetica, sans-serif"
-        font-size="58" font-weight="bold" fill="#12275e">GIC</text>
+# RetailRadar mark: a small radar sweep in the accent colour - pure
+# inline SVG, no image file needed. The sweep line rotates continuously;
+# the blip pulses once per revolution.
+RR_LOGO_SVG = """
+<svg width="64" height="64" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .rrsweep { transform-origin: 50px 50px;
+               animation: rrspin 4s linear infinite; }
+    .rrblip  { animation: rrpulse 4s ease-out infinite; }
+    @keyframes rrspin  { to { transform: rotate(360deg); } }
+    @keyframes rrpulse { 0%, 55% { opacity: 0; } 60% { opacity: 1; }
+                         100% { opacity: 0; } }
+  </style>
+  <circle cx="50" cy="50" r="46" fill="none" stroke="#e8845c" stroke-width="2"/>
+  <circle cx="50" cy="50" r="31" fill="none" stroke="#e8845c" stroke-width="1" opacity="0.5"/>
+  <circle cx="50" cy="50" r="16" fill="none" stroke="#e8845c" stroke-width="1" opacity="0.35"/>
+  <line class="rrsweep" x1="50" y1="50" x2="50" y2="5"
+        stroke="#e8845c" stroke-width="3" stroke-linecap="round"/>
+  <circle class="rrblip" cx="68" cy="32" r="4" fill="#3fb950"/>
 </svg>"""
 
-# Animated GIC loader: the five bars rise ONE BY ONE (staggered delays keep
-# their phase every loop), then the orbit line draws itself through the
-# middle, everything fades, and the cycle repeats.
-GIC_LOADER_HTML = """
+# Animated loader: five bars rise ONE BY ONE (staggered delays keep their
+# phase every loop), then an orbit line draws itself through the middle,
+# everything fades, and the cycle repeats.
+LOADER_HTML = """
 <div style="display:flex;align-items:center;gap:14px;padding:6px 0;">
 <svg width="72" height="72" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
   <style>
-    .gb { fill:#e8845c; transform-box:fill-box; transform-origin:50% 100%;
+    .ldb { fill:#e8845c; transform-box:fill-box; transform-origin:50% 100%;
           transform:scaleY(0);
-          animation:gicbar 2.6s cubic-bezier(.4,0,.2,1) infinite; }
-    .g1 { animation-delay:0s;   } .g2 { animation-delay:.14s; }
-    .g3 { animation-delay:.28s; } .g4 { animation-delay:.42s; }
-    .g5 { animation-delay:.56s; }
-    .gorb { fill:none; stroke:#e8845c; stroke-width:5;
+          animation:ldbar 2.6s cubic-bezier(.4,0,.2,1) infinite; }
+    .l1 { animation-delay:0s;   } .l2 { animation-delay:.14s; }
+    .l3 { animation-delay:.28s; } .l4 { animation-delay:.42s; }
+    .l5 { animation-delay:.56s; }
+    .ldorb { fill:none; stroke:#e8845c; stroke-width:5;
             stroke-dasharray:155; stroke-dashoffset:155;
-            animation:gicorb 2.6s ease-in-out infinite; }
-    @keyframes gicbar {
+            animation:ldorbit 2.6s ease-in-out infinite; }
+    @keyframes ldbar {
       0%   { transform:scaleY(0); opacity:1; }
       18%  { transform:scaleY(1); opacity:1; }
       82%  { transform:scaleY(1); opacity:1; }
       95%  { transform:scaleY(1); opacity:0; }
       100% { transform:scaleY(0); opacity:0; }
     }
-    @keyframes gicorb {
+    @keyframes ldorbit {
       0%, 30% { stroke-dashoffset:155; opacity:1; }
       60%     { stroke-dashoffset:0;   opacity:1; }
       82%     { stroke-dashoffset:0;   opacity:1; }
@@ -117,12 +118,12 @@ GIC_LOADER_HTML = """
       100%    { stroke-dashoffset:155; opacity:0; }
     }
   </style>
-  <rect class="gb g1" x="22" y="38" width="8" height="46"/>
-  <rect class="gb g2" x="36" y="26" width="8" height="70"/>
-  <rect class="gb g3" x="50" y="16" width="8" height="90"/>
-  <rect class="gb g4" x="64" y="26" width="8" height="70"/>
-  <rect class="gb g5" x="78" y="38" width="8" height="46"/>
-  <ellipse class="gorb" cx="54" cy="61" rx="45" ry="9"/>
+  <rect class="ldb l1" x="22" y="38" width="8" height="46"/>
+  <rect class="ldb l2" x="36" y="26" width="8" height="70"/>
+  <rect class="ldb l3" x="50" y="16" width="8" height="90"/>
+  <rect class="ldb l4" x="64" y="26" width="8" height="70"/>
+  <rect class="ldb l5" x="78" y="38" width="8" height="46"/>
+  <ellipse class="ldorb" cx="54" cy="61" rx="45" ry="9"/>
 </svg>
 <span style="color:#9aa0a6;">working...</span>
 </div>"""
@@ -424,7 +425,7 @@ h_left, h_right = st.columns([5, 1])
 with h_left:
     st.markdown(
         '<div><span class="rf-dot">&#9679;</span> '
-        '<span class="rf-title">GIC RetailRadar</span></div>'
+        '<span class="rf-title">RetailRadar</span></div>'
         '<div class="rf-sub">retail attention &amp; trading signals - '
         'real-time monitoring dashboard (notebook-free pipeline)</div>'
         f'<div class="rf-sub">last update: '
@@ -433,13 +434,10 @@ with h_left:
         'MAARS Global Macro</div>',
         unsafe_allow_html=True)
 with h_right:
-    if os.path.exists(GIC_LOGO_PNG):
-        st.image(GIC_LOGO_PNG, width=118)
-    else:
-        st.markdown(GIC_LOGO_SVG, unsafe_allow_html=True)
+    st.markdown(RR_LOGO_SVG, unsafe_allow_html=True)
 st.divider()
 
-st.sidebar.title("GIC RetailRadar")
+st.sidebar.title("RetailRadar")
 
 theme_counts = load(THEME_COUNTS)
 conv = load(THEME_CONVICTION)
@@ -550,11 +548,13 @@ PLANS = {
 
 def start_pipeline(steps, label, plan):
     import tempfile
+    import time as _time
     fd, logpath = tempfile.mkstemp(prefix="apollo_pipe_", suffix=".log")
     os.close(fd)
     st.session_state.pipe = {"steps": steps, "label": label, "i": 0,
                              "log": logpath, "state": "running",
-                             "plan": PLANS[plan], "max_frac": 0.0}
+                             "plan": PLANS[plan], "max_frac": 0.0,
+                             "t0": _time.time()}
     _launch_current_step()
 
 
@@ -618,8 +618,11 @@ def pipeline_panel():
 
     log_text = _read_log(p["log"])
     if p["state"] == "running":
-        box = st.status(f"running {p['label']}...", expanded=True)
-        box.markdown(GIC_LOADER_HTML, unsafe_allow_html=True)
+        import time as _time
+        mins, secs = divmod(int(_time.time() - p.get("t0", _time.time())), 60)
+        box = st.status(f"running {p['label']}... ({mins}m {secs:02d}s "
+                        "elapsed)", expanded=True)
+        box.markdown(LOADER_HTML, unsafe_allow_html=True)
         statuses, frac = _stage_status(p, log_text)
         box.progress(frac)
         for label, state in statuses:
@@ -661,20 +664,36 @@ end_s = "" if hi is None else hi.strftime("%Y-%m-%d")
 win_env = {"PIPELINE_START_DATE": start_s, "PIPELINE_END_DATE": end_s}
 
 # buttons are disabled while a pipeline runs - one at a time, by design
-if st.sidebar.button("run LIVE pull now", disabled=_pipe_running):
+if st.sidebar.button("run LIVE pull now  (~3-10 min)", disabled=_pipe_running,
+                     help="Fetch new posts from all three sources, fold "
+                          "them in, recompute signals, pull prices. Most "
+                          "of the time is deliberate API rate-limit pacing "
+                          "(X waits 5s between requests); Reddit is "
+                          "incremental after the first run of the day."):
     start_pipeline([(["update_data.py"], None)], "LIVE pull", plan="live")
-if st.sidebar.button("rebuild THIS window (prices + signals)",
-                     disabled=_pipe_running):
+if st.sidebar.button("rebuild THIS window (prices + signals)  (~1-3 min)",
+                     disabled=_pipe_running,
+                     help="No post fetching. Pull Bloomberg prices for the "
+                          "chosen window (first pull of new symbols/spans "
+                          "takes longer; already-covered spans are "
+                          "skipped), then recompute the signals."):
     start_pipeline([(["pull_bloomberg_prices.py"], win_env),
                     (["update_data.py", "--start", start_s, "--end", end_s,
                       "--skip-prices"], None)],
                    f"window rebuild {start_s} -> {end_s or 'LIVE'}",
                    plan="window")
-if st.sidebar.button("recompute analytics only (no APIs)",
-                     disabled=_pipe_running):
+if st.sidebar.button("recompute analytics only (no APIs)  (~1 min)",
+                     disabled=_pipe_running,
+                     help="Conviction + signals recomputed from the "
+                          "aggregates already on disk. No network at all."):
     start_pipeline([(["-m", "analytics.run_analytics"], None)],
                    "analytics recompute", plan="analytics")
-if st.sidebar.button("run FULL historical rebuild", disabled=_pipe_running):
+if st.sidebar.button("run FULL historical rebuild  (external machine; "
+                     "30 min - hours)", disabled=_pipe_running,
+                     help="Rebuilds every aggregate from raw post text over "
+                          "the whole build range. Only meaningful on the "
+                          "machine that holds posts.parquet; run after "
+                          "changing themes or schemas."):
     start_pipeline([(["update_data.py", "--full"], None)], "FULL rebuild",
                    plan="full")
 
