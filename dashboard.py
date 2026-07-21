@@ -48,15 +48,17 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
 from src.config import (ROLL, DERIV_SMOOTH, MIN_TOTAL, CROSS_AT,   # noqa: E402
-                        MIN_GAP, HOLD_DAYS, PROCESSED_DIR, PRICES_PATH)
+                        MIN_GAP, HOLD_DAYS, PROCESSED_DIR, PRICES_PATH,
+                        CONV_EXIT_LEVEL, CONV_EWM_HALFLIFE, DESK_EXIT_Z)
 from src.themes import THEME_ETFS, THEME_ETF_FALLBACKS             # noqa: E402
 from analytics import overlays                                     # noqa: E402
 from analytics.loaders import (price_series, clip_window,          # noqa: E402
                                THEME_COUNTS, THEME_SIGNALS)
 from analytics.overlays import (mention_share_series,              # noqa: E402
                                 chatter_change_series,
-                                conviction_crossings, signal_scorecard,
-                                trade_desk, certainty_table)
+                                conviction_crossings, crossing_exits,
+                                signal_scorecard, trade_desk,
+                                certainty_table)
 
 st.set_page_config(page_title="RetailRadar", layout="wide",
                    initial_sidebar_state="expanded")
@@ -143,6 +145,59 @@ LOADER_HTML = """
 </svg>
 <span style="color:#9aa0a6;">working...</span>
 </div>"""
+
+
+DECISIONS_DOC = """### Model decisions & evidence log
+*(every material modelling choice, what was tested, and the numbers -
+so no rule on this dashboard is a black box. All PnL figures: real
+Bloomberg closes, signals from 2021, per-year cross-validation.)*
+
+**1 - The BUY/SELL engine is the ORIGINAL RetailFlow1 logic, unchanged.**
+Verified by diffing the two projects' signal files: every tradeable
+signal matches (the only differences are in `cannabis`, which has no
+approved instrument and never trades). Scoring *RetailFlow1's own file*
+on real prices gives BUY = **-1.42%/trade** over 2021-2026 - identical
+to this project, because it is the same engine. The old project never
+scored full history (its report cards were window-clipped), which is why
+recent windows *felt* good: per-year avg %/trade = 2021 **+6.3**, 2022
+**-11.1**, 2023 **-3.0**, 2024 **+1.7**, 2025 **-1.3**, 2026 **+0.4**.
+The engine's weakness is one regime: it buys retail enthusiasm into bear
+markets (2022). Same signals, different viewing window => different PnL
+- moving the window start from trailing-365d to Jan-2026 alone shifts
+the scorecard from +4.4% to +1.6% total with no model change at all.
+
+**2 - Conviction display engine: EWM baseline (halflife 42d).** Chosen
+over the rolling-84 window and share-normalised variants in a study on
+real prices: long its own +2.5 up-crossings, 20d hold = **+1.36%/trade,
+63% hit, 299 trades, +0.78% above the anchor ETFs' unconditional drift,
+positive 5 of 6 years**, stable across halflife 28/42/60 and holds
+10/20/30 (a plateau, not a curve-fit spike). It also re-centres within
+weeks after collection-volume shocks - the cause of the old
+"every theme reads negative" episodes. The engine's own ingredients were
+tested with the EWM z too: it made the engine WORSE (-1.80 vs -0.93
+%/trade), so the engine keeps its original rolling-84 construction.
+
+**3 - Grey exit markers ("back to neutral") - KEPT.** On the validated
+crossing strategy, exiting when z reverts returns +0.83%/trade in ~10
+days vs +1.36% in 20 - less per trade but **0.080 vs 0.065 %/day**: the
+same capital can work ~2x as often. On the engine's own BUY trades,
+reversion-exit cuts the loss from -1.42% to -1.03%/trade (SELL: only 4
+priced trades - too few to judge). The official scorecard still accounts
+fixed-20d holds; the markers and the desk's REVERTED hint are the
+capital-efficiency overlay on top.
+
+**4 - Shorts from conviction: REJECTED.** Every short construction
+tested loses (plain down-cross **-1.33%/trade**, post-peak reversal
+-0.67, shallow -0.30; at best 2/6 years positive). Retail conviction
+fading is not bearish price information - its value on the sell side is
+EXIT TIMING, which is what the grey markers implement.
+
+**5 - Parameters are FROZEN.** All knobs live in `src/config.py` with
+the evidence quoted next to each. The pipeline snapshots signals daily
+and never revises them - that forward record is the only true
+out-of-sample test. Changes to these rules require new out-of-sample
+evidence, not a re-run of the same history. Full write-up:
+`docs/ARCHITECTURE.md` section 6.1."""
 
 TERMINAL_CSS = """
 <style>
@@ -400,29 +455,45 @@ def fig_conviction(cz, px, theme, symbol):
                                  line=dict(color=GRAY, width=1.5)),
                       secondary_y=True)
         up, dn = conviction_crossings(cz, CROSS_AT, MIN_GAP)
-        for dates, sym_mk, col, nm in [(up, "triangle-up", GREEN, "bullish crossing"),
-                                       (dn, "triangle-down", RED, "bearish crossing")]:
+        # grey markers = the EXIT point: z reverting inside +/-CONV_EXIT_LEVEL
+        # means the surge that produced the signal has expired ("back to
+        # neutral") - validated as the capital-efficient exit, so a position
+        # never has to wait for an opposite signal to get out
+        lx, sx = crossing_exits(cz, up, dn, CONV_EXIT_LEVEL)
+        for dates, sym_mk, col, nm, filled in [
+                (up, "triangle-up", GREEN, "bullish crossing", True),
+                (dn, "triangle-down", RED, "bearish crossing", True),
+                (lx, "triangle-down-open", GRAY, "exit long (back to neutral)", False),
+                (sx, "triangle-up-open", GRAY, "exit short (back to neutral)", False)]:
             pts = [(d, px.asof(d)) for d in dates
                    if px.index.min() <= d <= px.index.max()]
             if pts:
                 fig.add_trace(go.Scatter(
                     x=[p[0] for p in pts], y=[p[1] for p in pts], name=nm,
                     mode="markers",
-                    marker=dict(symbol=sym_mk, size=13, color=col,
-                                line=dict(color="black", width=1))),
+                    marker=dict(symbol=sym_mk, size=13 if filled else 11,
+                                color=col,
+                                line=dict(color="black" if filled else col,
+                                          width=1))),
                     secondary_y=True)
     fig.update_yaxes(title_text="conviction z", secondary_y=False)
     fig.update_yaxes(title_text="price (USD)", secondary_y=True)
     return fig
 
 
-def fig_signals(px_line, sig_rows, name, symbol):
+def fig_signals(px_line, sig_rows, name, symbol, cz=None):
     """BUY/SELL triangles placed on the price line, hover shows the score
-    and conviction z of each trade."""
+    and conviction z of each trade. When the theme's conviction series
+    `cz` is supplied, each trade also gets a GREY open triangle at its
+    exit point: the first day conviction reverts to neutral after entry
+    (BUY: z back below +DESK_EXIT_Z; SELL: z back above -DESK_EXIT_Z),
+    or the HOLD_DAYS cap if it never reverts - the same rule as the trade
+    desk's REVERTED hint, so chart and ledger always agree."""
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=px_line.index, y=px_line.values,
                              name=f"{symbol} price",
                              line=dict(color=GRAY, width=1.5)))
+    exit_pts, exit_texts = [], []
     for side, mk, col in [("BUY", "triangle-up", GREEN),
                           ("SELL", "triangle-down", RED)]:
         rows = sig_rows[sig_rows["action"] == side]
@@ -435,12 +506,32 @@ def fig_signals(px_line, sig_rows, name, symbol):
             pts.append((px_line.index[i], px_line.iloc[i]))
             texts.append(f"{side} {d.date()}<br>score {r.get('score', '?')}/5"
                          f"<br>conv z {r.get('conv_z', float('nan')):+.2f}")
+            # the exit companion for this trade
+            if cz is not None and len(cz):
+                path = cz[d:d + pd.Timedelta(days=HOLD_DAYS)]
+                hit = (path[path < DESK_EXIT_Z] if side == "BUY"
+                       else path[path > -DESK_EXIT_Z])
+                if len(hit):
+                    x_d, why = hit.index[0], "conviction reverted to neutral"
+                else:
+                    x_d, why = d + pd.Timedelta(days=HOLD_DAYS), f"{HOLD_DAYS}d cap"
+                if x_d <= px_line.index.max():
+                    j = px_line.index.get_indexer([x_d], method="nearest")[0]
+                    exit_pts.append((px_line.index[j], px_line.iloc[j]))
+                    exit_texts.append(f"EXIT {side} {x_d.date()}<br>{why}")
         if pts:
             fig.add_trace(go.Scatter(
                 x=[p[0] for p in pts], y=[p[1] for p in pts], name=side,
                 mode="markers", hovertext=texts, hoverinfo="text",
                 marker=dict(symbol=mk, size=14, color=col,
                             line=dict(color="black", width=1))))
+    if exit_pts:
+        fig.add_trace(go.Scatter(
+            x=[p[0] for p in exit_pts], y=[p[1] for p in exit_pts],
+            name="exit (reverted to neutral / cap)", mode="markers",
+            hovertext=exit_texts, hoverinfo="text",
+            marker=dict(symbol="circle-open", size=11, color=GRAY,
+                        line=dict(color=GRAY, width=2))))
     fig.update_layout(title=dict(text=f"{name} ({symbol}): BUY/SELL signals",
                                  y=0.97, x=0.01),
                       height=430, hovermode="closest",
@@ -493,6 +584,18 @@ def _live_conviction(sent_mtime):
 
 conv = _live_conviction(_mtime(os.path.join(PROCESSED_DIR,
                                             "daily_theme_sentiment.parquet")))
+
+
+def theme_cz(theme):
+    """One theme's conviction z as a daily forward-filled series (for the
+    grey exit markers on signal charts). None when conviction is absent."""
+    if conv is None:
+        return None
+    one = conv[conv["theme"] == theme]
+    if not len(one):
+        return None
+    return (one.sort_values("date").set_index("date")["conviction_z"]
+            .asfreq("D").ffill())
 prices = _read(PRICES_PATH, _mtime(PRICES_PATH)) if os.path.exists(PRICES_PATH) else None
 priced = set(prices["symbol"]) if prices is not None else set()
 
@@ -809,6 +912,12 @@ with st.expander("INSTRUMENT LOOKUP (click to expand) - all suggestions & "
 # ---------------------------------------------------------------------------
 # tabs
 # ---------------------------------------------------------------------------
+# ---- MODEL DECISIONS & EVIDENCE: the audit trail of every rule ----
+with st.expander("MODEL DECISIONS & EVIDENCE (click to expand) - why every "
+                 "rule is the way it is, with the tested numbers",
+                 expanded=False):
+    st.markdown(DECISIONS_DOC)
+
 # NOTE: individual-ticker overlays were removed from the dashboard by
 # request - the desk trades THEMES via their anchor ETFs, never single
 # tickers. The ticker analytics remain available in analytics/ for
@@ -851,6 +960,25 @@ with t_desk:
         else:
             desk = trade_desk(sig_w.head(200) if len(sig_w) > 200 else sig_w,
                               prices, priced, today)
+            # EXIT HINT: an OPEN trade whose theme conviction has reverted
+            # to neutral (|z| < DESK_EXIT_Z) has lost the surge that
+            # produced it - the study showed exiting there frees capital
+            # ~2x faster at a better %/day than waiting out the 20d cap
+            if conv is not None and len(desk):
+                latest_z = (conv.sort_values("date").groupby("theme")
+                            ["conviction_z"].last())
+                def _hint(row):
+                    if row["status"] != "OPEN":
+                        return ""
+                    z_now = latest_z.get(row["theme"])
+                    if z_now is None or pd.isna(z_now):
+                        return "no z"
+                    reverted = (abs(z_now) < DESK_EXIT_Z
+                                if row["action"] == "BUY"
+                                else z_now > -DESK_EXIT_Z)
+                    return (f"z {z_now:+.1f} REVERTED - consider exit"
+                            if reverted else f"z {z_now:+.1f} still on")
+                desk["exit hint"] = desk.apply(_hint, axis=1)
             desk.insert(0, "rank", range(1, len(desk) + 1))
             open_n = int((desk["status"] == "OPEN").sum())
             c1, c2, c3 = st.columns(3)
@@ -889,7 +1017,8 @@ with t_desk:
                     continue
                 th_rows = (sig_w[sig_w["theme"] == theme]
                            .sort_values("action_date", ascending=False))
-                st.plotly_chart(fig_signals(px_line, th_rows, theme, symbol),
+                st.plotly_chart(fig_signals(px_line, th_rows, theme, symbol,
+                                            cz=theme_cz(theme)),
                                 width="stretch", key=f"desk_sig_{theme}")
                 for _, r in th_rows.head(6).iterrows():
                     st.caption(
@@ -942,7 +1071,8 @@ with t_ov_theme:
                 s_th = s_th[s_th["theme"] == theme]
                 if len(s_th):
                     st.plotly_chart(fig_signals(px, s_th, f"#{i}  {theme}",
-                                                symbol), width="stretch",
+                                                symbol, cz=theme_cz(theme)),
+                                    width="stretch",
                                     key=f"ovth_sig_{theme}")
                 else:
                     st.caption(f"#{i} {theme}: no signals in this window")
@@ -1016,8 +1146,11 @@ with t_conv:
     with st.expander("what is conviction? (definition)"):
         st.markdown(CONV_DEF)
     st.caption("Conviction is computed LIVE from the sentiment aggregates "
-               "(coverage-normalised engine) - it can never lag behind a "
-               "stale file.")
+               "(EWM-baseline engine, halflife "
+               f"{CONV_EWM_HALFLIFE}d - validated on real prices with "
+               "per-year cross-validation) - it can never lag behind a "
+               "stale file. Grey open triangles on the charts = the signal "
+               "reverting to neutral, the validated early-exit point.")
     st.caption("Negative values are not an error: conviction z is measured "
                "against each theme's OWN trailing 84-day normal, so negative "
                "= 'this crowd is quieter / more bearish-active than it has "
@@ -1231,7 +1364,8 @@ with t_hist:
         s_h = clip_window(sig_file, "action_date", h_lo, h_hi)
         s_ht = s_h[s_h["theme"] == h_theme]
         if len(s_ht) and px is not None and not px.empty:
-            st.plotly_chart(fig_signals(px, s_ht, h_theme, symbol),
+            st.plotly_chart(fig_signals(px, s_ht, h_theme, symbol,
+                                        cz=theme_cz(h_theme)),
                             width="stretch", key="hist_sig")
         else:
             st.info(f"no signals for {h_theme} in this window")

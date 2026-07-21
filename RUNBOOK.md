@@ -122,12 +122,13 @@ git push
   7d = twitchy early-warning list, 21d = sustained build-ups only
 - **Conviction** — ranked by an **EWMA of conviction z** (half-life
   slider, default 10d), with the latest z and the old flat 30d average
-  shown alongside. The z is coverage-normalised (share of the day's
-  scored posts), so collection-volume cliffs at the archive→live
-  boundary no longer drag every theme negative; remaining negatives =
-  crowds genuinely quieter than their own trailing 84d normal. After
-  pulling this change, hit "recompute analytics only" once so the
-  conviction files on disk pick up the new maths
+  shown alongside. The z uses an EWM trailing baseline (validated July
+  2026 on real prices: best cross-validated PnL AND self-recentring
+  after coverage shocks). Grey open triangles = the signal reverting to
+  neutral, the validated early-exit point; the trade desk flags OPEN
+  trades whose conviction has REVERTED ("consider exit" instead of
+  waiting out the 20d cap). Conviction is computed live on the
+  dashboard - no recompute needed to see engine changes
 - **Historical checker** — any window, any theme
 
 Every theme list and picker shows the TRADEABLE universe only (themes

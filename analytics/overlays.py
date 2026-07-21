@@ -184,6 +184,31 @@ def conviction_crossings(cz: pd.Series, cross_at: float = CROSS_AT,
 # ---------------------------------------------------------------------------
 # the report card (nb 15/16) - did the signals make money?
 # ---------------------------------------------------------------------------
+def crossing_exits(cz: pd.Series, ups: list, dns: list,
+                   exit_level: float, max_days: int = 60):
+    """The EXIT companion to conviction_crossings: after each entry
+    crossing, the first day z reverts inside +/-exit_level = the signal
+    has expired ("back to neutral") - the validated early-exit point.
+
+    Evidence (July-2026 study, real prices): exiting +2.5-crossing longs
+    on reversion returned +0.83%/trade in ~10 days held vs +1.36% in 20
+    days for the fixed hold - LESS per trade but MORE per day of capital
+    (0.080 vs 0.065 %/day), i.e. the same money can work ~2x as often.
+
+    Returns (long_exits, short_exits): one exit date per entry (capped at
+    max_days after entry so an exit always exists)."""
+    long_exits, short_exits = [], []
+    for entries, out, cond in [
+            (ups, long_exits, lambda w: w < exit_level),
+            (dns, short_exits, lambda w: w > -exit_level)]:
+        for d in entries:
+            path = cz[d:d + pd.Timedelta(days=max_days)]
+            hit = path[cond(path)]
+            out.append(hit.index[0] if len(hit)
+                       else d + pd.Timedelta(days=max_days))
+    return long_exits, short_exits
+
+
 def signal_scorecard(sig: pd.DataFrame, prices: pd.DataFrame, priced: set,
                      lo, hold_days: int = HOLD_DAYS,
                      instrument_col: str = "etf") -> pd.DataFrame:

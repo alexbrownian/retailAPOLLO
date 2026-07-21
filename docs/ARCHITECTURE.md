@@ -213,24 +213,53 @@ name means a post is scored exactly once, ever.
 
 ### 6.1 Conviction (`analytics/conviction.py`)
 
-`bull_pressure = n_posts × net_bullish` per day → **normalised to a share
-of that day's total scored posts** → 7-day rolling sum → z-score against
-the SAME name's trailing 84 days (28-day warm-up). The share step is an
-improvement over notebooks 08/09: collection volume is not stationary
-(backfilled months run ~30× the live fetch), so a z on RAW pressure goes
-systematically negative after every coverage drop — every theme read
-"quiet" for 84 days after the archive→live boundary purely because fewer
-posts were collected. Dividing by the day's total removes the
-collection-volume term (the same share-of-chatter rule the mention
-charts use); days with under 10 scored posts total are treated as
-zero-evidence. `compute_conviction(..., normalise=False)` restores the
-old raw behaviour for comparison. The
-trailing baseline is the live-parity rule: day *t* uses only data ≤ *t*,
-so backtest and live numbers are the same numbers. Supporting series:
-attention z (volume only), the rolled net-bullish share, its 5-day change,
-and the crowded-top / swarm divergence flags.
+`bull_pressure = n_posts × net_bullish` per day → 7-day rolling sum →
+z-score against an **EWM (exponentially-weighted) trailing baseline**
+(half-life 42 d, 28-day warm-up). Both baseline styles are strictly
+trailing (day *t* uses only data ≤ *t*); the EWM default was chosen by a
+**July-2026 study** (temporary lab harness, real Bloomberg closes,
+per-year cross-validation) over the notebook-08/09 rolling-84 window and
+over share-normalised variants:
+
+- **Chart sanity**: a one-off volume shock sits in a rolling window at
+  full weight for 84 days then falls off a cliff — the cause of the
+  "every theme reads negative" episodes after coverage drops. Under an
+  EWM baseline the shock decays smoothly (half gone in 42 d) and the
+  chart re-centres itself. It is also the least noisy variant tested.
+- **PnL (long)**: trading its own +2.5 up-crossings (long the anchor
+  ETF, 20 d hold) earned **+1.36 %/trade, 63 % hit rate, 299 trades,
+  +0.78 %/trade above the ETFs' unconditional drift, positive in 5 of 6
+  years** — stable across half-life 28/42/60 and holds 10/20/30.
+- **SELL finding**: every short construction tested LOSES money (plain
+  down-cross −1.33 %/trade, post-peak reversal −0.67, shallow −0.30;
+  0–2 of 6 years positive). Retail conviction fading is not bearish
+  price information — its value on the sell side is **exit timing**:
+  leaving a long when z reverts to neutral returned +0.83 %/trade in
+  ~10 days held vs +1.36 % in 20 (less per trade, ~2× better per day of
+  capital, 0.080 vs 0.065 %/day). Hence the grey "back to neutral" exit
+  markers and the trade desk's REVERTED hint.
+
+Knobs in `src/config.py`: `CONV_BASELINE` ("ewm"/"rolling"),
+`CONV_EWM_HALFLIFE`, `CONV_EXIT_LEVEL`, `DESK_EXIT_Z`;
+`compute_conviction(normalise=True)` keeps the share-of-day's-posts
+inputs as a research option. Supporting series: attention z, the rolled
+net-bullish share, its 5-day change, crowded-top / swarm flags.
 
 ### 6.2 Signals (`analytics/signals.py`)
+
+**Provenance and evidence (July-2026 study).** The engine is the ORIGINAL
+RetailFlow1 notebook-10 logic, ported unchanged — verified by diffing the
+two projects' signal files (every tradeable signal identical; only the
+anchor-less `cannabis` theme differs, from data drift). Scored on real
+prices over 2021-2026 it earns **−0.93%/trade** (BUY −1.42), driven by
+2022 (−11%/trade): the checks buy retail enthusiasm into bear markets.
+Running the engine on the EWM z made it *worse* (−1.80%/trade), so it
+keeps its original rolling-84 ingredients. The validated positive edge
+lives in the simpler EWM conviction-crossing longs (§6.1); the engine's
+daily snapshots build its forward out-of-sample record next to that
+benchmark. The dashboard's "MODEL DECISIONS & EVIDENCE" expander shows
+this audit trail to every user.
+
 
 The decision engine (see the dashboard's Trade-desk expander for the
 trader-facing description): momentum crossing triggers (`crosses_above` —

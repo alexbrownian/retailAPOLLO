@@ -118,6 +118,23 @@ SENT_CHANGE_HORIZON = 5   # days over which the sentiment change is measured
 CROWDED_ATT_Z = 1.0       # attention z above this counts as "crowd surging"
 CROWDED_SENT_DROP = -0.10  # 5d sentiment change below this = "mood souring"
 
+# --- conviction engine (validated in the July-2026 conviction study:
+#     helper lab, real Bloomberg prices, per-year cross-validation) ---
+CONV_BASELINE = "ewm"     # "ewm" = EWM mean/std baseline (winner: +1.36%/trade
+                          # at K=2.5 long, 63% hit, 5/6 years positive, and it
+                          # absorbs coverage cliffs within weeks instead of an
+                          # 84-day hangover). "rolling" = the old fixed window.
+CONV_EWM_HALFLIFE = 42    # baseline memory (~rolling-84 equivalent). The edge
+                          # was stable across 28/42/60 - not a knife-edge fit.
+CONV_EXIT_LEVEL = 0.5     # display: after a +/-CROSS_AT crossing, a grey
+                          # marker shows where z reverts inside +/-this level
+                          # ("signal expired - exit"). Validated: exiting longs
+                          # on reversion frees capital ~2x faster at a better
+                          # %/day (0.080 vs 0.065) than holding the full 20d.
+DESK_EXIT_Z = 1.0         # trade desk hint: an OPEN BUY whose theme conviction
+                          # has dropped back below this is flagged "REVERTED -
+                          # consider exit" instead of waiting out the 20d cap.
+
 # --- trade bookkeeping (dashboard + report card) ---
 HOLD_DAYS = 20       # every suggestion is a 20-day hold (the edge peaks and
                      # plateaus around 3-4 weeks in the horizon analysis)

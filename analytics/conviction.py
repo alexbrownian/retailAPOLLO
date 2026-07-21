@@ -50,14 +50,15 @@ divergence flags and the dashboard):
   * swarm          - attention z > 1 while the mood improves: a confirmed
                      crowd arriving.
 
-COVERAGE NORMALISATION (an improvement over notebooks 08/09)
-  By default the z inputs are expressed as a SHARE of the day's total
-  scored posts (see compute_conviction's `normalise` parameter). Raw bull
-  pressure scales with how many posts were COLLECTED, and collection
-  volume is not stationary (backfilled months run ~30x the live fetch),
-  so raw z-scores go systematically negative after every coverage drop.
-  Share normalisation removes the collection-volume term - identical in
-  spirit to the share-of-chatter rule the mention charts use.
+THE BASELINE (validated July 2026 - see ewm_z's docstring)
+  The default z uses an EWM (exponentially-weighted) baseline rather than
+  the fixed rolling-84 window of notebooks 08/09. Both are strictly
+  trailing; the EWM version lets one-off volume shocks (like the
+  backfill->live coverage cliff) decay smoothly instead of poisoning the
+  baseline for 84 days - and it backtested best on real prices with
+  per-year cross-validation. `baseline="rolling"` restores the old
+  behaviour; `normalise=True` (share-of-day's-posts inputs) remains as a
+  research option.
 
 OUTPUT FILES (identical schema to the notebooks they replace)
   daily_ticker_conviction.parquet   date, ticker, conviction_z
@@ -73,9 +74,35 @@ import numpy as np
 import pandas as pd
 
 from src.config import (ROLL, BASELINE, MIN_DAYS, PROCESSED_DIR,
-                        SENT_CHANGE_HORIZON, CROWDED_ATT_Z, CROWDED_SENT_DROP)
+                        SENT_CHANGE_HORIZON, CROWDED_ATT_Z, CROWDED_SENT_DROP,
+                        CONV_BASELINE, CONV_EWM_HALFLIFE)
 from analytics.loaders import (load, to_wide, TICKER_SENT, THEME_SENT,
                                TICKER_CONVICTION, THEME_CONVICTION)
+
+
+def ewm_z(frame: pd.DataFrame, roll: int = ROLL,
+          halflife: int = CONV_EWM_HALFLIFE,
+          min_days: int = MIN_DAYS) -> pd.DataFrame:
+    """Trailing z with an EXPONENTIALLY-WEIGHTED baseline: mean and std are
+    EWM (halflife days) instead of a fixed rolling window.
+
+    Why this replaced the rolling-84 baseline as the default (July-2026
+    conviction study, real prices, per-year cross-validation):
+      * A one-off volume shock sits inside a rolling window at FULL weight
+        for 84 days and then falls off a cliff - which is exactly why every
+        theme read negative for weeks after the backfill->live coverage
+        drop. Under an EWM baseline the shock's influence DECAYS smoothly
+        (half gone in 42 days), so the chart re-centres itself.
+      * Traded at its own +2.5 up-crossings (long the anchor ETF, 20d
+        hold), this construction earned +1.36%/trade at a 63% hit rate
+        over 299 trades, +0.78%/trade ABOVE the ETFs' unconditional drift,
+        positive in 5 of 6 years - and the edge was stable across
+        halflife 28/42/60 and holds 10/20/30 (i.e. not curve-fit).
+    Still strictly trailing: day t uses only data through day t."""
+    r = frame.rolling(roll, min_periods=1).sum()
+    mu = r.ewm(halflife=halflife, min_periods=min_days).mean()
+    sd = r.ewm(halflife=halflife, min_periods=min_days).std().replace(0, np.nan)
+    return (r - mu) / sd
 
 
 def trailing_z(frame: pd.DataFrame, roll: int = ROLL,
@@ -123,14 +150,19 @@ MIN_DAY_TOTAL = 10   # a day needs at least this many scored posts overall
 
 
 def compute_conviction(sent_df: pd.DataFrame, entity_col: str,
-                       normalise: bool = True) -> ConvictionSet:
+                       normalise: bool = False,
+                       baseline: str = CONV_BASELINE,
+                       halflife: int = CONV_EWM_HALFLIFE) -> ConvictionSet:
     """Build the full conviction set from one daily-sentiment aggregate.
 
     sent_df    : long frame (date, <entity>, n_posts, avg_sentiment,
                  net_bullish) - i.e. daily_ticker_sentiment.parquet or
                  daily_theme_sentiment.parquet.
     entity_col : "ticker" or "theme".
-    normalise  : True (default) = COVERAGE-INVARIANT conviction: bull
+    baseline   : "ewm" (default) = EWM mean/std baseline - see ewm_z's
+                 docstring for the validation evidence. "rolling" = the
+                 fixed 84-day window of RetailFlow1 notebooks 08/09.
+    normalise  : False (default). True = COVERAGE-INVARIANT z: bull
                  pressure and attention are divided by the day's TOTAL
                  scored posts before the z (each expressed as % of the
                  day's chatter). WHY THIS MATTERS: collection volume is
@@ -144,8 +176,10 @@ def compute_conviction(sent_df: pd.DataFrame, entity_col: str,
                  the same share-of-chatter trick the mention charts use.
                  Days with under MIN_DAY_TOTAL scored posts are treated
                  as zero-evidence (a 3-post day cannot define a share).
-                 False = the raw-pressure behaviour of RetailFlow1
-                 notebooks 08/09, kept for comparison.
+                 NOTE: the July-2026 study found the EWM baseline fixes
+                 the same coverage problem by a different route AND
+                 backtests better - share normalisation is kept as a
+                 research option, off by default.
     """
     df = sent_df.copy()
     df["date"] = pd.to_datetime(df["date"])
@@ -169,8 +203,12 @@ def compute_conviction(sent_df: pd.DataFrame, entity_col: str,
     else:
         z_in_bp, z_in_n = wide_bp, wide_n
 
-    conviction_z = trailing_z(z_in_bp)
-    attention_z = trailing_z(z_in_n)
+    if baseline == "ewm":
+        conviction_z = ewm_z(z_in_bp, halflife=halflife)
+        attention_z = ewm_z(z_in_n, halflife=halflife)
+    else:
+        conviction_z = trailing_z(z_in_bp)
+        attention_z = trailing_z(z_in_n)
 
     # Mood level: rolled pressure / rolled volume = the 7-day net-bullish
     # share. Dividing SUMS (not averaging daily ratios) weights every post
