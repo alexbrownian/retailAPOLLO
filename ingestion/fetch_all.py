@@ -94,6 +94,13 @@ def fetch_plan():
         # fetch_reddit_live.py remains available as a manual fallback.
         ("Reddit", True, "Arctic Shift public API - no key needed",
          ["fetch_reddit_arctic.py"]),
+        # Reddit COMMENTS feed the influence tracker (live-first, desk
+        # decision July 2026): watermarked like the post fetcher, so only
+        # the first run pays for the lookback window. Runs in parallel
+        # with the other three - it touches its own raw folder.
+        ("Reddit comments", True,
+         "Arctic Shift public API - influence tracker source",
+         ["fetch_reddit_comments.py"]),
         ("X", x_ok, x_why, ["fetch_x_live.py"]),
     ]
 
@@ -141,6 +148,13 @@ def main():
                         "internal-machine path")
     p.add_argument("--serial", action="store_true",
                    help="run fetchers one at a time (easier-to-read output)")
+    p.add_argument("--skip-comments", action="store_true",
+                   help="skip the Reddit COMMENTS fetcher (the influence "
+                        "tracker source). Desk decision 2026-07-24: the "
+                        "daily pipeline runs without comments by default "
+                        "(they are the slow species - 10-50x post volume "
+                        "at 1s/page); update_comments.py is the dedicated "
+                        "comments + influence runner")
     p.add_argument("--lookback-days", type=int, default=7,
                    help="how far back the fetch reaches (top posts of the "
                         "last N days); overlap never duplicates")
@@ -154,6 +168,8 @@ def main():
 
     # ---- NORMAL MODE ----------------------------------------------------
     plan = fetch_plan()
+    if args.skip_comments:
+        plan = [entry for entry in plan if entry[0] != "Reddit comments"]
     print("NORMAL MODE - API key check (.env at project root):")
     for name, will_call, why, _ in plan:
         print(f"  {'CALL' if will_call else 'SKIP'}  {name:<10} ({why})")
@@ -162,11 +178,17 @@ def main():
         return 0
 
     # the two knobs travel to every fetcher that understands them
+    # (the comments fetcher deliberately keeps its OWN 3d default rather
+    # than inheriting the 7d post lookback - comments are ~10x volume)
     knobs = {"fetch_reddit_arctic.py": ["--lookback-days", str(args.lookback_days)],
              "fetch_reddit_live.py": ["--lookback-days", str(args.lookback_days),
                                       "--max-credits", str(args.max_credits)],
              "fetch_x_live.py": ["--lookback-days", str(args.lookback_days),
                                  "--max-credits", str(args.max_credits)]}
+    # per-fetcher time budget: comments get 3x - their FIRST run (no
+    # watermark yet) crawls a few dense days at 1s/page; every later run
+    # is watermark-incremental and finishes with the others
+    timeouts = {"fetch_reddit_comments.py": FETCH_TIMEOUT_S * 3}
 
     to_run = [(name, script_args) for name, will_call, _, script_args in plan
               if will_call]
@@ -180,7 +202,8 @@ def main():
         for name, script_args in to_run:
             print(f"\n--- {name} ---")
             code, out = run_script(script_args, extra=knobs.get(script_args[0]),
-                                   timeout=FETCH_TIMEOUT_S)
+                                   timeout=timeouts.get(script_args[0],
+                                                        FETCH_TIMEOUT_S))
             print(out)
             if code != 0:
                 failed.append(name)
@@ -202,7 +225,8 @@ def main():
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(to_run)) as pool:
             futures = {pool.submit(run_script, script_args,
                                    knobs.get(script_args[0]),
-                                   FETCH_TIMEOUT_S): name
+                                   timeouts.get(script_args[0],
+                                                FETCH_TIMEOUT_S)): name
                        for name, script_args in to_run}
             pending = set(futures)
             last_beat = time.time()

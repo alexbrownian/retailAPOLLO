@@ -135,11 +135,79 @@ DESK_EXIT_Z = 1.0         # trade desk hint: an OPEN BUY whose theme conviction
                           # has dropped back below this is flagged "REVERTED -
                           # consider exit" instead of waiting out the 20d cap.
 
+# --- EUPHORIA DETECTOR (the project's aim since the July-2026 re-aim:
+#     detect retail euphoria -> call price TOPS). Full rule definitions
+#     + research grounding: analytics/euphoria.py docstring. ---
+EUPHORIA_ATT_GATE = 0.90        # A2: attention must be >= this trailing
+                                # percentile - you cannot be euphoric quietly
+EUPHORIA_HYPE_MULT = 2.0        # A1 (Reddit-only): the 7d mention share must
+                                # be >= this multiple of its own trailing 120d
+                                # median - the crowd must have genuinely
+                                # SWOLLEN before an alert is even possible
+                                # ("something has to go euphoric first",
+                                # measured in the crowd, never the chart)
+EUPHORIA_BOOM_MIN_ETF = 0.25    # G2 (ground truth ONLY - price is for
+                                # testing, never prediction): an ETF/theme
+                                # peak must sit >= 25% above its 120d low
+EUPHORIA_BOOM_MIN_SINGLE = 0.50  # single names boom harder before they count
+EUPHORIA_CRASH_MIN_ETF = 0.15   # G3: >= 15% drawdown within 90d = ETF bust
+EUPHORIA_CRASH_MIN_SINGLE = 0.30  # >= 30% for single names (structurally
+                                  # more volatile - the desk's dual-threshold
+                                  # call, July 2026)
+EUPHORIA_COOLDOWN_DAYS = 21     # A4: one alert per episode per name
+EUPHORIA_FADE_DISCOUNT = 10     # A3: the fade flag (crowd maximal, mood
+                                # rolling over) lowers the trigger by this
+                                # many level-points - the fade is the LAST
+                                # stage, so it may fire the alert earlier
+EUPHORIA_FA_PENALTY = 0.5       # walk-forward threshold selection: a false
+                                # alarm costs half a captured peak
+EUPHORIA_PCT_WINDOW = 365       # "extreme" = vs this name's own last year
+EUPHORIA_MIN_HISTORY = 180      # days of history before percentiles exist
+EUPHORIA_SINGLE_TOP_N = 25      # how many single names the detector tracks
+EUPHORIA_MIN_NAME_POSTS = 3000  # min scored posts for a single name's
+                                # sentiment to be trusted at all
+EUPHORIA_MIN_COVERAGE = 100     # A0: scored posts needed in the last 28d
+                                # before euphoria is measurable - percentile
+                                # extremes on a handful of posts are noise
+                                # (kills the thin-coverage 2023-25 FA storm)
+EUPHORIA_FA_PENALTY = 1.0       # (overrides above) a false alarm costs a
+                                # FULL captured peak in threshold selection
+# themes OUTSIDE the euphoria universe - the desk trades equities and
+# retail commodities only (gold/silver via GLD+fallbacks, oil via XLE,
+# uranium via URA all remain through their theme anchors)
+EUPHORIA_EXCLUDED_THEMES = {"rates_bonds", "real_estate"}
+
 # --- trade bookkeeping (dashboard + report card) ---
 HOLD_DAYS = 20       # every suggestion is a 20-day hold (the edge peaks and
                      # plateaus around 3-4 weeks in the horizon analysis)
 CROSS_AT = 1.5       # conviction crossing level drawn/marked on charts
 MIN_GAP = 10         # days between counted crossings on a chart
+
+# --- DYNAMIC SUBREDDIT PANEL (desk decisions, 2026-07-24) ---
+# The tracked-subreddit list is no longer fully static: a monthly review
+# (ingestion/discover_subreddits.py, run inside update_data) mines the
+# collected raw text for r/<name> referrals and can auto-add ONE new
+# community per review into an EXPLORATION tier. The original 17 subs
+# are the frozen CORE tier. Every addition is logged in
+# ingestion/subreddit_panel.json (the audit trail), because panel changes
+# step the mention-share denominator - the manifest is what lets any
+# analysis be re-cut excluding young additions.
+PANEL_REVIEW_DAYS = 30        # review cadence (monthly, watermarked)
+PANEL_REFERRAL_WINDOW = 28    # referral lookback = the project's 28d
+                              # measurement window (same as E2/E3/A0)
+PANEL_MIN_REFERRERS = EUPHORIA_MIN_COVERAGE
+                              # a community qualifies when >= this many
+                              # UNIQUE panel authors referred to it in
+                              # 28d - the SAME floor (100) that makes a
+                              # name measurable at all (A0), reused
+PANEL_SCREEN_FRACTION = 0.5   # finance screen: the candidate's sampled
+                              # ticker-mention rate must be >= this
+                              # fraction of the tracked panel's own
+                              # average rate, both measured identically
+                              # in the same review run
+PANEL_ADD_CAP = 1             # max auto-adds per review - one step of
+                              # the share denominator per month, so the
+                              # 365d percentile normalisation absorbs it
 
 # ---------------------------------------------------------------------------
 # 5. SAFETY - the text-free commit guard. Any of these column names in an

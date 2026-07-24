@@ -1,0 +1,97 @@
+{
+ "onset": {
+  "test_years": [
+   2018,
+   2019,
+   2020,
+   2021,
+   2022,
+   2023,
+   2024,
+   2025,
+   2026
+  ],
+  "thresholds": {
+   "2018": 0.8859227713551994,
+   "2019": 0.8816438356164383,
+   "2020": 0.8876294866062354,
+   "2021": 0.8887671232876713,
+   "2022": 0.8905701142903459,
+   "2023": 0.8947945205479453,
+   "2024": 0.8942465753424658,
+   "2025": 0.8942465753424657,
+   "2026": 0.8947945205479453
+  },
+  "captured": 29,
+  "detectable": 125,
+  "capture_rate": 0.232,
+  "late": 21,
+  "false_alarms": 169,
+  "fa_per_iy": 0.348,
+  "auroc": 0.565,
+  "ap": 0.098,
+  "ap_baseline": 0.071
+ },
+ "top": {
+  "test_years": [
+   2020,
+   2021,
+   2022,
+   2023,
+   2024,
+   2025,
+   2026
+  ],
+  "thresholds": {
+   "2020": 0.8547945205479452,
+   "2021": 0.8525342465753425,
+   "2022": 0.8608171078959519,
+   "2023": 0.8312602739726025,
+   "2024": 0.8306849315068494,
+   "2025": 0.8306575342465753,
+   "2026": 0.8301369863013698
+  },
+  "captured": 16,
+  "detectable": 122,
+  "capture_rate": 0.131,
+  "late": 0,
+  "false_alarms": 44,
+  "fa_per_iy": 0.128,
+  "auroc": 0.557,
+  "ap": 0.286,
+  "ap_baseline": 0.211
+ },
+ "onset_lead_median_after_trough": 17.0,
+ "onset_lead_median_before_peak": 66.0,
+ "top_lead_median_before_peak": 6.0,
+ "fa_anatomy": {
+  "isolated (no episode \u00b190d)": 143,
+  "early (trough within 90d)": 14,
+  "post-peak (within 90d after)": 12
+ },
+ "calibration_monotone": false,
+ "trading_translation": {
+  "ONSET\u2192BUY": {
+   "n": 215,
+   "mean_fwd_20d": 0.0034,
+   "baseline_mean": 0.0098,
+   "diff": -0.0063,
+   "ci90": [
+    -0.0151,
+    0.0026
+   ],
+   "verdict": "REJECTED (criterion not met)"
+  },
+  "TOP\u2192SELL": {
+   "n": 67,
+   "mean_fwd_20d": -0.0021,
+   "baseline_mean": 0.0134,
+   "diff": -0.0155,
+   "ci90": [
+    -0.0563,
+    0.0263
+   ],
+   "verdict": "REJECTED (criterion not met)"
+  }
+ }
+}

@@ -18,7 +18,16 @@ all: the dashboard's sidebar buttons run the same pipelines.
 | Check the FetchLayer key | `python ingestion/fetch_all.py --check` (no calls) / `--test` (1 credit) |
 | See what live data landed | `python check_live_ingestion.py` |
 | Pull Bloomberg prices | `python pull_bloomberg_prices.py` (`--dry-run` to preview) |
+| Refresh euphoria/onset LIVE data | automatic in every pull - scores at the FROZEN walk-forward thresholds in seconds (intra-year recompute is a no-op: thresholds train on strictly earlier years) |
+| Re-run the FULL euphoria/onset validation | `python -m analytics.run_analytics --research` (or `--what euphoria`/`--what phases` with `--research`) - walk-forward + ablation + ML challenger + threshold re-selection. Run after a backfill or rule change; auto-triggers on year rollover or a missing report; `update_data --full` forces it |
+| Extend prices to full history | PowerShell: `$env:PIPELINE_START_DATE="2017-01-01"; python pull_bloomberg_prices.py` (incremental — pulls only the missing 2017-2020 spans, then rerun the euphoria stage) |
+| Comments + Influence Tracker | `python update_comments.py` — the dedicated runner (desk decision 2026-07-24: comments LEFT the daily pipeline because they are the slow fetch — 10-50x post volume at the API's polite 1s/page). It prints an upfront time estimate (first run ~10-25 min; incremental ~1-4 min), fetches comments (watermarked, Ctrl-C-safe, resumable), then updates the influence board in one go. The store still builds itself from nothing on the first run and re-judges matured calls automatically. `python update_data.py --with-comments` restores the old bundled behaviour for one run. `python -m analytics.influence --top 20` prints the board |
+| Dynamic subreddit panel | NOTHING TO RUN — a monthly, watermarked review rides every live pull (`ingestion/discover_subreddits.py --if-due`): it mines collected text for r/NAME referrals, and a candidate with ≥100 unique panel referrers/28d (the A0 floor, reused) that passes the finance screen auto-joins the EXPLORATION tier (max 1/review). Audit trail: `ingestion/subreddit_panel.json` + `docs/panel_review_latest.md`. Force a review: `python ingestion/discover_subreddits.py` (`--report-only` to rank without adding) |
+| Rebuild the ONSET detector (Start/End radar data) | `python -m analytics.run_analytics --what phases` — LIVE mode: episode catalog + today's scores/alerts at the frozen threshold (seconds); add `--research` for the full walk-forward scorecard + threshold re-selection |
+| Re-run the phases research notebooks | `cd notebooks` then `jupyter nbconvert --to notebook --execute --inplace 01_*.ipynb 02_*.ipynb 03_*.ipynb 04_*.ipynb 06_*.ipynb` — every figure/number re-renders from current data (06 = the full signal-efficacy report: forward returns at 3/10/21/84d, hit rates vs baseline, event study, overlay PnL, per-name tables) |
+| Influential-users model (notebook 05) | AFTER the first live pull has seeded the influence store: `jupyter nbconvert --to notebook --execute --inplace notebooks/05_influence_users_model.ipynb` — a standing experiment, re-run any time |
 | Run the tests | `python -m pytest tests/ -v` |
+| Rebuild the presentation evidence pack | `python helper/research_charts.py` — every validation chart + correlation/calibration test regenerated from CURRENT data into `docs/research/` (figures, `research_stats.json`, README) |
 
 ## The one switch: the window
 
@@ -88,10 +97,12 @@ The same command on both machines — it auto-detects which one it is on:
 python update_data.py
 ```
 
-Then commit the updated aggregates:
+Then commit the updated aggregates + the influence store (the store is
+committed by design — text-free, pseudonymous; the safety check covers
+both):
 
 ```powershell
-git add ABSTRACTED_DATA
+git add ABSTRACTED_DATA data/reference/influence
 git commit -m "live update"
 git push
 ```
@@ -109,6 +120,17 @@ git push
 
 ## The dashboard tabs (RetailRadar - all interactive, no notebooks)
 
+- **EUPHORIA: Themes** / **EUPHORIA: Singles** — the headline signal,
+  one tab per instrument kind (desk decision 2026-07-24: conclusions
+  only on the terminal; evidence in the notebooks). Each tab: a sparse
+  state strip (names STARTING = onset alert in the last 21d, names
+  ENDING = top alert in the last 21d - empty is the radar working), then
+  per-instrument charts with the state ON the chart: BLUE vertical line
+  = euphoria starting, RED vertical line = euphoria ending, euphoria
+  level underneath, "EUPHORIA STARTING/ENDING NOW" badge in the title.
+  A single caption states the validated record; the walk-forward
+  tables, ablation, ML challenger and tournament live in
+  `notebooks/01-04` + `docs/DECISIONS.xlsx`, not on the terminal
 - **Trade desk** — the live ledger, scorecard, certainty ranking, signal
   charts with per-trade reasons; INSTRUMENT LOOKUP expander above the
   tabs shows every suggestion + reason for one tradeable instrument

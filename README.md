@@ -1,11 +1,40 @@
-# retailAPOLLO — retail attention → signals → price
+# retailAPOLLO — the retail EUPHORIA detector (calling tops)
 
-retailAPOLLO measures how much retail attention each stock **ticker** and
-**theme** receives across **17 finance subreddits, X (Twitter) and
-StockTwits**, detects attention take-offs, scores sentiment, combines the
-two into a **conviction score**, and emits **BUY/SELL signals with explicit
-reasons** — then overlays everything against **Bloomberg prices** to assess
-whether the crowd leads the move.
+**THE AIM (re-set July 2026): detect retail euphoria and use it to call
+price TOPS.** retailAPOLLO measures retail attention and sentiment for
+**themes, hot single names and retail commodities** across **17 finance
+subreddits, X (Twitter) and StockTwits**, condenses them into a 0–100
+**EUPHORIA LEVEL** per instrument, and raises a **red euphoria alert**
+when the crowd goes euphoric — because something has to go euphoric
+before it crashes. **Prediction is Reddit-only by rule: price never
+enters the euphoria level or the alert — it only defines and scores the
+ground-truth tops**, so the claim stays clean: the crowd alone called
+the top. Success is defined precisely: an alert inside
+**[peak − 30 days, peak + 1 day]** of a genuine price top (a boom
+followed by a ≥15% ETF / ≥30% single-name drawdown). Walk-forward on
+real Bloomberg closes (the only fitted quantity — the alert threshold —
+is always learned from PAST years only): **~23% of coverage-detectable
+peaks captured, median lead 4 days before the peak, ~0.11 false alarms
+per instrument-year** (an earlier price-assisted variant captured 46% —
+the delta is the documented cost of the crowd-only claim). Every rule is
+**ablation-tested**, and the hand-rules were defended against a
+walk-forward **ML challenger** under a pre-stated adoption criterion
+(both tables live on the dashboard). Full rules and research grounding
+(attention-reversal literature, Sornette's LPPLS bubble signature —
+applied to attention, not price): `analytics/euphoria.py`.
+
+Alongside it, the **Influence Tracker** (method: Chan, Oxford M.Eng
+2026) finds the users whose calls have actually been USEFUL — a
+volatility-scaled correctness bar, abnormal-return weighting, Bayesian
+shrinkage, a composite usefulness score with a HIGH tier, plus a
+bot-filtered reply-graph PageRank and a *loud-but-wrong* flag (the
+thesis found the loudest accounts were the least accurate). The store
+is **committed to git** (text-free by a hard write-time check;
+pseudonymous public identifiers only) and every live pipeline run
+extends it incrementally.
+
+The earlier conviction/BUY-SELL machinery remains in `analytics/` for
+research; the dashboard leads with euphoria.
 
 It is the full re-engineering of the RetailFlow1 project with the same
 counting rules, thresholds and data contracts, but **no notebooks anywhere**:
@@ -114,7 +143,23 @@ tradeable themes, each anchored to a liquid instrument), `sentiment.py`
 | `analytics/conviction.py` | nb 08, 09 | bull pressure → 7d roll → **EWM-baseline trailing z** (validated on real prices; see ARCHITECTURE §6.1) with grey back-to-neutral exit points; divergence flags, heatmap + snail-trail data |
 | `analytics/signals.py` | nb 10 | the 5-check BUY/SELL engine: crossing triggers, sentiment gate, score ≥ 4/5, 21d cooldown, reasons attached |
 | `analytics/overlays.py` | nb 11–16 | mention share & first derivative vs price, forward-move deciles, lead/lag scan, direction flips, conviction crossings, the signal report card |
-| `analytics/run_analytics.py` | nbconvert | recomputes conviction + signals (in parallel) and writes the same parquet outputs the notebooks wrote |
+| `analytics/run_analytics.py` | nbconvert | recomputes conviction + signals + **euphoria** + the **influence** live update (in parallel) and writes the parquet outputs |
+| `analytics/euphoria.py` | *(new aim)* | the top detector: 4 Reddit-only percentile rules + fade trigger → euphoria level, price-defined ground-truth peaks, walk-forward validation + ablation + ML challenger |
+| `analytics/influence.py` | *(new)* | the Influence Tracker: volatility-judged calls, composite usefulness scores (thesis method), reply-graph PageRank, loud-but-wrong flag — committed text-free store, extended live |
+| `analytics/euphoria_phases.py` | *(new, July 2026)* | the **phases study**: episode ground truth (trough→peak→bust), the onset feature bank, the walk-forward tournament machinery, and the LIVE onset detector (winner: rules) feeding the dashboard's Start/End radar |
+| `analytics/influence_ml.py` | *(new, July 2026)* | the influential-users MODEL (thesis ch. 6 port): can HIGH-tier authors be identified from behaviour + graph position alone? MLP / LabelProp / GraphSAGE-lite vs random, run by notebook 05 on the live store |
+
+**Research notebooks (`notebooks/01–05`)** are the phases study's methods
++ findings record — episode ground truth, the feature battery, the model
+tournament (criterion pre-stated), final evaluation, and the
+influential-users model. They import the SAME modules the pipeline runs
+(a drift-guard assert enforces it) and re-execute end-to-end from current
+data: `jupyter nbconvert --to notebook --execute --inplace notebooks/*.ipynb`.
+Headline (walk-forward): ~23% of coverage-detectable episode STARTS
+flagged, median entry 17d after the trough with ~66d of rally still
+ahead, 0.35 FA/instrument-year (above the desk's accepted 0.23 — the
+stated cost of onset detection); trading translation tested and REJECTED
+under a pre-stated criterion (evidence retained, like the legacy engine).
 
 The dashboard renders all overlay analytics **on demand** from the saved
 outputs — "refresh the overlays" is now just moving the window slider.

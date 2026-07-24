@@ -1,0 +1,240 @@
+{
+ "criterion": {
+  "layer1": "AP ranking, must beat random on AP+capture, parsimony CI rule for learners vs rules",
+  "layer2": "train-time constrained max capture s.t. FA <= 0.23/instr-yr (incumbent's accepted level)",
+  "layer3": "onset gate: 7d share >= own 120d median (A1 with multiplier 1); top gate: incumbent A1 unchanged"
+ },
+ "onset": {
+  "winner": "rules",
+  "why": "gbm leads on AP but not outside the bootstrap CI - rules win by parsimony",
+  "board": [
+   {
+    "model": "gbm",
+    "runs": 3,
+    "captured": 26.0,
+    "capture_rate": 0.208,
+    "late": 30.666666666666668,
+    "false_alarms": 179.66666666666666,
+    "fa_per_iy": 0.36933333333333335,
+    "ap": 0.09833333333333334,
+    "ap_std": 0.00047140452079103207,
+    "auroc": 0.609,
+    "detectable": 125
+   },
+   {
+    "model": "rules",
+    "runs": 1,
+    "captured": 29.0,
+    "capture_rate": 0.232,
+    "late": 21.0,
+    "false_alarms": 169.0,
+    "fa_per_iy": 0.348,
+    "ap": 0.098,
+    "ap_std": 0.0,
+    "auroc": 0.565,
+    "detectable": 125
+   },
+   {
+    "model": "logreg",
+    "runs": 1,
+    "captured": 28.0,
+    "capture_rate": 0.224,
+    "late": 17.0,
+    "false_alarms": 177.0,
+    "fa_per_iy": 0.364,
+    "ap": 0.089,
+    "ap_std": 0.0,
+    "auroc": 0.595,
+    "detectable": 125
+   },
+   {
+    "model": "random",
+    "runs": 3,
+    "captured": 43.333333333333336,
+    "capture_rate": 0.3466666666666667,
+    "late": 41.333333333333336,
+    "false_alarms": 507.6666666666667,
+    "fa_per_iy": 1.0446666666666666,
+    "ap": 0.072,
+    "ap_std": 0.0014142135623730965,
+    "auroc": 0.504,
+    "detectable": 125
+   },
+   {
+    "model": "mlp",
+    "runs": 3,
+    "captured": 31.333333333333332,
+    "capture_rate": 0.25066666666666665,
+    "late": 27.666666666666668,
+    "false_alarms": 239.66666666666666,
+    "fa_per_iy": 0.49333333333333335,
+    "ap": 0.06333333333333334,
+    "ap_std": 0.0023570226039551605,
+    "auroc": 0.462,
+    "detectable": 125
+   }
+  ],
+  "winner_scorecard": {
+   "test_years": [
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025,
+    2026
+   ],
+   "thresholds": {
+    "2018": 0.8859227713551994,
+    "2019": 0.8816438356164383,
+    "2020": 0.8876294866062354,
+    "2021": 0.8887671232876713,
+    "2022": 0.8905701142903459,
+    "2023": 0.8947945205479453,
+    "2024": 0.8942465753424658,
+    "2025": 0.8942465753424657,
+    "2026": 0.8947945205479453
+   },
+   "captured": 29,
+   "detectable": 125,
+   "capture_rate": 0.232,
+   "late": 21,
+   "false_alarms": 169,
+   "fa_per_iy": 0.348,
+   "auroc": 0.565,
+   "ap": 0.098,
+   "ap_baseline": 0.071
+  }
+ },
+ "top": {
+  "winner": "rules",
+  "why": "rules wins on AP 0.286",
+  "board": [
+   {
+    "model": "rules",
+    "runs": 1,
+    "captured": 16.0,
+    "capture_rate": 0.131,
+    "late": 0.0,
+    "false_alarms": 44.0,
+    "fa_per_iy": 0.128,
+    "ap": 0.286,
+    "ap_std": 0.0,
+    "auroc": 0.557,
+    "detectable": 122
+   },
+   {
+    "model": "logreg",
+    "runs": 1,
+    "captured": 16.0,
+    "capture_rate": 0.131,
+    "late": 0.0,
+    "false_alarms": 52.0,
+    "fa_per_iy": 0.152,
+    "ap": 0.265,
+    "ap_std": 0.0,
+    "auroc": 0.592,
+    "detectable": 122
+   },
+   {
+    "model": "mlp",
+    "runs": 3,
+    "captured": 10.333333333333334,
+    "capture_rate": 0.085,
+    "late": 0.0,
+    "false_alarms": 43.666666666666664,
+    "fa_per_iy": 0.12766666666666668,
+    "ap": 0.22799999999999998,
+    "ap_std": 0.05878775382679627,
+    "auroc": 0.48233333333333334,
+    "detectable": 122
+   },
+   {
+    "model": "gbm",
+    "runs": 3,
+    "captured": 12.0,
+    "capture_rate": 0.09800000000000002,
+    "late": 0.0,
+    "false_alarms": 54.0,
+    "fa_per_iy": 0.157,
+    "ap": 0.213,
+    "ap_std": 0.0,
+    "auroc": 0.525,
+    "detectable": 122
+   },
+   {
+    "model": "random",
+    "runs": 3,
+    "captured": 10.333333333333334,
+    "capture_rate": 0.08466666666666667,
+    "late": 0.0,
+    "false_alarms": 50.333333333333336,
+    "fa_per_iy": 0.14700000000000002,
+    "ap": 0.20433333333333334,
+    "ap_std": 0.0016996731711975837,
+    "auroc": 0.48566666666666664,
+    "detectable": 122
+   }
+  ],
+  "winner_scorecard": {
+   "test_years": [
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025,
+    2026
+   ],
+   "thresholds": {
+    "2020": 0.8547945205479452,
+    "2021": 0.8525342465753425,
+    "2022": 0.8608171078959519,
+    "2023": 0.8312602739726025,
+    "2024": 0.8306849315068494,
+    "2025": 0.8306575342465753,
+    "2026": 0.8301369863013698
+   },
+   "captured": 16,
+   "detectable": 122,
+   "capture_rate": 0.131,
+   "late": 0,
+   "false_alarms": 44,
+   "fa_per_iy": 0.128,
+   "auroc": 0.557,
+   "ap": 0.286,
+   "ap_baseline": 0.211
+  }
+ },
+ "sensitivity": [
+  {
+   "labelling": "softened (20/40)",
+   "detectable": 165,
+   "captured": 37,
+   "capture_rate": 0.224,
+   "false_alarms": 157,
+   "fa_per_iy": 0.323,
+   "ap": 0.118
+  },
+  {
+   "labelling": "standard (25/50)",
+   "detectable": 125,
+   "captured": 29,
+   "capture_rate": 0.232,
+   "false_alarms": 169,
+   "fa_per_iy": 0.348,
+   "ap": 0.098
+  },
+  {
+   "labelling": "hardened (30/60)",
+   "detectable": 95,
+   "captured": 21,
+   "capture_rate": 0.221,
+   "false_alarms": 181,
+   "fa_per_iy": 0.372,
+   "ap": 0.069
+  }
+ ]
+}

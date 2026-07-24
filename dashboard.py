@@ -48,17 +48,17 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
 from src.config import (ROLL, DERIV_SMOOTH, MIN_TOTAL, CROSS_AT,   # noqa: E402
-                        MIN_GAP, HOLD_DAYS, PROCESSED_DIR, PRICES_PATH,
-                        CONV_EXIT_LEVEL, CONV_EWM_HALFLIFE, DESK_EXIT_Z)
+                        MIN_GAP, PROCESSED_DIR, PRICES_PATH, REFERENCE_DIR,
+                        EUPHORIA_HYPE_MULT,
+                        CONV_EXIT_LEVEL, CONV_EWM_HALFLIFE,
+                        EUPHORIA_EXCLUDED_THEMES)
 from src.themes import THEME_ETFS, THEME_ETF_FALLBACKS             # noqa: E402
 from analytics import overlays                                     # noqa: E402
 from analytics.loaders import (price_series, clip_window,          # noqa: E402
-                               THEME_COUNTS, THEME_SIGNALS)
+                               THEME_COUNTS)
 from analytics.overlays import (mention_share_series,              # noqa: E402
                                 chatter_change_series,
-                                conviction_crossings, crossing_exits,
-                                signal_scorecard, trade_desk,
-                                certainty_table)
+                                conviction_crossings, crossing_exits)
 
 st.set_page_config(page_title="RetailRadar", layout="wide",
                    initial_sidebar_state="expanded")
@@ -148,6 +148,41 @@ LOADER_HTML = """
 
 
 DECISIONS_DOC = """### Model decisions & evidence log
+
+**0 - THE AIM (re-set July 2026): detect retail EUPHORIA and call price
+TOPS.** The dashboard's headline signal is the 0-100 euphoria level and
+its red alert lines; success = an alert inside [peak-30d, peak+1d] of a
+genuine top (peak = local high after a boom, followed by a >=15% ETF /
+>=30% single-name drawdown within 90d). The BUY/SELL engine was retired
+from the dashboard at the same time (its full-history record was
+negative - see point 1); it remains in analytics/ for research.
+Universe: equities + retail commodities only (rates_bonds and
+real_estate excluded); single names join the themes. Full rules +
+research grounding: the EUPHORIA definition expander on the first tab
+and analytics/euphoria.py.
+
+**0b - PREDICTION IS REDDIT-ONLY (desk rule, July 2026).** Price never
+enters the euphoria level or the alert; it only DEFINES and SCORES the
+ground-truth tops. This was a deliberate trade: the earlier variant with
+a price-convexity feature and a price-boom gate captured **46%** of
+detectable peaks (0.08 FAs/instr-yr); the crowd-only detector captures
+**~23%** (median lead 4d, ~0.11 FAs/instr-yr). The chart carries real
+information - giving it up is the documented price of the clean claim
+"the crowd alone called the top". The identified path to winning capture
+back WITHOUT price: richer crowd data (the comment backfill is ~10x the
+post volume and directly feeds every euphoria ingredient).
+
+**0c - Every rule is ablation-tested and the hand-rules beat an ML
+challenger under a pre-stated criterion** (tables on the EUPHORIA tab):
+dropping the hype gate floods false alarms (+83), dropping the fade
+trigger loses the most captures (-0.095 of detectable) - each rule has a
+measured job. A walk-forward logistic regression on the same features
+was adopted-or-rejected by a criterion fixed before the numbers were
+seen; it lost on capture (a near-silent model can win the utility score
+by never firing - a top detector that never fires is not a better top
+detector). Its learned weights rank the same features top, which is
+independent evidence the hand-rules are not arbitrary.
+
 *(every material modelling choice, what was tested, and the numbers -
 so no rule on this dashboard is a black box. All PnL figures: real
 Bloomberg closes, signals from 2021, per-year cross-validation.)*
@@ -197,7 +232,21 @@ the evidence quoted next to each. The pipeline snapshots signals daily
 and never revises them - that forward record is the only true
 out-of-sample test. Changes to these rules require new out-of-sample
 evidence, not a re-run of the same history. Full write-up:
-`docs/ARCHITECTURE.md` section 6.1."""
+`docs/ARCHITECTURE.md` section 6.1.
+
+**6 - Influence tracker: thesis method, committed store.** Author
+scoring ports Chan (Oxford M.Eng, 2026) end-to-end: volatility-scaled
+correctness bar (tau = max(3%, 0.5 sigma) - one fixed bar would misgrade
+an index ETF and a meme stock with the same ruler), abnormal-return
+weighting w(z)=clip(1+|z|, 0.1, 2), Bayesian shrinkage (alpha 10/5/10),
+composite 0.4/0.4/0.2 with the HIGH tier at 0.66, and a bot-filtered
+reply-graph PageRank. Ranking is by USEFULNESS, never by size: the
+thesis's error analysis found the structurally loudest users (3x degree,
+2x PageRank) were the least accurate (40% vs 79% for the quiet true
+positives) - the 'loud but wrong' column encodes exactly that finding.
+The store was made COMMITTED in July 2026 (reversing local-only):
+pseudonymous public identifiers, text-free by a hard write-time check,
+one shared leaderboard that every live run extends incrementally."""
 
 TERMINAL_CSS = """
 <style>
@@ -242,76 +291,6 @@ bullish-active than is normal for this theme lately.* A permanently loud
 theme sits near 0; a quiet theme that suddenly gains a devoted bullish crowd
 spikes - and that abnormality, not raw loudness, is where the trade is.
 Crossings of the +/-1.5 lines are marked on the charts with triangles."""
-
-SIGNAL_DEF = """### The philosophy: fewer trades, more conviction
-
-A signal only fires when **momentum and sentiment agree** - neither alone
-is enough. Everything is measured against each theme's OWN trailing 84-day
-baseline (never whole-window statistics), so a signal on day *t* uses only
-information available on day *t* - what you see in a backtest is exactly
-what the live run would have produced.
-
-### What makes a BUY
-
-All three must hold on the same day:
-
-1. **A momentum trigger CROSSES up.** Attention z or conviction z crosses
-   above **+K (2.5)** - crossing means *yesterday <= K, today > K*, so one
-   surge produces exactly one trade, not a signal every day the surge
-   lasts. K=2.5 means only the top ~1% most abnormal days for that theme
-   even qualify.
-2. **Sentiment agrees.** The 5-day change of the net-bullish share is
-   POSITIVE - the mood is improving vs its own recent past, not just loud.
-3. **Score >= 4 of 5** (see the checklist below).
-
-### What makes a SELL
-
-The mirror image, with a deliberately harder bar (retail skews bullish, so
-bearish evidence must be stronger): a bearish trigger (conviction z crosses
-below **-K**, or the *crowded-top* divergence activates - attention above K
-while the mood deteriorates, the classic distribution/top pattern), plus a
-NEGATIVE 5-day sentiment change, plus a sell score >= **4 of 5**.
-
-### The score: one point per independent check
-
-| # | BUY check | SELL check |
-|---|---|---|
-| 1 | attention z > K (crowd unusually large) | same |
-| 2 | 5d sentiment change > 0 (mood improving) | 5d change < 0 (deteriorating) |
-| 3 | conviction z > K (crowd large AND bullish) | conviction z < -K |
-| 4 | crowded-top flag NOT active | crowded-top flag ACTIVE |
-| 5 | Reddit AND X mentions both rising (where X has coverage) | same |
-
-**Score 5/5** = every independent line of evidence agreed;
-**4/5** = the minimum that trades. The `reason` column of every signal
-spells out exactly which checks fired with their actual numbers - no
-signal is a black box.
-
-### Glossary of the columns
-
-- **attention z (att_z)** - how unusually LARGE the crowd is: 7-day rolling
-  mentions vs the theme's own trailing 84-day normal. Says nothing about
-  direction, only size.
-- **conviction z (conv_z)** - how unusually BULLISH-ACTIVE the crowd is:
-  bullish-minus-bearish post votes, 7-day rolling, same trailing baseline.
-  Size x direction in one number.
-- **sentiment 5d change (sent_5d_chg)** - is the *mood itself* improving or
-  deteriorating: the 5-day change in the share of bullish posts. The
-  earliest, twitchiest ingredient.
-- **crowded top** - attention > K while sentiment deteriorates: everyone is
-  watching but enthusiasm is fading, i.e. whoever wanted to buy already
-  has. Counts FOR a sell, AGAINST a buy.
-- **signal date vs action date** - the signal is computed on day *t* from
-  data through day *t*; the order is stamped for the NEXT day (no
-  look-ahead).
-- **exit by** - every suggestion is a **20-day hold** (chosen from the
-  horizon analysis: the edge peaks and plateaus around 3-4 weeks).
-- **cooldown (21d)** - once a theme signals, the SAME side is suppressed
-  for 21 days: one episode, one trade.
-- **certainty** - the desk's ranking metric: score (breadth of evidence)
-  + |conviction z| capped at 3 (strength) + a recency bonus fading over
-  90 days (a live edge beats an old one)."""
-
 
 # ---------------------------------------------------------------------------
 # data loading (cached; invalidates when the file on disk changes)
@@ -480,65 +459,6 @@ def fig_conviction(cz, px, theme, symbol):
     fig.update_yaxes(title_text="price (USD)", secondary_y=True)
     return fig
 
-
-def fig_signals(px_line, sig_rows, name, symbol, cz=None):
-    """BUY/SELL triangles placed on the price line, hover shows the score
-    and conviction z of each trade. When the theme's conviction series
-    `cz` is supplied, each trade also gets a GREY open triangle at its
-    exit point: the first day conviction reverts to neutral after entry
-    (BUY: z back below +DESK_EXIT_Z; SELL: z back above -DESK_EXIT_Z),
-    or the HOLD_DAYS cap if it never reverts - the same rule as the trade
-    desk's REVERTED hint, so chart and ledger always agree."""
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=px_line.index, y=px_line.values,
-                             name=f"{symbol} price",
-                             line=dict(color=GRAY, width=1.5)))
-    exit_pts, exit_texts = [], []
-    for side, mk, col in [("BUY", "triangle-up", GREEN),
-                          ("SELL", "triangle-down", RED)]:
-        rows = sig_rows[sig_rows["action"] == side]
-        pts, texts = [], []
-        for _, r in rows.iterrows():
-            d = r["action_date"]
-            if px_line.empty:
-                continue
-            i = px_line.index.get_indexer([d], method="nearest")[0]
-            pts.append((px_line.index[i], px_line.iloc[i]))
-            texts.append(f"{side} {d.date()}<br>score {r.get('score', '?')}/5"
-                         f"<br>conv z {r.get('conv_z', float('nan')):+.2f}")
-            # the exit companion for this trade
-            if cz is not None and len(cz):
-                path = cz[d:d + pd.Timedelta(days=HOLD_DAYS)]
-                hit = (path[path < DESK_EXIT_Z] if side == "BUY"
-                       else path[path > -DESK_EXIT_Z])
-                if len(hit):
-                    x_d, why = hit.index[0], "conviction reverted to neutral"
-                else:
-                    x_d, why = d + pd.Timedelta(days=HOLD_DAYS), f"{HOLD_DAYS}d cap"
-                if x_d <= px_line.index.max():
-                    j = px_line.index.get_indexer([x_d], method="nearest")[0]
-                    exit_pts.append((px_line.index[j], px_line.iloc[j]))
-                    exit_texts.append(f"EXIT {side} {x_d.date()}<br>{why}")
-        if pts:
-            fig.add_trace(go.Scatter(
-                x=[p[0] for p in pts], y=[p[1] for p in pts], name=side,
-                mode="markers", hovertext=texts, hoverinfo="text",
-                marker=dict(symbol=mk, size=14, color=col,
-                            line=dict(color="black", width=1))))
-    if exit_pts:
-        fig.add_trace(go.Scatter(
-            x=[p[0] for p in exit_pts], y=[p[1] for p in exit_pts],
-            name="exit (reverted to neutral / cap)", mode="markers",
-            hovertext=exit_texts, hoverinfo="text",
-            marker=dict(symbol="circle-open", size=11, color=GRAY,
-                        line=dict(color=GRAY, width=2))))
-    fig.update_layout(title=dict(text=f"{name} ({symbol}): BUY/SELL signals",
-                                 y=0.97, x=0.01),
-                      height=430, hovermode="closest",
-                      margin=dict(l=10, r=10, t=55, b=20),
-                      legend=dict(orientation="h", yanchor="top", y=-0.28))
-    return _axes_fidelity(_dark(fig))
-
 # ---------------------------------------------------------------------------
 # sidebar: header, window controls, pipeline runners
 # ---------------------------------------------------------------------------
@@ -563,7 +483,25 @@ st.divider()
 st.sidebar.title("RetailRadar")
 
 theme_counts = load(THEME_COUNTS)
-sig_file = load(THEME_SIGNALS)
+euph = load("euphoria_levels.parquet")
+if euph is not None:
+    euph["date"] = pd.to_datetime(euph["date"])
+euph_report = None
+_rep_path = os.path.join(PROCESSED_DIR, "euphoria_report.json")
+if os.path.exists(_rep_path):
+    import json as _json
+    euph_report = _json.load(open(_rep_path))
+
+# the ONSET detector's outputs (the July-2026 phases study; produced by
+# `run_analytics --what phases` / any full analytics recompute)
+onset = load("euphoria_onset.parquet")
+if onset is not None:
+    onset["date"] = pd.to_datetime(onset["date"])
+onset_report = None
+_orep_path = os.path.join(PROCESSED_DIR, "euphoria_onset_report.json")
+if os.path.exists(_orep_path):
+    import json as _json
+    onset_report = _json.load(open(_orep_path))
 
 
 @st.cache_data(show_spinner=False)
@@ -585,17 +523,6 @@ def _live_conviction(sent_mtime):
 conv = _live_conviction(_mtime(os.path.join(PROCESSED_DIR,
                                             "daily_theme_sentiment.parquet")))
 
-
-def theme_cz(theme):
-    """One theme's conviction z as a daily forward-filled series (for the
-    grey exit markers on signal charts). None when conviction is absent."""
-    if conv is None:
-        return None
-    one = conv[conv["theme"] == theme]
-    if not len(one):
-        return None
-    return (one.sort_values("date").set_index("date")["conviction_z"]
-            .asfreq("D").ffill())
 prices = _read(PRICES_PATH, _mtime(PRICES_PATH)) if os.path.exists(PRICES_PATH) else None
 priced = set(prices["symbol"]) if prices is not None else set()
 
@@ -685,15 +612,20 @@ STAGES = {
                   "building rolling term counts", "need scoring"]),
     "coverage": ("Checking data coverage for the window",
                  ["DATA COVERAGE", "WINDOW CHECK"]),
-    "analyse":  ("Analysing: conviction scores + trade signals",
+    "analyse":  ("Analysing: conviction, signals, euphoria + onset radar",
                  ["recomputing conviction", "analytics:",
                   "conviction (was nb", "signals (was nb",
+                  "phases (the onset detector",
                   "THEME decisions", "analytics finished"]),
     "prices":   ("Downloading prices from Bloomberg",
                  ["BLOOMBERG PRICE PULL", "pulling Bloomberg prices",
                   "requesting "]),
     "wrapup":   ("Safety check + wrap-up",
                  ["snapshot ->", "safety check", "RUN SUMMARY"]),
+    "comments": ("Fetching Reddit comments (resumable - cancel is safe)",
+                 ["COMMENT PULL", "new comments", "fetch finished"]),
+    "influence": ("Updating the influence board (calls, graph, tiers)",
+                  ["influence board update", "influence update finished"]),
 }
 # which stages each pipeline actually goes through (in order)
 PLANS = {
@@ -701,6 +633,7 @@ PLANS = {
     "window":    ["prices", "coverage", "analyse", "wrapup"],
     "analytics": ["analyse"],
     "full":      ["fetch", "store", "rebuild", "analyse", "prices", "wrapup"],
+    "comments":  ["comments", "influence"],
 }
 
 
@@ -846,6 +779,21 @@ if st.sidebar.button("recompute analytics only (no APIs)  (~1 min)",
                           "aggregates already on disk. No network at all."):
     start_pipeline([(["-m", "analytics.run_analytics"], None)],
                    "analytics recompute", plan="analytics")
+# comments are the slow fetch (10-50x post volume at the API's polite
+# 1s/page) so they left the daily pull (desk decision 2026-07-24) and
+# live behind their own button; the estimate is watermark-aware
+_cwm = os.path.join(REFERENCE_DIR, "reddit_comments_watermark.json")
+_c_est = "~1-4 min" if os.path.exists(_cwm) else "first run ~10-25 min"
+if st.sidebar.button(f"pull comments + influence board  ({_c_est})",
+                     disabled=_pipe_running,
+                     help="Fetch new Reddit comments (watermarked and "
+                          "resumable - cancelling is always safe) and "
+                          "update the influence board: new calls judged, "
+                          "reply graph extended, tiers rescored. The "
+                          "daily LIVE pull no longer includes comments; "
+                          "run this when you want the board refreshed."):
+    start_pipeline([(["update_comments.py"], None)],
+                   "comments + influence", plan="comments")
 if st.sidebar.button("run FULL historical rebuild  (external machine; "
                      "30 min - hours)", disabled=_pipe_running,
                      help="Rebuilds every aggregate from raw post text over "
@@ -866,52 +814,21 @@ if prices is None:
 # topline metric strip
 # ---------------------------------------------------------------------------
 _m1, _m2, _m3, _m4, _m5 = st.columns(5)
-_sig_n = len(clip_window(sig_file, "action_date", lo, hi)) if sig_file is not None else 0
-_open_n = 0
-if sig_file is not None and len(sig_file):
-    _open_n = int((sig_file["action_date"]
-                   > today - pd.Timedelta(days=HOLD_DAYS)).sum())
-_m1.metric("signals in window", _sig_n)
-_m2.metric("open positions", _open_n)
-_m3.metric("tradeable themes", int(theme_counts[theme_counts["theme"].isin(THEME_ETFS)]["theme"].nunique()))
+_e_now = _alerts_w = 0
+_hottest = "-"
+if euph is not None and len(euph):
+    _latest = euph[euph["date"] == euph["date"].max()]
+    _e_now = int((_latest["level"] >= 70).sum())
+    _hot = _latest.sort_values("level", ascending=False).iloc[0]
+    _hottest = f"{_hot['name']} ({_hot['level']:.0f})"
+    _ew = clip_window(euph, "date", lo, hi)
+    _alerts_w = int(_ew["alert"].sum())
+_m1.metric("euphoria alerts in window", _alerts_w)
+_m2.metric("instruments at level 70+", _e_now)
+_m3.metric("hottest right now", _hottest)
 _m4.metric("data through", str(data_max.date()))
 _m5.metric("priced symbols", len(priced))
 
-# ---- TICKER LOOKUP: one instrument, its suggestions + the reasons ----
-with st.expander("INSTRUMENT LOOKUP (click to expand) - all suggestions & "
-                 "reasons for one tradeable instrument", expanded=False):
-    if sig_file is None or not len(sig_file):
-        st.info("no signals on file yet")
-    else:
-        lk_opts = sorted(sig_file["etf"].dropna().unique())
-        lk = st.selectbox("instrument", lk_opts, key="lookup_etf")
-        lk_rows = (sig_file[sig_file["etf"] == lk]
-                   .sort_values("action_date", ascending=False))
-        if not len(lk_rows):
-            st.info(f"no signals ever recorded for {lk}")
-        else:
-            latest = lk_rows.iloc[0]
-            st.markdown(
-                f"**latest: {latest['action']} {lk} on "
-                f"{latest['action_date'].date()}** - theme "
-                f"{latest.get('theme', '?')}, score {latest.get('score', '?')}/5, "
-                f"conv z {latest.get('conv_z', float('nan')):+.2f}, exit by "
-                f"{(latest['action_date'] + pd.Timedelta(days=HOLD_DAYS)).date()}")
-            if latest.get("reason"):
-                st.markdown(f"why: _{latest['reason']}_")
-            lk_show = [c for c in ["action_date", "action", "theme", "score",
-                                   "att_z", "conv_z", "sent_5d_chg", "reason"]
-                       if c in lk_rows.columns]
-            # round only the numeric columns (rounding a datetime warns)
-            lk_view = lk_rows[lk_show].copy()
-            for c in ("att_z", "conv_z", "sent_5d_chg"):
-                if c in lk_view.columns:
-                    lk_view[c] = lk_view[c].round(2)
-            st.dataframe(lk_view, width="stretch", hide_index=True)
-
-# ---------------------------------------------------------------------------
-# tabs
-# ---------------------------------------------------------------------------
 # ---- MODEL DECISIONS & EVIDENCE: the audit trail of every rule ----
 with st.expander("MODEL DECISIONS & EVIDENCE (click to expand) - why every "
                  "rule is the way it is, with the tested numbers",
@@ -922,11 +839,11 @@ with st.expander("MODEL DECISIONS & EVIDENCE (click to expand) - why every "
 # request - the desk trades THEMES via their anchor ETFs, never single
 # tickers. The ticker analytics remain available in analytics/ for
 # research (windowed backtests via run_analytics --what signals).
-(t_desk, t_ov_theme, t_top, t_emerging, t_conv,
+(t_euph_th, t_euph_sg, t_infl, t_ov_theme, t_top, t_emerging, t_conv,
  t_pulse, t_hist) = st.tabs(
-    ["Trade desk (live)", "Overlays: themes",
-     "Top trends", "Emerging trends", "Conviction", "AI Pulse (sample)",
-     "Historical checker"])
+    ["EUPHORIA: Themes", "EUPHORIA: Singles", "Influence tracker",
+     "Overlays: themes", "Top trends", "Emerging trends", "Conviction",
+     "AI Pulse (sample)", "Historical checker"])
 
 tc = clip_window(theme_counts, "date", lo, hi)
 # TRADEABLE UNIVERSE ONLY, everywhere: every list/rank/picker on this
@@ -936,96 +853,485 @@ tc = clip_window(theme_counts, "date", lo, hi)
 tc = tc[tc["theme"].isin(THEME_ETFS)]
 
 
-# ---- TRADE DESK: dated live suggestions, most recent first ----
-with t_desk:
-    st.subheader("Model suggestions - most recent first, 20-day holds")
-    with st.expander("how a BUY/SELL is decided - full definition & glossary"):
-        st.markdown(SIGNAL_DEF)
-    if sig_file is None or not len(sig_file):
-        st.info("no signals on file - run the pipeline")
+EUPHORIA_DEF = """**EUPHORIA = the crowd has stopped analysing and started
+celebrating.** Prediction is built from the **Reddit-derived data ONLY**
+(desk rule, July 2026): price never enters the euphoria level or the
+alert - it is used solely to TEST the detector against real tops, so the
+claim stays clean: *the crowd alone called the top*. Measured, per
+instrument, as the average of four percentile-ranked ingredients (each
+vs that name's OWN trailing year - "extreme" always means extreme *for
+this name*):
+
+1. **Attention extremity** - the 7d mention share at its highs (you
+   cannot be euphoric quietly).
+2. **Sustained bullishness** - the 28d net-bullish share at its highs
+   AND >= 75% of posting days bullish: weeks of one-way lean, not one
+   loud afternoon.
+3. **Crowd influx** - mention share still RISING (new people arriving).
+4. **Super-exponential attention growth** - the log of the mention count
+   curving upward (rolling quadratic fit): Sornette's LPPLS bubble
+   signature applied to the CROWD instead of the chart. Attention
+   spreading is an epidemic process - when its growth rate is itself
+   growing, the contagion must saturate, and attention saturation is
+   where tops form.
+
+**EUPHORIA LEVEL** = 100 x the average of those four (the chart below
+each price). **A RED LINE (alert)** fires when: the crowd has genuinely
+SWOLLEN (7d mention share >= 2x its own 120d median - "something must go
+euphoric first", measured in the crowd, never the chart), attention is
+above its 90th percentile, bullishness has persisted, coverage is
+sufficient to measure, and the level crosses the walk-forward threshold
+- OR slightly below it while the **fade** is active (crowd still
+maximal, mood rolling over: the last stage before tops). One alert per
+21d episode.
+
+**The STARTING line (blue)** comes from the onset detector (July-2026
+phases study winner): the mean of five crowd-only onset features -
+attention acceleration, hype ratio, bullish inflection, influx speed,
+super-exponential attention - gated by coverage and by attention above
+its own 120d median, at a frozen walk-forward threshold.
+
+**Validation** (walk-forward, real Bloomberg closes, thresholds learned
+only from PAST years - headline record in the caption under the charts):
+the terminal shows CONCLUSIONS only. The full evidence - per-year
+tables, the ablation, the ML challenger, the model tournament and the
+trading-translation verdict - lives in `notebooks/01-04` and
+`docs/DECISIONS.xlsx`, and re-renders from current data on demand.
+Ground truth peak = local 21d high >= 25% (ETF) / 50% (single) above its
+120d low, followed by >= 15% / 30% drawdown within 90d. Full rules:
+`analytics/euphoria.py` + `analytics/euphoria_phases.py`."""
+
+# ---- EUPHORIA: Themes / Single names ------------------------------------
+# Desk decision 2026-07-24: the dashboard shows CONCLUSIONS only - the
+# state (starting / ending) drawn on the chart itself, one tab per
+# instrument kind. All validation evidence (walk-forward tables, the
+# ablation, the ML challenger, the tournament) lives in notebooks/01-04
+# and docs/DECISIONS.xlsx, where research belongs.
+
+RECENT_D = 21          # display window = the alert cooldown: one episode
+#                        is "current" for one cooldown span
+
+def _last_alerts(df, kind, days=RECENT_D):
+    """{name: last alert date} for alerts within the trailing window."""
+    if df is None or not len(df):
+        return {}
+    mx = df["date"].max()
+    sub = df[(df["kind"] == kind) & df["alert"]
+             & (df["date"] > mx - pd.Timedelta(days=days))]
+    return sub.groupby("name")["date"].max().to_dict()
+
+
+def _state_of(name, starting, ending):
+    """STARTING / ENDING / quiet - the later phase wins a tie."""
+    s, e = starting.get(name), ending.get(name)
+    if s is not None and (e is None or s >= e):
+        return "STARTING"
+    if e is not None:
+        return "ENDING"
+    return None
+
+
+def render_euphoria_tab(kind, kind_label, key_prefix):
+    st.subheader(f"EUPHORIA - {kind_label} (blue line = euphoria "
+                 "STARTING, red line = euphoria ENDING; expect a peak "
+                 "within ~a month of a red line)")
+    with st.expander("what is euphoria? (definitions & headline record)"):
+        st.markdown(EUPHORIA_DEF)
+    _reg = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "docs", "PARAMETER_REGISTER.md")
+    if os.path.exists(_reg):
+        with st.expander("every number & its reason (the parameter "
+                         "register - nothing in this system is a magic "
+                         "constant)"):
+            st.markdown(open(_reg, encoding="utf-8").read())
+    if euph is None or not len(euph):
+        st.info("no euphoria data yet - run 'recompute analytics only' "
+                "in the sidebar")
+        return
+
+    from analytics.euphoria_phases import episode_coherent_alerts
+
+    ek = euph[euph["kind"] == kind]
+    ok = (onset[onset["kind"] == kind].copy()
+          if onset is not None and len(onset) else None)
+    # SINGLE-NAME DISPLAY BAR (desk decision 2026-07-24): a ticker shows
+    # as "euphoria starting" only when its crowd cleared the FULL A1
+    # hype bar (2x its own 120d median - the same frozen constant the
+    # ENDING detector already requires). Really-euphoric names only
+    # (BTC/meme-stock scale); marginal names cannot flicker in and out.
+    if ok is not None and kind == "single" and "hype_raw" in ok.columns:
+        ok["alert"] = ok["alert"] & (ok["hype_raw"] >= EUPHORIA_HYPE_MULT)
+
+    # EPISODE COHERENCE (desk rule 2026-07-24, asymmetric by
+    # measurement): a START within one cooldown AFTER an END is a
+    # contradictory flip and is suppressed; an END after a START is
+    # never suppressed - fast manias genuinely run start-to-end inside
+    # 21d, and the risk signal must not be silenced (the symmetric rule
+    # cost half the top captures when tested). Applied over FULL history
+    # so pre-window alerts provide suppression context.
+    coherent = {}
+    names_all = set(ek["name"].unique())
+    if ok is not None:
+        names_all |= set(ok["name"].unique())
+    for name in names_all:
+        o_dates = (ok.loc[(ok["name"] == name) & ok["alert"], "date"]
+                   .tolist() if ok is not None else [])
+        t_dates = ek.loc[(ek["name"] == name) & ek["alert"],
+                         "date"].tolist()
+        co, ct = episode_coherent_alerts(o_dates, t_dates)
+        coherent[name] = (co, ct)
+
+    latest_day = ek["date"].max()
+    starting, ending = {}, {}
+    for name, (co, ct) in coherent.items():
+        state_o = [d for d in co
+                   if d > latest_day - pd.Timedelta(days=RECENT_D)]
+        state_t = [d for d in ct
+                   if d > latest_day - pd.Timedelta(days=RECENT_D)]
+        if state_o:
+            starting[name] = max(state_o)
+        if state_t:
+            ending[name] = max(state_t)
+
+    # ---- current state strip: sparse by design (empty = radar working)
+    c1, c2 = st.columns(2)
+    for col, label, flags in (
+            (c1, "STARTING (onset alert, last 21d)", starting),
+            (c2, "ENDING (top alert, last 21d)", ending)):
+        with col:
+            names = [n for n in flags
+                     if _state_of(n, starting, ending) ==
+                     ("STARTING" if "STARTING" in label else "ENDING")]
+            if names:
+                rows = [{"name": n, "alert": str(flags[n].date()),
+                         "days ago": int((latest_day - flags[n]).days)}
+                        for n in sorted(names, key=flags.get,
+                                        reverse=True)]
+                st.markdown(f"**{label}**")
+                st.dataframe(pd.DataFrame(rows), width="content",
+                             hide_index=True)
+            else:
+                st.markdown(f"**{label}**")
+                st.caption("none - euphoria is rare; an empty pane is "
+                           "the radar working")
+
+    # frozen alert threshold (drawn on every level panel)
+    thr_now = None
+    if euph_report and euph_report.get("thresholds"):
+        thr_now = euph_report["thresholds"][
+            max(euph_report["thresholds"])]
+
+    ew = clip_window(ek, "date", lo, hi)
+    ow_ = (clip_window(ok, "date", lo, hi)
+           if ok is not None and len(ok) else None)
+
+    def draw_chart(name, title_prefix, key):
+        one = ew[ew["name"] == name].sort_values("date")
+        if not len(one):
+            st.caption(f"{name}: no euphoria data inside the selected "
+                       "window")
+            return
+        sym = one["symbol"].iloc[0]
+        px = (price_series(prices, sym, lo, hi)
+              if prices is not None and sym in priced else None)
+        one_i = one.set_index("date")
+        lvl_raw = one_i["level"]
+        # the DISPLAY curve is 7d-smoothed (the house ROLL constant):
+        # one loud afternoon is not a trend - alerts should coincide
+        # with a visible regime change, not daily jitter
+        lvl = lvl_raw.rolling(ROLL, min_periods=1).mean()
+        co, ct = coherent.get(name, ([], []))
+        w0, w1 = one_i.index.min(), one_i.index.max()
+        onset_alerts = [d for d in co if w0 <= d <= w1]
+        top_alerts = [d for d in ct if w0 <= d <= w1]
+        state = _state_of(name, starting, ending)
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                            row_heights=[0.62, 0.38],
+                            vertical_spacing=0.06)
+        if px is not None and not px.empty:
+            fig.add_trace(go.Scatter(x=px.index, y=px.values,
+                                     name=f"{sym} price",
+                                     line=dict(color="#d6d8dc",
+                                               width=1.5)),
+                          row=1, col=1)
+        # faint raw level = context; bold smoothed level = the signal
+        fig.add_trace(go.Scatter(x=lvl_raw.index, y=lvl_raw.values,
+                                 name="daily level (raw)",
+                                 line=dict(color="#8a8f98", width=0.7),
+                                 opacity=0.35),
+                      row=2, col=1)
+        fig.add_trace(go.Scatter(x=lvl.index, y=lvl.values,
+                                 name=f"euphoria level ({ROLL}d smooth)",
+                                 line=dict(color=ACCENT, width=2.2)),
+                      row=2, col=1)
+        # alert-ELIGIBLE stretches (crowd genuinely swollen - the A1
+        # gate): the only periods where an alert is even possible.
+        # This is what reconciles a wiggly level with rare alerts.
+        if "hype_ok" in one_i.columns:
+            # NaN gaps make plotly bridge the fill polygon diagonally
+            # (wedge artifact) - fill to ZERO outside eligible stretches
+            elig_y = lvl.where(one_i["hype_ok"].astype(bool),
+                               0.0).values
+            fig.add_trace(go.Scatter(x=lvl.index, y=elig_y,
+                                     name="alert-eligible (crowd swollen)",
+                                     mode="lines",
+                                     line=dict(color=ACCENT, width=0),
+                                     fill="tozeroy",
+                                     fillcolor="rgba(232,132,92,0.20)"),
+                          row=2, col=1)
+        if thr_now:
+            fig.add_hline(y=thr_now, line_dash="dot", line_color=RED,
+                          opacity=0.7, row=2, col=1)
+        def _ms(ts):
+            # plotly's vline+annotation midpoint maths does Timestamp+int
+            # arithmetic on some plotly/pandas versions and crashes;
+            # epoch-milliseconds is numeric and works on every version
+            return pd.Timestamp(ts).value / 1_000_000
+        # EPISODE SPANS: shade from each START to the next END so a
+        # tight start/end pair reads as what it is - a short, violent
+        # euphoria episode - instead of contradictory clutter. A START
+        # with no END yet shades to the newest data day (ongoing).
+        # Spans are CLIPPED to the visible window - a span from alerts
+        # outside it must never stretch the axis or paint empty space.
+        ends_sorted = sorted(ct)
+        for d in sorted(co):
+            nxt = next((t for t in ends_sorted if t >= d), None)
+            x1 = nxt if nxt is not None else w1
+            x0c, x1c = max(d, w0), min(x1, w1)
+            if x0c >= x1c:
+                continue                    # span entirely off-window
+            fig.add_vrect(x0=_ms(x0c), x1=_ms(x1c),
+                          fillcolor="rgba(232,132,92,0.10)", line_width=0,
+                          row=1, col=1)
+        for d in onset_alerts:     # BLUE = euphoria starting
+            kw = {}
+            if d == max(onset_alerts):   # label only the newest - stacked
+                kw = dict(annotation_text="START",     # labels collide
+                          annotation_position="top left",
+                          annotation_font=dict(color="#2a78d6", size=10))
+            fig.add_vline(x=_ms(d), line_color="#2a78d6", line_width=2,
+                          opacity=0.85, **kw)
+        for d in top_alerts:       # RED = euphoria ending
+            kw = {}
+            if d == max(top_alerts):
+                kw = dict(annotation_text="END",
+                          annotation_position="top right",
+                          annotation_font=dict(color=RED, size=10))
+            fig.add_vline(x=_ms(d), line_color=RED, line_width=2,
+                          opacity=0.85, **kw)
+        badge = (f"  |  EUPHORIA {state} NOW" if state else "")
+        fig.update_layout(height=560, hovermode="x unified",
+                          margin=dict(l=10, r=10, t=55, b=20),
+                          legend=dict(orientation="h", yanchor="top",
+                                      y=-0.16),
+                          title=dict(text=(f"{title_prefix}{name} ({sym})"
+                                           f" - {len(onset_alerts)} start"
+                                           f" / {len(top_alerts)} end "
+                                           f"alert(s) in window{badge}"),
+                                     y=0.97, x=0.01))
+        fig.update_yaxes(title_text="price (USD)", row=1, col=1)
+        fig.update_yaxes(title_text="euphoria", range=[0, 100],
+                         row=2, col=1)
+        _axes_fidelity(_dark(fig))
+        st.plotly_chart(fig, width="stretch", key=key)
+
+        # ---- WHY did each alert fire? (plain-English decomposition of
+        # the stored component values on the alert day - nothing here is
+        # recomputed, it is the exact evidence the detector acted on)
+        expl = []
+        for d in sorted(top_alerts):
+            r = one_i.loc[:d].iloc[-1] if d not in one_i.index \
+                else one_i.loc[d]
+            fade_txt = (" The FADE was active - the crowd was still at "
+                        "maximum size but the mood had started rolling "
+                        "over (historically the last stage before a "
+                        "top), which lowers the trigger by 10 points."
+                        if bool(r.get("fade")) else "")
+            expl.append(
+                f"**{pd.Timestamp(d).date()} — ENDING declared.** "
+                f"The crowd had genuinely swollen (7d mention share ≥ "
+                f"2× its own normal - the hype gate). Attention sat in "
+                f"the top {max(1, round((1 - float(r['e1'])) * 100))}% "
+                f"of this name's own year (E1 {float(r['e1']):.2f}); "
+                f"bullishness had persisted ≥75% of posting days for 4 "
+                f"weeks (E2 {float(r['e2']):.2f}); crowd influx rank "
+                f"{float(r['e3']):.2f}; super-exponential attention "
+                f"rank {float(r['e5']):.2f}. Level "
+                f"{float(r['level']):.0f} crossed the frozen threshold "
+                f"{thr_now}.{fade_txt}")
+        if ow_ is not None:
+            oo_i = ow_[ow_["name"] == name].set_index("date")
+            onset_thr = (onset_report or {}).get("live_threshold")
+            for d in sorted(onset_alerts):
+                if d not in oo_i.index:
+                    continue
+                r = oo_i.loc[d]
+                expl.append(
+                    f"**{pd.Timestamp(d).date()} — STARTING declared.** "
+                    f"The crowd was {float(r['hype_raw']):.1f}× its own "
+                    f"normal size and ARRIVING fast: attention "
+                    f"acceleration rank "
+                    f"{float(r['attention_accel']):.2f}, hype-ratio "
+                    f"rank {float(r['hype_ratio']):.2f}, mood turning "
+                    f"up (bullish inflection "
+                    f"{float(r['bull_inflection']):.2f}), 2-week influx "
+                    f"{float(r['influx_speed']):.2f}, super-exponential "
+                    f"attention {float(r['attention_convexity']):.2f}. "
+                    f"Onset score {float(r['onset_score']):.2f} crossed "
+                    f"the frozen threshold "
+                    f"{onset_thr:.2f}." if onset_thr else "")
+        expl = [e for e in expl if e]
+        if expl:
+            with st.expander(f"why did {name}'s alert(s) fire? "
+                             "(the exact evidence, in plain English)"):
+                for e in expl:
+                    st.markdown("- " + e)
+                st.caption("Every number is a percentile of this name's "
+                           "OWN trailing year (1.00 = the most extreme "
+                           "it has been). An alert needs the gates AND "
+                           "the threshold - a high line alone is never "
+                           "enough, which is why the level can wiggle "
+                           "without alerts firing.")
+
+    # ---- LOOK UP ANY NAME (type to search) --------------------------
+    all_names = sorted(ek["name"].unique())
+    pick = st.selectbox(
+        f"look up any {kind_label.lower()} (type to search - shows its "
+        "euphoria whether or not it ever alerted)",
+        ["(none)"] + all_names, key=f"{key_prefix}_lookup")
+    if pick and pick != "(none)":
+        draw_chart(pick, "LOOKUP: ", f"{key_prefix}_lookup_chart")
+
+    # ---- charts: EVERY instrument with a (coherent) euphoria alert
+    # inside the selected window, newest alert first - no filler names
+    last_alert = {}
+    for name, (co, ct) in coherent.items():
+        in_win = [d for d in co + ct
+                  if lo <= d and (hi is None or d <= hi)]
+        if in_win:
+            last_alert[name] = max(in_win)
+    show = sorted(last_alert, key=last_alert.get,
+                  reverse=True)[:how_many]
+    if not show:
+        st.info(f"no euphoria alerts among {kind_label.lower()} in the "
+                "selected window - widen the window in the sidebar to "
+                "see past episodes")
+    for i, name in enumerate(show, 1):
+        if name == pick:
+            continue               # already drawn by the lookup
+        draw_chart(name, f"#{i}  ", f"{key_prefix}_{name}")
+
+    # ---- conclusions line (headline record only - evidence lives in
+    # notebooks/01-04 and docs/DECISIONS.xlsx, not on the terminal)
+    bits = []
+    if euph_report:
+        o = euph_report.get("overall", {})
+        bits.append(f"ENDING detector: {o.get('capture_rate_detectable')}"
+                    f" of detectable peaks inside [peak-30d, peak+1d], "
+                    f"median lead {o.get('median_lead_days')}d, "
+                    f"{o.get('fa_per_instrument_year')} FA/instr-yr")
+    if onset_report:
+        wf = onset_report.get("walk_forward", {})
+        bits.append(f"STARTING detector: {wf.get('capture_rate')} of "
+                    f"detectable starts, {wf.get('fa_per_iy')} FA/instr-yr"
+                    " (above the accepted budget - the stated cost of "
+                    "onset detection)")
+    if bits:
+        st.caption("Validated record (walk-forward, both denominators in "
+                   "the research pack): " + " | ".join(bits)
+                   + ". Full evidence - walk-forward tables, ablation, "
+                   "ML challenger, tournament: notebooks/01-04 + "
+                   "docs/DECISIONS.xlsx. A START within 21d of an END is "
+                   "suppressed as contradictory; a fast START then END "
+                   "is a violent mania and the red risk signal is never "
+                   "suppressed. Recent alerts are PENDING "
+                   "until 45d of price exists to judge them.")
+
+
+with t_euph_th:
+    render_euphoria_tab("theme", "Themes", "euphth")
+with t_euph_sg:
+    render_euphoria_tab("single", "Single names", "euphsg")
+
+# ---- INFLUENCE TRACKER (committed text-free store, extended live) ----
+with t_infl:
+    st.subheader("Influence tracker - who has actually been right, and "
+                 "what they say now")
+    st.caption("Method from Chan (Oxford M.Eng, 2026). Rank = COMPOSITE "
+               "usefulness (0.4 stance-weighted accuracy + 0.4 abnormal-"
+               "return-weighted + 0.2 enhanced accuracy, each Bayesian-"
+               "shrunk toward the base rate so nobody looks sharp on 2 "
+               "lucky calls; HIGH tier >= 0.66). Calls are judged against "
+               "a bar that scales with each name's OWN volatility - a 3% "
+               "move is a call on an index, noise on a meme stock. "
+               "PageRank comes from the reply graph (bot-filtered); the "
+               "thesis found the LOUD hubs were the least accurate group "
+               "(3x the degree, barely-above-chance accuracy) - the "
+               "'loud but wrong' flag marks exactly that profile here. "
+               "'called tops' = bearish calls inside a euphoria peak "
+               "window that the bust then confirmed. The store is "
+               "committed to git (text-free, pseudonymous) and every "
+               "live pipeline run extends it automatically.")
+    _sc_path = os.path.join(ROOT, "data", "reference", "influence",
+                            "author_scores.parquet")
+    if not os.path.exists(_sc_path):
+        st.info("no influence store on this machine yet - it builds "
+                "ITSELF from live data: run one live pull "
+                "(`python update_data.py`, or the sidebar button) and "
+                "the tracker appears here after it finishes. Every "
+                "later pull extends the same store - new calls are "
+                "added, and recent calls are re-judged automatically "
+                "once their 20-day window has prices. Nothing to "
+                "rebuild, ever. (`git pull` also brings in the shared "
+                "store once any machine has one; an optional "
+                "`--backfill` on the comment fetcher deepens history "
+                "if ever wanted.)")
     else:
-        # follow ONE instrument: filters the table, scorecard, ranking and
-        # charts below to just that ETF
-        etf_opts = (["ALL (every instrument)"]
-                    + sorted(x for x in sig_file["etf"].dropna().unique()))
-        pick_etf = st.selectbox("follow one ETF (filters everything below)",
-                                etf_opts, key="desk_etf")
-        sig_w = clip_window(sig_file, "action_date", lo, hi)
-        if pick_etf != "ALL (every instrument)":
-            sig_w = sig_w[sig_w["etf"] == pick_etf]
-        if not len(sig_w):
-            st.info("no signals in this window"
-                    + ("" if pick_etf.startswith("ALL")
-                       else f" for {pick_etf}"))
+        board = pd.read_parquet(_sc_path)
+        board = board[board["n_judged"] >= 5]
+        n_high = int((board.get("tier") == "HIGH").sum()) \
+            if "tier" in board.columns else 0
+        st.markdown(f"**{len(board)} authors with 5+ judged calls** "
+                    f"({n_high} HIGH tier; base rate "
+                    f"{board['base_rate'].iloc[0] if len(board) else '?'})")
+        show_cols = [c for c in ["author", "composite", "tier", "hit_rate",
+                                 "n_judged", "n_calls", "pagerank",
+                                 "followers", "comment_post_ratio",
+                                 "loud_but_wrong", "called_tops",
+                                 "bought_tops", "latest_calls"]
+                     if c in board.columns]
+        view = board[show_cols].copy()
+        for c in ("composite", "hit_rate", "comment_post_ratio"):
+            if c in view.columns:
+                view[c] = view[c].astype(float).round(3)
+        if "pagerank" in view.columns:
+            view["pagerank"] = (view["pagerank"].astype(float) * 1e4).round(2)
+            view = view.rename(columns={"pagerank": "pagerank (x1e4)"})
+        view.insert(0, "rank", range(1, len(view) + 1))
+        st.dataframe(view.head(30), width="stretch", hide_index=True,
+                     height=520)
+        st.markdown("**Top-callers** - most confirmed euphoria-top calls")
+        if "called_tops" in board.columns and board["called_tops"].sum():
+            tc_cols = [c for c in ["author", "called_tops", "bought_tops",
+                                   "composite", "latest_calls"]
+                       if c in board.columns]
+            tc_ = (board.sort_values("called_tops", ascending=False)
+                   .head(10)[tc_cols])
+            st.dataframe(tc_, width="stretch", hide_index=True)
         else:
-            desk = trade_desk(sig_w.head(200) if len(sig_w) > 200 else sig_w,
-                              prices, priced, today)
-            # EXIT HINT: an OPEN trade whose theme conviction has reverted
-            # to neutral (|z| < DESK_EXIT_Z) has lost the surge that
-            # produced it - the study showed exiting there frees capital
-            # ~2x faster at a better %/day than waiting out the 20d cap
-            if conv is not None and len(desk):
-                latest_z = (conv.sort_values("date").groupby("theme")
-                            ["conviction_z"].last())
-                def _hint(row):
-                    if row["status"] != "OPEN":
-                        return ""
-                    z_now = latest_z.get(row["theme"])
-                    if z_now is None or pd.isna(z_now):
-                        return "no z"
-                    reverted = (abs(z_now) < DESK_EXIT_Z
-                                if row["action"] == "BUY"
-                                else z_now > -DESK_EXIT_Z)
-                    return (f"z {z_now:+.1f} REVERTED - consider exit"
-                            if reverted else f"z {z_now:+.1f} still on")
-                desk["exit hint"] = desk.apply(_hint, axis=1)
-            desk.insert(0, "rank", range(1, len(desk) + 1))
-            open_n = int((desk["status"] == "OPEN").sum())
-            c1, c2, c3 = st.columns(3)
-            c1.metric("open positions", open_n)
-            c2.metric("signals in window", len(sig_w))
-            newest = sig_w["action_date"].max()
-            c3.metric("latest signal", str(newest.date()))
-            st.markdown("**Live trade ledger** - every suggestion, newest "
-                        "first, with entry, dated 20-day exit, status and "
-                        "P&L so far (signed - always 'money made')")
-            st.dataframe(desk, width="stretch", hide_index=True, height=420)
-            st.markdown(f"**Strategy scorecard ({HOLD_DAYS}d hold, signed P&L)**")
-            if prices is not None:
-                st.dataframe(signal_scorecard(sig_w, prices, priced, lo),
-                             width="content", hide_index=True)
-            st.markdown("**Certainty ranking (score + |conv z| + recency)**")
-            cert = certainty_table(sig_w)
-            show = ["action_date", "action", "theme", "etf", "score",
-                    "conv_z", "certainty"]
-            st.dataframe(ranked(cert[[c for c in show if c in cert.columns]]
-                                .head(15), "certainty"),
+            st.caption("none recorded yet - grows as peak windows overlap "
+                       "the call history")
+        if "loud_but_wrong" in board.columns and board["loud_but_wrong"].any():
+            st.markdown("**Loud but wrong** - top-quartile PageRank, "
+                        "below-median usefulness (the thesis's false-"
+                        "positive profile: the accounts a 'follow the "
+                        "big names' desk would copy, and the evidence "
+                        "says to fade)")
+            lw_cols = [c for c in ["author", "composite", "hit_rate",
+                                   "n_judged", "followers", "latest_calls"]
+                       if c in board.columns]
+            st.dataframe(board[board["loud_but_wrong"]][lw_cols].head(10),
                          width="stretch", hide_index=True)
-            st.markdown("#### Signal charts - one per theme, ranked by "
-                        "certainty (best trade first)")
-            st.caption("Each chart shows a theme's anchor ETF price with "
-                       "that theme's BUY/SELL triangles in the window. The "
-                       "order follows the certainty ranking above; below "
-                       "each chart, every trade is explained in words (the "
-                       "signal engine's own `reason`).")
-            for theme in cert["theme"].drop_duplicates().head(how_many):
-                symbol = resolve_anchor(theme, priced)
-                if prices is None or symbol is None:
-                    continue
-                px_line = price_series(prices, symbol, lo, hi)
-                if px_line.empty:
-                    continue
-                th_rows = (sig_w[sig_w["theme"] == theme]
-                           .sort_values("action_date", ascending=False))
-                st.plotly_chart(fig_signals(px_line, th_rows, theme, symbol,
-                                            cz=theme_cz(theme)),
-                                width="stretch", key=f"desk_sig_{theme}")
-                for _, r in th_rows.head(6).iterrows():
-                    st.caption(
-                        f"- {r['action_date'].date()} **{r['action']}** "
-                        f"(score {r.get('score', '?')}/5, conv z "
-                        f"{r.get('conv_z', float('nan')):+.2f}) - "
-                        f"{r.get('reason', 'no reason recorded')}")
 
 # ---- OVERLAYS: THEMES (was notebooks 13 + 14 + 16) ----
 with t_ov_theme:
@@ -1038,8 +1344,7 @@ with t_ov_theme:
         th_names = [t for t in top_th.index
                     if resolve_anchor(t, priced)][:how_many]
         view = st.radio("view", ["attention first derivative vs anchor",
-                                 "conviction crossings on anchor price",
-                                 "BUY/SELL signals on anchor price"],
+                                 "conviction crossings on anchor price"],
                         horizontal=True, key="ov_theme_view")
         for i, theme in enumerate(th_names, 1):
             symbol = resolve_anchor(theme, priced)
@@ -1063,26 +1368,6 @@ with t_ov_theme:
                     st.plotly_chart(fig_conviction(cz, px, f"#{i}  {theme}",
                                                    symbol), width="stretch",
                                     key=f"ovth_conv_{theme}")
-            else:
-                if sig_file is None:
-                    st.info("no signals on file - run the pipeline")
-                    break
-                s_th = clip_window(sig_file, "action_date", lo, hi)
-                s_th = s_th[s_th["theme"] == theme]
-                if len(s_th):
-                    st.plotly_chart(fig_signals(px, s_th, f"#{i}  {theme}",
-                                                symbol, cz=theme_cz(theme)),
-                                    width="stretch",
-                                    key=f"ovth_sig_{theme}")
-                else:
-                    st.caption(f"#{i} {theme}: no signals in this window")
-        if view == "BUY/SELL signals on anchor price" and sig_file is not None:
-            s_w = clip_window(sig_file, "action_date", lo, hi)
-            if len(s_w) and prices is not None:
-                st.markdown(f"**Report card, whole window ({len(s_w)} signals, "
-                            "all themes)**")
-                st.dataframe(signal_scorecard(s_w, prices, priced, lo),
-                             width="content", hide_index=True)
 
 # ---- TOP TRENDS ----
 with t_top:
@@ -1356,21 +1641,3 @@ with t_hist:
                             width="stretch", key="hist_conv")
         else:
             st.info("no conviction data for this theme/window")
-
-    st.markdown("### 2 - Trading signals on price")
-    st.caption("The model's actual BUY/SELL calls (all 5 checks, K "
-               "threshold, cooldown) placed on the price line.")
-    if sig_file is not None:
-        s_h = clip_window(sig_file, "action_date", h_lo, h_hi)
-        s_ht = s_h[s_h["theme"] == h_theme]
-        if len(s_ht) and px is not None and not px.empty:
-            st.plotly_chart(fig_signals(px, s_ht, h_theme, symbol,
-                                        cz=theme_cz(h_theme)),
-                            width="stretch", key="hist_sig")
-        else:
-            st.info(f"no signals for {h_theme} in this window")
-        if prices is not None and len(s_h):
-            st.markdown(f"**Scorecard, whole window ({len(s_h)} signals, "
-                        "all themes)**")
-            st.dataframe(signal_scorecard(s_h, prices, priced, h_lo),
-                         width="content", hide_index=True)

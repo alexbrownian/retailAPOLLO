@@ -56,10 +56,54 @@ def run_signals(start=None, end=None):
     return rebuild_signal_files(start=start, end=end, verbose=True)
 
 
+def run_euphoria(research=None):
+    """The top-detector. LIVE mode (default): score today's data at the
+    FROZEN walk-forward threshold - seconds; the validation record
+    (walk-forward + ablation + ML challenger) is a research artifact,
+    refreshed only by --research runs or auto-triggered when the data
+    rolls into an uncovered year (intra-year recompute is a no-op by the
+    walk-forward convention - thresholds train on strictly earlier
+    years). Needs prices; skips gracefully when absent."""
+    import os
+    from src.config import PRICES_PATH
+    if not os.path.exists(PRICES_PATH):
+        print("  (euphoria skipped - no prices.parquet; run "
+              "pull_bloomberg_prices.py first)")
+        return {}
+    from analytics.euphoria import main as euphoria_main
+    return euphoria_main(research=research)
+
+
+def run_influence():
+    """The influence tracker's LIVE hook: parse any raw files that landed
+    since the last run, extend the committed store, rescore the board.
+    Silent no-op on a machine with no raw data and no store yet."""
+    from analytics.influence import update as influence_update
+    return influence_update()
+
+
+def run_phases(research=None):
+    """The euphoria ONSET detector (the July-2026 phases study winner).
+    LIVE mode (default): today's scores/alerts at the frozen threshold;
+    RESEARCH (--research or auto on year rollover): re-run the winner's
+    walk-forward scorecard + threshold selection. Needs prices; skips
+    gracefully when they are absent, like euphoria."""
+    import os
+    from src.config import PRICES_PATH
+    if not os.path.exists(PRICES_PATH):
+        print("  (phases skipped - no prices.parquet; run "
+              "pull_bloomberg_prices.py first)")
+        return {}
+    from analytics.euphoria_phases import rebuild_phase_files
+    return rebuild_phase_files(research=research)
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(
         description="Recompute conviction + trading signals from the aggregates.")
-    p.add_argument("--what", choices=["all", "conviction", "signals"],
+    p.add_argument("--what",
+                   choices=["all", "conviction", "signals", "euphoria",
+                            "influence", "phases"],
                    default="all")
     p.add_argument("--start", default=None,
                    help="signal engine window start (YYYY-MM-DD; default: "
@@ -70,6 +114,16 @@ def main(argv=None) -> int:
     p.add_argument("--serial", action="store_true",
                    help="run the stages one after another (clearer output "
                         "when debugging)")
+    p.add_argument("--research", action="store_true",
+                   help="force the FULL validation pass for euphoria and "
+                        "phases (walk-forward + ablation + ML challenger, "
+                        "threshold re-selection). Without it, live runs "
+                        "score at the frozen thresholds in seconds; a "
+                        "research pass also auto-triggers when the data "
+                        "rolls into a year the stored record does not "
+                        "cover, or when a report is missing. Run after "
+                        "backfills or rule changes (desk decision "
+                        "2026-07-24: research decides once, live scores)")
     args = p.parse_args(argv)
 
     t0 = time.time()
@@ -82,6 +136,16 @@ def main(argv=None) -> int:
         import functools
         jobs.append(("signals (was nb 10)",
                      functools.partial(run_signals, args.start, args.end)))
+    import functools as _ft
+    research = True if args.research else None      # None = auto-decide
+    if args.what in ("all", "euphoria"):
+        jobs.append(("euphoria (the top detector)",
+                     _ft.partial(run_euphoria, research)))
+    if args.what in ("all", "phases"):
+        jobs.append(("phases (the onset detector)",
+                     _ft.partial(run_phases, research)))
+    if args.what in ("all", "influence"):
+        jobs.append(("influence (live board update)", run_influence))
 
     print(f"analytics: {len(jobs)} stage(s), "
           f"{'serial' if args.serial or len(jobs) == 1 else 'parallel'}")

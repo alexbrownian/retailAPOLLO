@@ -1,0 +1,395 @@
+{
+ "generated_from": "helper/research_charts.py",
+ "candidate_days": 4559,
+ "pre_peak_days": 808,
+ "all_coverage_ok_days": 65097,
+ "all_days_base_rate": 0.0558,
+ "overall": {
+  "peaks": 325,
+  "detectable_peaks": 135,
+  "captured": 29,
+  "capture_rate_all": 0.089,
+  "capture_rate_detectable": 0.215,
+  "false_alarms": 123,
+  "fa_per_instrument_year": 0.23,
+  "median_lead_days": 6.0,
+  "instruments": 59,
+  "years": [
+   2018,
+   2019,
+   2020,
+   2021,
+   2022,
+   2023,
+   2024,
+   2025,
+   2026
+  ]
+ },
+ "median_lead_days": 6.0,
+ "feature_correlation_spearman": {
+  "e1": {
+   "e1": 1.0,
+   "e2": -0.018,
+   "e3": 0.795,
+   "e5": 0.31,
+   "fade": 0.343,
+   "level": 0.417,
+   "label": -0.007
+  },
+  "e2": {
+   "e1": -0.018,
+   "e2": 1.0,
+   "e3": -0.039,
+   "e5": -0.118,
+   "fade": -0.072,
+   "level": 0.497,
+   "label": 0.183
+  },
+  "e3": {
+   "e1": 0.795,
+   "e2": -0.039,
+   "e3": 1.0,
+   "e5": 0.511,
+   "fade": 0.308,
+   "level": 0.6,
+   "label": -0.037
+  },
+  "e5": {
+   "e1": 0.31,
+   "e2": -0.118,
+   "e3": 0.511,
+   "e5": 1.0,
+   "fade": 0.178,
+   "level": 0.672,
+   "label": 0.013
+  },
+  "fade": {
+   "e1": 0.343,
+   "e2": -0.072,
+   "e3": 0.308,
+   "e5": 0.178,
+   "fade": 1.0,
+   "level": 0.164,
+   "label": -0.054
+  },
+  "level": {
+   "e1": 0.417,
+   "e2": 0.497,
+   "e3": 0.6,
+   "e5": 0.672,
+   "fade": 0.164,
+   "level": 1.0,
+   "label": 0.068
+  },
+  "label": {
+   "e1": -0.007,
+   "e2": 0.183,
+   "e3": -0.037,
+   "e5": 0.013,
+   "fade": -0.054,
+   "level": 0.068,
+   "label": 1.0
+  }
+ },
+ "feature_separation": {
+  "all_days": {
+   "e1": {
+    "point_biserial_r": 0.078,
+    "auc": 0.601,
+    "mean_ordinary": 0.544,
+    "mean_pre_peak": 0.649
+   },
+   "e2": {
+    "point_biserial_r": 0.043,
+    "auc": 0.555,
+    "mean_ordinary": 0.421,
+    "mean_pre_peak": 0.482
+   },
+   "e3": {
+    "point_biserial_r": 0.025,
+    "auc": 0.534,
+    "mean_ordinary": 0.516,
+    "mean_pre_peak": 0.548
+   },
+   "e5": {
+    "point_biserial_r": 0.056,
+    "auc": 0.54,
+    "mean_ordinary": 0.501,
+    "mean_pre_peak": 0.569
+   },
+   "level": {
+    "point_biserial_r": 0.084,
+    "auc": 0.593,
+    "mean_ordinary": 49.549,
+    "mean_pre_peak": 56.192
+   }
+  },
+  "candidate_days": {
+   "e1": {
+    "point_biserial_r": 0.0,
+    "auc": 0.495,
+    "mean_ordinary": 0.944,
+    "mean_pre_peak": 0.944
+   },
+   "e2": {
+    "point_biserial_r": 0.18,
+    "auc": 0.637,
+    "mean_ordinary": 0.31,
+    "mean_pre_peak": 0.451
+   },
+   "e3": {
+    "point_biserial_r": -0.122,
+    "auc": 0.472,
+    "mean_ordinary": 0.866,
+    "mean_pre_peak": 0.78
+   },
+   "e5": {
+    "point_biserial_r": -0.001,
+    "auc": 0.51,
+    "mean_ordinary": 0.7,
+    "mean_pre_peak": 0.699
+   },
+   "level": {
+    "point_biserial_r": 0.035,
+    "auc": 0.552,
+    "mean_ordinary": 70.509,
+    "mean_pre_peak": 71.833
+   }
+  }
+ },
+ "calibration_by_level_bucket": {
+  "[20, 30)": {
+   "p_peak_30d": 0.3077,
+   "n": 26
+  },
+  "[30, 40)": {
+   "p_peak_30d": 0.224,
+   "n": 192
+  },
+  "[40, 50)": {
+   "p_peak_30d": 0.3004,
+   "n": 253
+  },
+  "[50, 60)": {
+   "p_peak_30d": 0.1577,
+   "n": 444
+  },
+  "[60, 70)": {
+   "p_peak_30d": 0.1354,
+   "n": 805
+  },
+  "[70, 80)": {
+   "p_peak_30d": 0.1055,
+   "n": 1621
+  },
+  "[80, 90)": {
+   "p_peak_30d": 0.2331,
+   "n": 961
+  },
+  "[90, 100)": {
+   "p_peak_30d": 0.4163,
+   "n": 257
+  }
+ },
+ "calibration_base_rate": 0.17723184908971265,
+ "ablation": [
+  {
+   "variant": "FULL (all rules)",
+   "capture_detectable": 0.215,
+   "captured": 29,
+   "false_alarms": 123,
+   "fa_per_iy": 0.23,
+   "median_lead": 6.0,
+   "d_capture": 0.0,
+   "d_fa": 0
+  },
+  {
+   "variant": "- E1 attention (level)",
+   "capture_detectable": 0.193,
+   "captured": 26,
+   "false_alarms": 73,
+   "fa_per_iy": 0.14,
+   "median_lead": 6.0,
+   "d_capture": -0.022,
+   "d_fa": -50
+  },
+  {
+   "variant": "- E2 sustained bull (level)",
+   "capture_detectable": 0.281,
+   "captured": 38,
+   "false_alarms": 166,
+   "fa_per_iy": 0.31,
+   "median_lead": 7.5,
+   "d_capture": 0.066,
+   "d_fa": 43
+  },
+  {
+   "variant": "- E3 crowd influx (level)",
+   "capture_detectable": 0.193,
+   "captured": 26,
+   "false_alarms": 76,
+   "fa_per_iy": 0.14,
+   "median_lead": 6.0,
+   "d_capture": -0.022,
+   "d_fa": -47
+  },
+  {
+   "variant": "- E5 super-exp attention (level)",
+   "capture_detectable": 0.207,
+   "captured": 28,
+   "false_alarms": 120,
+   "fa_per_iy": 0.23,
+   "median_lead": 6.0,
+   "d_capture": -0.008,
+   "d_fa": -3
+  },
+  {
+   "variant": "- hype gate A1",
+   "capture_detectable": 0.311,
+   "captured": 42,
+   "false_alarms": 350,
+   "fa_per_iy": 0.66,
+   "median_lead": 8.5,
+   "d_capture": 0.096,
+   "d_fa": 227
+  },
+  {
+   "variant": "- attention gate A2",
+   "capture_detectable": 0.215,
+   "captured": 29,
+   "false_alarms": 126,
+   "fa_per_iy": 0.24,
+   "median_lead": 6.0,
+   "d_capture": 0.0,
+   "d_fa": 3
+  },
+  {
+   "variant": "- sustained-bull gate A2b",
+   "capture_detectable": 0.237,
+   "captured": 32,
+   "false_alarms": 135,
+   "fa_per_iy": 0.25,
+   "median_lead": 6.0,
+   "d_capture": 0.022,
+   "d_fa": 12
+  },
+  {
+   "variant": "- fade trigger E4",
+   "capture_detectable": 0.148,
+   "captured": 20,
+   "false_alarms": 56,
+   "fa_per_iy": 0.11,
+   "median_lead": 7.0,
+   "d_capture": -0.067,
+   "d_fa": -67
+  }
+ ],
+ "ml_test": {
+  "overall": {
+   "detectable_peaks": 122,
+   "captured": 9,
+   "capture_rate_detectable": 0.074,
+   "false_alarms": 26,
+   "fa_per_instrument_year": 0.05,
+   "median_lead_days": 8.0,
+   "last_model_coefficients": {
+    "e1": 2.427,
+    "e2": 1.566,
+    "e3": -1.393,
+    "e5": 0.765,
+    "fade": -0.278
+   }
+  },
+  "per_year": {
+   "2018": {
+    "skipped": "under 3 training peaks"
+   },
+   "2019": {
+    "skipped": "under 3 training peaks"
+   },
+   "2020": {
+    "prob_threshold": 0.861,
+    "detectable": 24,
+    "captured": 0,
+    "false_alarms": 8
+   },
+   "2021": {
+    "prob_threshold": 0.756,
+    "detectable": 58,
+    "captured": 8,
+    "false_alarms": 11
+   },
+   "2022": {
+    "prob_threshold": 0.729,
+    "detectable": 22,
+    "captured": 0,
+    "false_alarms": 2
+   },
+   "2023": {
+    "prob_threshold": 0.715,
+    "detectable": 5,
+    "captured": 0,
+    "false_alarms": 3
+   },
+   "2024": {
+    "prob_threshold": 0.716,
+    "detectable": 0,
+    "captured": 0,
+    "false_alarms": 1
+   },
+   "2025": {
+    "prob_threshold": 0.716,
+    "detectable": 0,
+    "captured": 0,
+    "false_alarms": 0
+   },
+   "2026": {
+    "prob_threshold": 0.716,
+    "detectable": 13,
+    "captured": 1,
+    "false_alarms": 1
+   }
+  },
+  "matched_comparison": {
+   "years": [
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025,
+    2026
+   ],
+   "rules_utility": -65.0,
+   "ml_utility": -17.0,
+   "rules_captured": 27,
+   "ml_captured": 9,
+   "rules_recent_captured": 2,
+   "ml_recent_captured": 1
+  }
+ },
+ "case_studies": [
+  {
+   "name": "gold_metals",
+   "symbol": "GLD",
+   "alert": "2026-01-28",
+   "peak": "2026-01-29",
+   "lead_days": 1
+  },
+  {
+   "name": "SPCE",
+   "symbol": "SPCE",
+   "alert": "2026-05-31",
+   "peak": "2026-06-01",
+   "lead_days": 1
+  },
+  {
+   "name": "short_squeeze",
+   "symbol": "ARKK",
+   "alert": "2022-08-07",
+   "peak": "2022-08-15",
+   "lead_days": 8
+  }
+ ]
+}

@@ -9,6 +9,13 @@ data/prices/
 # the reference cache IS committed (universe files + word-ticker screening),
 # but the machine-local ledgers/watermarks inside it are not
 data/reference/*_seen.json
+data/reference/*_watermark.json
+# the influence tracker's store IS committed (desk decision July 2026,
+# REVERSING the earlier local-only rule): author names are public
+# pseudonymous identifiers, the files are text-free by construction
+# (enforced at write time), and committing lets every live run extend
+# one shared leaderboard. Only the per-machine ingest ledger stays local:
+data/reference/influence/ingest_ledger.json
 data/reference/abstracted_live_meta.json
 data/reference/gic_live_meta.json
 

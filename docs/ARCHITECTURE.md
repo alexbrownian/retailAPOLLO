@@ -138,6 +138,44 @@ rate-limit pacing (StockTwits ~1.5 s/symbol, X 5 s/request, Arctic Shift
 and the total equals the slowest fetcher rather than the sum of all
 three.
 
+### 3.1b Comments are OPTIONAL and decoupled (desk decision 2026-07-24)
+
+Comments are the slow species (10-50x post volume at the API's polite
+1s/page), so the daily pipeline now fetches WITHOUT them
+(`fetch_all.py --skip-comments` is what `update_data.py` passes by
+default; `--with-comments` restores the bundle). The dedicated runner is
+**`update_comments.py`**: watermark-aware time estimate up front, the
+comment fetch (resumable — cancelling never loses work), then the
+influence-board update, in one command. The dashboard has a matching
+sidebar button ("pull comments + influence board") with the same
+estimate. Nothing else changed: the influence store still self-creates
+on the first run, and `run_analytics`'s influence stage remains a
+zero-touch no-op when no new raw comments exist.
+
+### 3.1c The DYNAMIC subreddit panel (desk decisions 2026-07-24)
+
+The tracked-subreddit list self-expands where the crowd points. A
+monthly, watermarked review (`ingestion/discover_subreddits.py`, run
+with `--if-due` inside every live `update_data.py`) mines the collected
+raw text for `r/<name>` referrals written by authors in the subs already
+tracked — when retail migrates (WSB → Superstonk, 2021), the migration
+is visible in panel text before anywhere else. Qualification reuses
+existing constants: ≥ `PANEL_MIN_REFERRERS` (=100 — the A0 coverage
+floor) unique referring authors within 28d; then a same-ruler finance
+screen (one sampled page of the candidate's comments must show a
+ticker-mention rate ≥ half the panel's own average, measured identically
+in the same run — popularity without tickers never passes; an
+unmeasurable candidate is never added). At most `PANEL_ADD_CAP` (=1)
+auto-add per review, into an EXPLORATION tier — the founding 17 are the
+frozen CORE tier. Every add is logged in `ingestion/subreddit_panel.json`
+(committed audit trail) because panel changes step the mention-share
+denominator; the manifest is what lets any analysis be re-cut excluding
+young additions, and the 365d percentile normalisation absorbs one step
+per month gracefully. The review also maintains a LOCAL-ONLY
+`daily_ticker_counts_by_subreddit.parquet` (gitignored — the committed
+contract bans subreddit columns) so panel-step artifacts are measurable,
+not hidden.
+
 ### 3.2 Normalisation — one shape for everything
 
 `src/clean_data.py`, `src/reddit_live_data.py`, `src/x_data.py`,
@@ -277,6 +315,147 @@ staircase, the lead/lag correlation scan (does chatter LEAD price?),
 direction-flip evidence (state machine with hysteresis), conviction
 crossings, the trade-desk ledger, the certainty ranking and the
 hold-N-days report card.
+
+### 6.4 The Euphoria Detector (`analytics/euphoria.py`) — THE AIM
+
+The project's headline signal since the July-2026 re-aim. Everything is
+in the module docstring (rules E1–E5, alert gates A0–A4, ground truth
+G1–G3, scoring); the essentials below.
+
+**Prediction is REDDIT-ONLY (desk rule, July 2026).** Price never enters
+the euphoria level or the alert — it only defines and scores the
+ground-truth tops. Four percentile-ranked ingredients (attention
+extremity, sustained bullishness, crowd influx, and the LPPLS-inspired
+super-exponential **attention** convexity — Sornette's bubble signature
+applied to the mention count instead of the chart) average into a 0–100
+euphoria level; an alert needs a swollen crowd (7d mention share ≥ 2×
+its own 120d median — the "something must go euphoric first" rule,
+measured in the crowd), extreme attention, persistent bullishness,
+sufficient coverage and a threshold crossing (lowered when the
+crowd-maximal/mood-fading divergence is active). The ONLY fitted number
+is the alert threshold, learned walk-forward from past years only, with
+a do-no-harm default (no training evidence → most conservative trigger).
+Ground-truth tops are price-defined with dual thresholds (≥15% ETF /
+≥30% single-name busts after a boom of ≥25%/≥50%), and alerts are only
+judged inside the **judgeable window** — where price history exists at
+the alert AND for 45 days after (earlier alerts are *pending*, not
+false: scoring them as FAs was a measured bug).
+
+Current validation (real closes, threshold always from past years):
+**~23% of coverage-detectable peaks captured, median lead 4 days, ~0.11
+FAs/instrument-year**. The earlier price-assisted variant captured 46% —
+the delta is the documented cost of the Reddit-only claim, and the
+comment backfill (≈10× post volume, feeding every ingredient) is the
+identified path to recover it. Extending the price pull to 2017 adds the
+dense 2018–2020 archive years to training and test.
+
+**Ablation (thesis-style, §7.2.1 of Chan 2026):** each rule is knocked
+out and the FULL walk-forward re-run (table on the dashboard). Headlines:
+the hype gate is the precision lever (removing it: +83 FAs), the fade
+trigger is the capture lever (removing it: −0.095 of detectable), E1/E3
+carry the level, and single-feature deltas understate correlated
+ingredients — the same caveat the thesis flags.
+
+**ML challenger:** a walk-forward logistic regression on the same
+features and prerequisites, its probability cut-off chosen on train
+years by the same utility. Adoption criterion fixed before the numbers:
+win utility AND capture at least as many peaks overall AND in the most
+recent year (a near-silent model can win utility by never firing).
+Verdict: **rules kept** — the learned coefficients rank the same
+features top, independent evidence the hand-rules are not arbitrary.
+
+Universe: themes minus rates_bonds/real_estate, plus the top-25
+most-mentioned priced single names (data-chosen, not a hand list).
+
+### 6.5 The Influence Tracker (`analytics/influence.py`) — committed
+
+Method ported from Chan (Oxford M.Eng, 2026): predictive ability
+concentrates in identifiable users — and NOT the loud ones (the thesis's
+false-positive analysis: the structurally prominent accounts had 3× the
+degree and barely-above-chance accuracy, 40% vs 79% for the quiet true
+positives). Implementation:
+
+- **Calls**: every authored post/comment mentioning a ticker with
+  clearly-signed sentiment (|VADER| ≥ 0.20) is a directional call.
+- **Volatility-aware judging** (thesis §4.5): a call is correct when the
+  20d move clears `tau = max(3%, 0.5·sigma_90d)` for THAT name — one
+  fixed bar would misgrade an index ETF and a meme stock with the same
+  ruler. Each judged call gets an abnormal-return z; *enhanced* correct
+  needs the move ≥ 1σ abnormal.
+- **Usefulness scores** (thesis §4.6): stance-weighted accuracy,
+  abnormal-return-weighted accuracy (w(z)=clip(1+|z|, 0.1, 2)), and
+  enhanced accuracy — each Bayesian-shrunk (α = 10/5/10; the z-weighted
+  score shrinks less because a big-|z| hit is itself evidence), min-max
+  normalised, combined 0.4/0.4/0.2 into the COMPOSITE; ≥ 0.66 = HIGH
+  tier. Bearish calls inside euphoria peak windows that the bust
+  confirmed count as "called tops".
+- **The interaction graph** (thesis ch. 4–5): undirected weighted author
+  graph from the reply edges (comment→comment via parent ids AND
+  comment→post via link ids), bot-filtered per the thesis's cleaning
+  table (edge weight cap 100, broadcast accounts >1000 comments / >100
+  posts excluded, star-topology filter on graphs ≥50 nodes), then
+  degree, weighted degree and **PageRank** (power iteration — the
+  thesis ablation's most beneficial structural feature; raw degree was
+  *harmful* there, so the board never ranks by size).
+- **Loud-but-wrong flag**: top-quartile PageRank + below-median
+  composite — the thesis's false-positive profile as a column.
+
+**Storage — committed and text-free** (July 2026, reversing the earlier
+local-only rule): `data/reference/influence/` now crosses git so both
+machines share one leaderboard. Author names are pseudonymous public
+identifiers; a hard write-time check refuses any text column (same
+contract as ABSTRACTED_DATA). Only `ingest_ledger.json` (which local
+raw files were parsed, at what size) stays per-machine — it is how
+`update()` (called by every `run_analytics` pass) parses only NEW raw
+files and extends the store incrementally on live runs.
+
+### 6.6 The Phases Study (`analytics/euphoria_phases.py`) — onset + episodes
+
+The July-2026 extension of the aim: detect the START of euphoria, not
+only its end. The module owns (1) the **episode ground truth** — every
+confirmed top (the existing G1–G3 rules, unchanged) extended backward to
+its trough (the same 120d low G2 measures the boom from — no new fitted
+quantity) and forward to its bust date, with the onset hit window
+`[trough, min(trough+45d, peak)]` and the LATE≠FALSE bucket for
+mid-rally alerts; (2) the **onset feature bank** — five crowd-only
+trailing percentile features whose windows are all derived from existing
+constants (`source_breadth` was evaluated and REJECTED as a
+coverage-regime artifact — notebook 02); (3) the **tournament
+machinery** — walk-forward scoring, constrained threshold selection
+(max capture s.t. the FA budget derived from the incumbent's accepted
+0.23/instr-yr), int-day-space alert judging; and (4) the **live
+detector** — `rebuild_phase_files()`, run by the `phases` stage of
+`run_analytics`, writing `episodes.parquet`, `euphoria_onset.parquet`
+(scored through TODAY — recent alerts are pending, not clipped) and
+`euphoria_onset_report.json` for the dashboard's Start/End radar.
+
+The research record lives in `notebooks/01–04` (ground truth → feature
+battery → model tournament with a pre-stated criterion → final
+evaluation). The notebooks import THIS module (a drift-guard assert in
+notebook 02 enforces bank equality), so the numbers in the deck and the
+numbers on the dashboard can never diverge. Tournament verdict: the
+rules bank beat logistic regression, GBM and an MLP under the parsimony
+rule (GBM tied on AP, not outside the bootstrap CI; the MLP finished
+below random — the thesis's own small-label warning reproduced).
+Trading translation (onset→BUY, top→SELL) was tested under a pre-stated
+criterion and REJECTED — recorded in notebook 04, same treatment as the
+retired BUY/SELL engine.
+
+### 6.7 The Influential-Users Model (`analytics/influence_ml.py`)
+
+Chan (2026) chapter 6 ported to the live influence store: semi-
+supervised node classification — can HIGH-tier authors (composite ≥
+0.66, labels from `influence.py`) be identified from behaviour and
+reply-graph position alone? Models: random floor, feature-only MLP,
+structure-only label propagation, and `sage_lite` (one GraphSAGE
+mean-aggregation layer — the honest small-data version of the thesis's
+winner). Discipline kept exactly: leakage guard (labelling-pipeline
+columns are never features), stratified 60/20/20, seeds 42/100/2026,
+class weights, threshold = max precision s.t. recall ≥ 0.05 on
+validation, AP+AUROC on test, category ablation, random/DICE graph
+perturbation. Driven by `notebooks/05` as a STANDING EXPERIMENT against
+the live store (which seeds on the first live pull); a pre-stated
+maturity criterion (≥130 labelled positives) gates any desk use.
 
 ## 7. Prices (`pull_bloomberg_prices.py`)
 

@@ -261,6 +261,17 @@ def main():
                    help="skip the Bloomberg price pull")
     p.add_argument("--external", action="store_true", help="force external-machine mode")
     p.add_argument("--internal", action="store_true", help="force internal-machine mode")
+    p.add_argument("--with-comments", action="store_true",
+                   help="ALSO fetch Reddit comments in this run. Desk "
+                        "decision 2026-07-24: comments are OFF in the "
+                        "daily pipeline (they are the slow fetch - "
+                        "10-50x post volume at the API's polite 1s/page); "
+                        "the dedicated runner is update_comments.py, "
+                        "which also updates the influence board")
+    p.add_argument("--skip-panel-review", action="store_true",
+                   help="skip the monthly dynamic-panel review (subreddit "
+                        "discovery; it is watermarked and only actually "
+                        "runs when >= PANEL_REVIEW_DAYS have passed)")
     p.add_argument("--dry-run", action="store_true", help="print the plan, run nothing")
     args = p.parse_args()
     dry = args.dry_run
@@ -329,11 +340,24 @@ def main():
     # ---- 1. FETCH (raw only; the append steps below own the stores).
     #         The three fetchers run in PARALLEL inside fetch_all.py. ----
     if do_fetch:
-        run([py, "ingestion/fetch_all.py", "--no-merge",
-             "--lookback-days", str(FETCH_LOOKBACK_DAYS),
-             "--max-credits", str(FETCH_MAX_CREDITS)], fh, dry, show=True)
+        fetch_cmd = [py, "ingestion/fetch_all.py", "--no-merge",
+                     "--lookback-days", str(FETCH_LOOKBACK_DAYS),
+                     "--max-credits", str(FETCH_MAX_CREDITS)]
+        if not args.with_comments:
+            # comments are the slow species - the daily pipeline skips
+            # them (desk decision 2026-07-24); update_comments.py is the
+            # dedicated comments + influence runner
+            fetch_cmd.append("--skip-comments")
+        run(fetch_cmd, fh, dry, show=True)
     else:
         log("fetch skipped", fh)
+
+    # ---- 1b. MONTHLY PANEL REVIEW (dynamic subreddit list). Watermarked
+    # inside the script: costs one file-stat when not due, so it rides
+    # every live run and actually fires ~monthly. --if-due exits quietly.
+    if do_fetch and not args.skip_panel_review:
+        run([py, "ingestion/discover_subreddits.py", "--if-due"],
+            fh, dry, show=True)
 
     # ---- 2. APPEND into the right store (idempotent either way) ----
     if internal:
@@ -457,7 +481,13 @@ def main():
             f"renders {args.start} -> {end_label} directly", fh)
 
     if compute:
-        code = run([py, "-m", "analytics.run_analytics"], fh, dry, show=True)
+        analytics_cmd = [py, "-m", "analytics.run_analytics"]
+        if args.full:
+            # a full rebuild rewrites history - the frozen thresholds and
+            # validation records must be re-derived (research decides
+            # once, but a backfill IS a new research question)
+            analytics_cmd.append("--research")
+        code = run(analytics_cmd, fh, dry, show=True)
         if code != 0:
             log("ABORT: analytics failed - later steps skipped", fh)
             return 1
