@@ -1,0 +1,72 @@
+{
+ "winner": "COMBINED + smoothed trigger",
+ "table": [
+  {
+   "variant": "crowd bank (reference)",
+   "captured": 26,
+   "FA": 41,
+   "utility": -15,
+   "AP": 0.435,
+   "cliff hit rate": 0.53,
+   "alerts": 83
+  },
+  {
+   "variant": "price-only bank",
+   "captured": 23,
+   "FA": 29,
+   "utility": -6,
+   "AP": 0.409,
+   "cliff hit rate": 0.6,
+   "alerts": 63
+  },
+  {
+   "variant": "COMBINED",
+   "captured": 23,
+   "FA": 31,
+   "utility": -8,
+   "AP": 0.41,
+   "cliff hit rate": 0.62,
+   "alerts": 65
+  },
+  {
+   "variant": "COMBINED + smoothed trigger",
+   "captured": 23,
+   "FA": 24,
+   "utility": -1,
+   "AP": 0.413,
+   "cliff hit rate": 0.65,
+   "alerts": 55
+  },
+  {
+   "variant": "logreg COMBINED",
+   "captured": 23,
+   "FA": 36,
+   "utility": -13,
+   "AP": 0.448,
+   "cliff hit rate": 0.55,
+   "alerts": 67
+  },
+  {
+   "variant": "gbm COMBINED",
+   "captured": 11,
+   "FA": 15,
+   "utility": -4,
+   "AP": 0.346,
+   "cliff hit rate": 0.48,
+   "alerts": 29
+  }
+ ],
+ "cliff_baseline": 0.621,
+ "blip": {
+  "raw_one_day_share": 0.18,
+  "smoothed_one_day_share": 0.22
+ },
+ "danger_state": {
+  "cliff30_state": 0.621,
+  "cliff30_ordinary": 0.186,
+  "uplift_ci90": [
+   0.282,
+   0.5
+  ]
+ }
+}

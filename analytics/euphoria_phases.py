@@ -383,7 +383,8 @@ def classify_onset_alerts(alert_days: np.ndarray, ea: dict) -> dict:
                 p = int(ea["peak"][i])
                 if p not in captured:
                     captured.add(p)
-                    leads.append({"after_trough": int(a - ea["trough"][i]),
+                    leads.append({"peak": p,
+                                  "after_trough": int(a - ea["trough"][i]),
                                   "before_peak": int(p - a)})
             continue
         if np.any((ea["hi"] < a) & (a <= ea["peak"])):
@@ -406,7 +407,7 @@ def classify_top_alerts(alert_days: np.ndarray, ea: dict) -> dict:
                 p = int(ea["peak"][i])
                 if p not in captured:
                     captured.add(p)
-                    leads.append({"before_peak": int(p - a)})
+                    leads.append({"peak": p, "before_peak": int(p - a)})
             continue
         if not np.any((ea["peak"] >= a) & (ea["peak"] <= a + 45)):
             fa.append(int(a))
@@ -756,11 +757,255 @@ def rebuild_phase_files(verbose: bool = True,
     if verbose:
         print(f"  saved episodes.parquet ({len(episodes)}), "
               f"euphoria_onset.parquet ({len(out):,})")
+
+    # ---- THE DESK CONFIGURATION (GET IN / GET OUT - section 6) ----------
+    # The dashboard's headline signals. Research passes re-run the full
+    # walk-forward for both desk detectors and refreeze their thresholds;
+    # live passes score today's data at the frozen thresholds in seconds.
+    boom = boom_state_frame(series, pxmap)
+    fpx_live = frame_live.merge(boom, on=["name", "date"], how="left")
+    fpx_live["boom_state"] = fpx_live["boom_state"].fillna(False)
+
+    desk_path = _os.path.join(PROCESSED_DIR, "euphoria_desk_report.json")
+    desk_stored = None
+    if _os.path.exists(desk_path):
+        try:
+            desk_stored = _json.load(open(desk_path))
+        except (ValueError, OSError):
+            desk_stored = None
+    desk_research = research or desk_needs_research(desk_stored,
+                                                    data_max_year)
+
+    rep_path = _os.path.join(PROCESSED_DIR, "euphoria_report.json")
+    fa_budget = 0.23
+    if _os.path.exists(rep_path):
+        fa_budget = _json.load(open(rep_path))["overall"][
+            "fa_per_instrument_year"]
+
+    if desk_research:
+        frame_j = (frame if research
+                   else build_day_frame(series, pxmap, episodes, counts,
+                                        sents))
+        fpx_j = frame_j.merge(boom, on=["name", "date"], how="left")
+        fpx_j["boom_state"] = fpx_j["boom_state"].fillna(False)
+        end_j, onset_j = desk_candidacy(fpx_j)
+        wf_out = run_tournament_entry(end_j, episodes, TOP_FEATURES,
+                                      "y_top", "top", desk_end_fit,
+                                      fa_budget)
+        wf_in = run_tournament_entry(onset_j, episodes, ONSET_BANK,
+                                     "y_onset", "onset", desk_onset_fit,
+                                     fa_budget)
+
+        # the coherence statistic the desk configuration exists to fix:
+        # STARTs landing within one cooldown BEFORE an END
+        adjacency = 0
+        for _n, oa in wf_in.get("alerts_by_name", {}).items():
+            ta = wf_out.get("alerts_by_name", {}).get(_n, [])
+            adjacency += sum(1 for o in oa
+                             if any(0 <= (t - o).days
+                                    <= EUPHORIA_COOLDOWN_DAYS for t in ta))
+
+        def _frozen(cand, fit, feats, mode):
+            train = cand[cand["year"] < data_max_year]
+            if train.empty:                    # very young data: use all
+                train = cand
+            train_scored = train.assign(score=fit(train, train, feats))
+            return choose_threshold(train_scored, episodes, mode,
+                                    fa_budget, train["name"].nunique())
+
+        thr_out = _frozen(end_j, desk_end_fit, TOP_FEATURES, "top")
+        thr_in = _frozen(onset_j, desk_onset_fit, ONSET_BANK, "onset")
+
+        def _wf_record(wf, lead_key):
+            rec = {k: v for k, v in wf.items()
+                   if k not in ("leads", "alerts_by_name")}
+            leads = [ld[lead_key] for ld in wf.get("leads", [])
+                     if lead_key in ld]
+            rec["median_lead_days"] = (int(np.median(leads)) if leads
+                                       else None)
+            return rec
+
+        out_rec = _wf_record(wf_out, "before_peak")
+        in_rec = _wf_record(wf_in, "after_trough")
+        in_rec["adjacency_within_cooldown_before_end"] = adjacency
+        desk_stored = {
+            "get_out": {"live_threshold": thr_out,
+                        "walk_forward": out_rec},
+            "get_in": {"live_threshold": thr_in,
+                       "walk_forward": in_rec},
+            "fa_budget_per_iy": fa_budget,
+            "smooth_days": ROLL,
+            "bank_get_out": TOP_FEATURES,
+            "bank_get_in": ONSET_BANK,
+        }
+        with open(desk_path, "w") as f:
+            _json.dump(desk_stored, f, indent=1, default=str)
+        if verbose:
+            print(f"  DESK research pass: GET OUT cap "
+                  f"{wf_out['captured']}/{wf_out['detectable']} FA "
+                  f"{wf_out['false_alarms']} AP {wf_out['ap']} | GET IN "
+                  f"cap {wf_in['captured']}/{wf_in['detectable']} late "
+                  f"{wf_in['late']} FA {wf_in['false_alarms']} | "
+                  f"adjacency {adjacency} | frozen thr in "
+                  f"{thr_in:.3f} / out {thr_out:.3f}")
+    else:
+        thr_out = float(desk_stored["get_out"]["live_threshold"])
+        thr_in = float(desk_stored["get_in"]["live_threshold"])
+        if verbose:
+            print(f"  DESK live mode: frozen thresholds in {thr_in:.3f} "
+                  f"/ out {thr_out:.3f}")
+
+    end_live, onset_live_f = desk_candidacy(fpx_live)
+    end_scored = end_live.assign(
+        dscore=desk_end_fit(end_live, end_live, TOP_FEATURES))
+    onset_scored = onset_live_f.assign(
+        dscore=desk_onset_fit(onset_live_f, onset_live_f, ONSET_BANK))
+
+    def _alert_dates(scored, thr):
+        by = {}
+        for name, g in scored.sort_values("date").groupby("name"):
+            by[name] = set(alerts_from_scores(g["date"].tolist(),
+                                              g["dscore"].tolist(), thr))
+        return by
+
+    in_alerts = _alert_dates(onset_scored, thr_in)
+    out_alerts = _alert_dates(end_scored, thr_out)
+
+    ds = fpx_live[["date", "name", "kind", "hype_raw",
+                   "boom_state"]].copy()
+    ds["end_stage"] = end_stage_mask(fpx_live).values
+    ds = ds.merge(onset_scored[["name", "date", "dscore"]]
+                  .rename(columns={"dscore": "in_score"}),
+                  on=["name", "date"], how="left")
+    ds = ds.merge(end_scored[["name", "date", "dscore"]]
+                  .rename(columns={"dscore": "out_score"}),
+                  on=["name", "date"], how="left")
+    ds["get_in"] = [d in in_alerts.get(n, ())
+                    for n, d in zip(ds["name"], ds["date"])]
+    ds["get_out"] = [d in out_alerts.get(n, ())
+                     for n, d in zip(ds["name"], ds["date"])]
+    ds["symbol"] = ds["name"].map(sym_by)
+    _safe_write(ds, _os.path.join(PROCESSED_DIR, "euphoria_desk.parquet"))
+    if verbose:
+        print(f"  saved euphoria_desk.parquet ({len(ds):,} rows, "
+              f"{int(ds['get_in'].sum())} GET IN / "
+              f"{int(ds['get_out'].sum())} GET OUT alerts all-time)")
     return stored
 
 
 # ---------------------------------------------------------------------------
-# 6. EPISODE COHERENCE - the desk-facing state machine (2026-07-24)
+# 6. THE DESK CONFIGURATION (desk decision 2026-07-24) - the GET IN /
+#    GET OUT signal family the dashboard actually shows.
+#
+#    The desk lifted the crowd-only restriction for a SECOND, clearly
+#    labelled signal family ("we should be using both price and the
+#    social media to predict - I want a better hit rate"). The crowd-only
+#    detectors above are unchanged - their claim ("the crowd alone called
+#    it") is different, not worse - and they remain the research
+#    baseline every notebook still scores.
+#
+#    GET OUT (euphoria ending) = the incumbent rules score with two
+#    measured upgrades (NB03 commissioned test + NB06):
+#      * candidacy requires an ACTUAL PRICE BOOM - G2's own thresholds
+#        (>=25% ETF / >=50% single above the trailing 120d low, past
+#        prices only; no new constant). Walk-forward: capture 16 -> 26
+#        of 122, AP 0.286 -> 0.435, capture-gain CI [+3.5pp, +13pp].
+#      * the trigger runs on the 7d-SMOOTHED score (ROLL - the house
+#        one-week window; NB06 blip study): AP 0.435 -> 0.449, FA
+#        41 -> 39, at a recorded cost of 2 captures (26 -> 24). One loud
+#        afternoon can no longer fire a one-day episode.
+#
+#    GET IN (euphoria starting) = the tournament-winning onset rules
+#    with PHASE-AWARE candidacy + the same 7d smoothing: a day that
+#    already satisfies every END gate (A1 crowd swollen AND A2 attention
+#    >= its 90th pct AND A3's persistence e2 > 0 - the detector's OWN
+#    existing gates, no new constant) is END-STAGE, and declaring a
+#    START there is definitionally incoherent. Measured (NB06):
+#    START-within-21d-of-END adjacency 20 -> 2, LATE starts 21 -> 10,
+#    FA 169 -> 124, at a recorded cost of captures 29 -> 20 of 125.
+#    DESK DECISION: the desk stated three times that a START landing on
+#    top of an END is the error that destroys PM trust; the adjacency
+#    priority overrules the raw-capture utility rule, and the cost is
+#    recorded here and in NB06, not hidden.
+# ---------------------------------------------------------------------------
+from src.config import (ROLL, EUPHORIA_ATT_GATE,  # noqa: E402
+                        EUPHORIA_BOOM_MIN_ETF, EUPHORIA_BOOM_MIN_SINGLE)
+
+
+def boom_state_frame(series: list, pxmap: dict) -> pd.DataFrame:
+    """name/date/boom_state: is the price >= its G2 boom threshold above
+    its own trailing 120d low? Trailing only (day t uses closes <= t);
+    the thresholds are the GROUND-TRUTH constants, reused - the gate
+    introduces no new number."""
+    rows = []
+    for es in series:
+        px = pxmap[es.symbol].dropna().asfreq("D").ffill()
+        low120 = px.rolling(120, min_periods=60).min()
+        bm = (EUPHORIA_BOOM_MIN_SINGLE if es.kind == "single"
+              else EUPHORIA_BOOM_MIN_ETF)
+        rows.append(pd.DataFrame({"name": es.name, "date": px.index,
+                                  "boom_state": ((px / low120 - 1) >= bm)
+                                  .values}))
+    return pd.concat(rows, ignore_index=True)
+
+
+def end_stage_mask(df: pd.DataFrame) -> pd.Series:
+    """END-STAGE = the day already satisfies every END gate (A1 + A2 +
+    A3-persistence). Built ONLY from the detector's own frozen gate
+    constants - no new threshold enters the system."""
+    return ((df["e1"] >= EUPHORIA_ATT_GATE) & (df["e2"] > 0)
+            & df["hype_ok"].astype(bool))
+
+
+def _smooth_by_name(scores: pd.Series, names: pd.Series) -> pd.Series:
+    """The desk trigger smoothing: a trailing ROLL-day (7d - the house
+    one-week window, same as A1's mention-share window) mean over each
+    instrument's own candidate-day sequence. Trailing => no look-ahead."""
+    return scores.groupby(names.values).transform(
+        lambda g: g.rolling(ROLL, min_periods=1).mean())
+
+
+def desk_end_fit(train, apply, feats):
+    """The GET OUT score (rules family - fitting is a no-op): mean of
+    the incumbent bank, zeroed where the A2/A3 gates fail (gates in
+    score space, so one threshold governs), then 7d-smoothed."""
+    sc = apply[feats].mean(axis=1)
+    sc = sc.where((apply["e1"] >= EUPHORIA_ATT_GATE) & (apply["e2"] > 0),
+                  0.0)
+    return _smooth_by_name(sc, apply["name"]).values
+
+
+def desk_onset_fit(train, apply, feats):
+    """The GET IN score: the tournament-winning onset rules (mean of the
+    locked bank), 7d-smoothed. Phase-awareness lives in CANDIDACY (the
+    frame passed in), not in the score."""
+    return _smooth_by_name(apply[feats].mean(axis=1),
+                           apply["name"]).values
+
+
+def desk_candidacy(frame_px: pd.DataFrame) -> tuple:
+    """The two desk candidate frames from a day frame already merged
+    with boom_state. Returns (end_frame, onset_frame)."""
+    end_f = frame_px[frame_px["hype_ok"].astype(bool)
+                     & frame_px["boom_state"].astype(bool)].copy()
+    onset_f = frame_px[(frame_px["hype_raw"] >= 1)
+                       & ~end_stage_mask(frame_px)].copy()
+    return end_f, onset_f
+
+
+def desk_needs_research(stored: dict | None, data_max_year: int) -> bool:
+    """Same convention as onset_needs_research: frozen thresholds are
+    exactly right until the data rolls into an uncovered year."""
+    if not stored or "get_in" not in stored or "get_out" not in stored:
+        return True
+    years = []
+    for k in ("get_in", "get_out"):
+        years += stored[k].get("walk_forward", {}).get("test_years") or []
+    return not years or data_max_year > max(int(y) for y in years)
+
+
+# ---------------------------------------------------------------------------
+# 7. EPISODE COHERENCE - the desk-facing state machine (2026-07-24)
 # ---------------------------------------------------------------------------
 def episode_coherent_alerts(onset_dates, top_dates,
                             cooldown: int = EUPHORIA_COOLDOWN_DAYS):

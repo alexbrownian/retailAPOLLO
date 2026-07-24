@@ -739,3 +739,86 @@ class TestEpisodeCoherence:
         t = pd.Timestamp
         o, tp = episode_coherent_alerts([t("2026-01-01")], [t("2026-01-01")])
         assert tp == [t("2026-01-01")] and o == []
+
+
+class TestDeskConfiguration:
+    """The adopted desk configuration (desk decision 2026-07-24, NB06):
+    GET OUT = boom-gated + 7d-smoothed end rules; GET IN = phase-aware +
+    7d-smoothed onset rules. These tests pin the SEMANTICS the decision
+    rests on - candidacy, the end-stage mask, trailing smoothing - and
+    the text-free contract of the shipped store."""
+
+    def _frame(self):
+        return pd.DataFrame({
+            "date": pd.date_range("2026-01-01", periods=6, freq="D"),
+            "name": ["A"] * 6,
+            "e1": [0.95, 0.95, 0.50, 0.95, 0.95, 0.10],
+            "e2": [0.5, 0.0, 0.5, 0.5, 0.5, 0.0],
+            "e3": [0.5] * 6, "e5": [0.5] * 6, "fade": [0.0] * 6,
+            "hype_ok": [True, True, True, False, True, False],
+            "hype_raw": [2.0, 2.0, 2.0, 2.0, 0.5, 2.0],
+            "boom_state": [True, False, True, True, True, True],
+        })
+
+    def test_end_stage_is_exactly_the_end_gates(self):
+        """END-STAGE must be built ONLY from the existing END gates
+        (A1 hype + A2 attention + A3 persistence) - day 0 satisfies all
+        three; days 1/2/3 each fail exactly one."""
+        from analytics.euphoria_phases import end_stage_mask
+        m = end_stage_mask(self._frame())
+        assert m.tolist() == [True, False, False, False, True, False]
+
+    def test_desk_candidacy_semantics(self):
+        """GET OUT candidacy = crowd swollen AND real price boom;
+        GET IN candidacy = measurable crowd (hype_raw >= 1) AND NOT
+        end-stage - a start may never be declared on a day that already
+        satisfies every ending gate."""
+        from analytics.euphoria_phases import (desk_candidacy,
+                                               end_stage_mask)
+        f = self._frame()
+        end_f, onset_f = desk_candidacy(f)
+        assert end_f.index.tolist() == [0, 2, 4]     # hype_ok & boom
+        assert not end_stage_mask(onset_f).any()
+        assert (onset_f["hype_raw"] >= 1).all()
+        assert onset_f.index.tolist() == [1, 2, 3, 5]
+
+    def test_smoothing_is_trailing_and_kills_blips(self):
+        """The 7d smoothing must (a) shrink a one-day spike below the
+        raw trigger it used to fire, and (b) use PAST days only - the
+        smoothed value on day t may not change when the future does."""
+        from analytics.euphoria_phases import _smooth_by_name
+        names = pd.Series(["A"] * 10)
+        spike = pd.Series([0.0] * 4 + [1.0] + [0.0] * 5)
+        sm = _smooth_by_name(spike, names)
+        assert sm.max() < 1.0                        # blip attenuated
+        assert sm.idxmax() == spike.idxmax()         # not shifted early
+        altered = spike.copy()
+        altered.iloc[7:] = 5.0                       # change the FUTURE
+        sm2 = _smooth_by_name(altered, names)
+        assert (sm.iloc[:7].values == sm2.iloc[:7].values).all(), \
+            "smoothing looked ahead"
+
+    def test_desk_needs_research_triggers(self):
+        from analytics.euphoria_phases import desk_needs_research
+        stored = {"get_in": {"walk_forward": {"test_years": [2024, 2025,
+                                                            2026]}},
+                  "get_out": {"walk_forward": {"test_years": [2024, 2025,
+                                                             2026]}}}
+        assert desk_needs_research(None, 2026)
+        assert desk_needs_research({"get_in": {}}, 2026)
+        assert not desk_needs_research(stored, 2026)
+        assert desk_needs_research(stored, 2027)
+
+    def test_desk_store_contract(self):
+        """The shipped store: text-free (FORBIDDEN_COLS) and internally
+        coherent - no GET IN on an end-stage day, no GET OUT without a
+        confirmed price boom."""
+        import os
+        from src.config import PROCESSED_DIR, FORBIDDEN_COLS
+        path = os.path.join(PROCESSED_DIR, "euphoria_desk.parquet")
+        if not os.path.exists(path):
+            pytest.skip("desk store not built yet")
+        df = pd.read_parquet(path)
+        assert not (set(df.columns) & FORBIDDEN_COLS)
+        assert not (df["get_in"] & df["end_stage"]).any()
+        assert not (df["get_out"] & ~df["boom_state"]).any()

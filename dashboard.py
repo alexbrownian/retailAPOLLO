@@ -49,7 +49,8 @@ sys.path.insert(0, ROOT)
 
 from src.config import (ROLL, DERIV_SMOOTH, MIN_TOTAL, CROSS_AT,   # noqa: E402
                         MIN_GAP, PROCESSED_DIR, PRICES_PATH, REFERENCE_DIR,
-                        EUPHORIA_HYPE_MULT,
+                        EUPHORIA_HYPE_MULT, EUPHORIA_BOOM_MIN_ETF,
+                        EUPHORIA_BOOM_MIN_SINGLE,
                         CONV_EXIT_LEVEL, CONV_EWM_HALFLIFE,
                         EUPHORIA_EXCLUDED_THEMES)
 from src.themes import THEME_ETFS, THEME_ETF_FALLBACKS             # noqa: E402
@@ -503,6 +504,25 @@ if os.path.exists(_orep_path):
     import json as _json
     onset_report = _json.load(open(_orep_path))
 
+# the DESK CONFIGURATION store (desk decision 2026-07-24): the GET IN /
+# GET OUT signals the euphoria tabs actually show - boom-gated smoothed
+# END + phase-aware smoothed ONSET, at frozen walk-forward thresholds
+# (full record: NB06 "adopted desk configuration" + euphoria_phases.py §6)
+desk = load("euphoria_desk.parquet")
+if desk is not None:
+    desk["date"] = pd.to_datetime(desk["date"])
+desk_report = None
+_dkrep_path = os.path.join(PROCESSED_DIR, "euphoria_desk_report.json")
+if os.path.exists(_dkrep_path):
+    import json as _json
+    desk_report = _json.load(open(_dkrep_path))
+
+# episode ground truth (for the window-adaptive scorecard strip)
+episodes_df = load("episodes.parquet")
+if episodes_df is not None and len(episodes_df):
+    for _c in ("peak", "trough", "onset_lo", "onset_hi"):
+        episodes_df[_c] = pd.to_datetime(episodes_df[_c])
+
 
 @st.cache_data(show_spinner=False)
 def _live_conviction(sent_mtime):
@@ -891,6 +911,25 @@ attention acceleration, hype ratio, bullish inflection, influx speed,
 super-exponential attention - gated by coverage and by attention above
 its own 120d median, at a frozen walk-forward threshold.
 
+**What actually fires on THIS screen - the DESK CONFIGURATION (desk
+decision 2026-07-24).** The desk lifted the crowd-only restriction for
+the signals shown here ("use both price and the social media - I want a
+better hit rate"), so the lines on these charts are a labelled SECOND
+signal family; the crowd-only detectors above remain the research
+headline, unchanged. **GET OUT (red)** = the ending detector with (a)
+candidacy requiring an ACTUAL price boom - G2's own thresholds (≥25%
+ETF / ≥50% single above the trailing 120d low; no new constant) - which
+raised walk-forward capture from 16 to 26 of 122 (gain CI [+3.5pp,
++13pp]), and (b) the trigger on the 7d-SMOOTHED score, which killed the
+one-day-blip alerts (AP 0.435 → 0.449, two captures recorded as the
+cost). **GET IN (blue)** = the onset detector made PHASE-AWARE: a day
+that already satisfies every ending gate is end-stage, and a "start"
+there is incoherent - so it cannot fire. That cut start-next-to-end
+adjacency from 20 to 2 and late starts from 21 to 10, at a recorded
+cost of captures (29 → 20 of 125): a desk decision, made because a
+START landing on an END destroys PM trust, and documented with the full
+variant table in notebook 06.
+
 **Validation** (walk-forward, real Bloomberg closes, thresholds learned
 only from PAST years - headline record in the caption under the charts):
 the terminal shows CONCLUSIONS only. The full evidence - per-year
@@ -932,9 +971,9 @@ def _state_of(name, starting, ending):
 
 
 def render_euphoria_tab(kind, kind_label, key_prefix):
-    st.subheader(f"EUPHORIA - {kind_label} (blue line = euphoria "
-                 "STARTING, red line = euphoria ENDING; expect a peak "
-                 "within ~a month of a red line)")
+    st.subheader(f"EUPHORIA - {kind_label}  |  blue = GET IN (euphoria "
+                 "starting), red = GET OUT (euphoria ending; expect the "
+                 "top within ~a month)")
     with st.expander("what is euphoria? (definitions & headline record)"):
         st.markdown(EUPHORIA_DEF)
     _reg = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -954,13 +993,31 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     ek = euph[euph["kind"] == kind]
     ok = (onset[onset["kind"] == kind].copy()
           if onset is not None and len(onset) else None)
-    # SINGLE-NAME DISPLAY BAR (desk decision 2026-07-24): a ticker shows
-    # as "euphoria starting" only when its crowd cleared the FULL A1
-    # hype bar (2x its own 120d median - the same frozen constant the
-    # ENDING detector already requires). Really-euphoric names only
-    # (BTC/meme-stock scale); marginal names cannot flicker in and out.
-    if ok is not None and kind == "single" and "hype_raw" in ok.columns:
-        ok["alert"] = ok["alert"] & (ok["hype_raw"] >= EUPHORIA_HYPE_MULT)
+    dk = (desk[desk["kind"] == kind].copy()
+          if desk is not None and len(desk) else None)
+
+    # THE SIGNAL SOURCE (desk configuration 2026-07-24): GET IN /
+    # GET OUT from euphoria_desk.parquet - the boom-gated SMOOTHED end
+    # + phase-aware SMOOTHED onset the desk adopted in NB06 (adjacency
+    # 20 -> 2, END AP 0.435 -> 0.449, no one-day blips). Falls back to
+    # the crowd-only research stores only if the desk store is missing.
+    use_desk = dk is not None and len(dk)
+    if use_desk:
+        src_in = dk[dk["get_in"].astype(bool)]
+        # SINGLE-NAME DISPLAY BAR (desk decision 2026-07-24): a ticker
+        # shows as "euphoria starting" only when its crowd cleared the
+        # FULL A1 hype bar (2x its own 120d median). Really-euphoric
+        # names only; marginal names cannot flicker in and out.
+        if kind == "single" and "hype_raw" in dk.columns:
+            src_in = src_in[src_in["hype_raw"] >= EUPHORIA_HYPE_MULT]
+        src_out = dk[dk["get_out"].astype(bool)]
+    else:
+        src_in = (ok[ok["alert"]] if ok is not None
+                  else ek.iloc[0:0])
+        if (not use_desk and ok is not None and kind == "single"
+                and "hype_raw" in ok.columns):
+            src_in = src_in[src_in["hype_raw"] >= EUPHORIA_HYPE_MULT]
+        src_out = ek[ek["alert"]]
 
     # EPISODE COHERENCE (desk rule 2026-07-24, asymmetric by
     # measurement): a START within one cooldown AFTER an END is a
@@ -968,16 +1025,15 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     # never suppressed - fast manias genuinely run start-to-end inside
     # 21d, and the risk signal must not be silenced (the symmetric rule
     # cost half the top captures when tested). Applied over FULL history
-    # so pre-window alerts provide suppression context.
+    # so pre-window alerts provide suppression context. (The other
+    # adjacency direction - a START just BEFORE an END - is fixed at
+    # the SIGNAL level by the phase-aware desk onset, not by a rule.)
     coherent = {}
-    names_all = set(ek["name"].unique())
-    if ok is not None:
-        names_all |= set(ok["name"].unique())
+    names_all = set(ek["name"].unique()) | set(src_in["name"].unique()) \
+        | set(src_out["name"].unique())
     for name in names_all:
-        o_dates = (ok.loc[(ok["name"] == name) & ok["alert"], "date"]
-                   .tolist() if ok is not None else [])
-        t_dates = ek.loc[(ek["name"] == name) & ek["alert"],
-                         "date"].tolist()
+        o_dates = src_in.loc[src_in["name"] == name, "date"].tolist()
+        t_dates = src_out.loc[src_out["name"] == name, "date"].tolist()
         co, ct = episode_coherent_alerts(o_dates, t_dates)
         coherent[name] = (co, ct)
 
@@ -993,27 +1049,106 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         if state_t:
             ending[name] = max(state_t)
 
-    # ---- current state strip: sparse by design (empty = radar working)
-    c1, c2 = st.columns(2)
-    for col, label, flags in (
-            (c1, "STARTING (onset alert, last 21d)", starting),
-            (c2, "ENDING (top alert, last 21d)", ending)):
-        with col:
-            names = [n for n in flags
-                     if _state_of(n, starting, ending) ==
-                     ("STARTING" if "STARTING" in label else "ENDING")]
-            if names:
-                rows = [{"name": n, "alert": str(flags[n].date()),
-                         "days ago": int((latest_day - flags[n]).days)}
-                        for n in sorted(names, key=flags.get,
-                                        reverse=True)]
-                st.markdown(f"**{label}**")
-                st.dataframe(pd.DataFrame(rows), width="content",
-                             hide_index=True)
-            else:
-                st.markdown(f"**{label}**")
-                st.caption("none - euphoria is rare; an empty pane is "
-                           "the radar working")
+    # ---- THE SIGNAL, unmissable (desk brief 2026-07-24: "it should be
+    # super clear: euphoria is ending (get out signal) or euphoria
+    # starting (get in)") - one red banner, one green banner, nothing to
+    # interpret. Sparse by design: empty = the radar working.
+    out_now = sorted((n for n in ending
+                      if _state_of(n, starting, ending) == "ENDING"),
+                     key=ending.get, reverse=True)
+    in_now = sorted((n for n in starting
+                     if _state_of(n, starting, ending) == "STARTING"),
+                    key=starting.get, reverse=True)
+    if out_now:
+        st.error("**GET OUT — euphoria is ENDING:** "
+                 + ",  ".join(f"{n} (signal {ending[n].date()}, "
+                              f"{int((latest_day - ending[n]).days)}d ago)"
+                              for n in out_now)
+                 + ". Expect the top within ~a month of the signal.")
+    if in_now:
+        st.success("**GET IN — euphoria is STARTING:** "
+                   + ",  ".join(f"{n} (signal {starting[n].date()}, "
+                                f"{int((latest_day - starting[n]).days)}"
+                                "d ago)" for n in in_now)
+                   + ". The crowd is arriving; the rally window is open.")
+    if not out_now and not in_now:
+        st.info(f"**No live signal among {kind_label.lower()} right "
+                "now** - no euphoria starting (get in) or ending (get "
+                "out) in the last 21 days. Euphoria is rare; an empty "
+                "pane is the radar working.")
+
+    # ---- WINDOW-ADAPTIVE SCORECARD (desk request 2026-07-24): the few
+    # numbers that matter, recomputed for whatever window is selected in
+    # the sidebar - the SAME judge functions the research record uses.
+    from analytics.euphoria_phases import (classify_onset_alerts,
+                                           classify_top_alerts,
+                                           _day_ints, _eps_arrays)
+    import numpy as _np
+
+    def _ts_of(day_int):
+        return pd.Timestamp(_np.datetime64(int(day_int), "D"))
+
+    def _window_scorecard():
+        if episodes_df is None or not len(episodes_df):
+            return None
+        hi_eff = hi if hi is not None else latest_day
+        # alerts younger than 45d cannot be judged yet (PENDING, the
+        # project-wide convention) - excluded from the FA count only
+        judge_hi = latest_day - pd.Timedelta(days=45)
+        eps_k = episodes_df[episodes_df["kind"] == kind]
+        eps_by = dict(tuple(eps_k.groupby("name")))
+        empty = eps_k.iloc[0:0]
+        out = {}
+        for mode in ("in", "out"):
+            judge = (classify_onset_alerts if mode == "in"
+                     else classify_top_alerts)
+            det_col = ("onset_detectable" if mode == "in"
+                       else "top_detectable")
+            captured, leads, fa_w, n_alerts = set(), [], 0, 0
+            for name, (co, ct) in coherent.items():
+                al = sorted(co if mode == "in" else ct)
+                if not al:
+                    continue
+                n_alerts += sum(1 for d in al if lo <= d <= hi_eff)
+                r = judge(_day_ints(pd.DatetimeIndex(al)),
+                          _eps_arrays(eps_by.get(name, empty)))
+                for ld in r["leads"]:
+                    if lo <= _ts_of(ld["peak"]) <= hi_eff:
+                        captured.add((name, int(ld["peak"])))
+                        leads.append(ld["after_trough"] if mode == "in"
+                                     else ld["before_peak"])
+                fa_w += sum(1 for a in r["fa"]
+                            if lo <= _ts_of(a) <= min(hi_eff, judge_hi))
+            det = eps_k[(eps_k["peak"] >= lo) & (eps_k["peak"] <= hi_eff)
+                        & eps_k[det_col]]
+            out[mode] = {"captured": len(captured), "detectable": len(det),
+                         "median_lead": (int(_np.median(leads))
+                                         if leads else None),
+                         "fa": fa_w, "alerts": n_alerts}
+        return out
+
+    sc = _window_scorecard()
+    if sc:
+        for mode, label, lead_lbl in (
+                ("out", "GET OUT (ending)", "median warning before peak"),
+                ("in", "GET IN (starting)", "median lag after the start")):
+            r = sc[mode]
+            m1, m2, m3, m4 = st.columns(4)
+            hit = (f"{r['captured']}/{r['detectable']} "
+                   f"({r['captured'] / r['detectable']:.0%})"
+                   if r["detectable"] else "no episodes in window")
+            m1.metric(f"{label} - hit rate", hit)
+            m2.metric(lead_lbl, f"{r['median_lead']}d"
+                      if r["median_lead"] is not None else "-")
+            m3.metric("false alarms in window", r["fa"])
+            m4.metric("signals in window", r["alerts"])
+        st.caption("Scored inside the selected window only, with the "
+                   "same judge the research record uses: a GET OUT hit "
+                   "= a signal inside [peak-30d, peak+1d]; a GET IN hit "
+                   "= a signal inside the episode's first 45 days. "
+                   "Signals younger than 45d are PENDING, not false. "
+                   "Small windows = small samples - the confirmatory "
+                   "record is the walk-forward in the caption below.")
 
     # frozen alert threshold (drawn on every level panel)
     thr_now = None
@@ -1035,6 +1170,30 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         px = (price_series(prices, sym, lo, hi)
               if prices is not None and sym in priced else None)
         one_i = one.set_index("date")
+        # DANGER STATE (amber band): crowd swollen (the A1 2x bar) AND
+        # price in a G2 boom. Measured (NB06): a >=10%-in-7d drop begins
+        # within 30d on ~62% of these days vs ~19% of ordinary days -
+        # the band IS the PM warning; alerts time the peak inside it.
+        danger_runs = []
+        if px is not None and not px.empty and "hype_ok" in one_i.columns \
+                and prices is not None:
+            full = prices[prices["symbol"] == sym].sort_values("date")
+            pxa = full.set_index("date")["px_last"].asfreq("D").ffill()
+            low120 = pxa.rolling(120, min_periods=60).min()
+            bm = (EUPHORIA_BOOM_MIN_SINGLE if kind == "single"
+                  else EUPHORIA_BOOM_MIN_ETF)
+            boom = ((pxa / low120 - 1) >= bm).reindex(one_i.index).eq(True)
+            danger = one_i["hype_ok"].astype(bool) & boom
+            d_idx = danger[danger].index
+            if len(d_idx):
+                run_start = prev = d_idx[0]
+                for d in list(d_idx[1:]) + [None]:
+                    if d is not None and (d - prev).days <= 2:
+                        prev = d
+                        continue
+                    danger_runs.append((run_start, prev))
+                    if d is not None:
+                        run_start = prev = d
         lvl_raw = one_i["level"]
         # the DISPLAY curve is 7d-smoothed (the house ROLL constant):
         # one loud afternoon is not a trend - alerts should coincide
@@ -1087,6 +1246,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             # arithmetic on some plotly/pandas versions and crashes;
             # epoch-milliseconds is numeric and works on every version
             return pd.Timestamp(ts).value / 1_000_000
+        for a, b in danger_runs:      # AMBER = the danger state
+            fig.add_vrect(x0=_ms(a), x1=_ms(b + pd.Timedelta(days=1)),
+                          fillcolor="rgba(237,161,0,0.12)", line_width=0,
+                          row=1, col=1)
         # EPISODE SPANS: shade from each START to the next END so a
         # tight start/end pair reads as what it is - a short, violent
         # euphoria episode - instead of contradictory clutter. A START
@@ -1103,31 +1266,35 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             fig.add_vrect(x0=_ms(x0c), x1=_ms(x1c),
                           fillcolor="rgba(232,132,92,0.10)", line_width=0,
                           row=1, col=1)
-        for d in onset_alerts:     # BLUE = euphoria starting
+        for d in onset_alerts:     # BLUE = GET IN (euphoria starting)
             kw = {}
             if d == max(onset_alerts):   # label only the newest - stacked
-                kw = dict(annotation_text="START",     # labels collide
+                kw = dict(annotation_text="GET IN",    # labels collide
                           annotation_position="top left",
-                          annotation_font=dict(color="#2a78d6", size=10))
+                          annotation_font=dict(color="#2a78d6", size=11))
             fig.add_vline(x=_ms(d), line_color="#2a78d6", line_width=2,
                           opacity=0.85, **kw)
-        for d in top_alerts:       # RED = euphoria ending
+        for d in top_alerts:       # RED = GET OUT (euphoria ending)
             kw = {}
             if d == max(top_alerts):
-                kw = dict(annotation_text="END",
+                kw = dict(annotation_text="GET OUT",
                           annotation_position="top right",
-                          annotation_font=dict(color=RED, size=10))
+                          annotation_font=dict(color=RED, size=11))
             fig.add_vline(x=_ms(d), line_color=RED, line_width=2,
                           opacity=0.85, **kw)
-        badge = (f"  |  EUPHORIA {state} NOW" if state else "")
+        badge = ""
+        if state == "STARTING":
+            badge = "  |  GET IN - EUPHORIA STARTING NOW"
+        elif state == "ENDING":
+            badge = "  |  GET OUT - EUPHORIA ENDING NOW"
         fig.update_layout(height=560, hovermode="x unified",
                           margin=dict(l=10, r=10, t=55, b=20),
                           legend=dict(orientation="h", yanchor="top",
                                       y=-0.16),
                           title=dict(text=(f"{title_prefix}{name} ({sym})"
-                                           f" - {len(onset_alerts)} start"
-                                           f" / {len(top_alerts)} end "
-                                           f"alert(s) in window{badge}"),
+                                           f" - {len(onset_alerts)} get-in"
+                                           f" / {len(top_alerts)} get-out"
+                                           f" signal(s) in window{badge}"),
                                      y=0.97, x=0.01))
         fig.update_yaxes(title_text="price (USD)", row=1, col=1)
         fig.update_yaxes(title_text="euphoria", range=[0, 100],
@@ -1138,6 +1305,12 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # ---- WHY did each alert fire? (plain-English decomposition of
         # the stored component values on the alert day - nothing here is
         # recomputed, it is the exact evidence the detector acted on)
+        dk_i = (dk[dk["name"] == name].set_index("date")
+                if use_desk else None)
+        thr_in_d = ((desk_report or {}).get("get_in", {})
+                    .get("live_threshold"))
+        thr_out_d = ((desk_report or {}).get("get_out", {})
+                     .get("live_threshold"))
         expl = []
         for d in sorted(top_alerts):
             r = one_i.loc[:d].iloc[-1] if d not in one_i.index \
@@ -1145,29 +1318,51 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             fade_txt = (" The FADE was active - the crowd was still at "
                         "maximum size but the mood had started rolling "
                         "over (historically the last stage before a "
-                        "top), which lowers the trigger by 10 points."
-                        if bool(r.get("fade")) else "")
+                        "top)." if bool(r.get("fade")) else "")
+            desk_txt = ""
+            if dk_i is not None and d in dk_i.index:
+                rd = dk_i.loc[d]
+                boom_txt = (" and the chart CONFIRMED a real boom "
+                            "(price ≥ its G2 threshold above its own "
+                            "120d low - the desk price gate)"
+                            if bool(rd.get("boom_state")) else "")
+                if pd.notna(rd.get("out_score")) and thr_out_d:
+                    desk_txt = (f" The 7d-smoothed desk score "
+                                f"{float(rd['out_score']):.2f} crossed "
+                                f"the frozen GET OUT threshold "
+                                f"{thr_out_d:.2f}{boom_txt} - one loud "
+                                "afternoon cannot fire this.")
             expl.append(
-                f"**{pd.Timestamp(d).date()} — ENDING declared.** "
-                f"The crowd had genuinely swollen (7d mention share ≥ "
-                f"2× its own normal - the hype gate). Attention sat in "
-                f"the top {max(1, round((1 - float(r['e1'])) * 100))}% "
+                f"**{pd.Timestamp(d).date()} — GET OUT (euphoria "
+                f"ending).** The crowd had genuinely swollen (7d "
+                f"mention share ≥ 2× its own normal - the hype gate). "
+                f"Attention sat in the top "
+                f"{max(1, round((1 - float(r['e1'])) * 100))}% "
                 f"of this name's own year (E1 {float(r['e1']):.2f}); "
                 f"bullishness had persisted ≥75% of posting days for 4 "
                 f"weeks (E2 {float(r['e2']):.2f}); crowd influx rank "
                 f"{float(r['e3']):.2f}; super-exponential attention "
-                f"rank {float(r['e5']):.2f}. Level "
-                f"{float(r['level']):.0f} crossed the frozen threshold "
-                f"{thr_now}.{fade_txt}")
+                f"rank {float(r['e5']):.2f}.{desk_txt}{fade_txt}")
         if ow_ is not None:
             oo_i = ow_[ow_["name"] == name].set_index("date")
-            onset_thr = (onset_report or {}).get("live_threshold")
             for d in sorted(onset_alerts):
                 if d not in oo_i.index:
                     continue
                 r = oo_i.loc[d]
+                desk_txt = ""
+                if dk_i is not None and d in dk_i.index:
+                    rd = dk_i.loc[d]
+                    if pd.notna(rd.get("in_score")) and thr_in_d:
+                        desk_txt = (
+                            f" The 7d-smoothed desk score "
+                            f"{float(rd['in_score']):.2f} crossed the "
+                            f"frozen GET IN threshold {thr_in_d:.2f}, "
+                            "and the name was NOT already end-stage "
+                            "(phase-aware: you cannot 'start' euphoria "
+                            "that already satisfies every ending gate).")
                 expl.append(
-                    f"**{pd.Timestamp(d).date()} — STARTING declared.** "
+                    f"**{pd.Timestamp(d).date()} — GET IN (euphoria "
+                    f"starting).** "
                     f"The crowd was {float(r['hype_raw']):.1f}× its own "
                     f"normal size and ARRIVING fast: attention "
                     f"acceleration rank "
@@ -1176,10 +1371,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     f"up (bullish inflection "
                     f"{float(r['bull_inflection']):.2f}), 2-week influx "
                     f"{float(r['influx_speed']):.2f}, super-exponential "
-                    f"attention {float(r['attention_convexity']):.2f}. "
-                    f"Onset score {float(r['onset_score']):.2f} crossed "
-                    f"the frozen threshold "
-                    f"{onset_thr:.2f}." if onset_thr else "")
+                    f"attention {float(r['attention_convexity']):.2f}."
+                    f"{desk_txt}")
         expl = [e for e in expl if e]
         if expl:
             with st.expander(f"why did {name}'s alert(s) fire? "
@@ -1224,24 +1417,37 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     # ---- conclusions line (headline record only - evidence lives in
     # notebooks/01-04 and docs/DECISIONS.xlsx, not on the terminal)
     bits = []
-    if euph_report:
+    if desk_report:
+        wo = desk_report.get("get_out", {}).get("walk_forward", {})
+        wi = desk_report.get("get_in", {}).get("walk_forward", {})
+        bits.append(f"GET OUT: {wo.get('capture_rate')} of detectable "
+                    f"peaks inside [peak-30d, peak+1d], median warning "
+                    f"{wo.get('median_lead_days')}d, "
+                    f"{wo.get('fa_per_iy')} FA/instr-yr, AP "
+                    f"{wo.get('ap')} vs base {wo.get('ap_baseline')}")
+        bits.append(f"GET IN: {wi.get('capture_rate')} of detectable "
+                    f"starts (+{wi.get('late')} late-but-in-rally), "
+                    f"{wi.get('fa_per_iy')} FA/instr-yr; only "
+                    f"{wi.get('adjacency_within_cooldown_before_end')} "
+                    "start(s) in the whole record landed within 21d of "
+                    "an end (was 20 before the phase-aware fix)")
+    elif euph_report:
         o = euph_report.get("overall", {})
         bits.append(f"ENDING detector: {o.get('capture_rate_detectable')}"
                     f" of detectable peaks inside [peak-30d, peak+1d], "
                     f"median lead {o.get('median_lead_days')}d, "
                     f"{o.get('fa_per_instrument_year')} FA/instr-yr")
-    if onset_report:
-        wf = onset_report.get("walk_forward", {})
-        bits.append(f"STARTING detector: {wf.get('capture_rate')} of "
-                    f"detectable starts, {wf.get('fa_per_iy')} FA/instr-yr"
-                    " (above the accepted budget - the stated cost of "
-                    "onset detection)")
     if bits:
         st.caption("Validated record (walk-forward, both denominators in "
                    "the research pack): " + " | ".join(bits)
                    + ". Full evidence - walk-forward tables, ablation, "
                    "ML challenger, tournament: notebooks/01-04 + "
-                   "docs/DECISIONS.xlsx. A START within 21d of an END is "
+                   "docs/DECISIONS.xlsx. AMBER band = the DANGER STATE "
+                   "(crowd >=2x its normal AND price in a G2 boom): a "
+                   ">=10%-in-a-week drop begins within 30 days on ~62% "
+                   "of these days vs ~19% of ordinary days (NB06, CI "
+                   "[+28pp,+50pp]) - the band is the standing PM "
+                   "warning; alerts time the peak inside it. A START within 21d of an END is "
                    "suppressed as contradictory; a fast START then END "
                    "is a violent mania and the red risk signal is never "
                    "suppressed. Recent alerts are PENDING "

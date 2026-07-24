@@ -395,6 +395,61 @@ finality as the retired BUY/SELL engine. §7 explains why the system is
 valuable *anyway* — and why claiming otherwise would be the fastest way
 to lose a defense.
 
+### 6.7 The desk-signal study: price + crowd, and the danger state
+
+With the desk's 2026-07-24 decision to permit price in a SECOND signal
+family, three pre-registered tests ran (notebooks 03/06). (i) The
+**price-assisted END gate** (G2's boom thresholds as a live prerequisite)
+passed every condition: capture 16→26 detectable tops on matched years,
+AP 0.286→0.435, FAs 44→41, capture-gain CI [+3.5pp, +13pp]. (ii) The
+**combined price+crowd alert bank** (adding chart-side Sornette
+convexity, boom-magnitude and momentum ranks; raw and 7d-smoothed
+triggers; LR/GBM challengers) did NOT clear its pre-stated criterion:
+its 65% cliff-30 hit rate is indistinguishable from its own candidate
+days' 62% baseline — because (iii) **the candidacy state itself is the
+signal**: on days when the crowd is ≥2× its own normal AND price is in a
+G2 boom (the *danger state*), a ≥10%-in-7-days drop begins within 30
+days **62% of the time, versus 19% on ordinary days** (uplift 90%
+cluster CI [+28pp, +50pp]). The product conclusion: the danger state is
+the standing PM warning (an amber band on the terminal, derived entirely
+from existing constants), and the END alerts time the peak within it
+(median 8-day lead at the boom-gated operating point). The smoothed
+trigger cut false alarms 31→24 at equal capture and lengthened trigger
+runs (median 6→8 days), addressing the one-day-blip complaint at the
+signal level.
+
+### 6.8 The adopted desk configuration (GET IN / GET OUT)
+
+The 2026-07-24 decision cycle closed with a production configuration,
+chosen by a rule written before the deciding table was computed (NB06,
+"the adopted desk configuration"; every variant runs through the
+production code path in `analytics/euphoria_phases.py §6`, so notebook
+and live system cannot drift). **GET OUT** (euphoria ending) is the
+boom-gated end detector of §6.7 with its trigger on the 7d-smoothed
+score: walk-forward capture 24/122 detectable tops, 39 false alarms
+(0.195/instr-yr), AP 0.449 versus the raw gate's 0.435, median warning
+8 days before the peak — the smoothing adopted because it lowers FAs
+and raises AP while structurally removing one-day-blip alerts, at a
+recorded cost of two captures. **GET IN** (euphoria starting) is the
+tournament-winning onset rules with *phase-aware candidacy* — a day
+already satisfying every END gate (A1 ∧ A2 ∧ A3-persistence, existing
+constants only) is end-stage and may not host a "start" — plus the same
+smoothing: adjacency (a START within one 21d cooldown before an END)
+falls 20 → 2, LATE starts 21 → 10, false alarms 169 → 124, at a
+recorded capture cost 29 → 20 of 125. This *overrules* the earlier
+utility-rule rejection of the phase-aware variant (§Changelog row i) as
+an explicit desk decision: the desk stated in three separate briefs
+that a START landing on an END is the failure mode that destroys PM
+trust, making adjacency the binding constraint, and the capture cost is
+carried openly in NB06 and the parameter register rather than hidden.
+Frozen live thresholds (budget rule on full prior years): GET IN 0.848,
+GET OUT 0.630. The terminal now renders these two signals as explicit
+GET IN / GET OUT banners with a window-adaptive scorecard (hit rate,
+median lead, FAs, signal count recomputed for whatever window is
+selected, judged by the same functions as the research record); the
+crowd-only detectors remain unchanged as the thesis headline and the
+research baseline.
+
 ### 6.6 Influential-users model
 
 Harness validated end-to-end (synthetic schema-faithful fixture, deleted
@@ -455,7 +510,14 @@ flagged episode, that is a qualitatively better datum than aggregate
 sentiment, and the boom/bust column records exactly who called past
 tops.
 
-**5. The economics of sparsity.** The whole system alerts a few names at
+**5. The danger state — the PM warning in one glance.** The amber band
+(crowd ≥2× its normal AND price in a confirmed boom) is the single most
+actionable statistic this project produced: sharp drops (≥10% in a week)
+begin within a month on 62% of danger-state days versus 19% of ordinary
+days. A PM needs no model literacy to use it: amber on = de-risking
+season; red line inside amber = the timing call.
+
+**6. The economics of sparsity.** The whole system alerts a few names at
 a time (live read at delivery: 3 starting, 3 ending), one alert per
 episode per name, with its measured error rates printed on the pane. It
 consumes minutes of attention per week, its claims are sized to its
@@ -582,6 +644,9 @@ runs (drift-guard assert in notebook 02).
 
 | Date | Update |
 |---|---|
+| 2026-07-24 (l) | **DESK CONFIGURATION adopted and productionised (GET IN / GET OUT)** — §6.8. GET OUT = boom-gated END with 7d-smoothed trigger (cap 24/122, FA 39, AP 0.449, median warning 8d); GET IN = phase-aware onset + smoothing (adjacency 20→2, LATE 21→10, FA 169→124, capture cost 29→20 RECORDED — a desk decision overruling row (i)'s utility-rule rejection, per the thrice-stated adjacency priority). Selection rule pre-stated in NB06; drift guard asserts notebook == production record. New store `euphoria_desk.parquet` + frozen thresholds (GET IN 0.848 / GET OUT 0.630) in `euphoria_desk_report.json`; research/live split honoured (desk thresholds refreeze only on `--research`/year rollover). Terminal: explicit GET IN (green) / GET OUT (red) banners, GET IN/GET OUT chart labels, and a window-adaptive scorecard (hit rate, median lead, FAs, signals - recomputed for the selected window with the research judges; PENDING convention respected). 5 new tests (55 total). |
+| 2026-07-24 (k) | **Desk-signal study concluded (NB06)**: combined price+crowd ALERT bank rejected under its pre-stated cliff criterion (65% vs its own 62% candidate-day baseline, CI includes 0) - but the candidacy STATE validated decisively as the drop-warning: cliff-30 62% on danger-state days vs 19% ordinary, CI [+28pp,+50pp]. DANGER STATE (A1 2x + G2 boom, existing constants only) shipped as an amber band on the terminal price panels; smoothed trigger evidence recorded (FA 31->24 at equal capture, median run 6->8d). Event-study reading guide: after an END alert, flat/down = success; the +50d mean spike is an outlier artifact (median path flat). |
+| 2026-07-24 (j) | **Price-assisted END gate: commissioned, tested, PASSED.** Gate = G2's own boom thresholds as a live prerequisite (trailing prices only). On matched test years: capture 16->26 detectable tops (+62%), AP 0.286->0.435, FAs 44->41, utility -28->-15; dose-response confirmed via a half-strength gate; capture-gain 90% cluster CI [+0.035,+0.130] excludes zero. All pre-stated adoption conditions met -> OFFERED as a clearly-labelled SECOND signal (claim: crowd + chart-confirmed boom); the crowd-only detector remains the headline claim. Not yet wired to the dashboard - desk decision pending. |
 | 2026-07-24 (i) | **Phase-aware onset variant tested and REJECTED** under a pre-stated rule (halves start/end adjacency 19->8 and LATE 21->12, but -5 captures, no utility gain) - recorded in NB03; the start/end adjacency READABILITY is solved on the terminal by **episode-span shading** (START->next END shaded on the price panel; a tight pair reads as a short violent episode, zero capture cost). **NB06 validity section** added: forest plot of edges with 90% cluster CIs, event-study with bootstrap bands, hit rates vs drift-adjusted baseline with CIs, and END-10d edge by year (regime stability). |
 | 2026-07-24 (h) | **Parameter register** (`docs/PARAMETER_REGISTER.md`, surfaced on both EUPHORIA tabs): every number classified LEARNED / DERIVED / CONVENTION (ablation-accountable) / GROUND-TRUTH / DESK DECISION with its reason. **NB03 threshold exhibit**: the training curves behind each threshold, both selection rules drawn - and an honest finding recorded: the legacy utility rule saturates toward the conservative grid edge in FA-rich regimes (the incumbent's '85' is partly its grid cap), while the budget rule selects an interior point; the budget rule is the selection used for the onset detector. **Dashboard fix**: add_vline epoch-ms workaround for the plotly Timestamp crash. |
 | 2026-07-24 (g) | **NB06 signal-efficacy report** added (descriptive; NB04 stays confirmatory): forward moves at desk-requested 3/10/21/84d horizons with same-instrument baselines and cluster CIs, event-study paths, overlay PnL view, full per-alert and per-name tables. Headline: the END signal's 10d edge is the one CI excluding zero (-2.6% vs +0.6% baseline; down-hit 57% vs 45% drift-adjusted baseline) - the risk-timing claim quantified; START confirms lead time, no buy edge. **Dashboard**: START/END labels on alert lines; per-alert plain-English 'why did this fire' expander (component values now persisted in both stores). |

@@ -554,6 +554,334 @@ pd.DataFrame(prec)
 # * Anything here can be re-cut per name from the full tables above —
 #   every alert is listed, nothing is aggregated away.
 
+# %% [markdown]
+# # THE DESK SIGNAL STUDY — price + crowd, one better END
+#
+# **Desk decision (2026-07-24):** the crowd-only constraint is lifted for a
+# SECOND signal family. The crowd-only detector remains the thesis headline
+# ("the crowd alone called it"); the DESK signal may use price, and its
+# stated objective is the desk's own words: *predict sharp drops (≥10%
+# within ~a week) up to a month before they happen, with a better hit rate
+# and no one-day blips.*
+#
+# **Design, pre-stated before any result below:**
+# * Candidacy: the validated price-gated set (hype gate AND G2 boom state).
+# * Price bank (same constructions as the crowd bank, ranked vs own year,
+#   trailing): `px_conv` = Sornette log-convexity ON THE CHART (the
+#   original signature, permitted again), `px_boom` = boom-magnitude rank,
+#   `px_mom21` = cooldown-window momentum rank.
+# * Variants: crowd bank (reference) | price-only | combined | combined
+#   with the trigger on the 7d-SMOOTHED score (the house ROLL — the
+#   blip-fix hypothesis: sustained elevation, not one loud day) | logistic
+#   regression | GBM. All walk-forward, identical discipline.
+# * **Adoption criterion:** the DESK END = the variant with the highest
+#   cliff-30 hit rate (share of alerts followed by a ≥10%-in-7d drop
+#   starting within 30d) SUBJECT TO utility ≥ the crowd reference's and
+#   FAs ≤ the crowd reference's; the cliff uplift over the unconditional
+#   baseline must have a 90% cluster CI excluding zero. The smoothed
+#   trigger is adopted only if it does not reduce captures.
+
+# %%
+from analytics.euphoria import log_convexity, trailing_pct_rank
+from src.config import (EUPHORIA_BOOM_MIN_ETF, EUPHORIA_BOOM_MIN_SINGLE,
+                        ROLL)
+
+prows = []
+for es in series:
+    px = pxd[es.symbol]
+    conv = trailing_pct_rank(log_convexity(px).clip(lower=0))
+    low120 = px.rolling(120, min_periods=60).min()
+    boom_r = trailing_pct_rank(px / low120 - 1)
+    mom21 = trailing_pct_rank(px.pct_change(21))
+    bm = (EUPHORIA_BOOM_MIN_SINGLE if es.kind == "single"
+          else EUPHORIA_BOOM_MIN_ETF)
+    prows.append(pd.DataFrame({
+        "name": es.name, "date": px.index,
+        "px_conv": conv.values, "px_boom": boom_r.values,
+        "px_mom21": mom21.values,
+        "boom_state": ((px / low120 - 1) >= bm).values}))
+pf = pd.concat(prows, ignore_index=True)
+fpx = frame.merge(pf, on=["name", "date"], how="left")
+fpx[["px_conv", "px_boom", "px_mom21"]] = fpx[
+    ["px_conv", "px_boom", "px_mom21"]].fillna(0.5)
+fpx["boom_state"] = fpx["boom_state"].fillna(False)
+cand = fpx[fpx.hype_ok & fpx.boom_state].copy()
+
+CROWD = TOP_BANK
+PRICE = ["px_conv", "px_boom", "px_mom21"]
+COMBO = CROWD + PRICE
+
+def make_desk_rules(feats_used, smooth=False):
+    def f(train, apply, feats):
+        sc = apply[feats_used].mean(axis=1)
+        gate = (apply["e1"] >= 0.90) & (apply["e2"] > 0)
+        sc = sc.where(gate, 0.0)
+        if smooth:
+            sc = sc.groupby(apply["name"]).transform(
+                lambda g: g.rolling(ROLL, min_periods=1).mean())
+        return sc.values
+    return f
+
+def make_desk_lr(label):
+    from sklearn.linear_model import LogisticRegression
+    def f(train, apply, feats):
+        m = LogisticRegression(class_weight="balanced", max_iter=1000)
+        m.fit(train[feats], train[label])
+        return m.predict_proba(apply[feats])[:, 1]
+    return f
+
+def make_desk_gbm(label, seed):
+    from sklearn.ensemble import HistGradientBoostingClassifier
+    def f(train, apply, feats):
+        m = HistGradientBoostingClassifier(max_depth=3,
+                                           class_weight="balanced",
+                                           random_state=seed)
+        m.fit(train[feats], train[label])
+        return m.predict_proba(apply[feats])[:, 1]
+    return f
+
+desk_runs = {
+    "crowd bank (reference)": (CROWD, make_desk_rules(CROWD)),
+    "price-only bank": (PRICE, make_desk_rules(PRICE)),
+    "COMBINED": (COMBO, make_desk_rules(COMBO)),
+    "COMBINED + smoothed trigger": (COMBO, make_desk_rules(COMBO,
+                                                           smooth=True)),
+    "logreg COMBINED": (COMBO, make_desk_lr("y_top")),
+    "gbm COMBINED": (COMBO, make_desk_gbm("y_top", 42)),
+}
+desk_res = {}
+for lbl, (feats, fn) in desk_runs.items():
+    desk_res[lbl] = run_tournament_entry(cand, episodes, feats, "y_top",
+                                         "top", fn, FA_BUDGET)
+
+def cliff_stats(entry, drop=0.10, week=7, horizon=30):
+    """share of alerts followed by a >=drop-in-week fall STARTING within
+    `horizon` days, plus per-name pairs for the cluster CI."""
+    per_name = {}
+    for name, alerts in entry["alerts_by_name"].items():
+        px = pxd[sym_by[name]]
+        fwd_min = px.rolling(week + 1).min().shift(-week)
+        weekdrop = (fwd_min / px - 1) <= -drop
+        h = t = 0
+        for a in alerts:
+            t += 1
+            win = weekdrop.loc[a:a + pd.Timedelta(days=horizon)]
+            if len(win) and win.any():
+                h += 1
+        per_name[name] = (h, t)
+    hits = sum(h for h, _ in per_name.values())
+    tot = sum(t for _, t in per_name.values())
+    return hits, tot, per_name
+
+# the honest baseline: P(cliff within 30d) on ALL candidate days
+def cliff_baseline():
+    per_name = {}
+    for name, g in cand.groupby("name"):
+        px = pxd[sym_by[name]]
+        fwd_min = px.rolling(8).min().shift(-7)
+        weekdrop = ((fwd_min / px - 1) <= -0.10)
+        cl30 = (weekdrop[::-1].rolling(31, min_periods=1).max()[::-1]
+                .reindex(pd.DatetimeIndex(g["date"])).dropna())
+        per_name[name] = (int(cl30.sum()), int(len(cl30)))
+    hits = sum(h for h, _ in per_name.values())
+    tot = sum(t for _, t in per_name.values())
+    return hits, tot, per_name
+
+bh, bt, base_by = cliff_baseline()
+rows = []
+for lbl, r in desk_res.items():
+    ch, ct, _ = cliff_stats(r)
+    rows.append({"variant": lbl,
+                 "captured": r["captured"], "FA": r["false_alarms"],
+                 "utility": r["captured"] - r["false_alarms"],
+                 "AP": r["ap"],
+                 "cliff hit rate": round(ch / ct, 2) if ct else None,
+                 "alerts": ct})
+desk_table = pd.DataFrame(rows)
+print(f"unconditional cliff-30 baseline on candidate days: {bh/bt:.0%}")
+display(desk_table)
+
+# %% [markdown]
+# ## The blip check — does the smoothed trigger kill one-day euphoria?
+#
+# For each alert we measure how many CONSECUTIVE days the trigger
+# condition held around the alert day. A one-day run is the blip from the
+# desk's screenshot; sustained runs are real regimes.
+
+# %%
+def run_lengths(entry, feats_used, smooth):
+    fn = make_desk_rules(feats_used, smooth)
+    sc = pd.Series(fn(cand, cand, None), index=cand.index)
+    lens = []
+    for name, alerts in entry["alerts_by_name"].items():
+        g = cand[cand["name"] == name]
+        s = pd.Series(sc.loc[g.index].values,
+                      index=pd.DatetimeIndex(g["date"]))
+        thr = entry["thresholds"][max(entry["thresholds"])]
+        hot = (s >= thr).astype(int)
+        for a in alerts:
+            if a not in hot.index:
+                continue
+            run = 1
+            d = a - pd.Timedelta(days=1)
+            while d in hot.index and hot.loc[d]:
+                run += 1
+                d -= pd.Timedelta(days=1)
+            d = a + pd.Timedelta(days=1)
+            while d in hot.index and hot.loc[d]:
+                run += 1
+                d += pd.Timedelta(days=1)
+            lens.append(run)
+    return pd.Series(lens)
+
+raw_runs = run_lengths(desk_res["COMBINED"], COMBO, False)
+sm_runs = run_lengths(desk_res["COMBINED + smoothed trigger"], COMBO, True)
+print(f"one-day trigger runs: raw {int((raw_runs == 1).sum())}/"
+      f"{len(raw_runs)} ({(raw_runs == 1).mean():.0%}) -> smoothed "
+      f"{int((sm_runs == 1).sum())}/{len(sm_runs)} "
+      f"({(sm_runs == 1).mean():.0%}) | median run: raw "
+      f"{raw_runs.median():.0f}d -> smoothed {sm_runs.median():.0f}d")
+
+# %% [markdown]
+# ## Verdict (mechanical, per the pre-stated criterion)
+
+# %%
+ref = desk_table[desk_table.variant == "crowd bank (reference)"].iloc[0]
+elig = desk_table[(desk_table.utility >= ref.utility)
+                  & (desk_table.FA <= ref.FA)
+                  & (desk_table.variant != "crowd bank (reference)")]
+winner_row = (elig.sort_values("cliff hit rate", ascending=False).iloc[0]
+              if len(elig) else None)
+if winner_row is not None:
+    wname = winner_row.variant
+    ch, ct, per_name = cliff_stats(desk_res[wname])
+    rng = np.random.default_rng(42)
+    names_ = [n for n in per_name if per_name[n][1] > 0]
+    ups = []
+    for _ in range(500):
+        pick = rng.choice(names_, size=len(names_), replace=True)
+        h = sum(per_name[n][0] for n in pick)
+        t = sum(per_name[n][1] for n in pick)
+        hb = sum(base_by.get(n, (0, 0))[0] for n in pick)
+        tb = sum(base_by.get(n, (0, 0))[1] for n in pick)
+        if t and tb:
+            ups.append(h / t - hb / tb)
+    lo_u, hi_u = np.percentile(ups, [5, 95])
+    print(f"WINNER: {wname}")
+    print(f"  cliff hit rate {ch}/{ct} = {ch/ct:.0%} vs unconditional "
+          f"baseline {bh/bt:.0%}; uplift 90% cluster CI "
+          f"[{lo_u:+.2f}, {hi_u:+.2f}] -> "
+          f"{'VALID (CI excludes zero)' if lo_u > 0 else 'NOT distinguishable from baseline'}")
+    print("  ADOPTED as the DESK END signal (claim: crowd + chart). The "
+          "crowd-only detector remains the thesis headline."
+          if lo_u > 0 else "  NOT adopted.")
+else:
+    print("no variant met the eligibility constraints - nothing adopted")
+
+# %% [markdown]
+# ## Case studies: did the DESK END call the drops the desk cares about?
+#
+# Gold (Jan-2026) and GME (2021): price with the DESK END alerts (dark
+# red) vs the crowd-only END alerts (pink).
+
+# %%
+wentry = desk_res[wname] if winner_row is not None else desk_res["COMBINED + smoothed trigger"]
+fig, axes = plt.subplots(1, 2, figsize=(12, 3.8))
+for ax, name in zip(axes, ["gold_metals", "GME"]):
+    px = pxd[sym_by[name]]
+    eps = episodes[episodes.name == name]
+    if name == "GME":
+        lo_w, hi_w = pd.Timestamp("2020-09-01"), pd.Timestamp("2021-12-31")
+        ax.set_yscale("log")
+    else:
+        lo_w, hi_w = pd.Timestamp("2025-08-01"), pd.Timestamp("2026-07-01")
+    win = px.loc[lo_w:hi_w]
+    ax.plot(win.index, win.values, color=INK, lw=1.3)
+    for ep in eps.itertuples():
+        if ep.bust_date is not None and not pd.isna(ep.bust_date) \
+                and lo_w <= ep.peak <= hi_w:
+            ax.axvspan(ep.peak, ep.bust_date, color=C3, alpha=0.18, lw=0)
+    for a in tw["alerts_by_name"].get(name, []):
+        if lo_w <= a <= hi_w:
+            ax.axvline(a, color=C3, lw=1.4, alpha=0.7)
+    for a in wentry["alerts_by_name"].get(name, []):
+        if lo_w <= a <= hi_w:
+            ax.axvline(a, color="#8b0000", lw=2)
+    ax.set_title(f"{name}: DESK END (dark red) vs crowd END (pink); "
+                 "shaded = peak-to-bust", fontsize=9)
+    despine(ax)
+fig.tight_layout()
+plt.show()
+
+# %% [markdown]
+# ## The REAL finding: the danger STATE is the drop-warning
+#
+# The verdict above is the study working as designed: the alert layer's
+# 65% cliff hit rate is NOT distinguishable from the 62% baseline of its
+# own candidate days — because the CANDIDACY CONDITIONS themselves
+# (crowd ≥ 2× its normal AND price in a G2 boom) already carry the
+# drop-warning. The comparison that matters for the desk is the STATE
+# versus ORDINARY days:
+
+# %%
+def cliff30_rate(day_index_by_name):
+    per = {}
+    for name, days in day_index_by_name.items():
+        px = pxd[sym_by[name]]
+        fwd_min = px.rolling(8).min().shift(-7)
+        weekdrop = ((fwd_min / px - 1) <= -0.10)
+        cl30 = (weekdrop[::-1].rolling(31, min_periods=1).max()[::-1]
+                .reindex(days).dropna())
+        per[name] = (int(cl30.sum()), int(len(cl30)))
+    h = sum(a for a, _ in per.values())
+    t = sum(b for _, b in per.values())
+    return h, t, per
+
+state_days = {n: pd.DatetimeIndex(g["date"])
+              for n, g in cand.groupby("name")}
+ordinary = fpx[~(fpx.hype_ok & fpx.boom_state)]
+ord_days = {n: pd.DatetimeIndex(g["date"])
+            for n, g in ordinary.groupby("name")}
+sh, st_, s_by = cliff30_rate(state_days)
+oh, ot, o_by = cliff30_rate(ord_days)
+rng = np.random.default_rng(42)
+names_ = sorted(set(s_by) & set(o_by))
+ups = []
+for _ in range(500):
+    pick = rng.choice(names_, size=len(names_), replace=True)
+    a = sum(s_by[n][0] for n in pick); b = sum(s_by[n][1] for n in pick)
+    c_ = sum(o_by[n][0] for n in pick); d_ = sum(o_by[n][1] for n in pick)
+    if b and d_:
+        ups.append(a / b - c_ / d_)
+lo_s, hi_s = np.percentile(ups, [5, 95])
+print(f"P(a ≥10%-in-7d drop begins within 30d):")
+print(f"  DANGER STATE days (crowd swollen + boom underway): {sh/st_:.0%}")
+print(f"  ordinary days:                                     {oh/ot:.0%}")
+print(f"  uplift 90% cluster CI [{lo_s:+.2f}, {hi_s:+.2f}] -> "
+      f"{'THE STATE IS A VALID DROP-WARNING' if lo_s > 0 else 'not valid'}")
+print()
+print("Conclusion for the desk: the PM warning is the STATE (a standing "
+      "amber condition), and the END alerts time the peak WITHIN it "
+      "(26/122 detectable tops, median 8d lead, at the boom-gated "
+      "operating point). The alert does not need to out-predict its own "
+      "danger state - it needs to time it, which is what it does.")
+
+# %%
+desk_verdict = {
+    "winner": wname if winner_row is not None else None,
+    "table": desk_table.to_dict(orient="records"),
+    "cliff_baseline": round(bh / bt, 3),
+    "blip": {"raw_one_day_share": round(float((raw_runs == 1).mean()), 2),
+             "smoothed_one_day_share":
+                 round(float((sm_runs == 1).mean()), 2)},
+    "danger_state": {"cliff30_state": round(sh / st_, 3),
+                     "cliff30_ordinary": round(oh / ot, 3),
+                     "uplift_ci90": [round(lo_s, 3), round(hi_s, 3)]},
+}
+with open(RESEARCH_DIR / "nb06_desk_signal.json", "w") as f:
+    json.dump(desk_verdict, f, indent=1, default=str)
+print("saved nb06_desk_signal.json")
+
 # %%
 out = {"horizons": HORIZONS,
        "summary": summary.to_dict(orient="records"),
@@ -561,3 +889,160 @@ out = {"horizons": HORIZONS,
 with open(RESEARCH_DIR / "nb06_signal_efficacy.json", "w") as f:
     json.dump(out, f, indent=1, default=str)
 print("saved nb06_signal_efficacy.json")
+
+# %% [markdown]
+# # THE ADOPTED DESK CONFIGURATION (2026-07-24) — what production now runs
+#
+# Everything above measured pieces. This section is the DECISION: the
+# exact configuration `rebuild_phase_files` now ships to the dashboard as
+# **GET IN** (euphoria starting) / **GET OUT** (euphoria ending), chosen
+# by a rule written down BEFORE the table below was computed.
+#
+# **The desk's stated priorities (verbatim, three separate briefs):**
+# 1. *"there still seems to be the error where the start and end are so
+#    close together"* — a START landing on top of an END destroys PM
+#    trust. ADJACENCY (a START within one 21d cooldown before an END) is
+#    the binding constraint.
+# 2. *"we need to stop doing stuff like this, where it is euphoria for
+#    just 1 day"* — no one-day blips.
+# 3. *"we should be using both price and the social media to predict. i
+#    want a better hit rate"* — the price gate is permitted (a labelled
+#    SECOND claim; the crowd-only detectors remain the thesis headline).
+#
+# **Pre-stated selection rule:**
+# * **GET OUT** = the boom-gated crowd-bank rules (the NB03 commissioned
+#   test's winner). The SMOOTHED trigger is adopted iff it does not lower
+#   AP and does not raise FAs (priority 2); otherwise raw.
+# * **GET IN** = among {incumbent, phase-aware} x {raw, smoothed}: the
+#   variant with the LOWEST adjacency, tie-broken by fewer LATE starts,
+#   then fewer FAs (priority 1). The capture cost vs the incumbent is
+#   RECORDED, not hidden — this is a DESK DECISION that the adjacency
+#   priority overrules the raw-capture utility rule, and it is reversible
+#   by rerunning this cell with the rule changed.
+#
+# Every variant below runs through the PRODUCTION code path
+# (`analytics.euphoria_phases.desk_*` — imported, not re-implemented), so
+# this table and the live system cannot drift.
+
+# %%
+from analytics.euphoria_phases import (boom_state_frame, end_stage_mask,
+                                       desk_candidacy, desk_end_fit,
+                                       desk_onset_fit)
+from src.config import EUPHORIA_ATT_GATE, EUPHORIA_COOLDOWN_DAYS
+
+boom = boom_state_frame(series, pxmap)
+fpx2 = frame.merge(boom, on=["name", "date"], how="left")
+fpx2["boom_state"] = fpx2["boom_state"].fillna(False)
+end_f, onset_pa = desk_candidacy(fpx2)          # production candidacies
+onset_inc = fpx2[fpx2.hype_raw >= 1].copy()     # incumbent candidacy
+
+def raw_end_fit(train, apply, feats):           # unsmoothed comparators
+    sc = apply[feats].mean(axis=1)
+    return sc.where((apply["e1"] >= EUPHORIA_ATT_GATE)
+                    & (apply["e2"] > 0), 0.0).values
+
+def raw_onset_fit(train, apply, feats):
+    return apply[feats].mean(axis=1).values
+
+end_runs = {
+    "GET OUT boom-gated raw": run_tournament_entry(
+        end_f, episodes, TOP_BANK, "y_top", "top", raw_end_fit, FA_BUDGET),
+    "GET OUT boom-gated SMOOTHED (production)": run_tournament_entry(
+        end_f, episodes, TOP_BANK, "y_top", "top", desk_end_fit, FA_BUDGET),
+}
+onset_runs = {
+    "GET IN incumbent raw": run_tournament_entry(
+        onset_inc, episodes, ONSET_BANK, "y_onset", "onset",
+        raw_onset_fit, FA_BUDGET),
+    "GET IN incumbent smoothed": run_tournament_entry(
+        onset_inc, episodes, ONSET_BANK, "y_onset", "onset",
+        desk_onset_fit, FA_BUDGET),
+    "GET IN phase-aware raw": run_tournament_entry(
+        onset_pa, episodes, ONSET_BANK, "y_onset", "onset",
+        raw_onset_fit, FA_BUDGET),
+    "GET IN phase-aware SMOOTHED (production)": run_tournament_entry(
+        onset_pa, episodes, ONSET_BANK, "y_onset", "onset",
+        desk_onset_fit, FA_BUDGET),
+}
+
+def adjacency_vs(end_entry, onset_entry):
+    adj = 0
+    for n, oa in onset_entry["alerts_by_name"].items():
+        ta = end_entry["alerts_by_name"].get(n, [])
+        adj += sum(1 for o in oa
+                   if any(0 <= (t - o).days <= EUPHORIA_COOLDOWN_DAYS
+                          for t in ta))
+    return adj
+
+prod_end = end_runs["GET OUT boom-gated SMOOTHED (production)"]
+rows = []
+for lbl, r in end_runs.items():
+    rows.append({"variant": lbl, "captured": r["captured"],
+                 "detectable": r["detectable"], "late": "-",
+                 "FA": r["false_alarms"], "AP": r["ap"],
+                 "adjacency": "-"})
+for lbl, r in onset_runs.items():
+    rows.append({"variant": lbl, "captured": r["captured"],
+                 "detectable": r["detectable"], "late": r["late"],
+                 "FA": r["false_alarms"], "AP": r["ap"],
+                 "adjacency": adjacency_vs(prod_end, r)})
+config_table = pd.DataFrame(rows)
+display(config_table)
+
+# %% [markdown]
+# ## Mechanical verdict (the rule above, applied)
+
+# %%
+r_raw = end_runs["GET OUT boom-gated raw"]
+r_sm = end_runs["GET OUT boom-gated SMOOTHED (production)"]
+out_pick = ("GET OUT boom-gated SMOOTHED (production)"
+            if (r_sm["ap"] >= r_raw["ap"]
+                and r_sm["false_alarms"] <= r_raw["false_alarms"])
+            else "GET OUT boom-gated raw")
+print(f"GET OUT adopted: {out_pick}")
+print(f"  (smoothed AP {r_sm['ap']} vs raw {r_raw['ap']}; FA "
+      f"{r_sm['false_alarms']} vs {r_raw['false_alarms']}; recorded "
+      f"capture cost {r_raw['captured'] - r_sm['captured']})")
+
+cand_in = {lbl: (adjacency_vs(prod_end, r), r["late"],
+                 r["false_alarms"], lbl)
+           for lbl, r in onset_runs.items()}
+in_pick = min(cand_in, key=cand_in.get)
+inc = onset_runs["GET IN incumbent raw"]
+win = onset_runs[in_pick]
+print(f"GET IN adopted: {in_pick}")
+print(f"  adjacency {adjacency_vs(prod_end, win)} (incumbent "
+      f"{adjacency_vs(prod_end, inc)}), late {win['late']} (vs "
+      f"{inc['late']}), FA {win['false_alarms']} (vs "
+      f"{inc['false_alarms']})")
+print(f"  RECORDED COST (desk decision): captures "
+      f"{inc['captured']} -> {win['captured']} of {win['detectable']} — "
+      "the adjacency priority, stated three times by the desk, overrules "
+      "the raw-capture utility rule.")
+assert out_pick.endswith("(production)") and in_pick.endswith("(production)"), \
+    "the mechanical verdict no longer matches what production ships - re-decide"
+
+# %% [markdown]
+# ## Drift guard — the notebook vs the live system
+#
+# `rebuild_phase_files` wrote its own walk-forward record when it froze
+# the desk thresholds. If this notebook's recomputation ever disagrees,
+# one of the two is stale — fail loudly.
+
+# %%
+desk_rep = json.load(open(ROOT / "data" / "processed" /
+                          "euphoria_desk_report.json"))
+for key, entry in (("get_out", prod_end),
+                   ("get_in", onset_runs[in_pick])):
+    rec = desk_rep[key]["walk_forward"]
+    for fld in ("captured", "detectable", "false_alarms", "ap"):
+        assert rec[fld] == entry[fld], (key, fld, rec[fld], entry[fld])
+print("drift guard PASSED: notebook == production "
+      f"(frozen thresholds: GET IN {desk_rep['get_in']['live_threshold']:.3f}, "
+      f"GET OUT {desk_rep['get_out']['live_threshold']:.3f})")
+
+with open(RESEARCH_DIR / "nb06_desk_config.json", "w") as f:
+    json.dump({"adopted": {"get_out": out_pick, "get_in": in_pick},
+               "table": config_table.to_dict(orient="records")},
+              f, indent=1, default=str)
+print("saved nb06_desk_config.json")

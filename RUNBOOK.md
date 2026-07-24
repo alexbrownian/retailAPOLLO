@@ -23,7 +23,7 @@ all: the dashboard's sidebar buttons run the same pipelines.
 | Extend prices to full history | PowerShell: `$env:PIPELINE_START_DATE="2017-01-01"; python pull_bloomberg_prices.py` (incremental — pulls only the missing 2017-2020 spans, then rerun the euphoria stage) |
 | Comments + Influence Tracker | `python update_comments.py` — the dedicated runner (desk decision 2026-07-24: comments LEFT the daily pipeline because they are the slow fetch — 10-50x post volume at the API's polite 1s/page). It prints an upfront time estimate (first run ~10-25 min; incremental ~1-4 min), fetches comments (watermarked, Ctrl-C-safe, resumable), then updates the influence board in one go. The store still builds itself from nothing on the first run and re-judges matured calls automatically. `python update_data.py --with-comments` restores the old bundled behaviour for one run. `python -m analytics.influence --top 20` prints the board |
 | Dynamic subreddit panel | NOTHING TO RUN — a monthly, watermarked review rides every live pull (`ingestion/discover_subreddits.py --if-due`): it mines collected text for r/NAME referrals, and a candidate with ≥100 unique panel referrers/28d (the A0 floor, reused) that passes the finance screen auto-joins the EXPLORATION tier (max 1/review). Audit trail: `ingestion/subreddit_panel.json` + `docs/panel_review_latest.md`. Force a review: `python ingestion/discover_subreddits.py` (`--report-only` to rank without adding) |
-| Rebuild the ONSET detector (Start/End radar data) | `python -m analytics.run_analytics --what phases` — LIVE mode: episode catalog + today's scores/alerts at the frozen threshold (seconds); add `--research` for the full walk-forward scorecard + threshold re-selection |
+| Rebuild the ONSET detector + DESK signals (GET IN / GET OUT) | `python -m analytics.run_analytics --what phases` — LIVE mode: episode catalog + today's scores/alerts at the frozen thresholds (seconds), including `euphoria_desk.parquet` (the boom-gated smoothed GET OUT + phase-aware smoothed GET IN the dashboard shows); add `--research` for the full walk-forward scorecards + threshold re-freeze |
 | Re-run the phases research notebooks | `cd notebooks` then `jupyter nbconvert --to notebook --execute --inplace 01_*.ipynb 02_*.ipynb 03_*.ipynb 04_*.ipynb 06_*.ipynb` — every figure/number re-renders from current data (06 = the full signal-efficacy report: forward returns at 3/10/21/84d, hit rates vs baseline, event study, overlay PnL, per-name tables) |
 | Influential-users model (notebook 05) | AFTER the first live pull has seeded the influence store: `jupyter nbconvert --to notebook --execute --inplace notebooks/05_influence_users_model.ipynb` — a standing experiment, re-run any time |
 | Run the tests | `python -m pytest tests/ -v` |
@@ -128,7 +128,11 @@ git push
   per-instrument charts with the state ON the chart: BLUE vertical line
   = euphoria starting, RED vertical line = euphoria ending, euphoria
   level underneath, "EUPHORIA STARTING/ENDING NOW" badge in the title.
-  A single caption states the validated record; the walk-forward
+  An AMBER band on the price panel marks the DANGER STATE (crowd ≥2×
+  its normal AND price ≥25/50% above its 120d low): sharp drops (≥10%
+  in a week) begin within 30d on ~62% of these days vs ~19% of ordinary
+  days (NB06) — the band is the standing PM warning, the red line the
+  timing call. A single caption states the validated record; the walk-forward
   tables, ablation, ML challenger and tournament live in
   `notebooks/01-04` + `docs/DECISIONS.xlsx`, not on the terminal
 - **Trade desk** — the live ledger, scorecard, certainty ranking, signal

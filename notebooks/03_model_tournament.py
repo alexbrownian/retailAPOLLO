@@ -554,6 +554,136 @@ euph.EUPHORIA_BOOM_MIN_ETF, euph.EUPHORIA_BOOM_MIN_SINGLE = orig
 pd.DataFrame(sens_rows)
 
 # %% [markdown]
+# ## Commissioned test (desk, 2026-07-24): a PRICE-ASSISTED END gate
+#
+# **The desk's question:** does requiring an actual price boom before an
+# END alert can fire ("it has to rise X% first, so we don't flag random
+# fluctuations") improve accuracy?
+#
+# **Design, pre-stated:**
+# * The gate is **G2's own boom thresholds** — price ≥ 25% (ETF) / 50%
+#   (single) above its trailing 120d low, computed from PAST prices only
+#   (no look-ahead; no new constant). A half-strength gate is included as
+#   a dose-response check: a real mechanism should show a gradient.
+# * **The claim changes.** This variant is NOT crowd-only: it defends
+#   "the crowd called it and the chart confirmed a boom", not "the crowd
+#   alone called it". It can therefore only ship as a clearly-labelled
+#   SECOND signal — never silently replace the crowd-only detector. (The
+#   project's earlier price-assisted variant captured 46% vs 23%; that
+#   delta was recorded as the cost of the crowd-only claim. This test
+#   re-measures it under the current discipline.)
+# * **Adoption rule:** offer as a labelled overlay if, on MATCHED test
+#   years, it improves BOTH capture and utility with absolute FAs not
+#   worse, and the capture gain's cluster-bootstrap CI excludes zero.
+
+# %%
+from src.config import EUPHORIA_BOOM_MIN_ETF, EUPHORIA_BOOM_MIN_SINGLE
+from analytics.euphoria_phases import (classify_top_alerts, _eps_arrays,
+                                       _day_ints)
+
+def boom_state_col(mult):
+    rows = []
+    for es in series:
+        px = pxmap[es.symbol].dropna().asfreq("D").ffill()
+        low120 = px.rolling(120, min_periods=60).min()
+        bm = (EUPHORIA_BOOM_MIN_SINGLE if es.kind == "single"
+              else EUPHORIA_BOOM_MIN_ETF) * mult
+        st = (px / low120 - 1) >= bm
+        rows.append(pd.DataFrame({"name": es.name, "date": st.index,
+                                  "st": st.values}))
+    return pd.concat(rows, ignore_index=True)
+
+fpx = frame.merge(boom_state_col(1.0).rename(columns={"st": "boom_full"}),
+                  on=["name", "date"], how="left")
+fpx = fpx.merge(boom_state_col(0.5).rename(columns={"st": "boom_half"}),
+                on=["name", "date"], how="left")
+fpx[["boom_full", "boom_half"]] = fpx[["boom_full", "boom_half"]].fillna(False)
+
+variants = {
+    "crowd-only (incumbent)": fpx[fpx.hype_ok].copy(),
+    "+ half boom gate": fpx[fpx.hype_ok & fpx.boom_half].copy(),
+    "+ FULL boom gate (G2)": fpx[fpx.hype_ok & fpx.boom_full].copy(),
+}
+entries_px = {lbl: run_tournament_entry(fr, episodes, TOP_BANK, "y_top",
+                                        "top", make_rules("y_top"),
+                                        FA_BUDGET)
+              for lbl, fr in variants.items()}
+
+# matched test years: per-iy rates are only comparable on the SAME years
+common_years = set.intersection(*[set(e["test_years"])
+                                  for e in entries_px.values()])
+def matched_scores(entry):
+    captured, fa = set(), 0
+    eps_by = dict(tuple(episodes.groupby("name")))
+    for name, alerts in entry["alerts_by_name"].items():
+        al = [a for a in alerts if a.year in common_years]
+        if not al:
+            continue
+        res = classify_top_alerts(
+            _day_ints(pd.DatetimeIndex(sorted(al))),
+            _eps_arrays(eps_by.get(name, episodes.iloc[0:0])))
+        captured |= {(name, p) for p in res["captured"]}
+        fa += len(res["fa"])
+    det = episodes[episodes.year.isin(common_years) & episodes.top_detectable]
+    return len(captured), len(det), fa
+
+rows = []
+for lbl, e in entries_px.items():
+    cap, det, fa = matched_scores(e)
+    rows.append({"variant": lbl, "captured": cap, "detectable": det,
+                 "capture_rate": round(cap / det, 3),
+                 "false_alarms": fa, "utility": cap - fa,
+                 "AP": e["ap"], "AUROC": e["auroc"]})
+px_table = pd.DataFrame(rows)
+display(px_table)
+
+# cluster-bootstrap CI of the capture-rate GAIN (full gate vs incumbent)
+def per_name_caps(entry):
+    eps_by = dict(tuple(episodes.groupby("name")))
+    out = {}
+    for es in series:
+        name = es.name
+        al = [a for a in entry["alerts_by_name"].get(name, [])
+              if a.year in common_years]
+        res = classify_top_alerts(
+            _day_ints(pd.DatetimeIndex(sorted(al))),
+            _eps_arrays(eps_by.get(name, episodes.iloc[0:0]))) if al             else {"captured": set()}
+        det = episodes[(episodes.name == name)
+                       & episodes.year.isin(common_years)
+                       & episodes.top_detectable]
+        out[name] = (len(res["captured"]), len(det))
+    return out
+
+inc_c = per_name_caps(entries_px["crowd-only (incumbent)"])
+ful_c = per_name_caps(entries_px["+ FULL boom gate (G2)"])
+rng = np.random.default_rng(42)
+names_ = list(inc_c)
+gains = []
+for _ in range(500):
+    pick = rng.choice(names_, size=len(names_), replace=True)
+    ci_, cf_, d_ = 0, 0, 0
+    for n in pick:
+        ci_ += inc_c[n][0]; cf_ += ful_c[n][0]; d_ += inc_c[n][1]
+    if d_:
+        gains.append((cf_ - ci_) / d_)
+lo_g, hi_g = np.percentile(gains, [5, 95])
+print(f"capture-rate GAIN (full gate − incumbent), 90% cluster CI: "
+      f"[{lo_g:+.3f}, {hi_g:+.3f}] -> "
+      f"{'CI excludes zero' if lo_g > 0 else 'CI includes zero'}")
+
+inc_row = px_table.iloc[0]; ful_row = px_table.iloc[2]
+adopt = (ful_row.captured > inc_row.captured
+         and ful_row.utility > inc_row.utility
+         and ful_row.false_alarms <= inc_row.false_alarms
+         and lo_g > 0)
+print("VERDICT:", ("OFFER AS LABELLED SECOND SIGNAL - all pre-stated "
+                   "conditions met. The crowd-only detector remains the "
+                   "headline (its claim is different, not worse); the "
+                   "price-assisted variant is the desk overlay for "
+                   "risk-timing accuracy.") if adopt else
+      "NOT offered - pre-stated conditions not met.")
+
+# %% [markdown]
 # ## Verdict & what ships
 #
 # The verdict cells above are mechanical applications of the criterion in

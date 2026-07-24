@@ -1,0 +1,62 @@
+{
+ "adopted": {
+  "get_out": "GET OUT boom-gated SMOOTHED (production)",
+  "get_in": "GET IN phase-aware SMOOTHED (production)"
+ },
+ "table": [
+  {
+   "variant": "GET OUT boom-gated raw",
+   "captured": 26,
+   "detectable": 122,
+   "late": "-",
+   "FA": 41,
+   "AP": 0.435,
+   "adjacency": "-"
+  },
+  {
+   "variant": "GET OUT boom-gated SMOOTHED (production)",
+   "captured": 24,
+   "detectable": 122,
+   "late": "-",
+   "FA": 39,
+   "AP": 0.449,
+   "adjacency": "-"
+  },
+  {
+   "variant": "GET IN incumbent raw",
+   "captured": 29,
+   "detectable": 125,
+   "late": 21,
+   "FA": 169,
+   "AP": 0.098,
+   "adjacency": 20
+  },
+  {
+   "variant": "GET IN incumbent smoothed",
+   "captured": 28,
+   "detectable": 125,
+   "late": 18,
+   "FA": 133,
+   "AP": 0.1,
+   "adjacency": 18
+  },
+  {
+   "variant": "GET IN phase-aware raw",
+   "captured": 24,
+   "detectable": 125,
+   "late": 12,
+   "FA": 166,
+   "AP": 0.084,
+   "adjacency": 8
+  },
+  {
+   "variant": "GET IN phase-aware SMOOTHED (production)",
+   "captured": 20,
+   "detectable": 125,
+   "late": 10,
+   "FA": 124,
+   "AP": 0.084,
+   "adjacency": 2
+  }
+ ]
+}

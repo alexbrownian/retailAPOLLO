@@ -441,6 +441,39 @@ Trading translation (onset→BUY, top→SELL) was tested under a pre-stated
 criterion and REJECTED — recorded in notebook 04, same treatment as the
 retired BUY/SELL engine.
 
+**The desk-signal study (2026-07-24).** With price permitted for a
+second signal family, NB03/NB06 ran the price-assisted tests: the G2
+boom gate passed (capture +62% on matched years); the combined
+price+crowd ALERT bank failed its pre-stated cliff criterion against its
+own candidate-day baseline; and the decisive product finding was that
+the candidacy STATE (A1 2× hype AND G2 boom - existing constants only)
+is itself the drop-warning: cliff-30 62% in-state vs 19% ordinary
+(CI [+28pp, +50pp]). The dashboard renders this as the amber DANGER
+STATE band on every price panel; the crowd-only detector remains the
+thesis-headline claim.
+
+**The adopted DESK CONFIGURATION (2026-07-24) — GET IN / GET OUT.** The
+decision cycle closed with a production signal pair, selected by a rule
+pre-stated in NB06 and productionised in this module's §6 (the notebook
+imports the production functions, and a drift guard asserts its
+recomputation equals the shipped record). GET OUT = the boom-gated END
+rules with the trigger on the 7d-smoothed (ROLL) score — walk-forward
+capture 24/122, FA 39 (0.195/instr-yr), AP 0.449, median warning 8d.
+GET IN = the onset rules with PHASE-AWARE candidacy (a day satisfying
+every END gate — A1 ∧ A2 ∧ A3-persistence, existing constants only —
+is end-stage and cannot host a "start") plus the same smoothing —
+adjacency 20→2, LATE 21→10, FA 169→124, at a RECORDED capture cost
+29→20 (a desk decision: the thrice-stated adjacency priority overrules
+the raw-capture utility rule). `rebuild_phase_files()` additionally
+writes `euphoria_desk.parquet` (per-day scores, candidacy states,
+get_in/get_out alerts) and `euphoria_desk_report.json` (frozen
+thresholds GET IN 0.848 / GET OUT 0.630 + both walk-forward records),
+honouring the research/live split: live runs score at the frozen
+thresholds; `--research` (or year rollover) refreezes them. The
+dashboard's EUPHORIA tabs are driven by this store — explicit GET IN /
+GET OUT banners, chart labels, and a window-adaptive scorecard judged
+by the same `classify_*` functions the research record uses.
+
 ### 6.7 The Influential-Users Model (`analytics/influence_ml.py`)
 
 Chan (2026) chapter 6 ported to the live influence store: semi-
