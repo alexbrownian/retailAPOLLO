@@ -22,6 +22,22 @@ joblib             # parallel scoring across CPU cores
 # extraction
 wordfreq           # word-ticker screening fallback signal
 
+# influence research (notebook 05 only - the live pipeline and the dashboard
+# both run without it, so a machine that only serves the dashboard can skip
+# this line; analytics/influence_ml.py needs it for the model tournament)
+scikit-learn
+
+# re-running the notebooks (research only; skip on a dashboard-only machine).
+# NOTE the invocation: always `python -m jupyter nbconvert ...`, never bare
+# `jupyter ...`.  pip drops the jupyter.exe launcher in the Scripts folder of
+# whichever Python owns that pip, and on Windows that folder is usually NOT on
+# PATH - so bare `jupyter` raises CommandNotFoundException even though the
+# package is installed correctly.  `python -m` skips the launcher and asks the
+# interpreter for the module, so it works wherever plain `python` works.
+jupyter
+nbconvert
+matplotlib         # the notebooks' figures (the dashboard uses plotly instead)
+
 # dashboard
 streamlit
 plotly

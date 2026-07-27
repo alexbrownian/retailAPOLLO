@@ -59,6 +59,11 @@ SEEN_FILE = os.path.join(PROJECT_ROOT, "data", "reference",
 WM_FILE = os.path.join(PROJECT_ROOT, "data", "reference",
                        "reddit_comments_watermark.json")
 SUBS_FILE = os.path.join(PROJECT_ROOT, "ingestion", "finance_subreddits.txt")
+# single-instance guard - two crawls writing one output path interleave
+# their zstd frames and corrupt the file (July 2026: two overlapping
+# backfills destroyed a 35-hour pull that way)
+LOCK_FILE = os.path.join(PROJECT_ROOT, "data", "reference",
+                         "reddit_comments_fetch.lock")
 API = "https://arctic-shift.photon-reddit.com/api/comments/search"
 PAGE = 100
 PAUSE_S = 1.0
@@ -95,6 +100,80 @@ def _save(path, obj):
     os.replace(path + ".tmp", path)
 
 
+def _free_path(path: str) -> str:
+    """Never clobber an existing raw file. A re-run of the same date range
+    only writes ids the seen-file has not got, so the earlier file is still
+    wanted - the new one lands beside it as ..._2, ..._3."""
+    if not os.path.exists(path):
+        return path
+    stem = path[:-len(".jsonl.zst")]
+    n = 2
+    while os.path.exists(f"{stem}_{n}.jsonl.zst"):
+        n += 1
+    return f"{stem}_{n}.jsonl.zst"
+
+
+def _promote(tmp_path: str, out_path: str, tries: int = 5):
+    """Rename tmp -> final, retrying briefly. On Windows an indexer or
+    sync client can hold a just-written file open for a moment; the old
+    code took the first PermissionError as fatal and stranded the data."""
+    for i in range(tries):
+        try:
+            os.replace(tmp_path, out_path)
+            return
+        except PermissionError:
+            if i == tries - 1:
+                print(f"could not rename {os.path.basename(tmp_path)} - the "
+                      f"data is intact, rename it to "
+                      f"{os.path.basename(out_path)} by hand", flush=True)
+                raise
+            time.sleep(2 * (i + 1))
+
+
+def _pid_alive(pid: int) -> bool:
+    """Is that process still running? (Windows: tasklist has no cheap
+    equivalent of signal 0, so ask the OS via os.kill's ERROR_ACCESS path.)"""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True          # exists, owned by someone else
+    except OSError:
+        return False
+    return True
+
+
+def acquire_lock(label: str):
+    """Take the single-instance lock, or explain who holds it and stop.
+    A lock whose PID is gone is stale (crashed run) and gets taken over."""
+    os.makedirs(os.path.dirname(LOCK_FILE), exist_ok=True)
+    held = _load(LOCK_FILE)
+    if held and _pid_alive(int(held.get("pid", 0))):
+        print(f"another comment fetch is already running "
+              f"(pid {held['pid']}, label {held.get('label')}, started "
+              f"{held.get('started')}).\nTwo crawls writing the same output "
+              f"corrupt it - wait for that one, or kill it first:\n"
+              f"  taskkill /PID {held['pid']} /F", flush=True)
+        return False
+    if held:
+        print(f"clearing stale lock from dead pid {held.get('pid')}",
+              flush=True)
+    _save(LOCK_FILE, {"pid": os.getpid(), "label": label,
+                      "started": datetime.datetime.now().isoformat(
+                          timespec="seconds")})
+    return True
+
+
+def release_lock():
+    try:
+        os.remove(LOCK_FILE)
+    except OSError:
+        pass
+
+
 def to_epoch(v) -> int:
     """One time format everywhere: YYYY-MM-DD (or any ISO date) -> epoch
     seconds at UTC midnight; a value that is already all digits passes
@@ -129,18 +208,18 @@ def fetch_page(sub, after, before, retries=4):
                 return r.json().get("data", [])
             if r.status_code == 429 or r.status_code >= 500:
                 print(f"    HTTP {r.status_code} - backing off "
-                      f"{20*(attempt+1)}s")
+                      f"{20*(attempt+1)}s", flush=True)
             else:
                 print(f"    HTTP {r.status_code} (client error - not "
-                      f"retrying): {r.text[:200]}")
+                      f"retrying): {r.text[:200]}", flush=True)
                 return None
         except requests.RequestException as e:
             print(f"    network problem ({type(e).__name__}) - retrying in "
                   f"{20*(attempt+1)}s. (wifi/VPN drop? safe to Ctrl-C and "
                   "re-run later: the seen-file dedups everything already "
-                  "saved)")
+                  "saved)", flush=True)
         time.sleep(20 * (attempt + 1))
-    print(f"    r/{sub}: giving up this run")
+    print(f"    r/{sub}: giving up this run", flush=True)
     return None
 
 
@@ -175,9 +254,11 @@ def main():
 
     if args.test:
         rows = fetch_page(subs[0], after, before) or []
-        print(f"TEST: r/{subs[0]} returned {len(rows)} comments; sample:")
+        print(f"TEST: r/{subs[0]} returned {len(rows)} comments; sample:",
+              flush=True)
         for rec in rows[:3]:
-            print(f"  u/{rec.get('author')}: {str(rec.get('body',''))[:60]}")
+            print(f"  u/{rec.get('author')}: {str(rec.get('body',''))[:60]}",
+                  flush=True)
         return 0
 
     seen_obj = _load(SEEN_FILE)
@@ -185,61 +266,99 @@ def main():
     seen = set(seen_list)
     marks = _load(WM_FILE)
 
+    if not acquire_lock(label):
+        return 1
+
     os.makedirs(OUT_DIR, exist_ok=True)
-    out_path = os.path.join(OUT_DIR, f"comments_{label}.jsonl.zst")
-    writer = zstandard.ZstdCompressor().stream_writer(
-        open(out_path + ".tmp", "wb"))
+    out_path = _free_path(os.path.join(OUT_DIR,
+                                       f"comments_{label}.jsonl.zst"))
+    # the .tmp name carries our PID: even if the lock is ever defeated,
+    # two runs can no longer share one output stream
+    tmp_path = f"{out_path}.{os.getpid()}.tmp"
+    raw = open(tmp_path, "wb")
+    writer = zstandard.ZstdCompressor().stream_writer(raw)
     total = 0
-    for sub in subs:
-        sub_after = after                     # already epoch (see to_epoch)
-        wm = marks.get(sub)
-        if incremental and wm:
-            # start from the watermark (minus a 1-day overlap for late
-            # arrivals) if that is LATER than the lookback window start
-            sub_after = max(after, int(wm) - 86400)
-        got, newest, completed = 0, int(wm) if wm else 0, True
-        cursor = before                       # epoch, stays epoch
-        while True:
-            rows = fetch_page(sub, sub_after, cursor)
-            if rows is None:
-                completed = False
-                break
-            if not rows:
-                break
-            for rec in rows:
-                cid = str(rec.get("id", ""))
-                if not cid or cid in seen:
-                    continue
-                seen.add(cid)
-                seen_list.append(cid)
-                slim = {k: rec.get(k) for k in KEEP}
-                newest = max(newest, int(rec.get("created_utc", 0) or 0))
-                writer.write((json.dumps(slim) + "\n").encode("utf-8"))
-                got += 1
-            oldest = min(int(r["created_utc"]) for r in rows)
-            if len(rows) < PAGE:
-                break
-            cursor = oldest                   # epoch int, same as page 1
+    interrupted = False
+    try:
+        for sub in subs:
+            print(f"  r/{sub:<24} starting crawl", flush=True)
+            sub_after = after                 # already epoch (see to_epoch)
+            wm = marks.get(sub)
+            if incremental and wm:
+                # start from the watermark (minus a 1-day overlap for late
+                # arrivals) if that is LATER than the lookback window start
+                sub_after = max(after, int(wm) - 86400)
+            got, newest, completed = 0, int(wm) if wm else 0, True
+            cursor = before                   # epoch, stays epoch
+            page_num = 0
+            while True:
+                page_num += 1
+                print(f"    fetching page {page_num}...", flush=True)
+                rows = fetch_page(sub, sub_after, cursor)
+                if rows is None:
+                    completed = False
+                    break
+                if not rows:
+                    print(f"    page {page_num}: no rows", flush=True)
+                    break
+                for rec in rows:
+                    cid = str(rec.get("id", ""))
+                    if not cid or cid in seen:
+                        continue
+                    seen.add(cid)
+                    seen_list.append(cid)
+                    slim = {k: rec.get(k) for k in KEEP}
+                    newest = max(newest, int(rec.get("created_utc", 0) or 0))
+                    writer.write((json.dumps(slim) + "\n").encode("utf-8"))
+                    got += 1
+                oldest = min(int(r["created_utc"]) for r in rows)
+                print(f"    page {page_num}: +{got} new comments so far "
+                      f"({len(rows)} rows)", flush=True)
+                if len(rows) < PAGE:
+                    break
+                cursor = oldest               # epoch int, same as page 1
+                time.sleep(PAUSE_S)
+            print(f"  r/{sub:<24} {got:>6} new comments", flush=True)
+            if incremental and completed and newest:
+                marks[sub] = newest
+            total += got
             time.sleep(PAUSE_S)
-        print(f"  r/{sub:<24} {got:>6} new comments")
-        if incremental and completed and newest:
-            marks[sub] = newest
-        total += got
-        time.sleep(PAUSE_S)
-    writer.close()
+    except KeyboardInterrupt:
+        interrupted = True
+        print("\ninterrupted - keeping the comments fetched so far",
+              flush=True)
+    except Exception as e:                    # noqa: BLE001 - see below
+        # ANY crash mid-crawl still promotes what was fetched. The old code
+        # let the exception escape before the rename, which left hours of
+        # good data in an orphaned .tmp the influence ingester cannot see.
+        interrupted = True
+        print(f"\ncrawl failed ({type(e).__name__}: {e}) - keeping the "
+              f"comments fetched so far", flush=True)
+    finally:
+        # close BOTH layers before any rename: the zstd stream flushes its
+        # final frame, then the OS handle is released (a still-open handle
+        # is what makes os.replace fail with WinError 32 on Windows)
+        try:
+            writer.close()
+        finally:
+            raw.close()
+        release_lock()
 
     if total == 0:
-        os.remove(out_path + ".tmp")
-        print("no new comments this run")
+        os.remove(tmp_path)
+        print("no new comments this run", flush=True)
         return 0
-    os.replace(out_path + ".tmp", out_path)
+    _promote(tmp_path, out_path)
     seen_obj["ids"] = seen_list[-MAX_SEEN:]
     _save(SEEN_FILE, seen_obj)
+    # the watermark only advanced for subreddits that finished, so a
+    # partial run is always safe to simply re-run - nothing duplicates
     if incremental:
         _save(WM_FILE, marks)
-    print(f"comments: {total:,} new -> {os.path.basename(out_path)}")
-    print("next:  python -m analytics.influence --build")
-    return 0
+    print(f"comments: {total:,} new -> {os.path.basename(out_path)}",
+          flush=True)
+    print("next:  python -m analytics.influence --update", flush=True)
+    return 130 if interrupted else 0
 
 
 if __name__ == "__main__":

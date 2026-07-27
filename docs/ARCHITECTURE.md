@@ -138,19 +138,96 @@ rate-limit pacing (StockTwits ~1.5 s/symbol, X 5 s/request, Arctic Shift
 and the total equals the slowest fetcher rather than the sum of all
 three.
 
-### 3.1b Comments are OPTIONAL and decoupled (desk decision 2026-07-24)
+### 3.1b Comments are BUDGETED, not optional (desk decision 2026-07-27)
 
-Comments are the slow species (10-50x post volume at the API's polite
-1s/page), so the daily pipeline now fetches WITHOUT them
-(`fetch_all.py --skip-comments` is what `update_data.py` passes by
-default; `--with-comments` restores the bundle). The dedicated runner is
-**`update_comments.py`**: watermark-aware time estimate up front, the
-comment fetch (resumable — cancelling never loses work), then the
-influence-board update, in one command. The dashboard has a matching
-sidebar button ("pull comments + influence board") with the same
-estimate. Nothing else changed: the influence store still self-creates
-on the first run, and `run_analytics`'s influence stage remains a
-zero-touch no-op when no new raw comments exist.
+**This reverses the 2026-07-24 decision** that took comments out of the
+daily pipeline. That decision made runs fast but left the influence
+board rescoring whatever comments happened to be on disk — so the
+"most influential users right now" panel could be quoting a month-old
+crowd. Freshness is the whole point of that panel, so comments rejoined
+the live pipeline and their cost was made a budget instead of a switch.
+
+**The problem.** The panel produces a measured ~14,000 comments/day
+(derivation in §3.1b-i below), i.e. ~140 API pages/day. At the Arctic
+Shift politeness contract of 1 request/second a **7-day** gap costs
+~16.5 minutes of pure fetching, against a desk ceiling of ~10 minutes
+for the entire refresh. Weekly runs, the full 17-subreddit panel, and a
+10-minute ceiling cannot all three hold.
+
+**What was rejected.** A stopwatch — start the crawl, kill it at N
+minutes — was rejected because it makes the amount of data collected a
+function of network luck on the day: no two runs are comparable and "why
+did this run stop there?" has no answer. Splitting the panel across W
+parallel workers was rejected because W workers each pausing a second is
+an aggregate W req/s, which breaks the contract the project accepted
+when it chose a free public API. Narrowing the window uniformly was
+rejected because it advances watermarks past uncollected days, silently
+losing data. Ranking subreddits by measured yield would require adding a
+`subreddit` column to the committed influence store.
+
+**What ships instead** (`src/pipeline_budget.py`) is arithmetic over
+quantities measured on the machine that runs the pipeline:
+
+1. A **stage ledger** (`data/reference/pipeline_stage_times.json`) times
+   every non-fetch stage, so the fetch budget is the ceiling minus what
+   this machine *actually* spends on analytics, folding and prices —
+   not minus a number someone typed. Measured on the reference machine:
+   analytics 73.3 s, fold 0.4 s, coverage 0.3 s, hydrate 0.01 s, prices
+   ~60 s ⇒ residual ≈ 465 pages ≈ 7.8 min ≈ **3.3 days** of volume.
+2. A **cost ledger** (`data/reference/reddit_comments_cost.json`) records
+   pages/day and comments/page **per subreddit** — r/wallstreetbets in a
+   mania and r/Bogleheads on a quiet Tuesday differ by two orders of
+   magnitude, so one panel average would misplan both.
+3. An **allocation** that spends the page allowance in proportion to what
+   each subreddit owes (watermark gap × its measured pages/day), cutting
+   every subreddit by the *same* proportion when the allowance falls
+   short, with a floor of one page each so no community is starved off
+   the board and then falsely reads as having no influential users.
+
+Both ledgers are EWMA-smoothed with **α = 2/(N+1)**, the standard
+EWMA-to-SMA span identity, where N = `PANEL_REFERRAL_WINDOW` / run
+cadence = 28/3.2 ≈ 9 runs ⇒ **α = 0.2**. Reusing the project's own 28-day
+measurement window (the same one E2/E3/A0 use) rather than inventing a
+timescale means the cost estimate tracks regime change on the same clock
+the features do. Both ledgers are gitignored: they measure one machine's
+speed, so committing them would plan the laptop's run with the desktop's
+numbers. Each falls back to a measured bootstrap prior in `src/config.py`
+and re-measures itself in one run.
+
+**Running short is a deferral, not data loss.** The crawl walks
+newest-first and a watermark only advances over ground the run fully
+covered (`if incremental and completed and newest`), so a capped
+subreddit keeps its old watermark and the next run resumes exactly where
+this one stopped. Every deferral is printed; the pipeline never silently
+collects less than it claims.
+
+**The one legitimate speedup** was removing dead time: the fetcher used
+to `sleep(1.0)` *after* each round-trip, so its true period was RTT + 1 s
+and it ran ~1.3-1.4× slower than the contract allows. A shared `Pacer`
+now sleeps the **remainder** of the second — same request rate, no idle
+gap.
+
+**Consequence for the desk:** run the pipeline **about twice a week**
+(every ≤3.3 days) and nothing is ever deferred. `update_data.py` prints
+that cadence, computed from its own measurements, in every RUN SUMMARY.
+`--skip-comments` opts out for one run; `--with-comments` is accepted and
+ignored (kept so older command lines do not die on an unknown argument).
+`update_comments.py` survives as the **unbudgeted** runner for backfills
+and for catching up after the pipeline has been idle for weeks, and its
+runtime estimate is now computed from the cost ledger rather than quoted
+as a hand-written range. The dashboard's sidebar button still calls it.
+
+#### 3.1b-i Where ~14,000 comments/day came from
+
+Nothing was assumed. Using only the committed influence store: the
+intersection of comment-sourced call `rec_id`s with `reply_edges`
+`rec_id`s gives 12,010 of 417,208 comments that also produced a call, so
+the **call rate among comments is 2.879%**. Two independent months of
+observed comment-calls per day (2026-06: 403/day; 2026-07: 414/day)
+divided by that rate give ~14,000 and ~14,400 comments/day — agreeing
+within 3%. Caveat recorded for the defence: the call rate is measured on
+the edge-covered subpopulation, since only 48% of comment-calls carry a
+resolvable reply edge.
 
 ### 3.1c The DYNAMIC subreddit panel (desk decisions 2026-07-24)
 
@@ -490,6 +567,49 @@ perturbation. Driven by `notebooks/05` as a STANDING EXPERIMENT against
 the live store (which seeds on the first live pull); a pre-stated
 maturity criterion (≥130 labelled positives) gates any desk use.
 
+**RUN AND CONCLUDED, 2026-07-27.** The store matured (5,071 authors with
+at least one judged call), the experiment ran, and it returned a
+**negative result that is now load-bearing for the design**. The model
+bank grew to the thesis's eight architectures — `logit`, `mlp`,
+`label_prop`, `gcn_lite`, `sage_lite`, `mixhop_lite`, `h2gcn_lite`, plus
+the random floor. (GAT is deliberately NOT ported: attention has to
+*learn* per-edge weights, and ~250 positives cannot support that. The
+notebook records the refusal rather than shipping a layer it cannot
+train.) Findings, in the order they constrain the product:
+
+1. `random → logit` is a real gain (+0.0464 AP, CI [+0.0334, +0.0593],
+   10/10 paired seeds) — behaviour alone carries signal.
+2. **No graph layer earns its complexity.** mixhop +0.0011 CI
+   [−0.0063, +0.0085]; sage_lite −0.0035; h2gcn −0.0078 CI [−0.0130,
+   −0.0026] (significantly *worse*); gcn −0.0132; mlp −0.0326. Parsimony
+   ships `logit`.
+3. **Why, measured rather than asserted:** positive-class node homophily
+   is **0.0948** against 0.9628 for negatives, and DICE perturbation
+   *raises* AP (0.1031 → 0.2063 as 0→50% of edges are corrupted). Good
+   callers do not cluster, so message-passing averages signal away. Chan
+   found the same direction; our split is sharper.
+4. **It does not generalise to new authors.** On a tenure/cohort split
+   the shipped model sits at the random floor (lift −0.046). This is the
+   finding that decides the dashboard: the influence tab ranks authors by
+   their **measured** record and files the model as a research exhibit,
+   because the one thing a model would be *for* — scoring a newcomer
+   before they have a record — is exactly what it cannot do.
+
+Two disciplines beyond the thesis: `mean_conf` and `stance_sd` are
+refused as arithmetic factors of their own target, with the cost of that
+refusal recorded (+0.0983 AP, CI [+0.0834, +0.1132]); and Bonferroni
+within a round (6 candidates → conf 0.99167) turned the one nominally
+significant bank change into **adopted: null**. Full record:
+`notebooks/05_influence_users_model.py` and
+`docs/research/nb05_influence.json`.
+
+**The graph layer (`analytics/influence_graph.py`)** is pure
+numpy/scipy — **no networkx anywhere**, deliberately, so the repo keeps
+one dependency story: hand-rolled multi-level Louvain, Brandes sampled
+betweenness (400 pivots), k-core decomposition, Fruchterman-Reingold
+layout, DICE and degree-preserving double-edge-swap perturbation,
+label-permutation significance, and the cohort/tenure split.
+
 ## 7. Prices (`pull_bloomberg_prices.py`)
 
 blpapi HistoricalDataRequest, PX_LAST daily. The symbol universe is the
@@ -552,6 +672,119 @@ at a time: the buttons disable while one runs.
   flat average are shown alongside for transparency. A board of negative
   values is meaningful (crowds quieter than their own trailing normal),
   not a bug, and the tab says so in a caption.
+
+**The INFLUENCE tab (rebuilt 2026-07-27, re-cut later the same day after
+the charts were finally LOOKED at) — information only.** It opens with a
+caption saying so: nothing on it feeds the euphoria level or the GET IN /
+GET OUT alerts.
+
+The tab now leads with **what the panel is pushing** rather than with a
+list of usernames, and the reason is about what the tab is for: a PM does
+not trade a list of accounts, they trade positioning. Sections, in order:
+(1) *what the panel is pushing* — a bubble chart, x = net direction,
+y = **share of the room's conviction** in per cent, area = number of
+calls, colour = side; (2) *week by week* — the panel's tilt above the
+per-name share history, so the tab has a time dimension at all;
+(3) *who is behind one name* — the people pushing a chosen ticker, ranked
+by influence 0–100 with their side beside each bar; (4) *the names* — the
+board itself; (5) the influence map, either the k-core **backbone** or one
+author's **ego** neighbourhood; and (6) *called the tops* and *loud but
+wrong*, the two boards worth reading against the grain. A *why there is no
+model on this tab* expander quotes four measured numbers straight from
+`docs/research/nb05_influence.json`. The board (authors with ≥5 judged
+calls, `INFL_MIN_JUDGED`) sits at §4, **under the exhibits it is the
+evidence for** rather than at the top where it used to be, and shows
+**influence 0–100** and each author's tickers — **not a per-author hit
+rate**, for the two reasons recorded in Class 6b of the parameter
+register.
+
+**Everything on the tab is now denominated in a unit that can be spoken
+aloud, and that was the substance of the re-cut**, not a restyling. Bare
+sums were the concrete reason the desk said *"I still don't get it"*: a
+min-max-normalised composite printed as "usefulness 0.987" reads as an
+accuracy and is not one, and a Σ(influence × conviction) printed as
+"3.42" cannot be compared between two windows. Both became rescalings of
+themselves — **influence 0–100** and **share of the room's conviction
+(%)** — which are rank-identical and therefore change no conclusion, only
+whether a reader can state what they are looking at. The share replaced a
+divide-by-the-median-name ratio that measured out at 141× and 171×; the
+full argument, including why the euphoria detector's A1 convention is
+*not* the precedent it looked like, is in Class 6b.
+
+Two removals fall out of that. **`fig_consensus` is gone**: it plotted the
+same per-ticker consensus the bubble chart carries on its x-axis with the
+bubble chart's y-axis folded into bar opacity, and its own docstring said
+so. Its encoding decision (bar length is direction, bar fade is weight of
+evidence, because length saturates) is retained in the register as a
+rejected row rather than deleted. **The HIGH-tier cut (≥0.66) is no
+longer printed**, for the same reason the raw composite is not: a tier
+boundary next to a normalised score invites the reader to treat it as an
+accuracy.
+
+Six engineering choices in that tab are worth knowing, each forced by
+measurement rather than taste:
+
+- **The weekly panels are computed over every recorded voice, not the
+  top-N slider.** Measured, not assumed: cut the top 25 into weeks and the
+  weeks hold 124, 25, 1, 23 and 9 calls — the one-call week has one name,
+  which is 100% of that week by definition. The same weeks over all 340
+  recorded voices hold 733, 404, 23, 98 and 155 calls across 14–171 names.
+  The slider keeps the *name-level* exhibits legible; it was never meant
+  to define the population whose mood is measured.
+- **Thin weeks are ENCODED, not gated.** Weekly volume is wildly unequal
+  under the ingestion budget (23 vs 7,260 calls across the store), and a
+  23-call week can read tilt = +1.00 off four people. A minimum-calls
+  cut-off would be exactly the arbitrary threshold this project refuses,
+  so the tilt marker's *area* carries `n_calls` instead: no week is
+  dropped, no number is invented, and a thin week looks thin.
+- **The share denominator is fixed before the ticker filter.**
+  `crowding_history` computes both `share` and `even` over every name in
+  the period and only then applies `tickers`, so drawing five lines and
+  drawing fifty give the same height for the same name. Computing them
+  after the filter — the original bug — made the baseline move with how
+  many lines the caller happened to ask for. Unit-tested directly.
+  The bubble chart has the same property for the same reason: it receives
+  the full digest plus a draw count, because when it received a
+  pre-truncated frame the chart printed MSFT at 29.5% (of 30 names) while
+  the KPI above it printed 26.1% (of 51) for the same name in the same
+  window.
+
+- **The map is drawn over the SCORED pool, not the raw graph.** The reply
+  store holds ~107k accounts / 259k edges, of which only 5,071 have a
+  usefulness colour, so the unrestricted picture took 39.5 s to lay out
+  and 88.7% of its dots were colourless. Restricting to scored authors
+  gives 100% colour coverage in 0.3 s, and the caption states that this
+  pool is wider than the board's.
+- **Betweenness is never computed here** (21 s for a number the tab does
+  not use). It lives in the notebook, where a research reader can wait.
+- **Labels park outside the hairball with a leader arrow.** Top authors
+  by usefulness sit inside the same dense cluster — that is what a reply
+  graph *is* — so names printed at their own dots overlap, and names
+  merely stacked apart no longer say *which* dot they belong to. Each
+  label is pushed away from the layout centroid into the empty space a
+  force-directed layout always leaves at the edges, tries four parking
+  spots, and is dropped (hover only) if none is free. The box geometry is
+  derived from the font size, not tuned.
+- **Point labels de-collide on geometry** (`dashboard.py::_thin_labels`).
+  `consensus` is bounded at ±1 and hits +1.00 exactly whenever every call
+  on a name was long, so names pile into one column: INTU (4.04%) and MELI
+  (3.58%) are 0.46pp apart, ≈9px on a 35% axis, and a 10pt label needs 13.
+  A greedy pass in descending height keeps the better-backed label and
+  suppresses only text whose box would overlap in **both** axes, so GOOG
+  at x=0.53 keeps its label against MELI at x=1.00. On the weekly chart
+  the equivalent fix goes the other way — the end-of-line names are drawn
+  as annotations and *nudged apart* rather than suppressed, because the
+  legend was already dropped in favour of those labels and losing one to a
+  collision would defeat the change (measured: MSTR and ADBE both finished
+  the window at ~0.3% and printed as one smear). This is the only rule in
+  the project that is about pixels rather than data; it is fenced in by
+  five unit tests and decides where there is room for ink, never which
+  names matter.
+
+The Graph object holds a scipy sparse matrix and so is un-picklable:
+it is cached with `@st.cache_resource` while the frames around it use
+`@st.cache_data` keyed on (path, mtime), the same convention as the rest
+of the app.
 
 ## 9. The orchestrator (`update_data.py`)
 

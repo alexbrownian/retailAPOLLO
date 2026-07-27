@@ -1,0 +1,231 @@
+{
+ "part_a_operating_point": {
+  "GET OUT": {
+   "precision": 0.395,
+   "recall": 0.45,
+   "F1": 0.421,
+   "MCC": 0.037,
+   "AP": 0.449,
+   "base_rate": 0.374
+  },
+  "GET IN": {
+   "precision": 0.151,
+   "recall": 0.061,
+   "F1": 0.087,
+   "MCC": 0.059,
+   "AP": 0.084,
+   "base_rate": 0.062
+  }
+ },
+ "part_a_car21": {
+  "GET OUT": {
+   "car21_median": 0.0059,
+   "car21_ci90": [
+    -0.0206,
+    0.0206
+   ]
+  },
+  "GET IN": {
+   "car21_median": -0.008,
+   "car21_ci90": [
+    -0.0296,
+    0.0034
+   ]
+  }
+ },
+ "part_a_overlay": [
+  {
+   "overlay": "short after GET OUT",
+   "days in market": 788,
+   "ann. Sharpe": -0.82,
+   "ann. Sortino": -0.62,
+   "max drawdown": -0.991,
+   "daily hit rate": 0.326
+  },
+  {
+   "overlay": "long after GET IN",
+   "days in market": 1396,
+   "ann. Sharpe": 0.41,
+   "ann. Sortino": 0.81,
+   "max drawdown": -0.633,
+   "daily hit rate": 0.367
+  }
+ ],
+ "part_b": {
+  "table": [
+   {
+    "experiment": "SHIPPED GET OUT (incumbent)",
+    "captured": 24,
+    "detectable": 122,
+    "capture_rate": 0.197,
+    "late": 0,
+    "FA": 39,
+    "fa_per_iy": 0.195,
+    "AP": 0.449,
+    "median_warning_d": 8.0,
+    "gain_ci90": NaN
+   },
+   {
+    "experiment": "B1 GET OUT per-kind thresholds",
+    "captured": 23,
+    "detectable": 113,
+    "capture_rate": 0.204,
+    "late": 0,
+    "FA": 16,
+    "fa_per_iy": 0.102,
+    "AP": [
+     0.476,
+     0.637
+    ],
+    "median_warning_d": 6.0,
+    "gain_ci90": [
+     -8.0,
+     3.0
+    ]
+   },
+   {
+    "experiment": "B3 GET OUT logistic-weighted",
+    "captured": 30,
+    "detectable": 122,
+    "capture_rate": 0.246,
+    "late": 0,
+    "FA": 37,
+    "fa_per_iy": 0.185,
+    "AP": 0.427,
+    "median_warning_d": 14.5,
+    "gain_ci90": [
+     -1.0,
+     11.0
+    ]
+   }
+  ],
+  "smoothing_sweep": [
+   {
+    "window_d": 1,
+    "out_captured": 26,
+    "out_FA": 41,
+    "out_AP": 0.435,
+    "in_captured": 24,
+    "in_late": 12,
+    "in_FA": 166
+   },
+   {
+    "window_d": 3,
+    "out_captured": 24,
+    "out_FA": 41,
+    "out_AP": 0.438,
+    "in_captured": 19,
+    "in_late": 14,
+    "in_FA": 146
+   },
+   {
+    "window_d": 5,
+    "out_captured": 24,
+    "out_FA": 41,
+    "out_AP": 0.443,
+    "in_captured": 19,
+    "in_late": 10,
+    "in_FA": 132
+   },
+   {
+    "window_d": 7,
+    "out_captured": 24,
+    "out_FA": 39,
+    "out_AP": 0.449,
+    "in_captured": 20,
+    "in_late": 10,
+    "in_FA": 124
+   },
+   {
+    "window_d": 10,
+    "out_captured": 25,
+    "out_FA": 42,
+    "out_AP": 0.461,
+    "in_captured": 19,
+    "in_late": 12,
+    "in_FA": 112
+   },
+   {
+    "window_d": 14,
+    "out_captured": 24,
+    "out_FA": 41,
+    "out_AP": 0.476,
+    "in_captured": 16,
+    "in_late": 11,
+    "in_FA": 112
+   }
+  ],
+  "run_rule": [
+   {
+    "k_consecutive": 1,
+    "out_captured": 24,
+    "out_FA": 39,
+    "out_med_warning": 8.0,
+    "in_captured": 20,
+    "in_late": 10,
+    "in_FA": 124
+   },
+   {
+    "k_consecutive": 2,
+    "out_captured": 19,
+    "out_FA": 39,
+    "out_med_warning": 12.0,
+    "in_captured": 19,
+    "in_late": 6,
+    "in_FA": 109
+   },
+   {
+    "k_consecutive": 3,
+    "out_captured": 17,
+    "out_FA": 32,
+    "out_med_warning": 15.0,
+    "in_captured": 17,
+    "in_late": 4,
+    "in_FA": 93
+   }
+  ],
+  "adopted": []
+ },
+ "part_c": {
+  "c1_intensity_tier": {
+   "table": [
+    {
+     "tier": "STRONG (fired on 2+ days / 21d)",
+     "alerts": 17,
+     "cliff30_rate": 0.529
+    },
+    {
+     "tier": "ordinary",
+     "alerts": 59,
+     "cliff30_rate": 0.559
+    }
+   ],
+   "uplift_ci90": [
+    -0.21116780045351477,
+    0.2176007326007326
+   ],
+   "adopted": false
+  },
+  "c2_get_in_tier": {
+   "uplift_ci90": [
+    -0.27174958366657076,
+    0.019210951145415725
+   ],
+   "adopted": false
+  },
+  "c3_breadth_risk_off": {
+   "median_fwd21_high": 0.006580236842427922,
+   "median_fwd21_other": 0.010571906310564927,
+   "diff_ci90": [
+    -0.020656432601961938,
+    0.009810559765042035
+   ],
+   "top_decile_cut": 1.0,
+   "adopted": false
+  }
+ },
+ "watch_items": [
+  "B3 logistic-weighted GET OUT (30 vs 24 captures, gain CI [-1,+11] touches zero - re-test at year rollover)",
+  "B1 per-kind thresholds (FA halved at ~equal capture rate, unmatched years - re-test as singles history accrues)"
+ ]
+}

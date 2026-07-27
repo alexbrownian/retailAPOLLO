@@ -102,15 +102,16 @@ def main() -> int:
                    help="fetch only; do not update the influence store")
     args = p.parse_args()
 
-    print("=" * 60)
-    print("COMMENT PULL + INFLUENCE UPDATE")
-    print(f"  estimate: {estimate(args.lookback_days, args.backfill)}")
-    print("=" * 60)
+    print("=" * 60, flush=True)
+    print("COMMENT PULL + INFLUENCE UPDATE", flush=True)
+    print(f"  estimate: {estimate(args.lookback_days, args.backfill)}",
+          flush=True)
+    print("=" * 60, flush=True)
     if args.estimate:
         return 0
 
     # ---- 1. fetch (child process, output streamed live) ----
-    cmd = [sys.executable,
+    cmd = [sys.executable, "-u",
            os.path.join(ROOT, "ingestion", "fetch_reddit_comments.py"),
            "--lookback-days", str(args.lookback_days)]
     if args.backfill:
@@ -118,23 +119,24 @@ def main() -> int:
     t0 = time.time()
     code = subprocess.call(cmd, cwd=ROOT)
     print(f"fetch finished in {(time.time()-t0)/60:.1f} min "
-          f"(exit {code})")
+          f"(exit {code})", flush=True)
     if code != 0:
         print("fetch did not complete cleanly - the watermark only "
               "advances for completed subreddits, so simply re-run; "
-              "nothing is duplicated.")
+              "nothing is duplicated.", flush=True)
 
     # ---- 2. influence board update (ingest new raw -> extend store) ----
     if args.skip_influence:
-        print("influence update skipped (--skip-influence)")
+        print("influence update skipped (--skip-influence)", flush=True)
         return code
-    print("--- influence board update ---")
+    print("--- influence board update ---", flush=True)
     from analytics.influence import update as influence_update
     t1 = time.time()
     influence_update()
-    print(f"influence update finished in {time.time()-t1:.0f}s")
+    print(f"influence update finished in {time.time()-t1:.0f}s",
+          flush=True)
     print("done. Board: python -m analytics.influence --top 20 | "
-          "dashboard: Influence tracker tab")
+          "dashboard: Influence tracker tab", flush=True)
     return code
 
 

@@ -1,0 +1,16 @@
+{
+ "files": {
+  "RedditLive\\reddit_live_arctic_2026-07-19_092220.jsonl.zst": 3902743,
+  "RedditLive\\reddit_live_arctic_2026-07-19_093725.jsonl.zst": 1958,
+  "RedditLive\\reddit_live_arctic_2026-07-19_100032.jsonl.zst": 8727,
+  "RedditLive\\reddit_live_arctic_2026-07-21_085641.jsonl.zst": 841480,
+  "RedditLive\\reddit_live_arctic_2026-07-24_103926.jsonl.zst": 1671629,
+  "RedditComments\\comments_2021-01-01_2021-07-01.jsonl.zst": 4461767,
+  "RedditComments\\comments_2025-07-25_2026-07-26.jsonl.zst": 9770092,
+  "RedditComments\\comments_2026-01-01_2026-07-01.jsonl.zst": 43465305,
+  "RedditComments\\comments_2026-01-01_2026-07-25.jsonl.zst": 1361766,
+  "RedditComments\\comments_2026-07-24.jsonl.zst": 12849,
+  "RedditComments\\comments_2026-07-24_2026-07-25.jsonl.zst": 1213,
+  "RedditLive\\reddit_live_arctic_2026-07-27_214706.jsonl.zst": 1485896
+ }
+}

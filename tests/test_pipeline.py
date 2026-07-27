@@ -492,6 +492,381 @@ class TestInfluence:
             _safe_store_write(bad, "/tmp/should_never_exist.parquet")
 
 
+class TestInfluenceGraph:
+    """analytics/influence_graph.py - the pure-numpy/scipy graph layer the
+    notebook and the dashboard's influence map both stand on. There is no
+    networkx anywhere in this project, so these invariants are the only
+    thing standing between a hand-rolled Louvain/k-core and a silently
+    wrong picture. Each test uses a graph whose answer is known BY HAND.
+    """
+
+    @staticmethod
+    def _two_triangles():
+        """Two triangles joined by a single bridge edge. Known by hand:
+        6 nodes, 7 edges, every node has degree 2 except the two bridge
+        ends (degree 3), modularity is maximised by the obvious 2-way
+        split, and the 2-core is the whole graph."""
+        u = ["a", "b", "c", "a", "d", "e", "f"]
+        v = ["b", "c", "a", "d", "e", "f", "d"]
+        return pd.DataFrame({"rec_id": [str(i) for i in range(len(u))],
+                             "replier": u, "author": v})
+
+    def test_graph_is_undirected_and_deduplicated(self):
+        """A reply graph is a conversation, not a direction: (u,v) and
+        (v,u) are the SAME edge, and a repeated pair must raise the edge
+        WEIGHT, never the edge count."""
+        from analytics import influence_graph as ig
+        e = pd.DataFrame({"rec_id": ["1", "2", "3"],
+                          "replier": ["a", "b", "a"],
+                          "author": ["b", "a", "b"]})
+        g = ig.build_graph(e)
+        assert g.n == 2 and g.m == 1              # one edge, not three
+        assert g.A[g.idx["a"], g.idx["b"]] == 3   # weight carries the count
+        assert g.A[g.idx["a"], g.idx["b"]] == g.A[g.idx["b"], g.idx["a"]]
+
+    def test_self_replies_never_become_edges(self):
+        """Replying to yourself is not influence. If it survived, every
+        prolific poster would look like a hub."""
+        from analytics import influence_graph as ig
+        e = pd.DataFrame({"rec_id": ["1", "2"], "replier": ["a", "a"],
+                          "author": ["a", "b"]})
+        g = ig.build_graph(e)
+        assert g.m == 1
+        assert g.A[g.idx["a"], g.idx["a"]] == 0
+
+    def test_louvain_finds_the_two_triangles(self):
+        """The bridged-triangles graph has one obvious community split.
+        Louvain must find exactly it, and modularity must be positive and
+        equal to the hand-checkable value for that partition."""
+        from analytics import influence_graph as ig
+        g = ig.build_graph(self._two_triangles())
+        comm = ig.louvain(g, seed=42)
+        assert comm.nunique() == 2
+        assert comm["a"] == comm["b"] == comm["c"]
+        assert comm["d"] == comm["e"] == comm["f"]
+        assert comm["a"] != comm["d"]
+        # Q = sum_c [ L_c/m - (d_c/2m)^2 ]; here m=7, each side has 3
+        # internal edges and total degree 7 -> 2*(3/7 - (7/14)^2) = 0.3571
+        assert ig.modularity(g, comm) == pytest.approx(0.35714, abs=1e-4)
+
+    def test_modularity_accepts_series_or_array(self):
+        """as_labels() exists so a caller can pass either a Series keyed by
+        author or a bare array in node order and get the same number - the
+        bug this replaced silently scored a shuffled partition."""
+        from analytics import influence_graph as ig
+        g = ig.build_graph(self._two_triangles())
+        comm = ig.louvain(g, seed=42)
+        as_array = comm.reindex(g.names).to_numpy()
+        assert ig.modularity(g, comm) == pytest.approx(
+            ig.modularity(g, as_array))
+
+    def test_kcore_members_all_have_k_neighbours_inside(self):
+        """The defining property of a k-core, and the whole reason the
+        dashboard draws one: every node kept must still have >= k
+        neighbours AFTER the pruning, not before it."""
+        from analytics import influence_graph as ig
+        g = ig.build_graph(self._two_triangles())
+        sub, k = ig.kcore_subgraph(g, min_nodes=3)
+        assert k >= 2
+        assert (sub.degree >= k).all()
+        assert sub.n >= 3
+
+    def test_homophily_splits_by_class(self):
+        """On a graph where the positives are deliberately spread apart
+        (each one surrounded by negatives), positive-class node homophily
+        must be ~0 while negative-class is ~1. This is the measurement the
+        notebook's whole 'why the graph fails' argument rests on, so it
+        must not quietly average the two classes together."""
+        from analytics import influence_graph as ig
+        # positives hang off the negative cluster, one edge each; the
+        # negatives are wired to each other. By hand: class-1 homophily 0,
+        # class-0 homophily (0.75 + 2/3 + 1 + 1) / 4 = 0.854.
+        e = pd.DataFrame({
+            "rec_id": [str(i) for i in range(7)],
+            "replier": ["p1", "p2", "n1", "n1", "n2", "n3", "n4"],
+            "author": ["n1", "n2", "n2", "n3", "n3", "n4", "n1"]})
+        g = ig.build_graph(e)
+        y = pd.Series({"p1": 1, "p2": 1, "n1": 0, "n2": 0, "n3": 0, "n4": 0})
+        h = ig.homophily(g, y)
+        assert h["node_homophily_class_1"] == pytest.approx(0.0)
+        assert h["node_homophily_class_0"] == pytest.approx(0.85417, abs=1e-4)
+        # and the two must not be silently averaged into one number
+        assert h["node_homophily"] != pytest.approx(
+            h["node_homophily_class_1"])
+
+    def test_by_class_accepts_a_label_series(self):
+        """by_class() takes either a column name or an external Series, so
+        the notebook can score a centrality table against labels that live
+        in a different frame. Unlabelled rows must be DROPPED, not counted
+        as zeros."""
+        from analytics import influence_graph as ig
+        tab = pd.DataFrame({"x": [1.0, 3.0, 10.0]},
+                           index=["a", "b", "c"])
+        out = ig.by_class(tab, pd.Series({"a": 0, "b": 1}))
+        assert out.loc["x", "class_0"] == pytest.approx(1.0)
+        assert out.loc["x", "class_1"] == pytest.approx(3.0)
+        assert out.loc["x", "ratio_1_over_0"] == pytest.approx(3.0)
+
+    def test_map_frames_gives_plotly_ready_coordinates(self):
+        """The dashboard is a VIEW: it must never compute geometry. Every
+        node needs finite x/y (a NaN would blank the map) and every edge
+        needs both endpoints already resolved."""
+        from analytics import influence_graph as ig
+        g = ig.build_graph(self._two_triangles())
+        board = pd.DataFrame({"author": list("abcdef"),
+                              "composite": [0.9, 0.1, 0.2, 0.3, 0.4, 0.5]})
+        nodes, links = ig.map_frames(g, board=board, seed=42)
+        assert len(nodes) == g.n and len(links) == g.m
+        assert np.isfinite(nodes[["x", "y"]].to_numpy()).all()
+        assert np.isfinite(links[["x0", "y0", "x1", "y1"]].to_numpy()).all()
+        assert nodes.loc[nodes["author"] == "a", "composite"].iloc[0] == 0.9
+
+    def test_consensus_is_influence_weighted(self):
+        """suggestion_digest's whole point: a call from someone with a
+        record must outweigh a call from a first-timer. Two opposing calls
+        of equal conviction, unequal record -> consensus takes the sign of
+        the better author."""
+        from analytics import influence_graph as ig
+        calls = pd.DataFrame({
+            "rec_id": ["1", "2"], "author": ["good", "bad"],
+            "date": pd.to_datetime(["2026-07-01", "2026-07-01"]),
+            "ticker": ["GME", "GME"], "direction": [1, -1],
+            "stance": [0.8, 0.8], "kind": ["post", "post"]})
+        board = pd.DataFrame({"author": ["good", "bad"],
+                              "composite": [0.9, 0.1]})
+        dig = ig.suggestion_digest(calls, board, days=30,
+                                   asof=pd.Timestamp("2026-07-02"))
+        row = dig.set_index("ticker").loc["GME"]
+        assert row["consensus"] > 0                 # the record wins
+        assert row["longs"] == 1 and row["shorts"] == 1
+        assert -1.0 <= row["consensus"] <= 1.0
+
+    def test_ticker_voices_orders_by_record_and_nets_flip_flops(self):
+        """ticker_voices() is what the bubble chart's hover reads. Two
+        properties matter and both are easy to get silently wrong:
+
+        1. the STRONGEST record must be listed first, because the hover is
+           truncated to `top` lines and a PM reading three of six names must
+           be reading the three that count;
+        2. an author who said LONG once and SHORT once must show as MIXED,
+           not appear twice pulling in both directions - their lean is the
+           SUM of their calls, so it nets to zero.
+        """
+        from analytics import influence_graph as ig
+        calls = pd.DataFrame({
+            "rec_id": list("12345"),
+            "author": ["weak", "strong", "flip", "flip", "strong"],
+            "date": pd.to_datetime(["2026-07-01"] * 5),
+            "ticker": ["GME"] * 5,
+            "direction": [1, -1, 1, -1, -1],
+            "stance": [0.8] * 5,
+            "kind": ["post"] * 5})
+        board = pd.DataFrame({"author": ["weak", "strong", "flip"],
+                              "composite": [0.10, 0.95, 0.50]})
+        out = ig.ticker_voices(calls, board, days=30,
+                              asof=pd.Timestamp("2026-07-02"))
+        lines = out.set_index("ticker").loc["GME", "voices"].split("<br>")
+        assert lines[0].startswith("strong") and "SHORT" in lines[0]
+        assert "2 calls" in lines[0]                  # both its calls, once
+        assert [ln.split(" - ")[0] for ln in lines] == ["strong", "flip",
+                                                        "weak"]
+        assert "MIXED" in [ln for ln in lines if ln.startswith("flip")][0]
+        assert out.loc[0, "top_author"] == "strong"
+
+    def test_ticker_voices_truncates_and_says_how_many_are_hidden(self):
+        """A hover box with forty names in it is unreadable, so the list is
+        cut - but a cut the reader cannot see is a lie about breadth. The
+        '...and N more' line is therefore part of the contract."""
+        from analytics import influence_graph as ig
+        n = 9
+        calls = pd.DataFrame({
+            "rec_id": [str(i) for i in range(n)],
+            "author": [f"a{i}" for i in range(n)],
+            "date": pd.to_datetime(["2026-07-01"] * n),
+            "ticker": ["GME"] * n, "direction": [1] * n,
+            "stance": [0.5] * n, "kind": ["post"] * n})
+        board = pd.DataFrame({"author": [f"a{i}" for i in range(n)],
+                              "composite": np.linspace(0.1, 0.9, n)})
+        out = ig.ticker_voices(calls, board, days=30, top=4,
+                               asof=pd.Timestamp("2026-07-02"))
+        lines = out.loc[0, "voices"].split("<br>")
+        assert len(lines) == 5                        # 4 names + the notice
+        assert lines[-1] == "...and 5 more"
+        assert out.loc[0, "n_more"] == 5
+
+    def test_ticker_voices_empty_window_returns_typed_empty_frame(self):
+        """The dashboard merges this frame onto the digest. An empty result
+        with the WRONG columns raises inside plotly instead of drawing an
+        empty chart, so the empty case must still carry the schema."""
+        from analytics import influence_graph as ig
+        calls = pd.DataFrame({
+            "rec_id": ["1"], "author": ["a"],
+            "date": pd.to_datetime(["2020-01-01"]), "ticker": ["GME"],
+            "direction": [1], "stance": [0.5], "kind": ["post"]})
+        board = pd.DataFrame({"author": ["a"], "composite": [0.5]})
+        out = ig.ticker_voices(calls, board, days=30,
+                               asof=pd.Timestamp("2026-07-02"))
+        assert len(out) == 0
+        assert list(out.columns) == ["ticker", "voices", "top_author",
+                                     "n_more"]
+
+    def test_direction_label_reads_both_encodings(self):
+        """The store writes direction as +1/-1 today. If a future
+        extractor writes words instead, the dashboard must not silently
+        read every short as a long."""
+        from analytics import influence_graph as ig
+        assert ig.direction_label(-1) == "SHORT"
+        assert ig.direction_label(1) == "LONG"
+        assert ig.direction_label("bearish") == "SHORT"
+
+    def test_backing_share_sums_to_one_hundred_and_is_order_preserving(self):
+        """The unit the whole Influence tab is denominated in (2026-07-27,
+        replacing the divide-by-median-name ratio). Two properties are the
+        reason it was chosen over that ratio, so both are pinned: it is
+        bounded and totals 100, and it is a POSITIVE rescaling, so no
+        ranking anywhere on the tab can change because of it."""
+        from analytics import influence_graph as ig
+        w = pd.Series([8.0, 4.0, 2.0, 1.0, 1.0])
+        s = ig.backing_share(w)
+        assert s.sum() == pytest.approx(100.0)
+        assert s.iloc[0] == pytest.approx(50.0)
+        assert list(s.rank()) == list(w.rank())
+        assert (s >= 0).all() and (s <= 100).all()
+
+    def test_backing_share_empty_window_is_zero_not_nan(self):
+        """The rejected ratio returned NaN whenever its denominator was 0,
+        which on this tab happened whenever nobody on the board had spoken.
+        An empty window means "no crowding", not "unknown", so it reads 0 -
+        and a chart cannot plot NaN heights."""
+        from analytics import influence_graph as ig
+        assert list(ig.backing_share(pd.Series([0.0, 0.0]))) == [0.0, 0.0]
+        assert list(ig.backing_share(pd.Series([], dtype=float))) == []
+
+    def test_even_share_is_the_derived_reference_line(self):
+        """The line the bubble chart draws instead of a chosen threshold:
+        what each name would show if attention were spread equally."""
+        from analytics import influence_graph as ig
+        assert ig.even_share(51) == pytest.approx(100.0 / 51)
+        assert ig.even_share(4) == pytest.approx(25.0)
+        assert np.isnan(ig.even_share(0))
+
+    def test_crowding_history_denominator_ignores_the_ticker_filter(self):
+        """Share and even split are computed over EVERY name in the period
+        before `tickers` is applied, so drawing five lines and drawing fifty
+        give the same height for the same name. Computing them after the
+        filter (the original bug) made the baseline move with how many lines
+        the caller happened to ask for."""
+        from analytics import influence_graph as ig
+        calls = pd.DataFrame({
+            "rec_id": [str(i) for i in range(4)],
+            "author": ["a", "a", "a", "a"],
+            "date": pd.to_datetime(["2026-07-20"] * 4),
+            "ticker": ["AAA", "AAA", "BBB", "CCC"],
+            "direction": [1, 1, 1, 1], "stance": [1.0, 1.0, 1.0, 1.0],
+            "kind": ["post"] * 4})
+        board = pd.DataFrame({"author": ["a"], "composite": [1.0]})
+        kw = dict(authors=["a"], days=30, asof=pd.Timestamp("2026-07-22"))
+        every = ig.crowding_history(calls, board, **kw)
+        one = ig.crowding_history(calls, board, tickers=["AAA"], **kw)
+        assert set(every["ticker"]) == {"AAA", "BBB", "CCC"}
+        assert list(one["ticker"]) == ["AAA"]
+        a_all = float(every.loc[every["ticker"] == "AAA", "share"].iloc[0])
+        a_one = float(one["share"].iloc[0])
+        assert a_one == pytest.approx(a_all)
+        assert a_all == pytest.approx(50.0)          # 2 of 4 unit calls
+        assert float(one["even"].iloc[0]) == pytest.approx(100.0 / 3)
+
+
+class TestInfluenceAdoption:
+    """analytics/influence_ml.py - the DISCIPLINE, not the models. These
+    guard the rules that decide what ships: paired seeds, a confidence
+    interval that must clear zero, parsimony on ties, and the leakage
+    blacklist. A model that ships because a rule quietly inverted is the
+    single worst failure mode in this repo."""
+
+    def test_leakage_blacklist_covers_every_label_ingredient(self):
+        """The label is built from composite/s_conf/s_z/s_enh. Every one of
+        those, and every column derived from them, must be barred from the
+        feature bank by NAME - not by hoping nobody adds it."""
+        from analytics import influence_ml as ml
+        for col in ("composite", "s_conf", "s_z", "s_enh", "score", "tier",
+                    "hit_rate", "hits", "n_judged", "fwd_ret", "z", "tau"):
+            assert col in ml.LEAKAGE
+        assert not set(ml.FULL_BANK) & ml.LEAKAGE
+
+    def test_score_adjacent_features_are_not_in_the_shipped_bank(self):
+        """mean_conf is an arithmetic FACTOR of the label (composite is
+        built from conf * y terms), so a bank containing it is scoring
+        itself. It is measured in the notebook - worth +0.098 AP, which is
+        exactly why it must never ship - and kept out of FULL_BANK."""
+        from analytics import influence_ml as ml
+        assert not set(ml.SCORE_ADJACENT) & set(ml.FULL_BANK)
+        assert set(ml.SCORE_ADJACENT) <= set(ml.WIDE_BANK)
+        assert len(ml.WIDE_BANK) > len(ml.FULL_BANK)
+
+    def test_adoption_needs_the_interval_to_clear_zero(self):
+        """The adoption rule is 'ci_lo > 0', not 'the mean looks better'.
+        A candidate whose interval straddles zero must be REJECTED however
+        pretty its point estimate is."""
+        from analytics import influence_ml as ml
+        lad = pd.DataFrame([
+            {"baseline": "random", "candidate": "logit", "mean_diff": 0.05,
+             "ci_lo": 0.03, "ci_hi": 0.07, "wins": 10, "adopt": True},
+            {"baseline": "logit", "candidate": "sage_lite", "mean_diff": 0.02,
+             "ci_lo": -0.01, "ci_hi": 0.05, "wins": 7, "adopt": False}])
+        assert ml.choose_model(lad) == "logit"
+
+    def test_parsimony_breaks_ties_toward_the_simpler_model(self):
+        """If nothing beats the linear floor, the linear floor ships. A
+        ladder with every rung rejected must NOT fall through to the last
+        candidate tried."""
+        from analytics import influence_ml as ml
+        lad = pd.DataFrame([
+            {"baseline": "logit", "candidate": c, "mean_diff": -0.01,
+             "ci_lo": -0.03, "ci_hi": 0.01, "wins": 3, "adopt": False}
+            for c in ("mlp", "sage_lite", "gcn_lite", "h2gcn_lite")])
+        assert ml.choose_model(lad, floor="logit") == "logit"
+
+    def test_seeds_are_paired_and_fixed(self):
+        """A paired test needs the SAME seeds on both arms - that is where
+        the variance reduction comes from - and the seed lists must be
+        constants so a rerun reproduces the decision exactly."""
+        from analytics import influence_ml as ml
+        assert len(ml.ADOPTION_SEEDS) == 10
+        assert len(set(ml.ADOPTION_SEEDS)) == 10
+        assert ml.THESIS_SEEDS == (42, 100, 2026)
+
+    def test_maturity_bar_and_headline_regime_are_declared(self):
+        """Two pre-stated numbers that must never drift silently: the
+        minimum positives before any claim is made (the thesis had 133), and
+        which label regime the headline quotes."""
+        from analytics import influence_ml as ml
+        assert ml.MIN_POSITIVES >= 130
+        assert ml.HEADLINE_REGIME in ml.LABEL_REGIMES
+        assert ml.BEST_MODEL in ml.MODELS
+        assert ml.BEST_GRAPH_MODEL in ml.MODELS
+
+    def test_split_is_stratified_and_disjoint(self):
+        """With ~5% positives an UNstratified split can hand a fold zero
+        positives, which makes average precision undefined. Every node must
+        land in exactly one fold, and every fold must see the minority
+        class. Tested on an integer index too, because that is where a
+        read-only index buffer used to break the shuffle."""
+        from analytics import influence_ml as ml
+        rng = np.random.default_rng(0)
+        y = pd.Series((rng.random(600) < 0.05).astype(int))
+        part = ml.stratified_split(y, seed=42)
+        assert set(part.unique()) == {"train", "val", "test"}
+        assert len(part) == len(y)                 # exactly one fold each
+        for name in ("train", "val", "test"):
+            assert y[part == name].sum() >= 1
+        # proportions honoured to within one node per class
+        assert abs((part == "train").sum() / len(y) - 0.6) < 0.02
+        # and the split is a FUNCTION of the seed, not of call order
+        assert part.equals(ml.stratified_split(y, seed=42))
+        assert not part.equals(ml.stratified_split(y, seed=43))
+
+
 class TestEuphoriaPhases:
     """The July-2026 phases study (onset detector + episode ground truth,
     analytics/euphoria_phases.py). Same invariants philosophy as
@@ -822,3 +1197,54 @@ class TestDeskConfiguration:
         assert not (set(df.columns) & FORBIDDEN_COLS)
         assert not (df["get_in"] & df["end_stage"]).any()
         assert not (df["get_out"] & ~df["boom_state"]).any()
+
+
+class TestChartLabelLayout:
+    """dashboard.py::_thin_labels - the ONLY rule on this project that is
+    allowed to be about pixels rather than data, and it is fenced in here so
+    that stays true.  It decides where there is room for ink; it never
+    decides which names matter.  Every point it un-labels is still drawn,
+    still hovers, and still appears in the exact-numbers table.
+
+    It exists because `consensus` is bounded at +/-1 and hits +1.00 exactly
+    whenever every call on a name was long, so a dozen names pile into one
+    column and their tickers print through each other.
+    """
+
+    @staticmethod
+    def _mask(xs, ys, y_span=35.0):
+        import dashboard as D
+        return D._thin_labels(xs, ys, x_span=2.36, y_span=y_span,
+                              w_px=880.0, h_px=398.0)
+
+    def test_same_column_and_too_close_in_height_loses_one_label(self):
+        """The measured collision: INTU 4.04% and MELI 3.58%, both at
+        x=+1.00, are 0.46pp apart - about 9px on a 35% axis - and a 10pt
+        label needs 13.  The taller one keeps its label."""
+        keep = self._mask([1.0, 1.0], [4.04, 3.58])
+        assert keep == [True, False]
+
+    def test_same_height_but_different_column_keeps_both(self):
+        """The suppression must need BOTH axes to be tight, or the chart
+        starts hiding names that never overlapped: GOOG at x=0.53 and MELI
+        at x=1.00 share a height but not a column."""
+        assert self._mask([0.53, 1.0], [3.60, 3.58]) == [True, True]
+
+    def test_well_separated_heights_keep_every_label(self):
+        assert self._mask([1.0, 1.0], [26.1, 7.05]) == [True, True]
+
+    def test_ties_resolve_toward_the_earlier_row(self):
+        """The caller passes the digest already ranked by backing, so on an
+        exact tie the label must go to the better-backed name rather than to
+        whichever row happened to be last."""
+        assert self._mask([1.0, 1.0, 1.0], [2.0, 2.0, 2.0]) == [True, False,
+                                                                False]
+
+    def test_degenerate_inputs_do_not_raise_or_hide_everything(self):
+        """A zero-size plot or an empty frame must not blank the labels: the
+        figure is drawn before its true pixel size is known, and an empty
+        window is a normal state on this tab."""
+        assert self._mask([], []) == []
+        import dashboard as D
+        assert D._thin_labels([1.0, 1.0], [2.0, 2.0], 2.36, 35.0,
+                              0.0, 0.0) == [True, True]

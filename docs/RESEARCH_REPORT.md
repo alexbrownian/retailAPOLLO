@@ -1,7 +1,7 @@
 # Detecting the Start and End of Retail Euphoria from Crowd Data Alone: A Walk-Forward Study on Nine Years of Social-Media Attention
 
 **Alex Brown — GIP 2026 Project — MAARS Global Macro**
-*RetailRadar research report — LIVING DOCUMENT (see Changelog, Appendix C). Last updated 2026-07-24.*
+*RetailRadar research report — LIVING DOCUMENT (see Changelog, Appendix C). Last updated 2026-07-27.*
 
 ---
 
@@ -172,7 +172,12 @@ be *recorded and measurable* (a local by-subreddit aggregate exists for
 exactly that re-cut), never silent. Comments ingestion was simultaneously
 decoupled from the daily pipeline into a dedicated runner
 (`update_comments.py`) — an operational change only; no analytic input
-changed.
+changed. *That decoupling was reversed on 2026-07-27*: comments are now
+fetched on every live run under a measured page allowance (§3.1b), because
+an influence board that rescores month-old comments is not a live board.
+`update_comments.py` survives as the unbudgeted runner for backfills and
+long-gap catch-up. Still an operational change only — no analytic input
+changed, and the euphoria detector never reads comments.
 
 **Coverage honesty.** Archive coverage is deep in 2020–2022 and 2026 and
 thin in 2023–2025 (2024–25 have zero detectable episodes). Every rate in
@@ -395,6 +400,69 @@ finality as the retired BUY/SELL engine. §7 explains why the system is
 valuable *anyway* — and why claiming otherwise would be the fastest way
 to lose a defense.
 
+### 6.6 Influential-users model — and the units the tracker is read in
+
+*Moved here from after §6.9 (it had drifted out of numerical order) and
+rewritten 2026-07-27: the "results pend the store's first live seeding"
+placeholder was stale, the store has been seeded and the study has
+concluded.*
+
+The Chan (2026) replication ran on the real store (5,071 authors with a
+judged call; 107k accounts and 259k reply edges in the raw graph, of which
+417,208 edges survive cleaning). Headline: `logit` on the 17-feature bank
+with softened labels, **AP 0.0977 ± 0.0242 against a 0.0467 random floor,
+AUROC 0.6681, permutation p = 0.005** over 200 shuffles. **Every graph rung
+was rejected** under the paired 10-seed CI rule — `mixhop_lite` +0.0011,
+CI [−0.0063, +0.0085]; `h2gcn` −0.0078, CI [−0.0130, −0.0026], i.e.
+significantly *worse* — and the diagnosis is measured rather than asserted:
+positive-class node homophily is **0.0948** against negative-class 0.9628
+(sharper than the thesis's own 0.08 / 0.93), and DICE perturbation *raises*
+AP from 0.1031 to 0.2063 at 50% corruption. For orientation, the thesis
+benchmark was GraphSAGE AP 0.140 / AUROC 0.632, ≈ +61% AP over its random
+floor; ours is +109% over ours, on a smaller positive class.
+
+The decisive limitation is the one that determines what ships: on a
+tenure/cohort split the model sits **at the random floor for unseen
+authors** (lift −0.046). A model that can only rank authors it has already
+seen is a research exhibit, not a ranker — so the dashboard's influence tab
+is **information only** and ranks by the *measured* record.
+
+**What the desk actually could not read, and what fixed it.** The tab's
+first version printed bare sums, and the desk's verdict was literal: *"I
+still don't get it."* Two quantities were at fault. A min-max-normalised
+composite printed as "usefulness 0.987" reads as an accuracy and is not
+one; and a Σ(influence × conviction) printed as "3.42" has no unit, so it
+cannot be compared between two windows, two names, or two readers. Both
+were replaced by **rescalings of themselves**, which is why no conclusion
+moved:
+
+- **`influence_index = 100 · composite / max(composite)`** — a positive
+  rescaling (the real store's max is 0.9855), so every ranking is
+  bit-identical to the composite's.
+- **`backing_share = 100 · weighted / Σ weighted`** — share of the room's
+  conviction, bounded 0–100, additive across names, and immune to the long
+  tail. Measured on the 30-day cross-section (51 names): MSFT **26.10%**,
+  ADBE 7.05, FICO 4.82, INTU 4.04, MELI 3.58, down to STRC 0.17.
+
+The share is read against a **derived** reference line, not a chosen one:
+`even_share(n) = 100 / n`, what each name would print if attention were
+split evenly — 2.0% across those 51 names, so MSFT is running thirteen
+times an even share.
+
+**A rejected intermediate, recorded because it was rejected on data.** The
+first attempt normalised by the **median name** in the window
+(`weighted / median(weighted)`), on the argument that this mirrors the
+euphoria detector's A1 convention, "2× its own 120d median". *That argument
+is withdrawn.* A1 divides a name by **its own history**, which is a stable
+reference; the median *name* in a cross-section is a ticker mentioned once
+by one person. In the week to 2026-06-28, 163 names were mentioned and the
+median one carried 0.24 of backing, so MSFT printed **141×**; weekly maxima
+ran 141×, 41×, 2.7×, 14× and 26× on the 30-day view and **171×** on the
+90-day view, and with an empty author list the median is exactly 0 so every
+ratio came back **NaN**. A unit whose scale swings 50-fold between adjacent
+weeks and undefines itself on an empty filter is not a unit. Full row in
+Class 6b of the parameter register.
+
 ### 6.7 The desk-signal study: price + crowd, and the danger state
 
 With the desk's 2026-07-24 decision to permit price in a SECOND signal
@@ -450,13 +518,57 @@ selected, judged by the same functions as the research record); the
 crowd-only detectors remain unchanged as the thesis headline and the
 research baseline.
 
-### 6.6 Influential-users model
+### 6.9 The performance battery and the improvement campaign (NB07)
 
-Harness validated end-to-end (synthetic schema-faithful fixture, deleted
-after use); real results pend the store's first live seeding. Thesis
-benchmark for orientation: GraphSAGE AP 0.140 / AUROC 0.632 ≈ +61% AP
-over random. This section will be updated from notebook 05's first real
-run (see Changelog).
+At the desk's request the shipped configuration was put through a
+literature-grounded metric battery and a fresh round of pre-registered
+challengers (notebook 07; every measure names its source). **The
+battery**: precision–recall analysis with F1 and Matthews correlation
+at the true operating point (Davis & Goadrich 2006; Chicco & Jurman
+2020), a detection-delay-versus-false-alarm frontier in the
+quickest-detection framing (Page 1954) with the shipped threshold
+marked against the accepted FA budget, drift-adjusted cumulative
+abnormal returns after each signal (MacKinlay 1997; one vote per
+instrument, cluster CIs), a reliability diagram (Murphy & Winkler
+1977), information coefficients (Grinold & Kahn 2000), and descriptive
+overlay risk ratios (Sharpe; Sortino). One deliberately-kept "wrong"
+number matters at a defense: the GET OUT score's pooled daily IC is
+*positive* (~+0.11) — high scores sit mid-boom where momentum still
+pays — which is precisely the evidence that this detector is an
+episode-timing alarm, not a daily cross-sectional alpha, and that its
+skill must be read at the event level (episode capture, post-alert CAR,
+the NB06 10-day edge), never as a ranking signal.
+
+**The improvement campaign** (adoption rule pre-stated: more captures,
+FAs not higher, paired cluster-bootstrap gain CI excluding zero):
+per-kind thresholds, a smoothing-window sweep w∈{1,3,5,7,10,14}, a
+logistic-weighted score on the desk candidacy, and Western-Electric
+run-rule triggers (k consecutive days). **Nothing displaced the shipped
+configuration.** No smoothing window strictly dominates w=7 and no
+run-rule k>1 dominates the single crossing (the smoothed score already
+encodes persistence). Two watch items are recorded with an automatic
+re-test at the next research pass: the logistic-weighted GET OUT (30 vs
+24 captures, FA 37 vs 39, median warning 14.5d vs 8d — gain CI [−1,+11]
+still touches zero, so parsimony holds) and per-kind thresholds (false
+alarms halved at equal capture rate, but on unmatched walk-forward
+years).
+
+**The "buy-buy-buy / sell-sell-sell" hypothesis** was tested in both
+forms. Per-instrument intensity (trigger days inside one trailing
+cooldown): STRONG (≥2 days) alerts show a 52.9% cliff-30 rate vs 55.9%
+for single-day alerts — uplift CI [−21pp, +22pp] straddles zero, so
+repetition adds NO conviction; the cooldown-plus-smoothed-trigger
+already absorbs it, and the exit criterion remains the GET OUT alert
+itself (with the danger-state band as the standing warning, §6.7).
+Cross-market breadth (share of names in GET OUT within a week) also
+fails to separate the tradeable-theme basket's forward returns at 90%
+(block-bootstrapped). The practical conclusion for the desk: a second
+GET OUT inside the same episode is not "more sell" — it is the same
+sell, and the first one already carried the information.
+
+*(§6.6 used to sit here, after §6.9, still saying its results were
+pending. It has been rewritten and moved into numerical order between
+§6.5 and §6.7 — 2026-07-27.)*
 
 ---
 
@@ -530,9 +642,9 @@ prices; the dashboard runs pipelines from the sidebar with progress and
 cancel; the committed data is text-free by construction (compliance);
 research and production import the same modules with a drift-guard
 assert (the deck's numbers *are* the dashboard's numbers); and the full
-test suite (40 invariants: crowd-only rule, no look-ahead, window caps,
-cooldowns, text-free stores) plus a dashboard smoke harness gate every
-change.
+test suite (**84** invariants: crowd-only rule, no look-ahead, window
+caps, cooldowns, text-free stores, share-unit algebra, chart-label
+layout) plus a dashboard smoke harness gate every change.
 
 ---
 
@@ -610,8 +722,26 @@ defends.
    evaluation discipline (§6.2, §7.1–7.2), and the §5.5 companion study.
 7. Hutto, C. & Gilbert, E. (2014). *VADER: A Parsimonious Rule-based
    Model for Sentiment Analysis of Social Media Text.* ICWSM.
+8. MacKinlay, A.C. (1997). *Event Studies in Economics and Finance.*
+   Journal of Economic Literature 35(1). — CAR methodology (§6.9).
+9. Grinold, R. & Kahn, R. (2000). *Active Portfolio Management* (2nd
+   ed.), McGraw-Hill. — information coefficient (§6.9).
+10. Page, E.S. (1954). *Continuous Inspection Schemes.* Biometrika
+    41(1/2); Poor, H.V. & Hadjiliadis, O. (2009). *Quickest Detection.*
+    Cambridge UP. — the delay-vs-false-alarm frontier (§6.9).
+11. Davis, J. & Goadrich, M. (2006). *The Relationship Between
+    Precision-Recall and ROC Curves.* ICML; Saito, T. & Rehmsmeier, M.
+    (2015). PLOS ONE 10(3). — PR analysis under imbalance (§6.9).
+12. Chicco, D. & Jurman, G. (2020). *The advantages of the Matthews
+    correlation coefficient (MCC) over F1 score and accuracy.* BMC
+    Genomics 21:6. — operating-point MCC (§6.9).
+13. Murphy, A.H. & Winkler, R.L. (1977). *Reliability of Subjective
+    Probability Forecasts.* JRSS Series C 26(1). — reliability
+    diagrams (§6.9).
+14. Western Electric Co. (1956). *Statistical Quality Control
+    Handbook.* — run-rule triggers, tested and not adopted (§6.9).
 
-*(The full 12-entry defense reference list, keyed to slides, lives in
+*(The full defense reference list, keyed to slides, lives in
 `docs/DECISIONS.xlsx`, sheet 12.)*
 
 ---
@@ -630,7 +760,7 @@ detector's alert threshold, walk-forward from past years only.
 ## Appendix B — Reproducibility
 
 ```text
-python -m pytest tests/ -v                         # 40 invariants
+python -m pytest tests/ -v                         # 84 invariants
 python -m analytics.run_analytics --what phases    # rebuild onset outputs
 cd notebooks && jupyter nbconvert --to notebook \
     --execute --inplace 0*.ipynb                   # re-render the study
@@ -644,6 +774,10 @@ runs (drift-guard assert in notebook 02).
 
 | Date | Update |
 |---|---|
+| 2026-07-27 (p) | **The influence tab re-cut into units that can be spoken aloud, and two defects found only by LOOKING at the rendered charts** (§6.6, moved into numerical order and rewritten; Class 6b of the parameter register). Desk verdict on the row-(n) tab was literal — *"I still don't get it"* — and the cause was measurable: every headline number was a bare sum with no unit. A min-max composite printed as "usefulness 0.987" reads as an accuracy and is not one; a Σ(influence × conviction) printed as "3.42" cannot be compared between two windows. Both are now **rescalings of themselves**, so no ranking and no conclusion changed: `influence_index = 100·composite/max` (real-store max 0.9855, a positive rescaling) and `backing_share = 100·weighted/Σweighted` — **share of the room's conviction**, bounded 0–100, additive, immune to the long tail (30-day cross-section, 51 names: MSFT **26.10%**, ADBE 7.05, FICO 4.82, INTU 4.04, MELI 3.58, tail STRC 0.17). Read against a **DERIVED** line, `even_share(n) = 100/n` — 2.0% over 51 names, so MSFT runs 13× an even share — replacing the old 1.0× median hairline. **One intermediate REJECTED on data, and the argument for it formally withdrawn**: `backing_ratio = weighted/median(weighted)` was justified as mirroring the euphoria detector's A1 convention ("2× its own 120d median"); A1 divides a name by *its own history*, a stable reference, whereas the median NAME in a cross-section is a ticker mentioned once by one person. In the week to 2026-06-28, 163 names were mentioned and the median carried 0.24 of backing, so MSFT printed **141×**; weekly maxima ran 141×/41×/2.7×/14×/26× (30d) and **171×** (90d), and with `authors=None` the median is exactly 0 so every ratio came back **NaN**. A unit that swings 50-fold between adjacent weeks and undefines itself on an empty filter is not a unit. **Time panels re-based on all 340 recorded voices, not the top-N panel**: the top-25 weeks held 124, 25, **1**, 23, 9 calls (the one-call week is one name at 100% by definition), against 733, 404, 23, 98, 155 calls across 14–171 names for the full pool — a time series whose population changes with a slider is not a time series. Thin weeks are **ENCODED, never gated**: tilt-marker area ∝ `n_calls`, so a thin week LOOKS thin and no week is dropped by a threshold. **Two defects visible only in rendered element screenshots** (Streamlit's `full_page=True` silently returns the viewport, which is why four charts had never actually been looked at): (i) the bubble chart printed MSFT at **29.5%** while KPI 4 one row above printed **26.10%** for the same name in the same window, because the figure received `dig.head(30)` and denominated over 30 names instead of the window's 51 — one quantity cannot have two values on one screen; fixed by passing the FULL digest plus `top_n` and fixing the denominator (and `even_share`) **before** truncation, in both `fig_influence_bubbles` and `crowding_history`; (ii) labels printed through each other (INTU 4.04% vs MELI 3.58% sit 0.46pp ≈ 9px apart at 520px; a 10pt label needs 13px), fixed by `_thin_labels`, a greedy geometric de-collider, plus nudged annotations on the weekly chart where MSTR and ADBE both ended near 0.3% as one smear. `_thin_labels` is declared **the only pixel-level rule on this project** and is fenced as such: its gaps are derived from plot geometry (13px = one 10pt line box at 1.3 leading; 30px = a four-character ticker's width), it suppresses only when boxes overlap in BOTH directions, it never decides which names *matter* (every point is still drawn, still hovers, still appears in the exact-numbers table), and five unit tests pin it. Removals recorded rather than deleted: **`fig_consensus`** (it plotted the bubble chart's x-axis with the y-axis folded into bar opacity — its own docstring said so; its encoding decision is kept as a REJECTED register row), the **HIGH-tier cut display**, and the **per-author hit rate**, which the desk asked to drop — the stored `hit_rate` column is unchanged and a schema test asserts it. KPI renamed to "calls vs last week". Ingestion cadence answered from the ledger, not typed: `--dry-run` prints `comment budget: 449 pages (7.5 min) = ceiling 10.0 min − other stages 2.5 min`. **9 new tests (75 → 84 passed)**; AppTest clean, all five sidebar buttons 0 exceptions. One self-caught bug worth recording: my own de-collider's first `sort(reverse=True)` on `(y, x, i)` made the highest row index win ties, handing the label to the *least*-backed name — fixed to `key=lambda t: (-t[0], t[2])` so ties resolve toward the better-backed name. |
+| 2026-07-27 (o) | **Comments are BUDGETED, not optional — row (b)'s decoupling reversed** (§3.1b, §3.1b-i). An influence board that rescores month-old comments is not a live board, so `update_data.py` now fetches comments on every run; `--with-comments` is accepted and ignored, `--skip-comments` is the new opt-out. The reason it could not simply be switched back on is measured, not assumed: intersecting comment-call `rec_id`s with `reply_edges` gives 12,010 / 417,208 = **2.879% call rate among comments**, which against two independent months (403 and 414 comment-calls/day) implies **~14,000 comments/day ≈ 140 pages/day** across the 17-sub panel — a 7-day gap costs **16.3–16.8 min** at the API's committed 1 req/s, over the desk's 10-minute ceiling. (Caveat recorded: the call rate is measured on the edge-covered subpopulation, 48% of comment-calls.) What ships is a **page allowance** computed from two self-measuring EWMA ledgers — `pipeline_stage_times.json` (what the non-fetch stages actually cost this machine) and `reddit_comments_cost.json` (pages/day per subreddit) — allocated proportionally to each subreddit's owed days with a one-page anti-starvation floor. EWMA α is DERIVED, not typed: `N = round(28 / 3.2) = 9` runs → `α = 2/(N+1) = 0.2`. Hitting a cap sets `completed = False`, so the watermark does **not** advance and the next run resumes exactly there — deferral, never data loss: the board is never silently partial, only ever less fresh. Four alternatives REJECTED with reasons: a wall-clock stopwatch (makes data collected a function of network luck, so no two runs are comparable), parallel workers (W workers × 1s pauses = W req/s, breaking the politeness contract the project accepted when it chose a free public API), uniform window narrowing (penalises quiet subreddits to subsidise loud ones), per-subreddit yield ranking (the store has no `subreddit` column). The one legitimate speedup was removing dead time: a `Pacer` sleeping the *remainder* of the second rather than a flat second after each round-trip — **28% dead time removed at an unchanged request rate** (261ms vs 360ms over 6 requests). `PIPELINE_BUDGET_S = 600` is the single DESK-CHOSEN number here. Measured on real data: `analytics.run_analytics` 73.3s (reproduced twice), fold 0.44s, coverage 0.31s, hydrate 0.012s → residual allowance **465 pages ≈ 7.8 min ≈ 3.3 days** of panel volume, so the derived cadence is **3.32 days** — the desk chose **~2×/week**, which the ledger independently confirms. Both ledgers are gitignored (they measure ONE machine's speed). `update_comments.py` repositioned as the UNBUDGETED runner for backfills and long-gap catch-up, and its hand-written time ranges ("roughly 10–25 minutes") replaced by a ledger-computed estimate — those were typed-in numbers, which this project does not keep. Operational change only: no analytic input changed, and the euphoria detector still never reads comments. 75 tests pass; verified end-to-end with a real pipeline run (ledger written, allowance self-corrected 449 → 465) and two no-network stub tests (cap/watermark/ledger semantics; all three `fetch_all` hand-off paths). |
+| 2026-07-27 (n) | **Influence tracker: Chan (2026) replicated end-to-end, and its negative result shipped honestly (NB05).** The store is now real (5,071 authors with a judged call; 107k accounts, 259k reply edges in the raw graph), so the harness built in row (a) was run for the first time. Ported from the thesis: §4.6 composite scoring with Bayesian shrinkage, §5 network and label analysis, §6.1 eight architectures (GAT deliberately NOT ported — attention must *learn* edge weights and ~250 positives cannot support it; `mixhop_lite` is the named small-data stand-in), §7.1.2 labelling sensitivity, §7.1.3 misclassification, §7.2 ablation + DICE/random perturbation, §8 limitations. All graph layers are pure numpy/scipy — hand-rolled multi-level Louvain, Brandes sampled betweenness, k-core, Fruchterman-Reingold; **no networkx anywhere**. Headline: `logit` on the 17-feature bank, softened labels, **AP 0.0977 ± 0.0242 vs a 0.0467 random floor, AUROC 0.6681, permutation p = 0.005** (200 shuffles). **Every graph rung rejected** under the paired 10-seed CI rule (mixhop +0.0011 CI [−0.0063, +0.0085]; h2gcn −0.0078 CI [−0.0130, −0.0026], i.e. significantly worse), and the diagnosis is measured, not asserted: positive-class node homophily **0.0948** vs negative 0.9628 (sharper than Chan's 0.08/0.93), and DICE perturbation *raises* AP 0.1031 → 0.2063 at 50% corruption. Two disciplines applied beyond the thesis: `mean_conf`/`stance_sd` refused as arithmetic factors of their own target with the **price of that honesty recorded** (+0.0983 AP, CI [+0.0834, +0.1132], 10/10 seeds), and Bonferroni within the round (6 candidates → conf 0.99167) which turned the one nominally-significant bank change into **adopted: null**. Decisive limitation: on a tenure/cohort split the model sits **at the random floor for unseen authors** (lift −0.046) — so the dashboard's new INFORMATION-ONLY influence tab ranks by the **measured** record and files the model as a research exhibit. Tab ships a leaderboard, an influence-weighted "what they are suggesting" view (fade encodes weight of evidence, because bar length saturates at three agreeing voices), a k-core backbone / ego influence map over the scored pool (100% colour coverage, 0.9s vs 39.5s unrestricted), and a "why there is no model on this tab" panel quoting the four measured numbers. Nothing on the tab touches the euphoria level or the GET IN / GET OUT alerts. 17 new tests (**72 total**), AppTest clean across all six new branches, notebook re-executed 0 errors / 17 figures, `docs/research/nb05_influence.json` written. One latent bug fixed in passing: `stratified_split` shuffled a read-only view of the caller's index. |
+| 2026-07-24 (m) | **Performance battery + improvement campaign (NB07)** — §6.9. Literature-grounded metrics added (PR/F1/MCC at the operating point, delay-vs-FA frontier, MacKinlay CAR, reliability diagram, Grinold-Kahn IC, overlay Sharpe/Sortino); the positive daily IC recorded as proof the signal is an episode alarm, not daily alpha. Four pre-registered challengers (per-kind thresholds, smoothing sweep, logistic weighting, run-rule triggers): **nothing displaced the shipped configuration**; watch items B3 (logreg: 30 vs 24 captures, gain CI touches zero) and B1 (per-kind: FA halved, unmatched years) recorded with auto re-test at next research pass. Clustering-as-conviction tested both ways (per-instrument intensity, cross-market breadth): **no separation** — the exit criterion remains the GET OUT alert itself; repetition adds no information. References section extended. |
 | 2026-07-24 (l) | **DESK CONFIGURATION adopted and productionised (GET IN / GET OUT)** — §6.8. GET OUT = boom-gated END with 7d-smoothed trigger (cap 24/122, FA 39, AP 0.449, median warning 8d); GET IN = phase-aware onset + smoothing (adjacency 20→2, LATE 21→10, FA 169→124, capture cost 29→20 RECORDED — a desk decision overruling row (i)'s utility-rule rejection, per the thrice-stated adjacency priority). Selection rule pre-stated in NB06; drift guard asserts notebook == production record. New store `euphoria_desk.parquet` + frozen thresholds (GET IN 0.848 / GET OUT 0.630) in `euphoria_desk_report.json`; research/live split honoured (desk thresholds refreeze only on `--research`/year rollover). Terminal: explicit GET IN (green) / GET OUT (red) banners, GET IN/GET OUT chart labels, and a window-adaptive scorecard (hit rate, median lead, FAs, signals - recomputed for the selected window with the research judges; PENDING convention respected). 5 new tests (55 total). |
 | 2026-07-24 (k) | **Desk-signal study concluded (NB06)**: combined price+crowd ALERT bank rejected under its pre-stated cliff criterion (65% vs its own 62% candidate-day baseline, CI includes 0) - but the candidacy STATE validated decisively as the drop-warning: cliff-30 62% on danger-state days vs 19% ordinary, CI [+28pp,+50pp]. DANGER STATE (A1 2x + G2 boom, existing constants only) shipped as an amber band on the terminal price panels; smoothed trigger evidence recorded (FA 31->24 at equal capture, median run 6->8d). Event-study reading guide: after an END alert, flat/down = success; the +50d mean spike is an outlier artifact (median path flat). |
 | 2026-07-24 (j) | **Price-assisted END gate: commissioned, tested, PASSED.** Gate = G2's own boom thresholds as a live prerequisite (trailing prices only). On matched test years: capture 16->26 detectable tops (+62%), AP 0.286->0.435, FAs 44->41, utility -28->-15; dose-response confirmed via a half-strength gate; capture-gain 90% cluster CI [+0.035,+0.130] excludes zero. All pre-stated adoption conditions met -> OFFERED as a clearly-labelled SECOND signal (claim: crowd + chart-confirmed boom); the crowd-only detector remains the headline claim. Not yet wired to the dashboard - desk decision pending. |

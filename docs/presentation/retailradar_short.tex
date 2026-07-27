@@ -1,0 +1,493 @@
+%==============================================================================
+%  RetailRadar / retailAPOLLO  --  SHORT DECK (15 slides)
+%  Alex Brown  --  GIP 2026 Project  --  MAARS Global Macro
+%
+%  BUILD
+%      cd docs/presentation
+%      pdflatex retailradar_short.tex        % twice, for the outline
+%
+%  WHAT THIS IS
+%      The 15-slide cut of the 77-page deck, for a meeting slot rather than a
+%      viva.  It shares gic_beamer_preamble.tex with the full deck, so the two
+%      cannot drift apart on palette, figure sizing or the SO WHAT strip.
+%
+%  THE SELECTION RULE (worth stating, because "the best bits" is not a rule)
+%      A slide earns a place here only if it does one of four things:
+%        1. states what the thing is, or what it is FOR                (2 slides)
+%        2. carries the single strongest measured result               (3 slides)
+%        3. shows a defect being fixed BY MEASUREMENT rather than by a
+%           hard-coded rule -- the methodological claim of the project (3)
+%        4. shows something honest that a reviewer would otherwise have to
+%           dig for: a rejected trade, an un-earned model, a limitation  (3)
+%      Everything else -- the atlas, the per-year reconciliations, the
+%      threshold-selection derivations, the feature diagnostics -- stays in the
+%      full deck and is cited by page number on the closing slide.  A short
+%      deck that quietly drops the negative results is a sales deck; the
+%      negative results are the reason to believe the positive ones, so three
+%      of the fifteen slides are given to them on purpose.
+%
+%  HOUSE RULE
+%      Update \lastedited and \lastcommit on EVERY edit -- both are printed on
+%      the title slide and in every footer.
+%==============================================================================
+
+\documentclass[aspectratio=169,11pt]{beamer}
+
+%------------------------------------------------------------------ metadata --
+% Per-deck, deliberately NOT in the shared preamble: the two decks are edited
+% independently, so one shared date would misstate the age of whichever deck
+% was not touched.
+\newcommand{\lastedited}{2026-07-27}
+\newcommand{\lastcommit}{%
+  short deck cut from the full 77-page version: 15 frames chosen against a
+  stated selection rule, sharing one preamble with the long deck so palette and
+  fitted figure caps cannot diverge}
+\newcommand{\deckversion}{short v1.0}
+
+%----------------------------------------------------- shared house style --
+\input{gic_beamer_preamble}
+
+%--------------------------------------------------------------------- title --
+\title{RetailRadar}
+\subtitle{Detecting the start and the end of retail euphoria}
+\author{Alex Brown}
+\institute{GIP 2026 Project \textbullet\ MAARS Global Macro}
+\date{\lastedited}
+
+\begin{document}
+
+%=============================================================== 1. title =====
+\begin{frame}[plain]
+  \vspace{1.4em}
+  {\color{gicnavy}\fontsize{30}{34}\selectfont\bfseries RetailRadar\par}
+  \vspace{0.4em}
+  {\color{gicink}\large Detecting the \textbf{start} and the \textbf{end} of
+   retail euphoria\par}
+  \vspace{0.3em}
+  {\color{gicgrey}\normalsize A walk-forward study on nine years of
+   social-media attention\par}
+  \vspace{1.3em}
+  {\color{gicrule}\hrule height 0.8pt}
+  \vspace{0.9em}
+  {\color{gicink}\normalsize Alex Brown\par}
+  {\color{gicgrey}\small GIP 2026 Project \textbullet\ MAARS Global Macro\par}
+  \vspace{1.1em}
+  {\color{giclight}\scriptsize \deckversion\ \textbullet\ last edited
+   \lastedited\par}
+  \vspace{0.5em}
+  {\color{giclight}\scriptsize Full 77-page version:
+   \texttt{retailradar\_presentation.pdf}\par}
+\end{frame}
+
+%============================================================ 2. the job ======
+\begin{frame}{The job, and the one rule behind it}
+  \begin{columns}[T]
+    % \footnotesize, not \small, in both columns: at \small this frame
+    % overflowed by 10.2pt (measured in the log, not guessed).  Nine lines a
+    % column x the ~1.5pt of leading between the two sizes is ~14pt, so
+    % stepping the size down once clears it without cutting a word.
+    \begin{column}{0.5\linewidth}
+      \footnotesize
+      \textbf{What a PM asked for}
+      \begin{itemize}
+        \item Tell me when retail is getting \emph{euphoric} about something
+              I hold.
+        \item Tell me when that euphoria is \emph{fading} --- before the price
+              tells me.
+        \item Speak \textbf{rarely}. A light that is always on is not a light.
+      \end{itemize}
+      \vspace{0.5em}
+      \textbf{So success was defined before any test was run:} an alert inside
+      $[\text{peak}-30\text{d},\ \text{peak}+1\text{d}]$ of a genuine top,
+      where a top is a run of $\geq$25\% (ETF) / $\geq$50\% (single) followed
+      by a $\geq$15\% / $\geq$30\% drawdown within 90 days.
+    \end{column}
+    \begin{column}{0.46\linewidth}
+      \footnotesize
+      \textbf{The one rule the project is built on}
+      \vspace{0.3em}
+
+      Every number in this system is one of:
+      \begin{itemize}
+        \item \textbf{learned} from past data only, then frozen;
+        \item \textbf{derived} from a stated budget or definition;
+        \item a \textbf{convention}, published with the ablation that shows
+              what it costs;
+        \item a \textbf{desk decision}, named as one.
+      \end{itemize}
+      \vspace{0.4em}
+      {\color{gicgrey}There is no fourth category. ``It looked about right''
+       is not in the register.}
+    \end{column}
+  \end{columns}
+  \sowhat{The deliverable is a \emph{risk} instrument --- a warning light for
+    crowded longs --- not an alpha signal. Everything after this slide is
+    tested against that claim and nothing wider.}
+\end{frame}
+
+%=================================================== 3. what it measures ======
+\begin{frame}{What is actually measured --- and what never is}
+  \begin{columns}[T]
+    \begin{column}{0.52\linewidth}
+      \small
+      \textbf{Euphoria} = the crowd has stopped analysing a name and started
+      celebrating it. Four crowd measurements, each ranked against
+      \emph{that name's own} trailing year:
+      \begin{enumerate}\small
+        \item \textbf{Attention extremity} --- you cannot be euphoric quietly.
+        \item \textbf{Sustained bullishness} --- weeks of one-way lean, not one
+              loud afternoon.
+        \item \textbf{Crowd influx} --- new people still arriving.
+        \item \textbf{Super-exponential growth} --- attention whose
+              \emph{growth rate} is itself growing.
+      \end{enumerate}
+      \vspace{0.3em}
+      {\scriptsize (4) is Sornette's LPPLS bubble signature applied to the
+       \emph{crowd} instead of the chart: attention spreads as an epidemic, and
+       a contagion that accelerates must saturate.}
+    \end{column}
+    \begin{column}{0.44\linewidth}
+      \small
+      \textbf{Per-name ranking is the whole trick.} ``Extreme'' always means
+      extreme \emph{for this name}, so BTC is judged against loud-for-BTC and a
+      utility ETF against quiet-for-utilities. One global threshold would fire
+      on BTC every week and never on anything else.
+      \vspace{0.6em}
+
+      \textbf{What never enters the prediction:} the price chart. Price
+      \emph{gates} an ending (you cannot end a party that never started) and
+      \emph{grades} every alert --- but the crowd does the predicting.
+      \vspace{0.4em}
+
+      {\color{gicgrey}\scriptsize That restriction costs measured capture. It
+       is kept because it is the only way to claim: \emph{the crowd alone
+       called the top}.}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+%========================================================= 4. the scale =======
+\begin{frame}{The evidence base}
+  % Four counters across the slide is 93.6pt each, so every label wraps to two
+  % or three \scriptsize lines and the TALLEST label sets the height of the
+  % whole row.  This frame overflowed by 19.1pt; the fix is two lines of label
+  % (Bloomberg moved into the walk-forward bullet, where it belongs anyway)
+  % plus the two vertical struts, which together are ~24pt.
+  \stat{9 years}{of daily Reddit attention, 2017--2026}\hfill
+  \stat{333}{hype episodes labelled before any detector existed}\hfill
+  \stat{122}{tops the detector could possibly have caught}\hfill
+  \stat{12{,}528}{authors scored on their own forecasting record}
+  \vspace{0.9em}
+
+  \begin{itemize}\footnotesize
+    \item \textbf{The exam was written before it was sat.} Episodes, tops and
+      the detectable subset are defined in Notebook 01 by a rule applied to
+      price alone --- with no detector in existence and no feature consulted.
+      Nothing downstream can move the target.
+    \item \textbf{Two denominators are quoted everywhere.} 24 of 122
+      \emph{detectable} tops is also 7.2\% of all 333 episodes. Crowd coverage
+      is deep in 2020--22 and 2026, thin to absent in 2023--25: there the
+      detector is \textbf{blind}, which is not the same as wrong.
+    \item \textbf{Walk-forward throughout, against real closes.} Prices are
+      Bloomberg; every threshold is fitted on \emph{earlier years only} and
+      then frozen, and the live pipeline snapshots each day's signal and never
+      revises it.
+  \end{itemize}
+  \sowhat{The honest headline is not a hit rate --- it is that the target,
+    the split and the budget were all fixed in advance, so the hit rate means
+    something.}
+\end{frame}
+
+%================================================== 5. the danger state =======
+\begin{frame}{The strongest result: the danger state}
+  \begin{columns}[T]
+    \begin{column}{0.52\linewidth}
+      \vspace{0.4em}
+      \stat[0.95]{62\%}{of danger-state days are followed by a
+        $\geq$10\%-in-7-days drop within 30 days}\\[1.0em]
+      \stat[0.95]{19\%}{on ordinary candidate days}\\[1.0em]
+      {\scriptsize 90\% instrument-cluster CI on the uplift:
+       $[+28\text{pp}, +50\text{pp}]$}
+    \end{column}
+    \begin{column}{0.44\linewidth}
+      \scriptsize
+      \textbf{The danger state is not a model.} It is the conjunction of two
+      things the system already computes:
+      \begin{itemize}
+        \item the crowd is $\geq 2\times$ its own 120-day normal, \emph{and}
+        \item price is already in a boom off its own 120-day low.
+      \end{itemize}
+      \vspace{0.5em}
+      A combined price+crowd \emph{alert} model was also tested and did
+      \textbf{not} clear its criterion: its 65\% hit rate is indistinguishable
+      from the 62\% baseline of its own candidate days.
+      \vspace{0.4em}
+      \\ \textbf{Which is itself the finding:} the \emph{state} carries the
+      information, so the product ships it as a standing amber band and uses
+      the END alerts to time the peak \emph{within} it.
+    \end{column}
+  \end{columns}
+  \sowhat{The most useful thing this system produces is a \emph{regime flag}
+    that roughly triples the base rate of a near-term double-digit drawdown.}
+\end{frame}
+
+%================================================ 6. the operating record =====
+\begin{frame}{The walk-forward operating record}
+  \begin{table}
+    \scriptsize
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{@{}lrrrrr@{}}
+      \toprule
+      & \textbf{Captured} & \textbf{Detectable} & \textbf{Rate}
+      & \textbf{False alarms} & \textbf{FA / instr-yr} \\
+      \midrule
+      GET OUT (shipped: boom-gated, smoothed) & 24 & 122 & 19.7\% & 39 & 0.195 \\
+      GET IN  (shipped: phase-aware, smoothed) & 20 & 125 & 16.0\% & 124 & 0.25 \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+  \vspace{0.2em}
+  \begin{itemize}\footnotesize
+    \item \textbf{Lead time.} GET OUT fires a median \textbf{8 days before the
+      peak}; GET IN a median 17 days after the trough, with a median
+      \textbf{66 days of rally still ahead}.
+    \item \textbf{Read those two differently.} 66 days of rally ahead is
+      \emph{actionable}. Eight days before a top is not time to build a short
+      --- it is time to \emph{stop adding}. The deck says so rather than
+      rounding it up into an entry signal.
+    \item \textbf{One number is above budget, and it is printed on the pane
+      itself:} GET IN false alarms run 0.25/instrument-year against a derived
+      budget of 0.23.
+  \end{itemize}
+  \sowhat{One in five detectable tops, at one false alarm per five
+    instrument-years, with eight days' warning. Useful as a risk flag;
+    nowhere near a standalone strategy --- and priced as such.}
+\end{frame}
+
+%====================================================== 7. event study ========
+\begin{frame}{What actually happens after a GET OUT}
+  \sidebal{0.58}{0.40}
+  \sidefig{06/03_event-study-with-90-cluster-bootstrap-bands-th.png}{%
+    Median forward path of every scored GET OUT, one vote per instrument, with
+    90\% cluster-bootstrap bands. Red \emph{rising} means price \emph{falling}:
+    the axis is drawn so that ``the signal was right'' always points up.}{%
+    Ten trading days after a GET OUT the average name has done
+    \textbf{$-$2.6\%} against \textbf{$+$0.6\%} on a random day --- 90\%
+    interval $[-6.6\%, -0.3\%]$, which \emph{excludes zero}. It is the only
+    horizon of four tested (3 / 10 / 21 / 84 days) that does.}
+\end{frame}
+
+%================================================== 8. the blip fix ===========
+\begin{frame}{The desk complaint, fixed at the signal and not with a rule}
+  \begin{columns}[T]
+    % Worst overflow in the deck at 42.2pt, and the arithmetic says why: the
+    % left column ran ~11 \small lines plus a 5-line list (~180pt) into a body
+    % that is only ~140pt once the SO WHAT strip has taken its ~42pt.  Both
+    % type sizes step down once and the two struts halve; nothing is cut.  The
+    % right column is trimmed too, because in a columns[T] the frame takes the
+    % MAX of the two -- shrinking only the taller one just hands the overflow
+    % to its neighbour.
+    \begin{column}{0.5\linewidth}
+      \footnotesize
+      \textbf{The complaint:} ``euphoria for a single day, then gone'' --- and
+      START markers landing next to END markers.
+      \vspace{0.3em}
+
+      \textbf{The tempting fix:} a minimum-duration rule. Rejected --- it hides
+      the symptom and adds a constant defensible only by taste.
+      \vspace{0.3em}
+
+      \textbf{What was done instead:} two changes to the signal, each measured.
+      \begin{itemize}\scriptsize
+        \item Trigger on the \textbf{7-day-smoothed} score. Quality
+          AP $0.435 \rightarrow 0.449$, at a recorded cost of 2 captures.
+        \item Make GET IN \textbf{phase-aware}: a day that already meets every
+          ending condition is end-stage, so a ``start'' there cannot fire.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.46\linewidth}
+      \stat[0.95]{20 $\rightarrow$ 2}{START markers printing adjacent to an
+        END, before and after}\\[0.7em]
+      \stat[0.95]{29 $\rightarrow$ 20}{captures --- the price paid, recorded
+        rather than buried}
+      \vspace{0.2em}
+
+      {\scriptsize\color{gicgrey} Why pay it: a START landing on an END
+       destroys trust in the whole pane, and an untrusted pane has an effective
+       hit rate of zero.}
+    \end{column}
+  \end{columns}
+  \sowhat{This is the methodological claim of the project in one slide: fix the
+    \emph{signal}, publish what the fix cost, and never patch the output with a
+    rule you cannot derive.}
+\end{frame}
+
+%================================================= 9. boom gate ===============
+\begin{frame}{The gate that \emph{added} hits by firing less often}
+  \sidebal{0.56}{0.42}
+  \sidefig{07/06_get-out-vs-smoothing-window.png}{%
+    GET OUT quality against the smoothing window. Seven days is a plateau, not
+    a spike --- which is what a real effect looks like and what a fitted
+    constant does not.}{%
+    Requiring an \emph{actual} price boom before an ending can be called took
+    captures from \textbf{16 to 26} of 122. Fewer alerts, \emph{more} hits:
+    the gate stopped the detector spending alerts on names that were never in
+    a rally. The boom thresholds are not new constants --- they are the same
+    ones the ground-truth labels already use.}
+\end{frame}
+
+%=============================================== 10. rejected trades ==========
+\begin{frame}{What was tested and \textbf{rejected}}
+  \small
+  \begin{table}
+    \begin{tabular}{@{}lrrrrl@{}}
+      \toprule
+      \textbf{Claim} & \textbf{n} & \textbf{Alert 20d} & \textbf{Baseline}
+      & \textbf{Diff} & \textbf{90\% CI} \\
+      \midrule
+      GET IN $\rightarrow$ BUY   & 215 & $+0.34\%$ & $+0.98\%$ & $-0.63\%$
+        & $[-1.51\%, +0.26\%]$ \\
+      GET OUT $\rightarrow$ SELL & 67  & $-0.21\%$ & $+1.34\%$ & $-1.55\%$
+        & $[-5.63\%, +2.63\%]$ \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+  % 1.2pt over: the strut that used to sit here was worth 2.2pt, which is the
+  % whole debt plus a hair.  Nothing else on the slide moves.
+  \begin{itemize}\footnotesize
+    \item \textbf{Criterion, written before any return was computed:}
+      $n \geq 30$ judged alerts; mean 20-day forward return beats the
+      same-instrument unconditional baseline in the expected direction; 90\%
+      instrument-cluster CI of the difference excludes zero.
+    \item \textbf{Both REJECTED.} The SELL direction is right, but at $n=67$
+      the interval spans zero. The BUY edge is simply not there at 20 days. A
+      short-after-GET-OUT overlay was also measured: annualised Sharpe
+      $-0.82$.
+    \item \textbf{A gradient-boosted model} on the same features caught 11
+      endings against the shipped rules' 23, inside the same tournament ---
+      and the weights it \emph{learned} rank the same features top, which is
+      independent evidence the rules are not arbitrary.
+  \end{itemize}
+  \sowhat{Avoiding the left tail of a long you already hold is a different and
+    easier problem than timing a short entry. The evidence supports the first
+    claim only, so that is the only claim made.}
+\end{frame}
+
+%=============================================== 11. influence ================
+\begin{frame}{Whose voice is worth anything? (Chan 2026, replicated)}
+  \sidebal{0.52}{0.46}
+  \sidefig{05/04_the-20-core-backbone-163-authors-2774-replies.png}{%
+    The 20-core backbone of the reply graph: 163 authors, 2{,}774 replies.
+    Position is force-layout, size is how many people reply to them, colour is
+    measured usefulness.}{%
+    Every author's calls are scored against the next 20 days, on a bar that
+    \emph{scales with the name} (3\% is a real call on an index and noise on a
+    meme stock), then shrunk toward the crowd base rate so nobody tops the
+    board on three lucky calls.
+    \vspace{0.4em}
+    \\ \textbf{The counter-intuitive finding, reproduced:} the accounts with
+    the most reach were among the \emph{least} accurate --- 3$\times$ the
+    degree, barely-above-chance hit rate. The list a follow-the-big-names desk
+    would copy is flagged in the product as the list to \textbf{fade}.}
+\end{frame}
+
+%=============================================== 12. the null result =========
+\begin{frame}{The influence result we are \emph{not} allowed to claim}
+  \sidebal{0.54}{0.44}
+  \sidefig{05/10_only-rung-0-clears-zero-the-graph-does-not-ear.png}{%
+    The adoption ladder. Each rung is a more complex model against the one
+    below it: 10 paired seeds, cluster-bootstrapped 90\% interval on the AP
+    difference, Bonferroni-corrected across six comparisons.}{%
+    Eight graph architectures were tested --- GraphSAGE, GCN, SGC/MixHop,
+    H2GCN, label propagation, an MLP. \textbf{Only rung 0 clears zero:} a plain
+    linear model beats random, and \emph{nothing beats the plain linear model.}
+    \vspace{0.4em}
+    \\ Our AP of \textbf{0.098} against a 0.047 random floor is in the same
+    place as the thesis's own GraphSAGE result (0.140 on its data), so this is
+    a replication of a small effect --- not a failure to find a large one.
+    \vspace{0.3em}
+    \\ \textbf{So the product ships no model here.} It shows the measured
+    record only.}
+\end{frame}
+
+%=============================================== 13. product 1 ================
+\begin{frame}{The product: two lines, and nothing else to interpret}
+  \sidebal{0.62}{0.36}
+  % Measured, and it corrected a wrong first guess worth recording.  A
+  % dashboard screenshot is 2880x2000, so at 0.62 of the slide it renders
+  % ~245x170pt -- inside both the 217pt cap AND the ~185pt body -- so the
+  % PICTURE is not what overflows here.  Shrinking it to 0.93 width left the
+  % overflow at 1.16687pt, byte-identical to before: proof the 0.36-wide WORDS
+  % column is the tall one, since a 230-character block at \scriptsize wraps to
+  % five lines at 143pt.  So the figure goes back to full size and the debt is
+  % paid in prose.  Rule of thumb for this layout: check the words first.
+  \sidefig{dashboard/00_euphoria-themes.png}{%
+    The themes pane, as shipped.}{%
+    \textbf{Blue = GET IN, red = GET OUT.} Nothing else on the chart is a
+    decision; the 0--100 curve is context.
+    \vspace{0.4em}
+    \\ The panes are ordered by \emph{most recent signal}, so the top of the
+    screen is the part of the book that changed.
+    \vspace{0.4em}
+    \\ Every explanation is plain English with the measured number attached,
+    read live from the notebook exports --- so nothing on screen goes stale.}
+\end{frame}
+
+%=============================================== 14. product 2 ================
+\begin{frame}{The product: what the names with a record are pushing}
+  \sidebal{0.62}{0.36}
+  \sidefig{dashboard/02_influence-tracker.png}{%   % words-governed, as above
+    The influence pane, as shipped.}{%
+    Bubble size is how much a voice is worth, colour is which way it leans.
+    Below it: the leaderboard, the reply map, and the ``loud but wrong'' list.
+    \vspace{0.4em}
+    \\ \textbf{This pane does not feed the euphoria signal.} It is background
+    colour --- \emph{``the accounts with a track record are leaning short semis
+    this month''} --- and it is labelled as such on the screen.
+    \vspace{0.4em}
+    \\ The store is pseudonymous and \textbf{text-free by a hard write-time
+    check} --- by construction, not by convention.}
+\end{frame}
+
+%=============================================== 15. close ====================
+\begin{frame}{Where this stands, and what is next}
+  \begin{columns}[T]
+    \begin{column}{0.48\linewidth}
+      \small
+      \textbf{What is defensible today}
+      \begin{itemize}\footnotesize
+        \item A regime flag that triples the base rate of a near-term 10\%
+              drawdown.
+        \item An ending signal with 8 days' median warning at one false alarm
+              per five instrument-years.
+        \item A register in which every constant is learned, derived, a
+              labelled convention, or a named desk decision.
+        \item Two candidate trades and eight graph models \emph{rejected} on
+              pre-stated criteria.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\linewidth}
+      \small
+      \textbf{The single biggest available gain}
+      \begin{itemize}\footnotesize
+        \item \textbf{More crowd, not more model.} The comment backfill is
+              $\sim$10$\times$ the post volume and feeds every one of the four
+              ingredients. Coverage --- not architecture --- is what makes
+              2023--25 blind.
+        \item Then, and only then, re-run the same adoption ladder. Nothing is
+              adopted without a paired-seed interval that clears zero.
+      \end{itemize}
+      % 5.5pt over.  Taken as one shortened bullet opposite plus this strut,
+      % because both columns had to give: see the note on the desk-complaint
+      % slide for why trimming only the taller column does not help.
+      \vspace{0.2em}
+      {\color{gicgrey}\scriptsize Full evidence: 77-page deck, seven notebooks,
+       \texttt{PARAMETER\pb{}\_REGISTER.md}, \texttt{DECISIONS.xlsx}.}
+    \end{column}
+  \end{columns}
+  \sowhat{The result worth defending is not the hit rate --- it is that every
+    number here was fixed in advance, every rejection was published, and the
+    dashboard shows only what survived.}
+\end{frame}
+
+\end{document}

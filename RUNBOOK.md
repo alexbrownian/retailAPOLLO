@@ -21,11 +21,12 @@ all: the dashboard's sidebar buttons run the same pipelines.
 | Refresh euphoria/onset LIVE data | automatic in every pull - scores at the FROZEN walk-forward thresholds in seconds (intra-year recompute is a no-op: thresholds train on strictly earlier years) |
 | Re-run the FULL euphoria/onset validation | `python -m analytics.run_analytics --research` (or `--what euphoria`/`--what phases` with `--research`) - walk-forward + ablation + ML challenger + threshold re-selection. Run after a backfill or rule change; auto-triggers on year rollover or a missing report; `update_data --full` forces it |
 | Extend prices to full history | PowerShell: `$env:PIPELINE_START_DATE="2017-01-01"; python pull_bloomberg_prices.py` (incremental — pulls only the missing 2017-2020 spans, then rerun the euphoria stage) |
-| Comments + Influence Tracker | `python update_comments.py` — the dedicated runner (desk decision 2026-07-24: comments LEFT the daily pipeline because they are the slow fetch — 10-50x post volume at the API's polite 1s/page). It prints an upfront time estimate (first run ~10-25 min; incremental ~1-4 min), fetches comments (watermarked, Ctrl-C-safe, resumable), then updates the influence board in one go. The store still builds itself from nothing on the first run and re-judges matured calls automatically. `python update_data.py --with-comments` restores the old bundled behaviour for one run. `python -m analytics.influence --top 20` prints the board |
+| Comments + Influence Tracker | **NOTHING TO RUN — `python update_data.py` now does it** (desk decision 2026-07-27, reversing 2026-07-24: an influence board that rescores month-old comments is not current, so comments rejoined the live pipeline). They are still the slow fetch, so the crawl gets a **measured page allowance** instead of being switched off: the desk's `PIPELINE_BUDGET_S = 600 s` ceiling minus what *this machine* actually spends on its other stages, converted to API pages at the contracted 1 req/s. The comment fetch runs **in parallel** with the post fetchers, so those pages cost no extra wall clock. Every run prints `comment budget: N pages … = ceiling − other stages` before fetching and a `run cadence` line after. **Run the pipeline at least every ~3 days** (≈2×/week) and no comments are ever deferred; run it less often and the oldest pages are deferred to the next run (never lost — a capped subreddit keeps its watermark). Opt out for one run with `python update_data.py --skip-comments`; `--with-comments` is still accepted and now does nothing. `python -m analytics.influence --top 20` prints the board |
+| Catch up comments after a long gap, or backfill | `python update_comments.py` — the **unbudgeted** runner, for the crawls the 10-minute ceiling cannot afford. `--estimate` prints a computed (not hand-written) runtime from this machine's measured throughput and exits; `--backfill 2026-01-01 2026-07-01` for history. Watermarked, Ctrl-C-safe, resumable. Use this when the pipeline has been idle for weeks; for the ordinary refresh use `update_data.py` |
 | Dynamic subreddit panel | NOTHING TO RUN — a monthly, watermarked review rides every live pull (`ingestion/discover_subreddits.py --if-due`): it mines collected text for r/NAME referrals, and a candidate with ≥100 unique panel referrers/28d (the A0 floor, reused) that passes the finance screen auto-joins the EXPLORATION tier (max 1/review). Audit trail: `ingestion/subreddit_panel.json` + `docs/panel_review_latest.md`. Force a review: `python ingestion/discover_subreddits.py` (`--report-only` to rank without adding) |
 | Rebuild the ONSET detector + DESK signals (GET IN / GET OUT) | `python -m analytics.run_analytics --what phases` — LIVE mode: episode catalog + today's scores/alerts at the frozen thresholds (seconds), including `euphoria_desk.parquet` (the boom-gated smoothed GET OUT + phase-aware smoothed GET IN the dashboard shows); add `--research` for the full walk-forward scorecards + threshold re-freeze |
-| Re-run the phases research notebooks | `cd notebooks` then `jupyter nbconvert --to notebook --execute --inplace 01_*.ipynb 02_*.ipynb 03_*.ipynb 04_*.ipynb 06_*.ipynb` — every figure/number re-renders from current data (06 = the full signal-efficacy report: forward returns at 3/10/21/84d, hit rates vs baseline, event study, overlay PnL, per-name tables) |
-| Influential-users model (notebook 05) | AFTER the first live pull has seeded the influence store: `jupyter nbconvert --to notebook --execute --inplace notebooks/05_influence_users_model.ipynb` — a standing experiment, re-run any time |
+| Re-run the phases research notebooks | `cd notebooks` then `python -m jupyter nbconvert --to notebook --execute --inplace 01_*.ipynb 02_*.ipynb 03_*.ipynb 04_*.ipynb 06_*.ipynb 07_*.ipynb` — every figure/number re-renders from current data (06 = the full signal-efficacy report; 07 = the literature-grounded performance battery + improvement-experiment record incl. the watch items that auto re-test after a `--research` pass) |
+| Influential-users model (notebook 05) | `python -m jupyter nbconvert --to notebook --execute --inplace notebooks/05_influence_users_model.ipynb` (~2 min; needs `scikit-learn` + `jupyter`, which the live pipeline and the dashboard do NOT). **No jupyter installed, or only want the numbers?** `python notebooks/05_influence_users_model.py` runs the identical analysis as a plain script in ~107 s and writes the same `nb05_influence.json` (verified byte-identical 2026-07-27) — it just does not save the figures back into the `.ipynb`. Set `MPLBACKEND=Agg` first (PowerShell: `$env:MPLBACKEND="Agg"`) so matplotlib does not try to open 17 plot windows. Runs the full Chan (2026) replication on the current store and rewrites `docs/research/nb05_influence.json`, which the dashboard quotes. **Concluded 2026-07-27**: `logit` ships, every graph layer rejected, and the model does NOT generalise to unseen authors — so the dashboard ranks by the measured record. Re-run after any big comment pull to refresh the numbers; the adoption ladder re-tests itself and the notebook asserts that what it ships equals `influence_ml.BEST_MODEL` |
 | Run the tests | `python -m pytest tests/ -v` |
 | Rebuild the presentation evidence pack | `python helper/research_charts.py` — every validation chart + correlation/calibration test regenerated from CURRENT data into `docs/research/` (figures, `research_stats.json`, README) |
 
@@ -155,6 +156,42 @@ git push
   trades whose conviction has REVERTED ("consider exit" instead of
   waiting out the 20d cap). Conviction is computed live on the
   dashboard - no recompute needed to see engine changes
+- **Influence** — *information only; nothing here feeds the euphoria
+  signal or the GET IN / GET OUT alerts.* Who has actually been right on
+  Reddit, and what they are saying now. **Re-cut 2026-07-27 so every
+  number on it has a unit you can say out loud** — the previous version
+  printed bare sums, which is why it did not read. Six sections, in the
+  order a PM reads them: (1) **what the panel is pushing** — one bubble
+  per ticker, left/right is net direction, **height is that name's share
+  of the room's conviction in per cent**, dot area is how many calls, and
+  the dashed line is the **even split**, `100 ÷ names in the window`
+  (2.0% across 51 names on the 30-day view), so above the line means more
+  crowded than even; (2) **is the crowding building or fading** — the same
+  share week by week, over *all* recorded voices rather than the top-N
+  panel, with the tilt marker's size showing how many calls that week
+  rested on (a thin week looks thin — no week is ever filtered out);
+  (3) **who is behind one name** — the people pushing a chosen ticker,
+  ranked **influence 0–100** with their side beside each bar;
+  (4) **the names** — the board of authors with **5+ judged calls**,
+  showing influence 0–100 and their tickers. There is deliberately **no
+  per-author hit rate** anywhere on this tab (the stored column still
+  exists; it is just not displayed — at five judged calls it is too thin
+  to read as skill); (5) the **influence map** — either the reply-graph
+  backbone (the k-core: everyone with at least k neighbours inside the
+  picture) or one author's neighbourhood, dots sized by who replies to
+  them and coloured by usefulness, names arrowed to their dots; and
+  (6) two contrarian boards, *called the tops* and *loud but wrong*.
+  The "why there is no model on this tab" expander gives the measured
+  reason: a model can rank authors it has seen, but on unseen authors it
+  sits at the random floor, so the ranking you see is the record, not a
+  prediction. **Reading the share**: it is a share, so the numbers on any
+  one view add to 100 — that is the check. It is denominated on every name
+  in the window, not just the ones drawn, so the chart's figure for a name
+  always equals the KPI's figure for the same name. Populates itself from
+  ordinary `update_data.py` runs (comments are part of the live pull); the
+  map appears once `reply_edges.parquet` exists. Seeding from nothing takes
+  two or three runs because the comment fetch is budgeted — `python
+  update_comments.py` does it in one uncapped sitting instead
 - **Historical checker** — any window, any theme
 
 Every theme list and picker shows the TRADEABLE universe only (themes
