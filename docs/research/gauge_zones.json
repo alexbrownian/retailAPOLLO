@@ -1,0 +1,171 @@
+{
+ "outcome": "a fall of 10% or more over 7 days STARTS within the next 30 days",
+ "needle": "the 7d-smoothed euphoria level, 0-100 - the same curve the lower panel plots, read at its last day",
+ "panel": {
+  "name_days": 183394,
+  "names": 59,
+  "first": "2017-06-29",
+  "last": "2026-06-15"
+ },
+ "base_rate": 0.23274480081136786,
+ "amber_edge": 76,
+ "red_edge": 85,
+ "amber_edge_derivation": "lowest cut on a 2-point grid from 68 whose 95% paired cluster-bootstrap lower bound excludes zero under all 5 seeds",
+ "red_edge_derivation": "the walk-forward-selected END level already frozen in euphoria_report.json - not a new constant",
+ "edge_grid": [
+  {
+   "cut": 68,
+   "seed0": -0.014659179194443298,
+   "seed1": -0.015063349820211654,
+   "seed2": -0.015807430651857073,
+   "seed3": -0.015630572708320124,
+   "seed4": -0.014405242000682269,
+   "all_seeds_positive": false
+  },
+  {
+   "cut": 70,
+   "seed0": -0.009329821849299353,
+   "seed1": -0.010015608745480988,
+   "seed2": -0.011081101309428389,
+   "seed3": -0.009887856155097408,
+   "seed4": -0.009171441859104398,
+   "all_seeds_positive": false
+  },
+  {
+   "cut": 72,
+   "seed0": -0.004684845700057302,
+   "seed1": -0.004640033418724519,
+   "seed2": -0.005467477439356545,
+   "seed3": -0.004825683746858342,
+   "seed4": -0.0038917693806779143,
+   "all_seeds_positive": false
+  },
+  {
+   "cut": 74,
+   "seed0": -0.00041354307678751845,
+   "seed1": 0.0008772261000036875,
+   "seed2": -0.0011983807467571047,
+   "seed3": -0.0006584440444756548,
+   "seed4": 0.00039241355891063645,
+   "all_seeds_positive": false
+  },
+  {
+   "cut": 76,
+   "seed0": 0.0044821917661320996,
+   "seed1": 0.005956443773248848,
+   "seed2": 0.00491266360726571,
+   "seed3": 0.003437651284127077,
+   "seed4": 0.00461143891149288,
+   "all_seeds_positive": true
+  },
+  {
+   "cut": 78,
+   "seed0": 0.010716892026723606,
+   "seed1": 0.011929930471040798,
+   "seed2": 0.00957405779935916,
+   "seed3": 0.009741513728489576,
+   "seed4": 0.009680289176586815,
+   "all_seeds_positive": true
+  },
+  {
+   "cut": 80,
+   "seed0": 0.014096455130732091,
+   "seed1": 0.015454339326299261,
+   "seed2": 0.012787871354021683,
+   "seed3": 0.013122424680280742,
+   "seed4": 0.012682249709530491,
+   "all_seeds_positive": true
+  },
+  {
+   "cut": 82,
+   "seed0": 0.01951607096559391,
+   "seed1": 0.02194495667317021,
+   "seed2": 0.018989918431971387,
+   "seed3": 0.01998916538082177,
+   "seed4": 0.01886733313581088,
+   "all_seeds_positive": true
+  },
+  {
+   "cut": 84,
+   "seed0": 0.016942618300343177,
+   "seed1": 0.019633188931983566,
+   "seed2": 0.016642166278719665,
+   "seed3": 0.016450711477016364,
+   "seed4": 0.016965741028645683,
+   "all_seeds_positive": true
+  },
+  {
+   "cut": 86,
+   "seed0": 0.019463592894149204,
+   "seed1": 0.022362105953470088,
+   "seed2": 0.017889203510502657,
+   "seed3": 0.018177977093859314,
+   "seed4": 0.019913290295360757,
+   "all_seeds_positive": true
+  },
+  {
+   "cut": 88,
+   "seed0": 0.017926157085636146,
+   "seed1": 0.023077266538709278,
+   "seed2": 0.018039665651525413,
+   "seed3": 0.01902828898125905,
+   "seed4": 0.020013494665651787,
+   "all_seeds_positive": true
+  },
+  {
+   "cut": 90,
+   "seed0": 0.013319054776834224,
+   "seed1": 0.019444074556052474,
+   "seed2": 0.016128403576687118,
+   "seed3": 0.015852669866846077,
+   "seed4": 0.016269638764729533,
+   "all_seeds_positive": true
+  }
+ ],
+ "bands": {
+  "level >= 76": {
+   "n_days": 11235,
+   "p": 0.26942590120160215,
+   "p_complement": 0.23035101272660738,
+   "diff": 0.03907488847499477,
+   "ci95": [
+    0.0060819624363149145,
+    0.07422969209787553
+   ],
+   "significant": true
+  },
+  "level >= 85": {
+   "n_days": 4203,
+   "p": 0.3043064477753985,
+   "p_complement": 0.231066292391917,
+   "diff": 0.0732401553834815,
+   "ci95": [
+    0.02137862545017896,
+    0.1283830494615105
+   ],
+   "significant": true
+  },
+  "danger state (crowd 2x own median AND price boom)": {
+   "n_days": 3819,
+   "p": 0.5383608274417386,
+   "p_complement": 0.22624530140609772,
+   "diff": 0.3121155260356409,
+   "ci95": [
+    0.2218506349852432,
+    0.40064182127776526
+   ],
+   "significant": true
+  },
+  "level >= 85 AND danger state": {
+   "n_days": 454,
+   "p": 0.7136563876651982,
+   "p_complement": 0.2315513283043621,
+   "diff": 0.48210505936083614,
+   "ci95": [
+    0.3430483830660515,
+    0.5951480794984817
+   ],
+   "significant": true
+  }
+ }
+}

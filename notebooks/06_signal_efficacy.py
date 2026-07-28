@@ -1046,3 +1046,210 @@ with open(RESEARCH_DIR / "nb06_desk_config.json", "w") as f:
                "table": config_table.to_dict(orient="records")},
               f, indent=1, default=str)
 print("saved nb06_desk_config.json")
+
+# %% [markdown]
+# ## The gauge on the dashboard — where its RED ZONE edge comes from
+#
+# **The desk's request (2026-07-27):** *"can you add for each graph like a
+# current euphoria percentage (with a red zone to get out)? like a very
+# clear speedometer thing for each graph (and showing the change)."*
+#
+# A speedometer needs two things this project cannot simply invent: a
+# **needle** and **zone edges**. Both are settled here rather than picked.
+#
+# **The needle is not a new quantity.** It is the 7-day-smoothed euphoria
+# level the lower panel of every chart already plots, read at its last
+# day. Choosing anything else would let the gauge and the curve disagree
+# on screen, which is the one thing a dashboard must never do.
+#
+# **The edges have to be earned.** The question a red zone answers is
+# *"should I get out?"*, so the edge must be the level at which the
+# outcome the desk fears becomes measurably more likely. The outcome is
+# the one already used throughout this notebook and NB06's danger-state
+# work: **a fall of 10% or more over 7 days STARTS within the next 30
+# days** — the "<1 month" horizon the desk keeps naming.
+#
+# **Why the obvious test is the wrong test.** The first attempt compared
+# `P(drop | level >= L)`'s confidence interval against the unconditional
+# base rate's confidence interval and found *nothing significant at any
+# cut* — because with only ~59 instruments the two intervals are both wide
+# and overlap everywhere. Two overlapping intervals do **not** mean the
+# difference is zero. The correct test bootstraps the **difference**
+# (`state` minus `not state`) on the *same* resampled instruments, so the
+# shared instrument-level noise cancels. That is what runs below, and it
+# finds the effect the naive comparison missed.
+#
+# **Why the bootstrap resamples NAMES, not days.** Adjacent days on one
+# instrument are the same episode. A day-level bootstrap would treat 4,000
+# days of one mania as 4,000 independent facts and report an interval
+# several times too tight.
+#
+# **SO WHAT:**
+#
+# - the **amber edge** is *derived*: the lowest cut on a 2-point grid
+#   whose 95% paired lower bound stays above zero under **all five**
+#   seeds — a cut that flips sign with the random seed is not a parameter;
+# - the **red edge is not new at all**: it is the walk-forward-selected
+#   END level already frozen in `euphoria_report.json` (85 in every test
+#   year), so the gauge introduces exactly **one** number, not two;
+# - the level **alone** is a weak read (about 1.3x base rate at the red
+#   edge). The strong read is the level **together with** the danger
+#   state, and the gauge says so on its face rather than implying the
+#   needle is sufficient.
+
+# %%
+GAUGE_DROP, GAUGE_FWD, GAUGE_HORIZON = -0.10, 7, 30
+GAUGE_SMOOTH = 7                  # the house ROLL constant, = the display curve
+GAUGE_GRID = list(range(68, 92, 2))
+GAUGE_SEEDS = 5
+
+lv_g = pd.read_parquet(ROOT / "data" / "processed" / "euphoria_levels.parquet")
+_rows = []
+for _sym, _g in prices.groupby("symbol", sort=False):
+    _s = _g.set_index("date")["px_last"].asfreq("D").ffill()
+    _fwd = _s.shift(-GAUGE_FWD) / _s - 1.0
+    # "does a >=10%-in-7d fall START anywhere in the next 30 days?" -
+    # a reversed rolling max is the forward-looking any()
+    _hit = ((_fwd <= GAUGE_DROP).iloc[::-1]
+            .rolling(GAUGE_HORIZON, min_periods=1).max().iloc[::-1]).astype(float)
+    # the last HORIZON+FWD days have an incomplete look-ahead; scoring them
+    # as "no drop" would bias the base rate down exactly at the live edge
+    _hit.iloc[-(GAUGE_HORIZON + GAUGE_FWD):] = np.nan
+    _low120 = _s.rolling(120, min_periods=60).min()
+    _rows.append(pd.DataFrame({"symbol": _sym, "date": _s.index,
+                              "drop30": _hit.values,
+                              "runup": (_s / _low120 - 1.0).values}))
+fw_g = pd.concat(_rows, ignore_index=True)
+
+lv_g = lv_g.sort_values(["kind", "name", "date"])
+lv_g["lvl_s"] = (lv_g.groupby(["kind", "name"])["level"]
+                 .transform(lambda s: s.rolling(GAUGE_SMOOTH,
+                                                min_periods=1).mean()))
+gp = (lv_g.merge(fw_g, on=["symbol", "date"], how="inner")
+      .dropna(subset=["lvl_s", "drop30", "runup"]))
+gp["drop30"] = gp["drop30"].astype(bool)
+from src.config import EUPHORIA_BOOM_MIN_ETF, EUPHORIA_BOOM_MIN_SINGLE
+gp["danger"] = (gp["hype_ok"].astype(bool)
+                & np.where(gp["kind"].eq("single"),
+                           gp["runup"] >= EUPHORIA_BOOM_MIN_SINGLE,
+                           gp["runup"] >= EUPHORIA_BOOM_MIN_ETF))
+_gn = gp["name"].unique()
+_gY = {n: g["drop30"].to_numpy() for n, g in gp.groupby("name")}
+_gI = {n: g.index for n, g in gp.groupby("name")}
+print(f"gauge panel: {len(gp):,} name-days / {len(_gn)} instruments / "
+      f"{gp['date'].min().date()} -> {gp['date'].max().date()} | "
+      f"base rate {gp['drop30'].mean():.3f}")
+
+
+def gauge_paired(mask, seed=20260727, reps=4000):
+    """95% CI for P(drop30 | mask) - P(drop30 | ~mask), resampling
+    INSTRUMENTS with replacement so one long mania counts once."""
+    m = {n: mask.loc[_gI[n]].to_numpy() for n in _gn}
+    rng = np.random.default_rng(seed)
+    d = []
+    for _ in range(reps):
+        pick = rng.choice(_gn, size=len(_gn), replace=True)
+        y = np.concatenate([_gY[n] for n in pick])
+        k = np.concatenate([m[n] for n in pick])
+        if k.any() and (~k).any():
+            d.append(y[k].mean() - y[~k].mean())
+    lo, hi = np.percentile(d, [2.5, 97.5])
+    return {"n_days": int(mask.sum()),
+            "p": float(gp.loc[mask, "drop30"].mean()),
+            "p_complement": float(gp.loc[~mask, "drop30"].mean()),
+            "diff": float(gp.loc[mask, "drop30"].mean()
+                          - gp.loc[~mask, "drop30"].mean()),
+            "ci95": [float(lo), float(hi)], "significant": bool(lo > 0)}
+
+
+# ---- the amber edge: lowest cut significant under EVERY seed ----------
+edge_rows = []
+for L in GAUGE_GRID:
+    los = [gauge_paired(gp["lvl_s"] >= L, seed=1000 + s, reps=2000)["ci95"][0]
+           for s in range(GAUGE_SEEDS)]
+    edge_rows.append({"cut": L, **{f"seed{s}": los[s]
+                                   for s in range(GAUGE_SEEDS)},
+                      "all_seeds_positive": all(x > 0 for x in los)})
+edge_tbl = pd.DataFrame(edge_rows)
+print("\n95% paired lower bound by cut and seed "
+      "(the amber edge is the first all-positive row):")
+print(edge_tbl.round(4).to_string(index=False))
+AMBER_EDGE = int(edge_tbl.loc[edge_tbl["all_seeds_positive"], "cut"].iloc[0])
+
+# the red edge is NOT chosen here - it is read back out of the frozen
+# walk-forward record, so the gauge cannot drift away from the detector
+_thr = json.load(open(ROOT / "data" / "processed" /
+                      "euphoria_report.json"))["thresholds"]
+RED_EDGE = int(_thr[max(_thr)])
+assert len(set(_thr.values())) == 1, \
+    ("the walk-forward picked different END levels in different years, so "
+     "a single red edge would be a fiction - show the year's own level")
+assert AMBER_EDGE < RED_EDGE, (AMBER_EDGE, RED_EDGE)
+print(f"\nAMBER EDGE (derived here) = {AMBER_EDGE}"
+      f"\nRED EDGE   (already frozen) = {RED_EDGE}")
+
+# %% [markdown]
+# ## What the two edges are actually worth
+#
+# Read the two rows for the level on its own against the two rows that add
+# the danger state. The gap between them is the reason the gauge carries a
+# sentence about the danger state instead of letting the needle speak
+# alone.
+
+# %%
+gauge_bands = {
+    f"level >= {AMBER_EDGE}": gauge_paired(gp["lvl_s"] >= AMBER_EDGE),
+    f"level >= {RED_EDGE}": gauge_paired(gp["lvl_s"] >= RED_EDGE),
+    "danger state (crowd 2x own median AND price boom)":
+        gauge_paired(gp["danger"]),
+    f"level >= {RED_EDGE} AND danger state":
+        gauge_paired((gp["lvl_s"] >= RED_EDGE) & gp["danger"]),
+}
+band_tbl = pd.DataFrame([
+    {"state": k, "days": v["n_days"], "P(drop within 30d)": v["p"],
+     "P elsewhere": v["p_complement"], "diff": v["diff"],
+     "95% lo": v["ci95"][0], "95% hi": v["ci95"][1],
+     "significant": v["significant"]}
+    for k, v in gauge_bands.items()])
+print(band_tbl.round(3).to_string(index=False))
+
+fig, ax = plt.subplots(figsize=(8.2, 3.4))
+_lbl = [s.replace(" AND ", "\nAND ").replace(" (", "\n(")
+        for s in band_tbl["state"]]
+_y = np.arange(len(band_tbl))[::-1]
+ax.barh(_y, band_tbl["P(drop within 30d)"], height=0.55, color=C1)
+ax.axvline(gp["drop30"].mean(), color=C4, lw=1.6, ls="--",
+           label=f"base rate {gp['drop30'].mean():.0%}")
+for y_, p_, n_ in zip(_y, band_tbl["P(drop within 30d)"],
+                      band_tbl["days"]):
+    ax.text(p_ + 0.012, y_, f"{p_:.0%}  (n={n_:,}d)", va="center",
+            fontsize=9, color=INK)
+ax.set_yticks(_y); ax.set_yticklabels(_lbl, fontsize=9)
+ax.set_xlim(0, 0.95); ax.set_xlabel(
+    "P(a >=10%-in-7d fall starts within 30 days)")
+ax.set_title("What each gauge state is worth as a get-out warning")
+ax.legend(frameon=False, loc="lower right"); despine(ax)
+plt.tight_layout(); plt.show()
+
+with open(RESEARCH_DIR / "gauge_zones.json", "w") as f:
+    json.dump({
+        "outcome": ("a fall of 10% or more over 7 days STARTS within the "
+                    "next 30 days"),
+        "needle": ("the 7d-smoothed euphoria level, 0-100 - the same curve "
+                   "the lower panel plots, read at its last day"),
+        "panel": {"name_days": int(len(gp)), "names": int(len(_gn)),
+                  "first": str(gp["date"].min().date()),
+                  "last": str(gp["date"].max().date())},
+        "base_rate": float(gp["drop30"].mean()),
+        "amber_edge": AMBER_EDGE, "red_edge": RED_EDGE,
+        "amber_edge_derivation": (
+            f"lowest cut on a 2-point grid from {GAUGE_GRID[0]} whose 95% "
+            f"paired cluster-bootstrap lower bound excludes zero under all "
+            f"{GAUGE_SEEDS} seeds"),
+        "red_edge_derivation": (
+            "the walk-forward-selected END level already frozen in "
+            "euphoria_report.json - not a new constant"),
+        "edge_grid": edge_tbl.to_dict(orient="records"),
+        "bands": gauge_bands,
+    }, f, indent=1, default=str)
+print("saved gauge_zones.json")

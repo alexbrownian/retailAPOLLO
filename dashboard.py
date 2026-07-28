@@ -57,7 +57,9 @@ from src.config import (ROLL, DERIV_SMOOTH, MIN_TOTAL, CROSS_AT,   # noqa: E402
 from src.themes import THEME_ETFS, THEME_ETF_FALLBACKS             # noqa: E402
 from analytics import overlays                                     # noqa: E402
 from analytics import influence_graph as ig                        # noqa: E402
-from analytics.plain_english import PLAIN, plain                   # noqa: E402,F401,E501
+from analytics.plain_english import (PLAIN, censor,                # noqa: E402,F401,E501
+                                     censor_series, plain,         # noqa: E402,F401,E501
+                                     theme_label)                  # noqa: E402,F401,E501
 from analytics.loaders import (price_series, clip_window,          # noqa: E402
                                THEME_COUNTS)
 from analytics.overlays import (mention_share_series,              # noqa: E402
@@ -819,6 +821,255 @@ def _base_fig(title):
                       margin=dict(l=10, r=10, t=55, b=20),
                       legend=dict(orientation="h", yanchor="top", y=-0.28))
     return _axes_fidelity(_theme(fig))
+
+
+# ---------------------------------------------------------------------------
+# THE EUPHORIA GAUGE  (desk request 2026-07-27: "a current euphoria
+# percentage with a red zone to get out ... a very clear speedometer thing
+# for each graph, and showing the change")
+# ---------------------------------------------------------------------------
+def gauge_zones():
+    """The gauge's two edges and the measured meaning of each band.
+
+    Read from `docs/research/gauge_zones.json`, which notebook 06 writes.
+    NOTHING here is a literal: an edge that lived in this file could drift
+    away from the evidence that justifies it, and "why 76?" is the first
+    question a gauge invites.  Empty dict = notebook 06 has not been run,
+    and the caller draws no gauge rather than a gauge with invented bands.
+    """
+    return _research("gauge_zones")
+
+
+def gauge_state(level_now, in_danger, z):
+    """Which band the needle sits in, as (key, label, colour).
+
+    The band is a description of WHERE THE CROWD IS.  It is deliberately
+    NOT the signal: GET IN / GET OUT come from the walk-forward detector
+    and can fire with the needle anywhere.  Keeping the two apart is the
+    whole reason this returns a *state* and never an *instruction*.
+    """
+    red, amber = z.get("red_edge"), z.get("amber_edge")
+    if red is None or amber is None or level_now is None:
+        return "unknown", "no reading", INK_LABEL
+    if level_now >= red:
+        return (("red_danger", "RED ZONE + already run up", BEAR)
+                if in_danger else ("red", "RED ZONE", BEAR))
+    if level_now >= amber:
+        return "amber", "warming", OCHRE
+    return "calm", "calm", SLATE
+
+
+def fig_euphoria_gauge(level_now, level_prev, in_danger, z, as_of,
+                       peak_val=None, peak_day=None):
+    """A speedometer for one name.  Needle = the CURRENT smoothed euphoria
+    level; delta = the same curve one smoothing window ago.
+
+    Four things about the construction are load-bearing:
+
+      1. the needle is the *display* curve's last value, not a fresh
+         calculation, so the gauge figure and the chart below it can never
+         disagree - the defect that would destroy trust fastest;
+      2. the band edges arrive from `gauge_zones()`, i.e. from measurement,
+         not from this file;
+      3. the delta reference is `ROLL` days back - the same window the
+         curve itself is smoothed over - so "the change" is a change in
+         the plotted quantity and not a change in daily noise;
+      4. `peak_val`/`peak_day` mark where the needle GOT TO inside the
+         selected window, as a second thin needle plus a dated line of text.
+
+    On (4), because it is a bug fix and not decoration.  The desk reported
+    the dial "seems to always show calm".  It was not stuck - MEASURED over
+    the default window (2026-01-01 -> latest), 50 of 59 instruments read
+    calm at the last day while 17 of those same names touched the RED ZONE
+    somewhere inside the window.  Both facts are true at once because the
+    page is ordered by MOST RECENT SIGNAL, so a name earns its place with an
+    episode that may have peaked months ago, while the needle - correctly -
+    reports today.  A dial that answers "how hot is it now?" on a name
+    selected for "it was hot recently" reads calm almost always, and looks
+    broken while being right.
+    The fix is to make the dial answer both questions instead of moving any
+    threshold: the big needle stays TODAY (the desk asked for a *current*
+    percentage), and the window's high-water mark is drawn behind it so a
+    calm reading carries its own explanation - "calm now, peaked 99 in red
+    on 27 Jun".  No edge moves, no number is invented.
+    """
+    red, amber = z["red_edge"], z["amber_edge"]
+    _, band_label, band_colour = gauge_state(level_now, in_danger, z)
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number+delta",
+        value=float(level_now),
+        # the delta arrow is INVERTED on purpose: euphoria rising is the
+        # risk direction, so "up" must not be painted green here
+        delta=dict(reference=float(level_prev),
+                   increasing=dict(color=BEAR),
+                   decreasing=dict(color=BULL),
+                   valueformat=".0f",
+                   font=dict(size=13)),
+        # WHOLE numbers: the level is a 0-100 index built from percentile
+        # ranks, so a tenth of a point is below the resolution of the thing
+        # being measured, and "28.4" invites a precision the input does not
+        # have. The stored value is untouched - this is display only.
+        number=dict(font=dict(size=34, color=band_colour), suffix="",
+                    valueformat=".0f"),
+        # NO Indicator `title`: plotly draws it inside the same domain as the
+        # arc, so a two-line title is struck through by the value bar.  The
+        # header is laid out as paper-space annotations in the top margin
+        # instead, which is the only way it is guaranteed clear of the dial.
+        domain=dict(x=[0, 1], y=[0, 1]),
+        gauge=dict(
+            axis=dict(range=[0, 100], tickwidth=1, tickcolor=HAIRLINE,
+                      tickvals=[0, amber, red, 100],
+                      tickfont=dict(size=10, color=INK_MUTED)),
+            # a THIN sweep, not a fat one: at 0.28 the navy bar covered the
+            # band colours it is supposed to be read against, so the red zone
+            # stopped being visible at exactly the moment it mattered
+            bar=dict(color=NAVY, thickness=0.15),
+            bgcolor=WHITE, borderwidth=0,
+            steps=[dict(range=[0, amber], color=PANEL),
+                   dict(range=[amber, red], color="#F0E6C8"),
+                   dict(range=[red, 100], color="#EBD3D1")],
+            # the red edge repeated as a hard line: a colour change alone
+            # is not readable in greyscale or on a projector
+            threshold=dict(line=dict(color=BEAR, width=3), thickness=0.85,
+                           value=red))))
+    # the as-of date is ON the dial, not in a caption: the sidebar can select
+    # a historical window, and a dial labelled "now" that is in fact showing
+    # March would be the worst kind of wrong
+    fig.update_layout(
+        height=268, margin=dict(l=28, r=28, t=64, b=36),
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family=FONT_STACK, color=INK),
+        annotations=[
+            dict(text=("EUPHORIA AT "
+                       f"{pd.Timestamp(as_of).strftime('%d %b %Y').upper()}"),
+                 xref="paper", yref="paper", x=0.5, y=1.32,
+                 xanchor="center", yanchor="bottom", showarrow=False,
+                 font=dict(size=10, color=INK_LABEL)),
+            dict(text=f"<b>{band_label.upper()}</b>",
+                 xref="paper", yref="paper", x=0.5, y=1.13,
+                 xanchor="center", yanchor="bottom", showarrow=False,
+                 font=dict(size=13, color=band_colour)),
+            dict(text=f"change vs {ROLL}d earlier",
+                 xref="paper", yref="paper", x=0.5, y=-0.13,
+                 xanchor="center", yanchor="top", showarrow=False,
+                 font=dict(size=10, color=INK_MUTED))])
+    # THE WINDOW'S HIGH-WATER MARK, as one dated line (see docstring (4)).
+    #
+    # Text, not a second needle: plotly's Indicator has a single `threshold`
+    # slot and it is already carrying the red edge as a hard line (a colour
+    # change alone does not survive greyscale or a projector).  Faking a
+    # second needle would mean drawing shapes against the arc's internal
+    # geometry in paper space - fragile across plotly versions, and two
+    # needles on a 268px dial is a worse read than one sentence anyway.
+    if peak_val is not None and peak_day is not None:
+        _, _pk_band, _pk_colour = gauge_state(peak_val, False, z)
+        _same = float(peak_val) - float(level_now) < 1.0
+        fig.add_annotation(
+            xref="paper", yref="paper", x=0.5, y=-0.27,
+            xanchor="center", yanchor="top", showarrow=False,
+            font=dict(size=10.5,
+                      color=INK_MUTED if _same else _pk_colour),
+            text=("this IS the window's high point" if _same else
+                  (f"window high <b>{float(peak_val):.0f}</b> "
+                   f"({_pk_band}) on "
+                   f"{pd.Timestamp(peak_day).strftime('%d %b')}")))
+        # the taller frame and deeper bottom margin are what keep this line
+        # inside the canvas - at the base 268/36 it renders below the cut
+        fig.update_layout(height=300, margin=dict(l=28, r=28, t=64, b=74))
+    return fig
+
+
+# The standing caveat about what the dial is. It is CONSTANT text, so it is
+# a module constant rather than something rebuilt per chart, and it lives in
+# the info tooltip rather than on the page (desk instruction 2026-07-28).
+GAUGE_HELP = (
+    "**What the dial is.** A STATE, not an instruction. GET IN and GET OUT "
+    "come from the walk-forward detector and can fire with the needle "
+    "anywhere; the bands only say how crowded this name is and what days "
+    "like it did next.\n\n"
+    "**Why the edges sit where they do.** Red starts at {red} - the same "
+    "level the walk-forward picked for the END alert, not a second "
+    "threshold invented for the dial. Amber starts at {amber}, the lowest "
+    "level whose edge over the base rate survives all five bootstrap "
+    "seeds; below it the difference is inside the noise.\n\n"
+    "**Needle vs window high.** The needle is TODAY (the last day of the "
+    "selected window). The window high is the hottest the same curve got "
+    "inside that window. They differ whenever a name earns its place on "
+    "the page with an episode that has already cooled - which is most of "
+    "the time, because the page is ordered by most recent signal.")
+
+
+def gauge_headline(level_now, in_danger, z, peak_val=None, peak_day=None):
+    """The ONE line that sits next to the dial.
+
+    Everything quantitative moved into the tooltip; what stays on the page is
+    the reading itself and, when they differ, the window's high point. The
+    second clause is the answer to "why does this say calm?" - without it a
+    correct-but-stale dial looks like a broken one.
+    """
+    key, label, _ = gauge_state(level_now, in_danger, z)
+    if key == "unknown":
+        return ("**No gauge reading** - notebook 06 has not been run, so the "
+                "band edges have no evidence behind them and are not "
+                "invented here.")
+    now_txt = {"red_danger": "**RED ZONE - and the price has already run up**",
+               "red": "**RED ZONE**",
+               "amber": "**Warming**",
+               "calm": "**Calm**"}[key]
+    out = f"{now_txt} today ({float(level_now):.0f}/100)."
+    if peak_val is not None and peak_day is not None \
+            and float(peak_val) - float(level_now) >= 1.0:
+        _, pk_label, _ = gauge_state(peak_val, False, z)
+        out += (f" Peaked at **{float(peak_val):.0f}** ({pk_label}) on "
+                f"{pd.Timestamp(peak_day).strftime('%d %b')}"
+                f" - this name is on the page because of that run, "
+                f"not because of today.")
+    else:
+        out += " This is the hottest point of the selected window."
+    return out
+
+
+def gauge_caption(level_now, in_danger, z):
+    """One sentence under the dial, quoting the MEASURED risk of the band
+    the needle is actually in - not a generic legend.  Every percentage
+    here is read out of gauge_zones.json."""
+    key, _, _ = gauge_state(level_now, in_danger, z)
+    base = z.get("base_rate")
+    bands = z.get("bands", {})
+    red, amber = z.get("red_edge"), z.get("amber_edge")
+    b_red = bands.get(f"level >= {red}", {})
+    b_amber = bands.get(f"level >= {amber}", {})
+    b_both = bands.get(f"level >= {red} AND danger state", {})
+    horizon = ("a fall of 10% or more over a week starting within the "
+               "next month")
+    common = (f"For scale: across "
+              f"{z.get('panel', {}).get('names', '?')} instruments since "
+              f"{z.get('panel', {}).get('first', '?')}, that happened on "
+              f"**{_pct(base, 0)}** of *all* days.")
+    if key == "red_danger":
+        return (f"**Needle in the red zone AND the price has already run "
+                f"up.** On days like this {horizon} followed "
+                f"**{_pct(b_both.get('p'), 0)}** of the time — the "
+                f"strongest get-out state the record contains. " + common)
+    if key == "red":
+        return (f"**Needle in the red zone** (level {red}+, the "
+                f"walk-forward END level). "
+                f"{horizon.capitalize()} followed "
+                f"**{_pct(b_red.get('p'), 0)}** of such days. The reading "
+                f"gets much sharper once the price has *also* run up "
+                f"(**{_pct(b_both.get('p'), 0)}**). " + common)
+    if key == "amber":
+        return (f"**Warming** (level {amber}–{red}). This is the lowest "
+                f"level at which the crowd measurably shifts the odds: "
+                f"**{_pct(b_amber.get('p'), 0)}** vs "
+                f"**{_pct(base, 0)}** elsewhere. Below {amber} the "
+                f"difference is not distinguishable from zero. " + common)
+    if key == "calm":
+        return (f"**Calm** (below {amber}). At these levels the crowd says "
+                f"nothing measurable about {horizon} — the difference from "
+                f"the base rate is inside the noise. " + common)
+    return ("No gauge reading: notebook 06 has not been run, so the band "
+            "edges have no evidence behind them and are not invented here.")
 
 
 def fig_series_vs_price(series, series_name, series_color, px, symbol, title,
@@ -1730,11 +1981,42 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                    "Small windows = small samples - the confirmatory "
                    "record is the walk-forward in the caption below.")
 
-    # frozen alert threshold (drawn on every level panel)
+    # FROZEN THRESHOLDS, and WHICH ONE THE CHART IS ALLOWED TO DRAW.
+    #
+    # This block is the fix for a real self-contradiction in the old chart
+    # (desk bug report 2026-07-28: "its quite unclear to see WHEN is the
+    # actual change - its like flat and then suddenly a get out flag").
+    #
+    # The old panel drew ONE dotted line labelled "signal level" at the
+    # level-detector's walk-forward threshold (85) and plotted the euphoria
+    # LEVEL against it.  But when the desk store is present - which is the
+    # normal case - the flags on screen are NOT produced by the level.  They
+    # are produced by the desk score crossing its own frozen threshold.  The
+    # two disagree constantly: MEASURED over all 95 GET OUT alerts in the
+    # store, the plotted level was BELOW the drawn 85 line on 79 of them
+    # (83%), median plotted level at a GET OUT 74.8.  So the chart showed a
+    # curve sitting comfortably under the line it said mattered, and then a
+    # flag appeared anyway.  That is not a legibility problem, it is the
+    # chart quoting the wrong threshold.
+    #
+    # The rule now: draw the threshold that actually gated the flags being
+    # drawn, and plot the series that actually crossed it.  `thr_now` (85)
+    # survives ONLY for the fallback path, where the level really is the
+    # decider.  No new number is introduced anywhere - both desk thresholds
+    # are read straight out of euphoria_desk_report.json.
     thr_now = None
     if euph_report and euph_report.get("thresholds"):
         thr_now = euph_report["thresholds"][
             max(euph_report["thresholds"])]
+    # desk thresholds, rescaled to the panel's 0-100 axis. The desk scores
+    # are 0-1; the panel is 0-100 because that is what the euphoria level
+    # is. x100 keeps ONE axis on the panel (house chart rule) instead of a
+    # second y-axis that a reader has to notice before they can read it.
+    _dr = desk_report or {}
+    thr_out_100 = (100.0 * _dr["get_out"]["live_threshold"]
+                   if _dr.get("get_out", {}).get("live_threshold") else None)
+    thr_in_100 = (100.0 * _dr["get_in"]["live_threshold"]
+                  if _dr.get("get_in", {}).get("live_threshold") else None)
 
     ew = clip_window(ek, "date", lo, hi)
     ow_ = (clip_window(ok, "date", lo, hi)
@@ -1775,6 +2057,48 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # one loud afternoon is not a trend - alerts should coincide
         # with a visible regime change, not daily jitter
         lvl = lvl_raw.rolling(ROLL, min_periods=1).mean()
+
+        # ---- THE SPEEDOMETER, above the chart it summarises.
+        #
+        # The needle reads `lvl` at its LAST day and the delta reads the
+        # same series ROLL days earlier, so the dial is a projection of the
+        # curve below rather than a second opinion about it.  When the
+        # sidebar selects a historical window the dial follows the window
+        # and says so on its face.
+        _z = gauge_zones()
+        if _z.get("red_edge") is not None and len(lvl.dropna()):
+            _lvl_ok = lvl.dropna()
+            _now = float(_lvl_ok.iloc[-1])
+            _ref = float(_lvl_ok.iloc[-1 - ROLL]
+                         if len(_lvl_ok) > ROLL else _lvl_ok.iloc[0])
+            _dgr = bool(danger_days.reindex(_lvl_ok.index).iloc[-1]) \
+                if danger_days is not None else False
+            _pk_v = float(_lvl_ok.max())
+            _pk_d = _lvl_ok.idxmax()
+            _gc, _tc = st.columns([1, 2.1])
+            with _gc:
+                st.plotly_chart(
+                    fig_euphoria_gauge(_now, _ref, _dgr, _z,
+                                       _lvl_ok.index[-1],
+                                       peak_val=_pk_v, peak_day=_pk_d),
+                    width="stretch", key=f"{key}_gauge")
+            with _tc:
+                # ONE LINE, then everything else behind an info hover.
+                #
+                # Desk instruction 2026-07-28: "dont need to explain it fully
+                # all the time, maybe an info icon hover or something". The
+                # dial used to print a measured-percentage paragraph plus a
+                # four-sentence caption on EVERY chart - so a page of six
+                # names carried the same 90 words six times, and the reading
+                # that mattered was buried in its own footnotes. The evidence
+                # has not been deleted or weakened: it moved into the `help`
+                # tooltip, one hover away, where it is available when someone
+                # challenges the band and silent when nobody is asking.
+                st.markdown(gauge_headline(_now, _dgr, _z, _pk_v, _pk_d),
+                            help=gauge_caption(_now, _dgr, _z) + "\n\n"
+                            + GAUGE_HELP.format(red=_z["red_edge"],
+                                                amber=_z["amber_edge"]))
+
         co, ct = coherent.get(name, ([], []))
         w0, w1 = one_i.index.min(), one_i.index.max()
         onset_alerts = [d for d in co if w0 <= d <= w1]
@@ -1829,18 +2153,100 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 line=dict(color=OCHRE, width=4),
                 hovertemplate="crowd big enough to signal<extra></extra>"),
                 row=2, col=1)
-        if thr_now:
-            fig.add_hline(y=thr_now, line_dash="dot", line_color=INK_LABEL,
-                          opacity=0.8, row=2, col=1,
-                          annotation_text="signal level",
-                          annotation_position="top left",
-                          annotation_font=dict(color=INK_LABEL, size=10))
-
         def _ms(ts):
             # plotly's vline+annotation midpoint maths does Timestamp+int
             # arithmetic on some plotly/pandas versions and crashes;
             # epoch-milliseconds is numeric and works on every version
             return pd.Timestamp(ts).value / 1_000_000
+
+        # ---- THE PEAK OF THE CURVE, marked and dated.
+        #
+        # "i want it to be like a clear peak or something" - the desk's own
+        # words.  The window maximum of the display curve is marked with a
+        # dot and a dated label, so the answer to "when did this run hottest?"
+        # is readable in one glance instead of estimated off the x-axis.  It
+        # is a LABEL on a value already plotted, not a new quantity and not a
+        # threshold: nothing about the signal changes if it is removed.
+        if len(lvl.dropna()):
+            _pk = lvl.dropna()
+            _pd_, _pv = _pk.idxmax(), float(_pk.max())
+            # pd.DatetimeIndex, NOT [Timestamp]: a bare Timestamp inside a
+            # Python list survives the live app (streamlit serialises through
+            # plotly's own encoder) but is NOT JSON-serialisable by kaleido,
+            # so a one-element list silently breaks static PNG export - and
+            # these panels are exported for the decks. Every other trace here
+            # passes a DatetimeIndex; this one now matches.
+            fig.add_trace(go.Scatter(
+                x=pd.DatetimeIndex([_pd_]), y=[_pv], mode="markers",
+                name="hottest day in window",
+                marker=dict(color=ACCENT, size=9, symbol="circle",
+                            line=dict(color=WHITE, width=1.5)),
+                hovertemplate=(f"hottest in window: {_pv:.0f}/100<br>"
+                               f"{pd.Timestamp(_pd_).strftime('%d %b %Y')}"
+                               "<extra></extra>")),
+                row=2, col=1)
+            fig.add_annotation(
+                x=_ms(_pd_), y=_pv, yref="y2", row=2, col=1,
+                text=(f"peak {_pv:.0f} · "
+                      f"{pd.Timestamp(_pd_).strftime('%d %b')}"),
+                showarrow=False, yshift=13,
+                font=dict(size=9.5, color=ACCENT),
+                bgcolor="rgba(255,255,255,0.92)", borderpad=2)
+
+        # ---- THE SERIES THAT ACTUALLY FIRED THE FLAG.
+        #
+        # For each alert kind PRESENT IN THIS WINDOW, overlay the desk score
+        # that produced it together with its frozen threshold.  Two design
+        # choices worth defending:
+        #
+        #   * only kinds that actually fired are drawn.  Every element on the
+        #     panel then explains a flag the reader can see; drawing both
+        #     scores always would put four lines and two thresholds on a
+        #     panel that the desk has repeatedly asked to keep simple (and
+        #     in the live window NO name has both kinds, so the common case
+        #     is one score, one threshold).
+        #   * `lines+markers` with connectgaps=False, because the score is
+        #     SPARSE by construction - it exists only on days the gates let
+        #     the name be judged (out_score is present on 2.5% of name-days,
+        #     in runs as short as one day).  A plain line would draw nothing
+        #     visible for a single-day run and would falsely bridge gaps.
+        #     The gaps are information: no score means "not judgeable here".
+        _score_drawn = False
+        if use_desk and dk is not None:
+            _dki = dk[dk["name"] == name].set_index("date").sort_index()
+            for _col, _thr, _lab, _clr, _fired in (
+                    ("out_score", thr_out_100, "GET OUT", BEAR, top_alerts),
+                    ("in_score", thr_in_100, "GET IN", TEAL, onset_alerts)):
+                if not _fired or _col not in _dki.columns or _thr is None:
+                    continue
+                _s = _dki[_col].reindex(lvl.index) * 100.0
+                if not _s.notna().any():
+                    continue
+                _score_drawn = True
+                fig.add_trace(go.Scatter(
+                    x=_s.index, y=_s.values, mode="lines+markers",
+                    name=f"{_lab} score (what fires the flag)",
+                    connectgaps=False,
+                    line=dict(color=_clr, width=2.0, dash="solid"),
+                    marker=dict(size=4, color=_clr),
+                    hovertemplate=(f"{_lab} score: %{{y:.0f}} / 100"
+                                   f"<br>fires at {_thr:.0f}"
+                                   "<extra></extra>")),
+                    row=2, col=1)
+                fig.add_hline(
+                    y=_thr, line_dash="dot", line_color=_clr, opacity=0.9,
+                    row=2, col=1,
+                    annotation_text=f"{_lab} fires here ({_thr:.0f})",
+                    annotation_position="bottom left",
+                    annotation_font=dict(color=_clr, size=10))
+        # FALLBACK ONLY: with no desk store the level really is the decider,
+        # so the level-detector's walk-forward threshold is the honest line.
+        if not _score_drawn and thr_now and not use_desk:
+            fig.add_hline(y=thr_now, line_dash="dot", line_color=INK_LABEL,
+                          opacity=0.8, row=2, col=1,
+                          annotation_text=f"signal level ({thr_now:.0f})",
+                          annotation_position="top left",
+                          annotation_font=dict(color=INK_LABEL, size=10))
 
         # SIGNAL LINES, and nothing else.  Every shaded region that used to
         # live here is gone: the danger-state band, the start-to-end episode
@@ -2382,7 +2788,13 @@ def _label_annotations(cand: pd.DataFrame, span: float,
             ux, uy = 0.0, 1.0
         else:
             ux, uy = dx / norm, dy / norm    # unit vector away from centre
-        half_w = 0.5 * len(str(row.author)) * _LBL_PX_PER_CHAR * scale
+        # CENSORED here, and the width is measured on the censored string:
+        # this function's whole job is to stop labels overlapping, and it
+        # can only do that if the length it reserves is the length that
+        # actually prints. Masking downstream of the collision maths would
+        # reserve space for a name nobody sees.
+        _lbl = censor(str(row.author))
+        half_w = 0.5 * len(_lbl) * _LBL_PX_PER_CHAR * scale
         for vx, vy in ((ux, uy), (-uy, ux), (uy, -ux), (-ux, -uy)):
             lx, ly = row.x + vx * lead, row.y + vy * lead
             box = (lx - half_w, lx + half_w, ly - half_h, ly + half_h)
@@ -2390,7 +2802,7 @@ def _label_annotations(cand: pd.DataFrame, span: float,
                 continue
             boxes.append(box)
             out.append(dict(
-                x=float(row.x), y=float(row.y), text=str(row.author),
+                x=float(row.x), y=float(row.y), text=_lbl,
                 # ax/ay are PIXEL offsets from the anchored point, and ay
                 # grows downward on screen - hence the minus.
                 ax=float(vx * _LBL_LEAD_PX), ay=float(-vy * _LBL_LEAD_PX),
@@ -2432,8 +2844,11 @@ def fig_influence_map(nodes: pd.DataFrame, links: pd.DataFrame, title: str,
                     color=n["influence"], colorscale="Oranges",
                     cmin=0.0, cmax=100.0, line=dict(width=0.5, color=WHITE),
                     colorbar=dict(title="influence", thickness=10, len=0.7)),
-        customdata=n[["author", "influence", "degree_here",
-                      "community"]].to_numpy(),
+        # `shown` is a DISPLAY column added next to `author`, never a
+        # replacement for it: `author` is still the key that positions,
+        # `centre` lookups and the ego join all run on.
+        customdata=n.assign(shown=censor_series(n["author"]))[
+            ["shown", "influence", "degree_here", "community"]].to_numpy(),
         hovertemplate=("<b>%{customdata[0]}</b><br>influence "
                        "%{customdata[1]:.0f} / 100"
                        "<br>%{customdata[2]:.0f} people reply to them"
@@ -2477,7 +2892,8 @@ def fig_influence_map(nodes: pd.DataFrame, links: pd.DataFrame, title: str,
 
 def _thin_labels(xs, ys, x_span: float, y_span: float,
                  w_px: float, h_px: float,
-                 gap_x_px: float = 30.0, gap_y_px: float = 13.0) -> list[bool]:
+                 gap_x_px: float = 30.0, gap_y_px: float = 13.0,
+                 label_w_px=None) -> list[bool]:
     """Which point labels can be drawn without printing on top of each other.
 
     A LAYOUT rule, not a data rule, and the distinction matters for a tab
@@ -2500,28 +2916,43 @@ def _thin_labels(xs, ys, x_span: float, y_span: float,
     x=0.53 and MELI at x=1.00 share a height but not a column, so both keep
     their label.
 
+    `label_w_px` is the same rule when the labels are NOT all one width.  The
+    scalar `gap_x_px` is only correct because every ticker is about four
+    characters wide; a theme slug is not ("Robotics automation" is nineteen),
+    so passing that a single average width either lets long labels print
+    through each other or suppresses short ones that had room.  Labels are
+    drawn CENTRED on the point, so two of them collide when the gap between
+    their centres is less than the mean of their widths - and with every
+    width equal to `gap_x_px` that expression IS the scalar rule, so the
+    ticker view is unchanged by construction rather than by re-tuning.
+
     Greedy in descending y, because height is the point of the chart: the
     most-backed name always keeps its label and the tail yields to it.
     """
     pts = [(float(y), float(x), i) for i, (x, y) in enumerate(zip(xs, ys))]
+    widths = ([float(w) for w in label_w_px] if label_w_px is not None
+              else [float(gap_x_px)] * len(pts))
     # Tallest first, and on an exact tie the EARLIER row wins - the caller
     # passes the digest already ranked by backing, so ties resolve toward the
     # better-backed name rather than toward whichever happened to be last.
     pts.sort(key=lambda t: (-t[0], t[2]))
     keep = [False] * len(pts)
-    placed: list[tuple[float, float]] = []     # (x, y) of labels already drawn
-    dx = gap_x_px * (x_span / w_px) if w_px else 0.0
+    placed: list[tuple[float, float, float]] = []   # (x, y, width) drawn
+    to_x = (x_span / w_px) if w_px else 0.0
     dy = gap_y_px * (y_span / h_px) if h_px else 0.0
     for y, x, i in pts:
-        if any(abs(x - px) < dx and abs(y - py) < dy for px, py in placed):
+        wi = widths[i]
+        if any(abs(x - px) < (wi + pw) / 2.0 * to_x and abs(y - py) < dy
+               for px, py, pw in placed):
             continue
         keep[i] = True
-        placed.append((x, y))
+        placed.append((x, y, wi))
     return keep
 
 
 def fig_influence_bubbles(dig: pd.DataFrame, voices: pd.DataFrame,
-                          title: str, top_n: int | None = None):
+                          title: str, top_n: int | None = None,
+                          key: str = "ticker"):
     """THE lead influence chart: what the people with a record are pushing.
 
     Four readings in one picture, which is why this replaced the bar chart
@@ -2562,9 +2993,14 @@ def fig_influence_bubbles(dig: pd.DataFrame, voices: pd.DataFrame,
     this" is always the next question and a chart that cannot answer it
     sends the reader back to a table.
     """
+    # The chart is key-agnostic: TICKER and THEME are the same four readings
+    # over a different grouping, so one function draws both and the two views
+    # cannot drift apart.  Only the label spelling differs - a ticker is
+    # already a display string, a theme slug is not (see theme_label).
+    _label = theme_label if key == "theme" else (lambda s: s)
     d = dig.dropna(subset=["consensus"]).copy()
     if voices is not None and len(voices):
-        d = d.merge(voices[["ticker", "voices"]], on="ticker", how="left")
+        d = d.merge(voices[[key, "voices"]], on=key, how="left")
     else:
         d["voices"] = ""
     d["voices"] = d["voices"].fillna("")
@@ -2593,13 +3029,23 @@ def fig_influence_bubbles(dig: pd.DataFrame, voices: pd.DataFrame,
     # is the LAYOUT one: of the names that survive, drop only those whose text
     # would print through a label already placed (see that function).
     _ymax_est = float(d["backing"].max() or 1.0) * 1.34
+    # The label widths are MEASURED off the labels actually being drawn, not
+    # assumed.  _thin_labels' 30px default is the width of a four-character
+    # ticker, which is every ticker; a theme label is up to nineteen
+    # characters, so reusing that number would reproduce the exact overlap
+    # the function exists to prevent.  Per character is read straight off the
+    # accepted default (30px / 4 chars) rather than introduced as a new
+    # constant, so the ticker view keeps the geometry it was tuned with.
+    _texts = [str(t) for t in d[key].map(_label)]
+    _px_per_char = 30.0 / 4.0
     _room = _thin_labels(d["consensus"], d["backing"],
                          x_span=2.36, y_span=_ymax_est,
-                         w_px=880.0, h_px=398.0)
+                         w_px=880.0, h_px=398.0,
+                         label_w_px=[_px_per_char * len(t) for t in _texts])
     fig = go.Figure(go.Scatter(
         x=d["consensus"], y=d["backing"], mode="markers+text",
         text=[t if (b >= even and r) else ""
-              for t, b, r in zip(d["ticker"], d["backing"], _room)],
+              for t, b, r in zip(d[key].map(_label), d["backing"], _room)],
         textposition="top center",
         textfont=dict(size=10, color=INK),
         marker=dict(
@@ -2607,8 +3053,9 @@ def fig_influence_bubbles(dig: pd.DataFrame, voices: pd.DataFrame,
             sizeref=2.0 * smax / (44.0 ** 2), sizemin=6,
             color=[BULL if c >= 0 else BEAR for c in d["consensus"]],
             opacity=0.72, line=dict(width=1, color=WHITE)),
-        customdata=d[["ticker", "n_authors", "n_calls", "longs", "shorts",
-                      "backing", "voices"]].to_numpy(),
+        customdata=d.assign(**{key: d[key].map(_label)})[
+            [key, "n_authors", "n_calls", "longs", "shorts",
+             "backing", "voices"]].to_numpy(),
         hovertemplate=(
             "<b>%{customdata[0]}</b><br>"
             "net direction %{x:+.2f}  (+1 all long, -1 all short)<br>"
@@ -2838,7 +3285,10 @@ def fig_ticker_backers(bk: pd.DataFrame, ticker: str, title: str):
     """
     d = bk.sort_values("influence", ascending=True)   # plotly draws up
     fig = go.Figure(go.Bar(
-        x=d["influence"], y=d["author"], orientation="h",
+        # the y axis is a CATEGORY axis of handles, so it is a display
+        # surface: censor it. Two authors whose masked forms collided would
+        # merge into one bar, so `censor` keeps every un-offending character.
+        x=d["influence"], y=censor_series(d["author"]), orientation="h",
         marker_color=[BULL if w == "LONG" else (BEAR if w == "SHORT"
                                                 else INK_LABEL)
                       for w in d["word"]],
@@ -3010,89 +3460,143 @@ with t_infl:
             st.info("no calls in the chosen window - widen it, or run a "
                     "live comment pull to extend the store.")
         else:
-            # WHO is behind each name.  Computed here rather than inside the
-            # figure so the hover text and the tables below cannot disagree.
-            voices = ig.ticker_voices(calls, board, authors=panel,
-                                      days=days, asof=asof)
-            _nb = min(len(dig), INFL_BUBBLE_MAX)
-            # FULL digest, plus how many to draw - not dig.head(_nb).  The
-            # share and the even-split line are denominated on the whole
-            # window inside the figure, so they agree with KPI 4 above.
-            st.plotly_chart(
-                fig_influence_bubbles(
-                    dig, voices,
-                    f"the {_nb} most-backed names, last {days} days",
-                    top_n=_nb),
-                width="stretch", key="infl_bubbles")
-            st.caption(
-                f"**Read it in four steps.**\n\n"
-                f"1. **Left or right** is which way they lean. Right of the "
-                f"centre line is net **long**, left is net **short**, and a "
-                f"name sitting on the line is a genuine argument rather than "
-                f"a view. Colour just repeats it so the picture survives a "
-                f"black-and-white printout.\n"
-                f"2. **How high** is its **share of the room's conviction** - "
-                f"of everything this panel said in the window, weighted by "
-                f"whose record said it and how hard, what per cent went into "
-                f"this one name. The dotted line is the **even split** "
-                f"({ig.even_share(len(dig)):.1f}% here), what each name would "
-                f"show if all {len(dig)} names in the window shared attention "
-                f"equally, so above the line means more crowded than even. "
-                f"Height means *who and how hard*, not how many - that is the "
-                f"bubble size.\n"
-                f"3. **How big** is how many times it was called. Area, not "
-                f"width, so a bubble that looks twice as big really is twice "
-                f"the calls.\n"
-                f"4. **Hover** for the actual people behind it, their side, "
-                f"and their influence on the 0-100 scale used everywhere on "
-                f"this tab.\n\n"
-                f"**So what.** Top-right is the corner that matters: high "
-                f"up (people with a record), far right (all one way), big "
-                f"(said repeatedly). That is crowded bullish positioning, "
-                f"which is the thing worth flagging to a PM before it "
-                f"unwinds - and top-left is the identical setup on the short "
-                f"side. A name that is far right but LOW is the crowd, not "
-                f"the panel; a name that is high but near the centre is two "
-                f"good voices disagreeing, which is information of a "
-                f"different kind. Showing the {_nb} best-backed of "
-                f"{len(dig)} names touched by the top {panel_n} voices"
-                + (f", to {pd.Timestamp(asof).date()}" if asof is not None
-                   else "") + ".")
-            st.caption(":grey[This tab is **information, not a signal.** "
-                       "Notebook 05 measured that these scores do not "
-                       "generalise to authors the model has not seen, so "
-                       "nothing here feeds the euphoria GET IN / GET OUT "
-                       "dates. Read it as \"what the room with a track "
-                       "record is saying\", and see the expander at the "
-                       "bottom of this tab for exactly why.]")
+            # NAMES or THEMES.  The desk asked the question at the theme
+            # level - "what if lots of influential accounts converge on a
+            # theme" - and the tab could only answer it one ticker at a
+            # time.  Same chart, same arithmetic, different grouping key;
+            # see ig.theme_digest for why the roll-up reuses the accepted
+            # consensus and backing formulas rather than restating them.
+            _view = st.radio(
+                "group the panel's calls by",
+                ["individual names", "themes"], horizontal=True,
+                key="infl_group",
+                help="Themes use the SAME membership as the euphoria "
+                     "Themes tab (src/themes.py), so a theme means one "
+                     "thing across the whole app. A ticker in several "
+                     "themes counts in each. Calls on tickers in no theme "
+                     "are left out, so the two views have different "
+                     "denominators and are not expected to agree "
+                     "name-for-name.")
+            _is_theme = _view == "themes"
+            _key = "theme" if _is_theme else "ticker"
+            _grain = "themes" if _is_theme else "names"
+            if _is_theme:
+                _digest = ig.theme_digest(calls, board, authors=panel,
+                                       days=days, asof=asof)
+                _voices = ig.theme_voices(calls, board, authors=panel,
+                                          days=days, asof=asof)
+            else:
+                _digest, _voices = dig, ig.ticker_voices(
+                    calls, board, authors=panel, days=days, asof=asof)
 
-            with st.expander("the same names as exact numbers",
-                             expanded=False):
-                dv = dig.head(24).copy()
-                # Share over ALL names in the window, then the head - so the
-                # column is a share of the room and not of these 24 rows.
-                dv["backing"] = ig.backing_share(
-                    dig["weighted_voices"]).head(24).round(2)
-                dv["consensus"] = dv["consensus"].round(2)
-                dv["last_date"] = pd.to_datetime(dv["last_date"]).dt.date
-                st.dataframe(
-                    dv[["ticker", "consensus", "backing", "n_authors",
-                        "n_calls", "longs", "shorts", "last_date"]].rename(
-                        columns={"n_calls": "calls", "n_authors": "people",
-                                 "consensus": "net direction",
-                                 "backing": "share of conviction %",
-                                 "last_date": "last call"}),
-                    width="stretch", hide_index=True, height=480)
+            if not len(_digest):
+                st.info("none of the panel's calls in this window are on a "
+                        "ticker that belongs to a theme - switch back to "
+                        "individual names, or widen the window.")
+            else:
+                _n_all = len(_digest)
+                _nb = min(_n_all, INFL_BUBBLE_MAX)
+                # FULL digest, plus how many to draw - not _digest.head(_nb).
+                # The share and the even-split line are denominated on the
+                # whole window inside the figure, so they agree with KPI 4.
+                st.plotly_chart(
+                    fig_influence_bubbles(
+                        _digest, _voices,
+                        f"the {_nb} most-backed {_grain}, last {days} days",
+                        top_n=_nb, key=_key),
+                    width="stretch", key="infl_bubbles")
                 st.caption(
-                    f"The numbers behind the bubbles, in the same order. "
-                    f"'net direction' is the horizontal axis, 'share of "
-                    f"conviction %' the vertical one - computed over all "
-                    f"{len(dig)} names in the window, so it still sums "
-                    f"towards 100% across the whole window rather than "
-                    f"across these {min(len(dig), 24)} rows. A bar chart of "
-                    f"these same two columns used to sit here as well; it was "
-                    f"the bubble chart with one axis flattened into shading, "
-                    f"so it was dropped rather than shown twice.")
+                    f"**Read it in four steps.**\n\n"
+                    f"1. **Left or right** is which way they lean. Right of "
+                    f"the centre line is net **long**, left is net **short**, "
+                    f"and one sitting on the line is a genuine argument "
+                    f"rather than a view. Colour just repeats it so the "
+                    f"picture survives a black-and-white printout.\n"
+                    f"2. **How high** is its **share of the room's "
+                    f"conviction** - of everything this panel said in the "
+                    f"window, weighted by whose record said it and how hard, "
+                    f"what per cent went into this one. The dotted line is "
+                    f"the **even split** ({ig.even_share(_n_all):.1f}% here), "
+                    f"what each would show if all {_n_all} {_grain} in the "
+                    f"window shared attention equally, so above the line "
+                    f"means more crowded than even. Height means *who and "
+                    f"how hard*, not how many - that is the bubble size.\n"
+                    f"3. **How big** is how many times it was called. Area, "
+                    f"not width, so a bubble that looks twice as big really "
+                    f"is twice the calls.\n"
+                    f"4. **Hover** for the actual people behind it, their "
+                    f"side, and their influence on the 0-100 scale used "
+                    f"everywhere on this tab.\n\n"
+                    f"**So what.** Top-right is the corner that matters: "
+                    f"high up (people with a record), far right (all one "
+                    f"way), big (said repeatedly). That is crowded bullish "
+                    f"positioning, which is the thing worth flagging to a PM "
+                    f"before it unwinds - and top-left is the identical "
+                    f"setup on the short side. One that is far right but LOW "
+                    f"is the crowd, not the panel; one that is high but near "
+                    f"the centre is two good voices disagreeing, which is "
+                    f"information of a different kind. Showing the {_nb} "
+                    f"best-backed of {_n_all} {_grain} touched by the top "
+                    f"{panel_n} voices"
+                    + (f", to {pd.Timestamp(asof).date()}" if asof is not None
+                       else "") + ".")
+                # The desk asked whether convergence here could be read as a
+                # bullish / euphoria indicator.  It was tested rather than
+                # assumed, and the numbers below are the reason the answer is
+                # no - they are quoted, not summarised, because "we checked"
+                # is not defensible and "-0.245 on the same days the accepted
+                # signal reads +0.497" is.
+                st.caption(
+                    ":grey[**Crowding here is not a forecast - it was "
+                    "tested.** Three ways of measuring the panel converging "
+                    "(how many voices, how much they agree, how much backing "
+                    "went in) were pre-registered against the house outcome "
+                    "(a >10% fall inside a week, any time in the next 30 "
+                    "days) and all three were rejected. On the same 1,552 "
+                    "name-days where the accepted euphoria level separates "
+                    "0.925 against 0.428 (a gap of +0.497, worst case "
+                    "+0.2515), the three influence measures read 0.237 vs "
+                    "0.482, 0.250 vs 0.481 and 0.282 vs 0.477 - all pointing "
+                    "the WRONG way, because the panel converges on the "
+                    "largest liquid names and those fall less often than the "
+                    "small-cap tail. See PARAMETER_REGISTER Class 6c.]")
+                st.caption(":grey[This tab is **information, not a signal.** "
+                           "Notebook 05 measured that these scores do not "
+                           "generalise to authors the model has not seen, so "
+                           "nothing here feeds the euphoria GET IN / GET OUT "
+                           "dates. Read it as \"what the room with a track "
+                           "record is saying\", and see the expander at the "
+                           "bottom of this tab for exactly why.]")
+
+                with st.expander(f"the same {_grain} as exact numbers",
+                                 expanded=False):
+                    dv = _digest.head(24).copy()
+                    # Share over ALL rows in the window, then the head - so
+                    # the column is a share of the room, not of these 24.
+                    dv["backing"] = ig.backing_share(
+                        _digest["weighted_voices"]).head(24).round(2)
+                    dv["consensus"] = dv["consensus"].round(2)
+                    dv["last_date"] = pd.to_datetime(dv["last_date"]).dt.date
+                    if _is_theme:
+                        dv[_key] = dv[_key].map(theme_label)
+                    st.dataframe(
+                        dv[[_key, "consensus", "backing", "n_authors",
+                            "n_calls", "longs", "shorts", "last_date"]].rename(
+                            columns={"n_calls": "calls", "n_authors": "people",
+                                     "consensus": "net direction",
+                                     "backing": "share of conviction %",
+                                     "last_date": "last call"}),
+                        width="stretch", hide_index=True, height=480)
+                    st.caption(
+                        f"The numbers behind the bubbles, in the same order. "
+                        f"'net direction' is the horizontal axis, 'share of "
+                        f"conviction %' the vertical one - computed over all "
+                        f"{_n_all} {_grain} in the window, so it still sums "
+                        f"towards 100% across the whole window rather than "
+                        f"across these {min(_n_all, 24)} rows. A bar chart of "
+                        f"these same two columns used to sit here as well; it "
+                        f"was the bubble chart with one axis flattened into "
+                        f"shading, so it was dropped rather than shown twice.")
 
             with st.expander("name by name - the actual recent calls behind "
                              "all of this", expanded=False):
@@ -3100,6 +3604,7 @@ with t_infl:
                                             asof=asof, per_author=5)
                 if len(wide):
                     wide = wide.assign(
+                        author=censor_series(wide["author"]),
                         date=pd.to_datetime(wide["date"]).dt.date,
                         direction=[ig.direction_label(d)
                                    for d in wide["direction"]],
@@ -3206,6 +3711,7 @@ with t_infl:
                         width="stretch", key="infl_backers")
                 with _b2:
                     _bv = _bk.assign(
+                        author=censor_series(_bk["author"]),
                         influence=_bk["influence"].round(0).astype(int),
                         conviction=_bk["conviction"].round(2),
                         last_date=pd.to_datetime(_bk["last_date"]).dt.date)
@@ -3272,6 +3778,10 @@ with t_infl:
                                     "bought_tops": "bought tops",
                                     "loud_but_wrong": "loud but wrong"})
         view.insert(0, "rank", range(1, len(view) + 1))
+        # LAST, after every merge: the `author` column above is the join key
+        # for `_push`, so masking earlier would drop every masked author's
+        # tickers. Censor once the frame is final and about to be rendered.
+        view["author"] = censor_series(view["author"])
         st.dataframe(view, width="stretch", hide_index=True, height=430,
                      column_config={
                          "influence": st.column_config.ProgressColumn(
@@ -3345,21 +3855,28 @@ with t_infl:
                     f"{INFL_MIN_JUDGED}+ judged calls before it will rank "
                     f"someone.")
             else:
-                who = st.selectbox("author", panel, key="infl_ego_who")
+                # `format_func`, NOT a censored option list: the value this
+                # widget returns is the key `_ego_frames` looks the person up
+                # by, so the options must stay the true handles and only
+                # their rendering is masked. `_who` is the display form,
+                # used in every string a human reads below.
+                who = st.selectbox("author", panel, key="infl_ego_who",
+                                   format_func=censor)
+                _who = censor(str(who))
                 with st.spinner("laying out the neighbourhood ..."):
                     nodes, links, e_n, e_m = _ego_frames(who, _e_mt, _b_mt)
                 if e_n <= 1:
-                    st.info(f"{who} has no reply links in the store - they "
+                    st.info(f"{_who} has no reply links in the store - they "
                             "post, nobody replies (or the replies are "
                             "outside the fetched history).")
                 else:
                     st.plotly_chart(
                         fig_influence_map(
                             nodes, links,
-                            f"{who}: everyone they exchange replies with "
+                            f"{_who}: everyone they exchange replies with "
                             f"({e_n} people, {e_m} links)", centre=who),
                         width="stretch", key="infl_map_ego")
-                    st.caption(f"One hop around {who}. If the neighbourhood "
+                    st.caption(f"One hop around {_who}. If the neighbourhood "
                                f"is larger than {INFL_EGO_MAX} people the "
                                f"busiest neighbours are kept, so this shows "
                                f"the active part of it, not all of it.")
@@ -3381,6 +3898,7 @@ with t_infl:
                 _ct = board.nlargest(10, "called_tops").copy()
                 _ct["influence"] = (_infl_all.reindex(_ct.index).round(0)
                                     .astype(int))
+                _ct["author"] = censor_series(_ct["author"])
                 st.dataframe(
                     _ct[["author", "influence", "called_tops", "bought_tops",
                          "latest_calls"]].rename(columns={
@@ -3401,6 +3919,7 @@ with t_infl:
                 _lw = board[board["loud_but_wrong"]].head(10).copy()
                 _lw["influence"] = (_infl_all.reindex(_lw.index).round(0)
                                     .astype(int))
+                _lw["author"] = censor_series(_lw["author"])
                 st.dataframe(
                     _lw[["author", "influence", "followers",
                          "latest_calls"]].rename(columns={

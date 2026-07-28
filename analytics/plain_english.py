@@ -40,6 +40,8 @@ USAGE
 """
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 
 # ---------------------------------------------------------------------------
@@ -279,3 +281,270 @@ def glossary_md(keys: list[str] | None = None) -> str:
         if body:
             lines.append(f"- **{k}** - {body}")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# DISPLAY-ONLY MASKING OF OBSCENE HANDLES
+#
+# WHY THIS IS HERE AND NOT IN THE STORE
+# -------------------------------------
+# The influence board is built from real Reddit handles, and a meaningful
+# minority of them are unprintable.  The desk instruction (2026-07-28) was to
+# "censor the innapropriate stuff with **".  That is a DISPLAY concern, so it
+# belongs in this module for exactly the reason the module docstring gives: the
+# stored parquet is an interface.  Rewriting handles inside
+# `data/reference/influence/` would (a) silently change the join key that
+# `calls.parquet`, `reply_edges.parquet` and `author_scores.parquet` share,
+# (b) make two different authors collide the moment their masked forms match,
+# and (c) destroy the ability to re-judge an author against new price data.
+# Nothing below touches storage; it rewrites a STRING on its way to a screen.
+#
+# WHY TWO TIERS AND NOT ONE WORD LIST
+# -----------------------------------
+# The obvious implementation - one list of stems, matched as substrings - was
+# BUILT AND MEASURED AGAINST ALL 12,528 REAL HANDLES FIRST, and it is wrong.
+# It flagged 384, and the false positives were not marginal: `Painkiller_830`
+# (kill), `AssumptionPretty7018` and `passionlessDrone` and `cow_grass` (ass),
+# `Tricky-Doughnut-6429` (nut), `buffetite` and `Stitch426` (tit),
+# `BlownCamaro` (blow).  Masking an innocent handle is not a harmless error:
+# the whole point of keeping the un-offending part of a handle visible is that
+# a PM can tell two authors apart, and a wrongly-mangled name breaks that
+# while also looking careless in front of the desk.
+#
+# The split that fixes it follows from WHERE each word can legitimately occur:
+#
+#   TIER A - stems that never appear inside an innocent English word.  Matched
+#            as a SUBSTRING, because obfuscated spellings
+#            (`fucktheredditapp15`, `RHfuckedup`) run the stem straight into
+#            other characters with no separator to key off.
+#
+#   TIER B - words that are crude alone but sit inside longer innocent words
+#            (`ass` in assumption, `tit` in title, `nut` in doughnut, `anal`
+#            in analyst, `rape` in grapefruit, `cock` in cockroach).  Matched
+#            only when the handle, split into tokens, contains the word AS A
+#            WHOLE TOKEN.
+#
+# WHICH TIER EACH STEM LANDS IN WAS DECIDED BY COUNTING, NOT BY INTUITION.
+# Every candidate stem was run over the whole corpus and its hits read by eye.
+# Six stems that intuition puts in Tier A had to be demoted, because as
+# substrings they hit innocent words far more often than obscene handles:
+#   anal -> AfraidAnalyst, Band10_Analyst, Valuable-Analyst-464,
+#           scientia_analytica         (3 innocent vs 2 genuine)
+#   rape -> every one of Ok-Grapefruit2910, Own_Grapefruit8839,
+#           RepulsiveGrapefruit, SpecialGrapefruit208, GrapefruitOrganic741,
+#           Foreign_GrapeStorage, _grapevan  (7 innocent vs 0 genuine - the
+#           corpus contains no handle using the word at all)
+#   cock -> Calm_Cockroach_5284, Winter_Cockroach_753, Pool_cocktail_repeat
+#   boob -> BooBeef, lulubooboo28   (the stem straddles `Boo`+`B`)
+#   piss -> Dippissippi            (1 innocent vs 0 genuine)
+#   wank -> sobewankanobe          (an Obi-Wan pun; 1 innocent vs 0 genuine)
+# Demoting them costs six genuinely crude handles that hide the word inside a
+# longer run (`Cockballzz`, `redditsuckscockss`, `TRASHTALKINGCOCKSTAR`,
+# `3boobsarenice`, `eskimoboob`, `analbuttlick`) and buys back 15 innocent
+# ones.  That is the trade this module deliberately takes: see the note on the
+# direction of error below.
+#
+# A SECOND RULE, WHICH COSTS NOTHING: a Tier A match must lie INSIDE ONE
+# TOKEN.  Several false positives were the stem straddling a word boundary -
+# `SatoshiTrails` and `TheSatoshiTimes` ("...oshi|Trails" -> shit),
+# `MeridianAllocation` ("Meridian|Allocation" -> anal).  A stem spanning two
+# words is by construction not the word being written, so requiring
+# containment removes those with no list to maintain and no genuine loss.
+#
+# WHY THE TOKENISER LOOKS LIKE THAT
+# ---------------------------------
+# Reddit handles carry their word boundaries in four different notations at
+# once, so all four have to be honoured or Tier B does nothing:
+#   `just_lick_my_ass`   -> underscores
+#   `dick-knuckle`       -> hyphens
+#   `AssumptionPretty`   -> camelCase
+#   `Painkiller_830`     -> a letter/digit boundary
+# `[A-Z]+(?![a-z])` comes first so an acronym run stays one token and the word
+# after it still splits: `RHfuckedup` -> [RH, fuckedup] rather than [R, Hfuck...].
+#
+# WHAT IS DELIBERATELY *NOT* MASKED
+# ---------------------------------
+# `suck`, `kill`, `damn`, `hell` and `crap` were tested and left out.  They are
+# not obscene, and their hits are handles no desk would blink at
+# (`Feb17Sucks`, `TheRedditModsSuck`, `ISuckAtJavaScript12`, `p8inKill3r`).
+# Masking them would make the board look bowdlerised without hiding anything
+# anyone objects to.  `ball` singular is out for the same reason `nut` is
+# token-only: it would mask innocent tokens, and it costs one handle
+# (`BallSmashingForever`).
+#
+# HONEST CLASSIFICATION
+# ---------------------
+# These lists are a CONVENTION (Class 3), not a learned or derived parameter.
+# There is no ground truth for "offensive" to fit against, so no amount of
+# bootstrapping would make them evidence-backed.  What IS evidence is the
+# measured behaviour, recorded in `docs/PARAMETER_REGISTER.md`: how many of
+# the 12,528 real handles are masked, which stem fires each one, and the
+# residual errors named individually.  Under-masking is the deliberate
+# direction of the error: a missed handle is one embarrassing name on a board
+# the desk already knows is scraped from Reddit, while over-masking corrupts
+# identity for every reader of the leaderboard.
+# ---------------------------------------------------------------------------
+
+#: Matched as substrings (within a single token), case-insensitively.
+_OBSCENE_SUBSTRING = (
+    "fuck", "cunt", "shit", "nigg", "fag", "pussy", "whore", "slut",
+    "jizz", "penis", "benis", "vagina", "dick", "milf", "horny", "turd",
+    "bitch", "bastard", "analingus",
+    # PROMOTED to substring matching after counting: every hit in the corpus
+    # is genuine, so the safer token rule would only lose coverage.
+    #   retard -> 10 hits, 10 genuine (it also picks up `Retardation-Syndrome`,
+    #             which whole-token matching misses)
+    #   boobs  ->  3 hits,  3 genuine (`3boobsarenice`, `PlzSendCDKeysNBoobs`,
+    #             `I_love_boobs86`) - note the SINGULAR `boob` stays a token,
+    #             because that is the spelling that straddles `Boo`+`B`
+    "retard", "boobs",
+    # `tits` was tested for promotion and REJECTED: 2 hits, one genuine
+    # (`Murrrtits`) and one not (`Iplayminecraftitsfun` - "minecraft its
+    # fun"), and the innocent one is a single token so the containment rule
+    # cannot separate them. A 50% error rate is not worth one handle.
+)
+
+#: Matched only as a WHOLE TOKEN after the handle is split on separators,
+#: digit boundaries and camelCase transitions.
+_OBSCENE_TOKEN = frozenset({
+    "ass", "asses", "arse", "tit", "tits", "titty", "nut", "nuts",
+    "balls", "ballsack", "butt", "sex", "sexy", "cum", "cums", "hole",
+    "nazi", "hitler", "retard", "retards", "retarded",
+    # demoted from substring matching on the measured evidence above
+    "anal", "cock", "cocks", "boob", "boobs", "piss", "wank", "rape",
+})
+
+# One compiled alternation for Tier A. Longest-first so that when two stems
+# overlap the wider span wins and the mask does not leave half a word behind.
+_SUB_RE = re.compile(
+    "|".join(sorted((re.escape(w) for w in _OBSCENE_SUBSTRING),
+                    key=len, reverse=True)),
+    re.IGNORECASE)
+
+# Acronym run | Capitalised word | lower run | digit run - see the note above.
+_TOKEN_RE = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z]+|[a-z]+|[0-9]+")
+
+MASK = "**"
+_MASK_RUN_RE = re.compile("(?:" + re.escape(MASK) + ")+")
+
+
+def _mask_spans(text: str) -> list[tuple[int, int]]:
+    """Character spans of ``text`` that the two tiers want hidden.
+
+    Returned spans are sorted and non-overlapping: adjacent or overlapping
+    hits are merged so `fuckshit` becomes one `**` rather than two, which is
+    both shorter to read and stops the mask itself from looking like a word.
+    """
+    toks = [m.span() for m in _TOKEN_RE.finditer(text)]
+    spans = [m.span() for m in _SUB_RE.finditer(text)
+             if any(lo <= m.start() and m.end() <= hi for lo, hi in toks)]
+    spans += [(lo, hi) for lo, hi in toks
+              if text[lo:hi].lower() in _OBSCENE_TOKEN]
+    if not spans:
+        return []
+    spans.sort()
+    merged = [list(spans[0])]
+    for lo, hi in spans[1:]:
+        if lo <= merged[-1][1]:          # overlapping or touching
+            merged[-1][1] = max(merged[-1][1], hi)
+        else:
+            merged.append([lo, hi])
+    return [(lo, hi) for lo, hi in merged]
+
+
+def is_obscene(handle: str) -> bool:
+    """True when ``handle`` contains anything the display layer should hide.
+
+    Exposed separately from `censor` so callers can COUNT without rewriting -
+    the parameter-register audit and the unit tests both need that, and
+    inferring it from `censor(h) != h` would be a subtler test than the thing
+    it is testing.
+    """
+    return bool(handle) and bool(_mask_spans(str(handle)))
+
+
+def censor(handle: str) -> str:
+    """A handle safe to put on a screen, with only the offending spans hidden.
+
+    Each offending span collapses to ``**`` and EVERYTHING ELSE SURVIVES
+    (`just_lick_my_ass` -> `just_**_my_**`), because the surrounding
+    characters are what let a reader tell two authors apart on a leaderboard.
+    Fully replacing the handle with `**` would make every masked author look
+    like the same author.
+
+    Non-strings and blanks pass through untouched: this sits on the hot path
+    of every influence chart, and a missing author must render as a gap, not
+    raise mid-figure.
+    """
+    if handle is None or not isinstance(handle, str) or not handle:
+        return handle
+    out = handle
+    # ITERATE TO A FIXED POINT, and the reason is a real case in the store,
+    # not defensiveness. `Buttslut69696969` tokenises as [Buttslut, 69696969]
+    # - `butt` is not a whole token there, so only Tier A's `slut` fires and
+    # the first pass yields `Butt**69696969`. NOW `Butt` IS a whole token, so
+    # a single pass would leave a crude word on screen having "censored" the
+    # handle. Two passes reach `**69696969`. The bound is small because each
+    # pass strictly shortens the letters available to match; four is slack
+    # over the deepest case observed (two).
+    for _ in range(4):
+        spans = _mask_spans(out)
+        if not spans:
+            break
+        parts, prev = [], 0
+        for lo, hi in spans:
+            parts.append(out[prev:lo])
+            parts.append(MASK)
+            prev = hi
+        parts.append(out[prev:])
+        # Collapse runs of masks: two adjacent hits should read as one gap.
+        # Without this the second pass above produces `****69696969`, which
+        # looks like a rendering bug rather than a redaction.
+        out = _MASK_RUN_RE.sub(MASK, "".join(parts))
+    return out
+
+
+def censor_series(s: pd.Series) -> pd.Series:
+    """Vectorised `censor` for a column of handles, returned as a COPY.
+
+    A copy for the same reason `relabel` copies: the caller nearly always
+    still needs the true handle as a join key one line later, and display
+    code that mutates the analysis frame in place is how a masked name ends
+    up written back into the store.
+    """
+    return s.map(censor)
+
+
+# ---------------------------------------------------------------------------
+# THEME SLUGS -> DESK ENGLISH
+#
+# `src/themes.py` spells a theme as a snake_case slug because it is a dict
+# key: `ev_clean_energy` is a good identifier and a bad chart label.  The
+# translation lives HERE, with the rest of the display layer, for the same
+# reason the column glossary does - the stored spelling never changes, only
+# what a human reads, so nothing that joins on a theme can be broken by a
+# relabelling.
+#
+# Only two rules, and both are mechanical rather than a per-theme dictionary
+# (39 hand-written labels is 39 chances to let one drift out of sync with
+# `THEME_TICKERS`): underscores become spaces, and a word in _ACRONYMS gets
+# its house spelling.  A new theme added to src/themes.py therefore gets a
+# sensible label with no edit here at all, which is the point - the map holds
+# only the words that plain capitalisation would get WRONG.
+# ---------------------------------------------------------------------------
+_ACRONYMS = {"ai": "AI", "ev": "EV", "saas": "SaaS", "glp1": "GLP-1"}
+
+
+def theme_label(slug: str) -> str:
+    """`ai_megacap` -> `AI megacap`, `ev_clean_energy` -> `EV clean energy`.
+
+    Sentence case, not Title Case: the labels sit inside chart captions and
+    hover text as ordinary nouns, and Title Case on a scatter reads as a
+    proper name ("Gold Metals" looks like a company)."""
+    words = [w for w in str(slug).split("_") if w]
+    if not words:
+        return str(slug)
+    out = [_ACRONYMS.get(w, w) for w in words]
+    if words[0] not in _ACRONYMS:
+        out[0] = out[0][:1].upper() + out[0][1:]
+    return " ".join(out)

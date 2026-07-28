@@ -610,6 +610,102 @@ betweenness (400 pivots), k-core decomposition, Fruchterman-Reingold
 layout, DICE and degree-preserving double-edge-swap perturbation,
 label-permutation significance, and the cohort/tenure split.
 
+The same module also owns the **crowding read-out** the dashboard's
+influence tab draws, and its shape is deliberate. `_weighted_calls`
+attaches each author's `influence_index(board)/100` to their calls as a
+continuous weight w in [0, 1] — **no tier cut anywhere**, because `tier`
+is unusable as a population split (25 HIGH authors against 12,503 low;
+only 234 of 27,881 live calls come from a HIGH author). From there one
+private function per output serves **both** grains: `_digest_frame(c,
+key)` is called with `key="ticker"` by `suggestion_digest` and with
+`key="theme"` by `theme_digest`, and `_voices_frame(c, key, board)`
+likewise backs `ticker_voices` / `theme_voices`. That is the invariant
+worth defending — the accepted consensus formula (|Σ w·s| / Σ w·|s|,
+the same arithmetic as the euphoria detector's `consensus`) and
+`backing_share` exist in **exactly one place**, so the two toggle views
+cannot drift apart under later edits; only the grouping key differs.
+
+`explode_to_themes` sits between them and reuses the membership in
+`src/themes.py`, so "semiconductors" means the same set of names in the
+influence tab as in the euphoria Themes tab. Two consequences are
+intended, not accidents. A ticker that belongs to several themes (NVDA →
+semiconductors, ai, ai_megacap) **duplicates into every one of them**,
+because a call on NVDA genuinely is a call on all three. And calls on
+tickers in **no** theme are **dropped, not bucketed into "other"** — the
+residue is 58.5% of live calls and would otherwise be the largest bar on
+the chart purely by being a residue. The two views therefore have
+different denominators and are not expected to agree name-for-name;
+the radio's help text says so on screen.
+
+What this layer is **not**: a signal. The pre-registered test of whether
+influence convergence predicts a drawdown was run and **rejected** — on
+the identical 1,552 name-days where the accepted euphoria level
+separates 0.925 against 0.428, all three influence candidates read the
+wrong way (0.237/0.482, 0.250/0.481, 0.282/0.477), because the panel
+converges on the largest liquid names and those fall less often than the
+small-cap tail. No code from the rejected half survives anywhere; the
+record is `docs/PARAMETER_REGISTER.md` Class 6c and
+`docs/RESEARCH_REPORT.md` §6.12. Eight tests fence the shipped half
+(`tests/test_pipeline.py::TestThemeRollup`), including one that parses
+the AST of every theme function and asserts the word "price" appears in
+no line of code — dropping docstring nodes first, since the *prose*
+legitimately says "not a forecast about the price".
+
+### 6.8 The plain-English layer (`analytics/plain_english.py`)
+
+Two jobs, both **display-only**, and neither of them ever touches a
+stored value. `PLAIN` / `plain()` / `glossary_md()` translate the
+project's internal names into the words a PM reads, which is why the
+stored parquet column names never have to change — translation belongs at
+the display layer, and a column name is an interface shared by
+`author_scores.parquet`, `calls.parquet` and `reply_edges.parquet`.
+
+`censor()` / `censor_series()` / `is_obscene()` mask offensive substrings
+in Reddit handles with `**` (desk request 2026-07-28). The design is
+two-tier and every tier assignment was decided by **counting hits over
+the real corpus of 12,528 handles**, not by intuition: Tier A stems match
+as substrings but only **inside a single token** (obfuscated handles run
+the stem into other characters with no separator, e.g.
+`fucktheredditapp15`), while Tier B words match only as a **whole token**
+(crude alone, common inside innocent words). The tokeniser
+`[A-Z]+(?![a-z])|[A-Z][a-z]+|[a-z]+|[0-9]+` honours underscores, hyphens,
+camelCase and letter/digit boundaries at once, with the acronym
+alternative first so `RHfuckedup` splits as `[RH, fuckedup]`. Masking
+**iterates to a fixed point** because removing one span can expose a new
+whole token (`Buttslut69696969` → `Butt**69696969` → `**69696969`), and
+runs of masks collapse so the output does not look like a rendering bug.
+
+Two invariants matter architecturally. **Only the offending span is
+replaced**, so authors stay distinguishable — measured, 12,528 unique
+handles map to 12,528 unique censored strings, which is what makes this
+safe on a plotly category axis where duplicate labels merge into one bar.
+And **the store is never rewritten**: `author` is a join key, so every
+call site censors at the point a handle becomes a string a human reads —
+the influence map's hover and labels, the ticker-backers axis, both
+warning boards, the leaderboard (censored *after* the `_push` merge), the
+author-calls table, `ticker_voices`'s hover text, and the ego selector via
+`format_func` so the widget still returns the true key. Measured rate 97 /
+12,528 = 0.774%; full audit, known misses and the English-only limitation
+in `docs/PARAMETER_REGISTER.md` Class 3b. Six tests in
+`tests/test_pipeline.py::TestHandleCensoring`, one of which asserts no
+mask ever reaches the parquet.
+
+`theme_label()` is the third display-only translator, added with the
+influence theme view (2026-07-28). It turns a `src/themes.py` slug into
+the words on a chart — `ai_megacap` → `AI megacap`, `ev_clean_energy` →
+`EV clean energy` — and follows the same rule as `PLAIN`: **the slug
+stays the join key**, so nothing that groups on a theme can be broken by
+a relabelling. The implementation is deliberately **mechanical rather
+than a 39-entry hand-written dictionary**: underscores become spaces and
+a word in `_ACRONYMS` (`ai`→`AI`, `ev`→`EV`, `saas`→`SaaS`,
+`glp1`→`GLP-1`) gets its house spelling, so a theme added to
+`src/themes.py` renders sensibly with **no edit here at all**. The map
+holds only the words plain capitalisation would get wrong; 39 hand-typed
+labels would be 39 chances to drift out of sync with `THEME_TICKERS`.
+Output is **sentence case, not Title Case**, because the labels sit
+inside captions and scatter hover as ordinary nouns and Title Case reads
+as a proper name ("Gold Metals" looks like a company).
+
 ## 7. Prices (`pull_bloomberg_prices.py`)
 
 blpapi HistoricalDataRequest, PX_LAST daily. The symbol universe is the
@@ -650,6 +746,22 @@ Windows, `killpg` elsewhere — `update_data.py` spawns fetcher/analytics
 children a plain kill would orphan) and reaps the process. One pipeline
 at a time: the buttons disable while one runs.
 
+**A structural hazard: the dashboard body runs at MODULE scope.**
+Streamlit executes `dashboard.py` top to bottom as a script, so a
+variable assigned inside a tab is **not** local to that tab — it is a
+module global, and it silently rebinds any module-level helper of the
+same name. This is not hypothetical: a tab-local `_unit = "themes"`
+in the influence tab rebound the module-level `_unit()` scaler and
+killed `fig_influence_map` three hundred lines later with `'str' object
+is not callable`, and `_dig` collided the same way with the `_dig()`
+helper at line 712. The convention is therefore that **tab-local names
+carry a grain-specific suffix** (`_grain`, `_digest`) rather than the
+bare helper name, and the class of bug is fenced permanently by
+`tests/test_pipeline.py::TestDashboardModuleHygiene`, which imports the
+module and asserts `_unit`, `_dig`, `_theme` and `_thin_labels` are
+still callable after the script has run. Adding a module-level helper
+means adding its name to that tuple.
+
 **Chart/UX conventions worth knowing:**
 
 - **Masked ≠ missing**: days under the `MIN_TOTAL` mention floor are
@@ -672,6 +784,54 @@ at a time: the buttons disable while one runs.
   flat average are shown alongside for transparency. A board of negative
   values is meaningful (crowds quieter than their own trailing normal),
   not a bug, and the tab says so in a caption.
+
+**The EUPHORIA GAUGE (added 2026-07-27) — one dial above every chart.**
+`draw_chart` is called once per instrument in both the Themes and the
+Singles tab, so wiring the dial there gives the desk's "for each theme /
+ticker" for free. The dial sits in the left of a `[1, 2.1]` column pair;
+the right column carries a one-sentence caption quoting the MEASURED risk
+of the band the needle is in, plus a standing reminder that the dial is a
+state and not an instruction.
+
+Four functions, immediately before `fig_series_vs_price`:
+
+- `gauge_zones()` — `_research("gauge_zones")`, i.e. reads
+  `docs/research/gauge_zones.json`, which **notebook 06 writes**. Nothing
+  in `dashboard.py` is a literal: an edge that lived in this file could
+  drift away from the evidence justifying it, and "why 76?" is the first
+  question a gauge invites. An empty dict means notebook 06 has not run,
+  and the caller then draws **no dial** rather than a dial with invented
+  bands.
+- `gauge_state(level_now, in_danger, z)` — returns
+  `(key, label, colour)`: `calm` / `amber` "warming" / `red` "RED ZONE" /
+  `red_danger` "RED ZONE + already run up". Descriptive labels only; a
+  unit test asserts "get in" and "get out" can never appear in one.
+- `fig_euphoria_gauge(level_now, level_prev, in_danger, z, as_of)` — a
+  plotly `Indicator`. Three construction details are load-bearing.
+  (i) The **needle is the display curve's last value**, not a fresh
+  calculation, so dial and chart cannot disagree. (ii) The band edges
+  arrive from `gauge_zones()`. (iii) The **delta is inverted on purpose** —
+  euphoria rising is the risk direction, so `increasing` is painted `BEAR`
+  and `decreasing` `BULL`; plotly's default would paint a rise green and
+  invert the meaning of the arrow. Two layout facts learned by rendering
+  the PNG and looking at it: plotly draws an Indicator `title` inside the
+  **same domain as the arc**, so the header is built as paper-space
+  annotations in the top margin instead; and the value bar is
+  `thickness=0.15`, because at 0.28 the navy sweep covered the very band
+  colours it is meant to be read against. The as-of date is **on the dial**
+  rather than in a caption, because the sidebar can select a historical
+  window and a dial labelled "now" while showing March would be the worst
+  kind of wrong.
+- `gauge_caption(level_now, in_danger, z)` — one sentence, four branches,
+  every percentage read out of the JSON. It closes with the base rate for
+  scale, and in the red band it says plainly that the level alone is a weak
+  read (~1.3x) while the level plus an already-run-up price is the strong
+  one (~3.1x).
+
+The two edges, and the fact that only ONE of them is a new number, are in
+Class 1b of `docs/PARAMETER_REGISTER.md`; the derivation is §6.10 of the
+research report and the code that produced it is in notebook 06. Nine tests
+in `TestEuphoriaGauge` fence it.
 
 **The INFLUENCE tab (rebuilt 2026-07-27, re-cut later the same day after
 the charts were finally LOOKED at) — information only.** It opens with a
@@ -803,6 +963,17 @@ aggregation; trailing z sees no future; warm-up yields no z; one surge =
 one crossing; the sentiment gate, cooldown and crowded-top rules; thin-day
 masking; signed P&L symmetry; text-free schemas both on disk and at the
 aggregator's output; extraction stop-list and one-post-one-mention rules.
+
+Two later classes fence the influence layer on the same principle.
+`TestThemeRollup` runs a hand-computable three-row fixture through the
+theme grain and asserts the properties that must hold for any data: a
+ticker in several themes counts in every one, unmapped tickers are
+dropped rather than bucketed, consensus stays bounded and keeps the
+ticker view's sign, backing shares sum to 100, an empty window returns
+the correctly *typed* empty frame, hover handles are censored like
+everywhere else, and no theme function so much as mentions a price in
+code. `TestDashboardModuleHygiene` imports `dashboard` and asserts its
+module-level helpers survive the script run (see §8).
 
 ## 11. Extension points
 

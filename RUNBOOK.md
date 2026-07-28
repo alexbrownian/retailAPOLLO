@@ -133,7 +133,22 @@ git push
   its normal AND price ≥25/50% above its 120d low): sharp drops (≥10%
   in a week) begin within 30d on ~62% of these days vs ~19% of ordinary
   days (NB06) — the band is the standing PM warning, the red line the
-  timing call. A single caption states the validated record; the walk-forward
+  timing call. Above each chart sits a **EUPHORIA GAUGE**: a dial whose
+  needle is the euphoria level you see plotted underneath (0-100, read at
+  the last day of the selected window, with the change vs 7d earlier), and
+  whose bands are **calm** below 76, **warming** 76-84 and **RED ZONE** at
+  85+. The 85 is not a new number — it is the same level the walk-forward
+  froze for the ENDING alert; the 76 is the lowest cut whose effect on
+  "does a >=10% fall start within 30 days" stayed positive under all five
+  bootstrap seeds (research report §6.10, parameter register Class 1b).
+  Read it as a **state, not an instruction**: the sentence beside the dial
+  quotes the measured drop risk of the band you are actually in, and warns
+  that the level alone at 85+ is only ~1.3x the all-days rate while the
+  level *plus* the amber danger band is ~3.1x. GET IN and GET OUT still come
+  from the detector and can fire with the needle anywhere. If the dial is
+  missing, notebook 06 has not been run on this machine — it writes
+  `docs/research/gauge_zones.json`, and the dashboard refuses to invent
+  bands without it. A single caption states the validated record; the walk-forward
   tables, ablation, ML challenger and tournament live in
   `notebooks/01-04` + `docs/DECISIONS.xlsx`, not on the terminal
 - **Trade desk** — the live ledger, scorecard, certainty ranking, signal

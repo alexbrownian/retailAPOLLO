@@ -61,6 +61,7 @@ from scipy import sparse
 from scipy.sparse.csgraph import connected_components, shortest_path
 
 from analytics.influence import MAX_EDGE_W, PAGERANK_D
+from analytics.plain_english import censor
 
 # --- module constants (round, and each one only affects a REPORTED
 # --- estimate's precision, never a decision) ---------------------------
@@ -848,11 +849,24 @@ def suggestion_digest(calls: pd.DataFrame, board: pd.DataFrame,
     someone with a record counts for more than a call from a first-timer.
     """
     c = _weighted_calls(calls, board, authors, days, asof, weight_col)
+    return _digest_frame(c, "ticker")
+
+
+DIGEST_COLS = ["n_calls", "n_authors", "longs", "shorts", "consensus",
+               "weighted_voices", "last_date"]
+
+
+def _digest_frame(c: pd.DataFrame, key: str) -> pd.DataFrame:
+    """`suggestion_digest`'s arithmetic, over whatever key is handed in.
+
+    Split out so the THEME view cannot drift from the TICKER view.  The
+    consensus and backing formulas are the desk's accepted numbers; a
+    second copy of them written for themes would be a second place for
+    them to be wrong, and the two views sit side by side on one toggle
+    where any disagreement would be visible and unexplainable."""
     if not len(c):
-        return pd.DataFrame(columns=["ticker", "n_calls", "n_authors",
-                                     "longs", "shorts", "consensus",
-                                     "weighted_voices", "last_date"])
-    g = c.groupby("ticker")
+        return pd.DataFrame(columns=[key] + DIGEST_COLS)
+    g = c.groupby(key)
     out = pd.DataFrame({
         "n_calls": g.size(),
         "n_authors": g["author"].nunique(),
@@ -865,6 +879,53 @@ def suggestion_digest(calls: pd.DataFrame, board: pd.DataFrame,
     return (out.reset_index()
             .sort_values(["weighted_voices", "n_calls"], ascending=False)
             .reset_index(drop=True))
+
+
+def explode_to_themes(c: pd.DataFrame) -> pd.DataFrame:
+    """One row per (call, theme) for every call on a ticker that belongs to
+    at least one theme.
+
+    The map is `src.themes.build_ticker_to_themes()` - the SAME membership
+    the euphoria product's theme tab already runs on, so a theme means one
+    thing across the whole application.  Nothing new is defined here.
+
+    A ticker may sit in several themes (NVDA is in `semiconductors`, `ai`
+    and `ai_megacap`), and the row is duplicated into each: the question
+    "are the influential accounts converging on AI" is asked of the theme,
+    and NVDA is evidence for it whether or not it is also evidence for
+    semiconductors.  This means theme backing shares are shares of the
+    THEME-MAPPED room, not of the ticker room, and the two are different
+    denominators - which is why the toggle recomputes rather than reusing.
+
+    Calls on tickers in no theme are dropped rather than bucketed into an
+    "other" catch-all: "other" is not a theme a PM can position in, and on
+    the measured store it would be the largest bar on the chart (58.5% of
+    live calls map to no theme) purely by being a residue."""
+    from src.themes import build_ticker_to_themes
+    if not len(c):
+        return c.assign(theme=pd.Series(dtype="object"))
+    lut = build_ticker_to_themes()
+    out = c.assign(theme=c["ticker"].map(lut))
+    return out[out["theme"].notna()].explode("theme")
+
+
+def theme_digest(calls: pd.DataFrame, board: pd.DataFrame,
+                 authors: list | np.ndarray | None = None,
+                 days: int = 30, asof: pd.Timestamp | None = None,
+                 weight_col: str = "composite") -> pd.DataFrame:
+    """`suggestion_digest`, rolled up to THEMES instead of tickers.
+
+    The desk's question was "what if lots of influential accounts converge
+    on a theme" - this is that question, asked literally.  Same weighting,
+    same consensus, same backing share; only the grouping key changes.
+
+    INFORMATION ONLY.  Theme convergence was tested as a predictor of the
+    house cliff outcome and REJECTED - see PARAMETER_REGISTER Class 6c.
+    This exhibit describes where the room is positioned, which is a fact
+    about the room, not a forecast about the price."""
+    c = explode_to_themes(
+        _weighted_calls(calls, board, authors, days, asof, weight_col))
+    return _digest_frame(c, "theme")
 
 
 def ticker_voices(calls: pd.DataFrame, board: pd.DataFrame,
@@ -891,36 +952,61 @@ def ticker_voices(calls: pd.DataFrame, board: pd.DataFrame,
     still spelled in exactly one place in this module.
     """
     c = _weighted_calls(calls, board, authors, days, asof, weight_col)
+    return _voices_frame(c, "ticker", board, weight_col, top)
+
+
+def theme_voices(calls: pd.DataFrame, board: pd.DataFrame,
+                 authors: list | np.ndarray | None = None,
+                 days: int = 30, asof: pd.Timestamp | None = None,
+                 weight_col: str = "composite",
+                 top: int = 6) -> pd.DataFrame:
+    """`ticker_voices` for the theme view: who is behind a THEME.
+
+    An author who called three names inside one theme appears ONCE, with
+    their three calls netted - otherwise the loudest hover on the chart
+    would belong to whoever spreads the widest, not to whoever the crowd
+    actually follows."""
+    c = explode_to_themes(
+        _weighted_calls(calls, board, authors, days, asof, weight_col))
+    return _voices_frame(c, "theme", board, weight_col, top)
+
+
+def _voices_frame(c: pd.DataFrame, key: str, board: pd.DataFrame,
+                  weight_col: str, top: int) -> pd.DataFrame:
     if not len(c):
-        return pd.DataFrame(columns=["ticker", "voices", "top_author",
-                                     "n_more"])
-    # One row per (ticker, author): their net lean on that name, how many
+        return pd.DataFrame(columns=[key, "voices", "top_author", "n_more"])
+    # One row per (key, author): their net lean on that name, how many
     # times they said it, and their usefulness score.  Summing dir_num
     # means an author who flip-flopped nets out toward zero rather than
     # being counted twice in opposite directions.
-    per = (c.groupby(["ticker", "author"])
+    per = (c.groupby([key, "author"])
            .agg(lean=("dir_num", "sum"), n=("dir_num", "size"),
                 weight=("w", "max"))
            .reset_index()
-           .sort_values(["ticker", "weight"], ascending=[True, False]))
+           .sort_values([key, "weight"], ascending=[True, False]))
     # The hover quotes influence on the 0-100 board scale, not the raw
     # composite: 0.71 means nothing to a reader, "influence 84" says
     # "84% of the strongest record in the store" - see influence_index().
     top_w = float(board[weight_col].max() or 1.0) or 1.0
     rows = []
-    for ticker, grp in per.groupby("ticker", sort=False):
+    for gkey, grp in per.groupby(key, sort=False):
         head = grp.head(top)
         lines = []
         for r in head.itertuples(index=False):
             word = "LONG" if r.lean > 0 else ("SHORT" if r.lean < 0
                                               else "MIXED")
-            lines.append(f"{r.author} - {word}, {int(r.n)} call"
+            # `voices` is HOVER TEXT, not data - it is the one field in this
+            # module that goes to a screen verbatim - so the handle is
+            # censored here, at the point it becomes a string a human reads.
+            # `top_author` below keeps the TRUE handle: it is a key, and a
+            # masked key would collide across authors and break any join.
+            lines.append(f"{censor(str(r.author))} - {word}, {int(r.n)} call"
                          f"{'s' if int(r.n) != 1 else ''}, "
                          f"influence {100.0 * float(r.weight) / top_w:.0f}")
         n_more = int(len(grp) - len(head))
         if n_more:
             lines.append(f"...and {n_more} more")
-        rows.append({"ticker": ticker, "voices": "<br>".join(lines),
+        rows.append({key: gkey, "voices": "<br>".join(lines),
                      "top_author": str(head.iloc[0]["author"]),
                      "n_more": n_more})
     return pd.DataFrame(rows)

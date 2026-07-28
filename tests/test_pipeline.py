@@ -1248,3 +1248,408 @@ class TestChartLabelLayout:
         import dashboard as D
         assert D._thin_labels([1.0, 1.0], [2.0, 2.0], 2.36, 35.0,
                               0.0, 0.0) == [True, True]
+
+
+class TestEuphoriaGauge:
+    """dashboard.py's speedometer.  The dial is the most dangerous kind of
+    exhibit on this project: it compresses a whole name into one number, so
+    a PM will read it and act.  Four things therefore have to stay true and
+    are fenced here.
+
+      1. Its edges come from MEASUREMENT (docs/research/gauge_zones.json),
+         never from a literal in dashboard.py - "why 76?" has to have an
+         answer that is not "someone typed it".
+      2. The red edge is the SAME number the walk-forward froze for the END
+         alert, so the gauge cannot become a second, softer threshold.
+      3. The needle equals the plotted curve's last value, so the dial and
+         the chart under it can never disagree.
+      4. The dial reports a STATE and never an instruction - band alone
+         must not be able to masquerade as a signal.
+    """
+
+    @staticmethod
+    def _zones():
+        import json
+        import os
+        import dashboard as D
+        p = os.path.join(D.ROOT, "docs", "research", "gauge_zones.json")
+        assert os.path.exists(p), \
+            "notebook 06 has not written gauge_zones.json"
+        return json.load(open(p, encoding="utf-8"))
+
+    def test_edges_are_not_literals_in_the_dashboard(self):
+        """The whole point of reading a JSON is that the number is not in
+        the code.  If either edge is ever inlined, this fails."""
+        import os
+        import re
+        import dashboard as D
+        src = open(os.path.join(D.ROOT, "dashboard.py"),
+                   encoding="utf-8").read()
+        z = self._zones()
+        body = src[src.index("def fig_euphoria_gauge"):
+                   src.index("def fig_series_vs_price")]
+        code = "\n".join(ln.split("#")[0] for ln in body.splitlines())
+        for edge in (z["amber_edge"], z["red_edge"]):
+            assert not re.search(rf"(?<![\w.]){edge}(?![\w.])", code), \
+                f"gauge edge {edge} is hard-coded in dashboard.py"
+
+    def test_red_edge_is_the_frozen_walk_forward_end_level(self):
+        """The gauge must not invent a second threshold.  Its red edge has
+        to be the level the walk-forward already selected for the END
+        alert, read out of euphoria_report.json."""
+        import json
+        import os
+        import dashboard as D
+        thr = json.load(open(os.path.join(
+            D.ROOT, "data", "processed", "euphoria_report.json"),
+            encoding="utf-8"))["thresholds"]
+        assert self._zones()["red_edge"] == int(thr[max(thr)])
+
+    def test_amber_edge_is_below_red_and_was_measured(self):
+        z = self._zones()
+        assert z["amber_edge"] < z["red_edge"]
+        band = z["bands"][f"level >= {z['amber_edge']}"]
+        assert band["significant"] and band["ci95"][0] > 0, \
+            "the amber edge is supposed to be the lowest SIGNIFICANT cut"
+        assert band["p"] > z["base_rate"]
+
+    def test_needle_equals_the_plotted_curve_endpoint(self):
+        """The dial is built from the smoothed series' last value; if the
+        two ever drift apart the dashboard is telling two stories."""
+        import numpy as np
+        import pandas as pd
+        import dashboard as D
+        raw = pd.Series(np.linspace(10, 95, 60),
+                        index=pd.date_range("2026-01-01", periods=60))
+        lvl = raw.rolling(D.ROLL, min_periods=1).mean()
+        fig = D.fig_euphoria_gauge(float(lvl.iloc[-1]),
+                                   float(lvl.iloc[-1 - D.ROLL]), False,
+                                   self._zones(), lvl.index[-1])
+        assert fig.data[0].value == pytest.approx(float(lvl.iloc[-1]))
+        assert fig.data[0].delta.reference == pytest.approx(
+            float(lvl.iloc[-1 - D.ROLL]))
+
+    def test_rising_euphoria_is_never_painted_green(self):
+        """Euphoria going UP is the risk direction.  Plotly's default paints
+        an increase green, which would invert the meaning of the arrow."""
+        import dashboard as D
+        fig = D.fig_euphoria_gauge(80.0, 60.0, False, self._zones(),
+                                   "2026-06-15")
+        assert fig.data[0].delta.increasing.color == D.BEAR
+        assert fig.data[0].delta.decreasing.color == D.BULL
+
+    def test_bands_are_ordered_and_cover_the_whole_axis(self):
+        import dashboard as D
+        z = self._zones()
+        steps = D.fig_euphoria_gauge(50.0, 50.0, False, z,
+                                     "2026-06-15").data[0].gauge.steps
+        edges = [s.range for s in steps]
+        assert edges[0][0] == 0 and edges[-1][1] == 100
+        for a, b in zip(edges, edges[1:]):
+            assert a[1] == b[0], "a gap between bands leaves a dead zone"
+
+    def test_state_is_a_description_and_never_an_instruction(self):
+        """gauge_state must return WHERE the crowd is.  The words GET IN and
+        GET OUT belong to the detector; if they leak into a band label a PM
+        will read the dial as a trade."""
+        import dashboard as D
+        z = self._zones()
+        for lvl, dgr in ((10.0, False), (80.0, False), (95.0, False),
+                         (95.0, True)):
+            _, label, _ = D.gauge_state(lvl, dgr, z)
+            assert "get in" not in label.lower()
+            assert "get out" not in label.lower()
+
+    def test_danger_state_reads_hotter_than_the_red_zone_alone(self):
+        """The measured ordering the caption depends on: level alone is a
+        weak read, level plus an already-run-up price is the strong one."""
+        z = self._zones()
+        red = z["red_edge"]
+        alone = z["bands"][f"level >= {red}"]["p"]
+        both = z["bands"][f"level >= {red} AND danger state"]["p"]
+        assert both > alone, (alone, both)
+        import dashboard as D
+        assert D.gauge_state(red + 1, True, z)[0] == "red_danger"
+        assert D.gauge_state(red + 1, False, z)[0] == "red"
+
+    def test_missing_evidence_draws_no_bands_rather_than_invented_ones(self):
+        """If notebook 06 has never run there are no measured edges, and the
+        dial must decline to exist instead of guessing."""
+        import dashboard as D
+        key, label, _ = D.gauge_state(80.0, False, {})
+        assert key == "unknown"
+        assert "notebook 06" in D.gauge_caption(80.0, False, {})
+
+
+class TestHandleCensoring:
+    """`analytics.plain_english.censor` - the display-only mask on obscene
+    Reddit handles (desk instruction 2026-07-28).
+
+    Two failure modes matter and neither is caught by "it ran without
+    error", so both are fenced here:
+
+      * UNDER-masking is embarrassing on a screen a PM shares.
+      * OVER-masking is worse and much easier to do accidentally.  The first
+        implementation matched a stem list as plain substrings and mangled
+        `Painkiller_830`, `AssumptionPretty7018` and `Ok-Grapefruit2910`.
+        Those exact handles are real rows in `author_scores.parquet`, so
+        they are pinned here: any future edit to the word lists that brings
+        the naive behaviour back fails this test rather than reaching the
+        desk.
+
+    The third test is the one that protects the DATA: masking is a display
+    transform, and the moment it touches a handle used as a key the joins
+    between `author_scores`, `calls` and `reply_edges` start silently
+    dropping people.
+    """
+
+    # handles that MUST be masked, with the stem that catches each
+    DIRTY = ["just_lick_my_ass", "fucktheredditapp15", "BigBoiBenis",
+             "CuntyAnne_Conway", "RetardedChimpanzee", "dick-knuckle",
+             "I_love_boobs86", "Hornysnek69", "BallsOfStonk", "nut-sack",
+             "TittyClapper", "spez_eats_nazi_ass", "sluthouseincel"]
+
+    # real handles from the store that must survive UNTOUCHED. Each one is a
+    # substring false positive the two-tier design exists to prevent; the
+    # trailing comment is the stem that used to catch it.
+    CLEAN = ["Painkiller_830",        # kill
+             "AssumptionPretty7018",  # ass
+             "passionlessDrone",      # ass
+             "cow_grass",             # ass
+             "Tricky-Doughnut-6429",  # nut
+             "thenuttyhazlenut",      # nut
+             "buffetite",             # tit
+             "JohnTitor_3",           # tit
+             "Stitch426",             # tit
+             "AfraidAnalyst",         # anal
+             "Valuable-Analyst-464",  # anal
+             "scientia_analytica",    # anal
+             "MeridianAllocation",    # anal, across a word boundary
+             "Ok-Grapefruit2910",     # rape
+             "RepulsiveGrapefruit",   # rape
+             "Calm_Cockroach_5284",   # cock
+             "Pool_cocktail_repeat",  # cock
+             "SatoshiTrails",         # shit, across a word boundary
+             "TheSatoshiTimes",       # shit, across a word boundary
+             "Dippissippi",           # piss
+             "sobewankanobe",         # wank
+             "BooBeef",               # boob, across a word boundary
+             "Feb17Sucks",            # deliberately not in the word list
+             "TheRedditModsSuck"]     # deliberately not in the word list
+
+    def test_obscene_handles_are_masked(self):
+        from analytics.plain_english import censor, is_obscene, MASK
+        for h in self.DIRTY:
+            assert is_obscene(h), h
+            assert MASK in censor(h), (h, censor(h))
+
+    def test_innocent_handles_are_left_exactly_alone(self):
+        from analytics.plain_english import censor, is_obscene
+        for h in self.CLEAN:
+            assert not is_obscene(h), h
+            assert censor(h) == h, (h, censor(h))
+
+    def test_masking_keeps_handles_distinguishable(self):
+        """Only the offending span is replaced, so two masked authors stay
+        two authors.  A whole-handle mask would collapse them into one row
+        on the leaderboard and one bar on the backers chart."""
+        from analytics.plain_english import censor
+        assert censor("just_lick_my_ass") == "just_lick_my_**"
+        assert censor("Hornysnek69") == "**snek69"
+        assert len({censor(h) for h in self.DIRTY}) == len(self.DIRTY)
+
+    def test_masking_runs_to_a_fixed_point(self):
+        """A real case from the store: `Buttslut69696969` tokenises as
+        [Buttslut, 69696969], so the first pass only removes `slut` and
+        LEAVES `Butt**...`, where `Butt` has become a whole token.  One pass
+        would ship a crude word on a handle it claimed to have censored."""
+        from analytics.plain_english import censor
+        assert censor("Buttslut69696969") == "**69696969"
+
+    def test_the_store_is_never_rewritten(self):
+        """The parquet keeps the TRUE handle.  This is the invariant that
+        keeps `calls` / `reply_edges` / `author_scores` joinable, and it is
+        also what lets an author be re-judged when new prices arrive."""
+        import os
+        import pandas as pd
+        from analytics.plain_english import MASK
+        p = os.path.join(ROOT, "data", "reference", "influence",
+                         "author_scores.parquet")
+        if not os.path.exists(p):
+            pytest.skip("influence store not present in this checkout")
+        a = pd.read_parquet(p, columns=["author"])
+        assert not a["author"].astype(str).str.contains(
+            MASK, regex=False).any()
+
+    def test_censoring_is_idempotent_and_total_on_the_real_store(self):
+        """Whatever reaches a screen must contain no stem, including after a
+        second pass - a mask that itself matched a stem would loop."""
+        import os
+        import pandas as pd
+        from analytics.plain_english import censor, is_obscene
+        p = os.path.join(ROOT, "data", "reference", "influence",
+                         "author_scores.parquet")
+        if not os.path.exists(p):
+            pytest.skip("influence store not present in this checkout")
+        a = pd.read_parquet(p, columns=["author"])
+        shown = a["author"].astype(str).map(censor)
+        assert not shown.map(is_obscene).any()
+        assert shown.map(censor).equals(shown)
+        # and the mask must not merge two different people into one label
+        assert shown.nunique() == a["author"].nunique()
+
+
+class TestThemeRollup:
+    """`theme_digest` / `theme_voices` - the influence tab's THEME view.
+
+    The desk asked the crowding question at the theme level ("what if lots
+    of influential accounts converge on a theme"), and the tab could only
+    answer it one ticker at a time.  The roll-up therefore reuses the
+    ACCEPTED consensus and backing arithmetic through one shared
+    `_digest_frame` rather than restating it, and these tests exist to keep
+    that promise honest: the two views sit side by side on one toggle, so
+    any disagreement between them would be visible to a PM and impossible
+    to explain.
+
+    Every case below has an answer known BY HAND from a three-row frame.
+    """
+
+    @staticmethod
+    def _fixture():
+        """NVDA is in three themes, MSFT in three, and ZZZZ in none.
+
+        Chosen from the REAL `src/themes.py` membership, not invented, so
+        the test fails if that membership is edited in a way that breaks
+        the multi-theme assumption the exhibit is built on."""
+        calls = pd.DataFrame({
+            "rec_id": ["1", "2", "3"],
+            "author": ["good", "bad", "good"],
+            "date": pd.to_datetime(["2026-07-01"] * 3),
+            "ticker": ["NVDA", "MSFT", "ZZZZ"],
+            "direction": [1, -1, 1],
+            "stance": [0.8, 0.8, 0.8],
+            "kind": ["post", "post", "post"]})
+        board = pd.DataFrame({"author": ["good", "bad"],
+                              "composite": [0.9, 0.1]})
+        return calls, board, pd.Timestamp("2026-07-02")
+
+    def test_a_ticker_in_several_themes_counts_in_every_one(self):
+        """NVDA is semiconductors AND ai AND ai_megacap.  A PM asking "is
+        the panel crowded into AI" must see the NVDA call; a roll-up that
+        assigned each ticker to one primary theme would answer a different
+        question and would silently under-count the theme that matters."""
+        from analytics import influence_graph as ig
+        from src.themes import build_ticker_to_themes
+        calls, board, asof = self._fixture()
+        homes = build_ticker_to_themes()["NVDA"]
+        assert len(homes) > 1, "fixture assumes NVDA is multi-theme"
+        dig = ig.theme_digest(calls, board, days=30, asof=asof)
+        got = dig.set_index("theme")
+        for th in homes:
+            assert got.loc[th, "n_calls"] >= 1
+
+    def test_unmapped_tickers_are_dropped_not_bucketed_into_other(self):
+        """ZZZZ belongs to no theme.  An "other" bucket is not a theme a
+        PM can position in, and on the live store it would be the LARGEST
+        bar on the chart purely by being a residue - so the call is left
+        out of the theme view entirely, and the two views therefore have
+        different denominators on purpose."""
+        from analytics import influence_graph as ig
+        calls, board, asof = self._fixture()
+        dig = ig.theme_digest(calls, board, days=30, asof=asof)
+        assert "other" not in set(dig["theme"])
+        assert dig["n_calls"].sum() < len(calls) * 3   # ZZZZ contributed none
+
+    def test_consensus_stays_bounded_and_keeps_the_ticker_views_sign(self):
+        """Same arithmetic, different key: a theme whose only call is the
+        bullish NVDA one must read exactly what NVDA reads, because
+        grouping cannot change a single row's number."""
+        from analytics import influence_graph as ig
+        calls, board, asof = self._fixture()
+        dig = ig.theme_digest(calls, board, days=30, asof=asof)
+        tick = ig.suggestion_digest(calls, board, days=30, asof=asof)
+        assert dig["consensus"].dropna().between(-1.0, 1.0).all()
+        # ai_megacap holds NVDA (long) and MSFT (short); semiconductors
+        # holds NVDA alone, so it must equal NVDA's own reading.
+        semis = dig.set_index("theme").loc["semiconductors", "consensus"]
+        nvda = tick.set_index("ticker").loc["NVDA", "consensus"]
+        assert semis == pytest.approx(nvda)
+
+    def test_backing_share_of_the_theme_room_still_sums_to_one_hundred(self):
+        """The vertical axis is a SHARE, so it has to be a share of
+        something.  Because a ticker duplicates into each of its themes,
+        the theme denominator is the theme-mapped room and not the ticker
+        room - which is exactly why the toggle recomputes rather than
+        reusing the ticker frame."""
+        from analytics import influence_graph as ig
+        calls, board, asof = self._fixture()
+        dig = ig.theme_digest(calls, board, days=30, asof=asof)
+        share = ig.backing_share(dig["weighted_voices"])
+        assert float(share.sum()) == pytest.approx(100.0)
+
+    def test_empty_window_returns_the_typed_empty_frame(self):
+        """The dashboard indexes these columns before it checks the row
+        count, so an untyped empty frame is a KeyError on a quiet window
+        rather than an empty chart."""
+        from analytics import influence_graph as ig
+        calls, board, _ = self._fixture()
+        old = pd.Timestamp("2000-01-01")
+        dig = ig.theme_digest(calls, board, days=30, asof=old)
+        vox = ig.theme_voices(calls, board, days=30, asof=old)
+        assert len(dig) == 0 and len(vox) == 0
+        assert list(dig.columns) == ["theme"] + ig.DIGEST_COLS
+        assert list(vox.columns) == ["theme", "voices", "top_author",
+                                     "n_more"]
+
+    def test_the_theme_view_never_sees_a_price(self):
+        """The house rule: prediction is Reddit-only.  This exhibit is
+        information rather than a signal, but it sits on the same page as
+        the alerts, so the price-free invariant is asserted here too - a
+        theme roll-up that quietly joined prices would be the easiest
+        possible way to leak one in."""
+        import ast
+        import inspect
+        from analytics import influence_graph as ig
+        for fn in (ig.theme_digest, ig.theme_voices, ig.explode_to_themes,
+                   ig._digest_frame):
+            sig = inspect.signature(fn)
+            assert not any("price" in p.lower() for p in sig.parameters)
+            # Parse and drop the docstring rather than grep the source: the
+            # PROSE says "not a forecast about the price", which is the
+            # sentence that documents the rule, and a text search cannot
+            # tell that apart from a line of code that reads one.
+            tree = ast.parse(inspect.getsource(fn).lstrip()).body[0]
+            body = [n for n in tree.body
+                    if not (isinstance(n, ast.Expr)
+                            and isinstance(n.value, ast.Constant)
+                            and isinstance(n.value.value, str))]
+            code = "\n".join(ast.unparse(n) for n in body).lower()
+            assert "price" not in code
+
+    def test_theme_hover_labels_are_censored_like_every_other_handle(self):
+        """`theme_voices` puts author handles in hover text.  The censor
+        rule is about what reaches a screen, so a new surface that renders
+        handles must inherit it rather than be an exception."""
+        from analytics import influence_graph as ig
+        from analytics.plain_english import is_obscene
+        calls, board, asof = self._fixture()
+        vox = ig.theme_voices(calls, board, days=30, asof=asof)
+        assert len(vox)
+        assert not vox["voices"].astype(str).map(is_obscene).any()
+
+
+class TestDashboardModuleHygiene:
+    """The dashboard body executes at MODULE scope, so a loop variable in a
+    tab can silently rebind a module-level helper of the same name.  That
+    is exactly what happened once: a local `_unit` for "names or themes"
+    overwrote the `_unit()` scaler, and the influence MAP three hundred
+    lines further down died with "'str' object is not callable".  Importing
+    the module is what proves the script runs at all; this proves the
+    helpers survived it."""
+
+    def test_module_level_helpers_are_still_callable_after_the_script_runs(
+            self):
+        import dashboard as D
+        for name in ("_unit", "_dig", "_theme", "_thin_labels"):
+            assert callable(getattr(D, name)), (
+                f"dashboard.{name} was rebound by a tab-local variable")

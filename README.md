@@ -56,19 +56,19 @@ prices. The dashboard then renders every view for whatever window you pick.
 
 ```
   17 subreddits ──┐
-  X (Twitter) ────┤──► ingestion/fetch_all.py ──► fold (dedup: first seen wins)
+  X (Twitter) ────┤──> ingestion/fetch_all.py ──> fold (dedup: first seen wins)
   StockTwits ─────┘        (parallel)                  │
-                                                       ▼
+                                                       v
               EXTERNAL machine                  ABSTRACTED_DATA/          INTERNAL machine
-              posts.parquet   ──build──►  6 text-free   ──git──►  hydrate + fold
+              posts.parquet   ──build──>  6 text-free   ──git──>  hydrate + fold
               (raw text, private)         aggregates              (no raw text ever)
                                                        │
-                                                       ▼
+                                                       v
                               analytics/  conviction (trailing z)
                               + the 5-check BUY/SELL signal engine
                                                        │
              pull_bloomberg_prices.py ─────────────────┤ (PX_LAST, incremental)
-                                                       ▼
+                                                       v
                               dashboard.py — every chart interactive:
                               trade desk, overlays, conviction, trends
 ```

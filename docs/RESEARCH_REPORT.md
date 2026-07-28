@@ -1,7 +1,7 @@
 # Detecting the Start and End of Retail Euphoria from Crowd Data Alone: A Walk-Forward Study on Nine Years of Social-Media Attention
 
 **Alex Brown — GIP 2026 Project — MAARS Global Macro**
-*RetailRadar research report — LIVING DOCUMENT (see Changelog, Appendix C). Last updated 2026-07-27.*
+*RetailRadar research report — LIVING DOCUMENT (see Changelog, Appendix C). Last updated 2026-07-28.*
 
 ---
 
@@ -263,6 +263,25 @@ posted the best raw AUROC (0.65) and was **rejected**: the by-source
 archive shows X/StockTwits data essentially exists only from 2026, so
 the feature encodes *which coverage regime it is*, not crowd behaviour.
 The check, not the AUROC, is the finding (notebook 02).
+
+**Why the bank is hand-specified and not searched.** An obvious
+alternative was to let a search procedure assemble the feature bank —
+forward/backward stepwise selection, an L1 path, or a genetic search over
+transformations of the daily aggregates. That was **considered and
+refused**, and the reason is the sample, not a preference for handwork:
+the label is 59 instruments, and the plausibly-independent unit of
+evidence is the *instrument*, not the day (§6.2). A search that scores
+candidates on 183k daily rows is choosing among thousands of options
+using an effective sample of 59, which is precisely the regime in which
+selection noise dominates and the winner does not survive out of sample.
+Every feature above is instead *inherited*: its window is a constant
+already validated elsewhere in the project (ROLL=7, the A1 120d
+baseline, the fade's 14d, E5's LPPLS window), so no feature adds a
+degree of freedom that a test year has not already seen. The cost of
+this discipline is stated plainly in §6.1 — the hand-specified bank's
+per-feature AUROCs are only 0.51–0.60, and a search would very likely
+have posted better *in-sample* numbers. That is the trade being made
+deliberately, and it is the same trade the thesis makes in §6.2.3.
 
 ### 5.3 The tournament (criterion pre-stated)
 
@@ -572,6 +591,311 @@ pending. It has been rewritten and moved into numerical order between
 
 ---
 
+### 6.10 The euphoria gauge — one dial per instrument, and where its red zone comes from
+
+The desk's request was for "a very clear speedometer thing for each
+graph ... for each theme / ticker", showing the current euphoria
+percentage, a red zone, and the change. The methodological problem is
+that a dial is the single most compressive exhibit on this project: it
+reduces a whole instrument to one number and a colour, so a reader will
+act on it. Three constructions were therefore forced.
+
+**The needle is not a new quantity.** It is `lvl_raw.rolling(ROLL).mean()`
+read at its last day — the identical object the chart's lower panel
+already draws. The dial is a readout of the curve beneath it. If the two
+could ever disagree the dashboard would be telling two stories about one
+name, which is the fastest way to lose a PM; a unit test asserts the
+equality. The delta reference is `ROLL` = 7 days back, the same window the
+curve is smoothed over, so "the change" is a change in the plotted
+quantity rather than in daily noise.
+
+**The red edge is not a new number either.** It is read at import time out
+of `euphoria_report.json`'s `thresholds` dict — the level the walk-forward
+already selected for the END alert, 85 in every test year 2018–2026. A
+gauge that chose its own red edge would be a second, softer threshold
+competing with the detector. The notebook asserts the walk-forward agreed
+across years, on the grounds that if it had not, a single red edge would
+be a fiction and the honest exhibit would be the year's own level.
+
+**One new number, and it had to be earned: the amber edge, 76.** The
+outcome graded is the desk's own horizon, unchanged from §6.7: does a fall
+of 10% or more over 7 days *start* within the next 30 days. Over 183,394
+name-days on 59 instruments (2017-06-29 → 2026-06-15) the unconditional
+rate is **23.3%**.
+
+*The obvious test was the wrong test, and this is worth recording.* Comparing
+a 95% CI for `P(drop | level>=L)` against a 95% CI for the base rate found
+nothing significant at any cut from 40 to 95. That is the
+overlapping-confidence-interval fallacy rather than a null result: with 59
+instruments both intervals are wide, and two overlapping intervals do not
+imply the difference is zero. Bootstrapping the **difference** — state
+minus not-state, on the *same* resampled instruments — cancels the shared
+instrument-level noise, and recovers a significant effect at every cut
+from 76 upward. The resampling unit is the **instrument**, not the day,
+because adjacent days on one name are the same episode; a day-level
+bootstrap would treat 4,000 days of one mania as 4,000 independent facts
+and report an interval several times too tight.
+
+The selection rule was stated before the grid was run: take the lowest cut
+on a 2-point grid from 68 whose 95% paired lower bound excludes zero under
+**all five** seeds. Cut 74 flips sign across seeds (−0.0004, +0.0009,
+−0.0012, −0.0007, +0.0004); cut 76 does not (+0.0045, +0.0060, +0.0049,
++0.0034, +0.0046). A cut that changes sign with the random seed is not a
+parameter, so 74 was refused and **76** adopted.
+
+What the bands are worth, measured, and printed on the dial itself:
+
+| State | days | P(>=10% fall starts within 30d) | vs not-in-state | 95% paired CI |
+|---|---|---|---|---|
+| any day (base rate) | 183,394 | **23.3%** | — | — |
+| level >= 76 (amber) | 11,235 | **26.9%** | +3.9pp | [+0.6, +7.4] |
+| level >= 85 (red) | 4,203 | **30.4%** | +7.3pp | [+2.1, +12.8] |
+| danger state alone (A1 2x AND G2 boom) | 3,819 | **53.8%** | +31.2pp | [+22.2, +40.1] |
+| level >= 85 **AND** danger state | 454 | **71.4%** | +48.2pp | [+34.3, +59.5] |
+
+**The dial's own limitation is on its face.** The level alone at the red
+edge is 30% against a 23% base rate — about **1.3x**. The level *together
+with* the danger state is 71% against 23% — about **3.1x**. So the caption
+under every dial quotes the band the needle is actually in rather than a
+generic legend, and a unit test pins `P(red AND danger) > P(red)` so the
+exhibit can never be re-worded into implying the needle is sufficient on
+its own.
+
+**And the dial is a STATE, never an instruction.** GET IN and GET OUT come
+from the walk-forward detector and can fire with the needle anywhere; a
+unit test asserts the words "get in" and "get out" can never appear in a
+band label. Nine tests in total fence the gauge: that neither edge is a
+literal in `dashboard.py` (the numbers live in
+`docs/research/gauge_zones.json`, which notebook 06 writes), that the red
+edge equals the frozen walk-forward level, that the needle equals the
+plotted curve's endpoint, that rising euphoria is never painted green
+(plotly's default would invert the meaning of the arrow), that the bands
+tile [0,100] with no dead gap, and that with no measured evidence the dial
+declines to exist rather than guessing its own bands.
+
+SO WHAT: the PM gets the compressed read they asked for, and every element
+of it — needle, red edge, band colour, the percentage in the sentence
+underneath — is either a quantity the project already defended or a single
+number selected by a rule stated in advance and stable across seeds.
+
+### 6.11 Three legibility defects, and why only one of them was a display problem
+
+Three desk reports arrived together on 2026-07-28. They are recorded here
+rather than as housekeeping because the first turned out to be a
+**self-contradiction inside the chart**, and because the fix for the second
+is a case study in the project's standing refusal to move a threshold to
+make an exhibit look better.
+
+**(i) The chart was quoting a threshold that had not fired anything.** The
+desk wrote: *"its quite unclear to see WHEN is the actual change / or get
+out flag ... its like flat and then suddently a get out flag."* The old
+lower panel drew one dotted line labelled "signal level" at the
+level-detector's walk-forward threshold, 85, and plotted the euphoria
+**level** against it. But when the desk store is present — the normal case
+since §6.8 — the flags on screen are not produced by the level at all. They
+are produced by the desk score crossing its own frozen threshold. The two
+disagree constantly: **measured over all 95 GET OUT alerts in the store, the
+plotted level sat BELOW the drawn 85 line on 79 of them (83%), with a median
+plotted level at a GET OUT of 74.8.** The chart was showing a curve
+comfortably under the line it said mattered, and then a flag appearing
+anyway. The desk was reading the chart correctly; the chart was wrong.
+
+The correction is a rule rather than a tweak: *draw the threshold that
+gated the flags being drawn, and plot the series that actually crossed it.*
+The GET OUT / GET IN scores are overlaid at their frozen desk thresholds,
+rescaled ×100 onto the panel's existing 0–100 axis so the panel keeps one
+axis. Only alert kinds that actually fired inside the window are drawn, so
+every element on the panel explains a flag the reader can see. The score is
+drawn as `lines+markers` with gaps left open, because it is **sparse by
+construction** — `out_score` exists on 2.5% of name-days, in runs as short
+as one day — and the gaps are information: no score means "not judgeable
+here". The 85 line survives only on the no-desk-store fallback path, where
+the level genuinely is the decider. **No threshold moved.**
+
+The desk also asked for "a clear peak or something", and got one: the
+window maximum of the display curve is marked and dated. It is a label on a
+value already plotted — the test for whether a display addition is safe is
+that removing it changes nothing about the signal, and removing this
+changes nothing.
+
+**(ii) The gauge "always shows calm", and it was right to.** The dial was
+not stuck. **Measured over the default window (2026-01-01 → latest), 50 of
+59 instruments read calm at the last day while 17 of those same names
+touched the red zone somewhere inside the window.** Both facts hold at once
+because the page is ordered by *most recent signal*, so a name earns its
+place with an episode that may have peaked months ago, while the needle —
+correctly — reports today. A dial that answers "how hot is it now?" on a
+name selected for "it was hot recently" reads calm almost always and looks
+broken while being right.
+
+The tempting fix is to soften the amber edge until the dials look busier.
+That would be exactly the arbitrary-threshold move §6.10 spent a page
+earning the right not to make, and it would degrade a number that survived
+five seeds. The adopted fix instead makes the dial answer *both* questions:
+the big needle stays today, and the window's high-water mark is drawn
+behind it as one dated line, so a calm reading carries its own explanation
+— "calm now, peaked 99 in red on 27 Jun". **No edge moved and no number was
+invented.** The same report asked that the dial stop explaining itself in
+full on every chart; the standing caveat and the measured band percentages
+moved into an info hover, which is a change of *placement, not of
+evidence* — a page of six names had been carrying the same ninety words six
+times, burying the reading that mattered in its own footnotes.
+
+**(iii) Handle masking, and why it is a convention rather than a result.**
+The desk asked to "censor the innapropriate stuff with `**`". There is no
+ground truth for "offensive", so no bootstrap and no walk-forward can make
+a word list evidence-backed, and the register says so: this is a Class 3
+**convention**. What *is* evidence, and what is registered, is the measured
+behaviour of the list over the real corpus of 12,528 handles. A naive
+one-list substring scan flags 345 and is dominated by false positives —
+`AfraidAnalyst`, `Valuable-Analyst-464`, `MeridianAllocation`, seven
+`Grapefruit` handles, `SatoshiTrails`. Three measured corrections followed:
+a match must lie inside a single token (which alone resolves `SatoshiTrails`
+and `MeridianAllocation` at the cost of no word list at all); six stems were
+demoted to whole-token matching on counted innocent-versus-genuine hits; and
+six mild words were dropped entirely. Two candidate promotions were adopted
+on 10/10 and 3/3 genuine hits and a third was **rejected** at a 50% error
+rate. The final state is **97 of 12,528 masked (0.774%)** with one residual
+false positive and, critically, **12,528 unique handles mapping to 12,528
+unique censored strings** — zero collisions, which is what makes span-level
+masking safe on a plotly category axis where duplicate labels merge into
+one bar.
+
+Two invariants make this defensible rather than cosmetic. Masking happens
+**only at the display layer**: `author` is the join key shared by
+`author_scores`, `calls` and `reply_edges`, so rewriting it would collide
+distinct authors and destroy the ability to re-judge anyone against new
+prices — a test asserts no mask ever reaches the parquet. And the direction
+of error is deliberately **under-mask**: a missed handle is one embarrassing
+name on a board everyone knows is scraped from Reddit, whereas an
+over-masked handle corrupts identity for every reader. The known misses are
+named in the register, as is the standing limitation that the list is
+**English only**.
+
+SO WHAT: two of the three reports were legibility, and one was a real
+defect that had been on screen since the desk configuration shipped. The
+pattern worth keeping is that in all three cases the fix was to make the
+exhibit say what the method already does — never to adjust the method so the
+exhibit reads better.
+
+### 6.12 Can influence convergence predict? A pre-registered null, and the exhibit that shipped instead
+
+The desk asked: *"lets try and use the follower monitoring (influence) for
+some sort of bullish / euphoria indicator? anyway to make that clearer?
+perhaps if we have lots of influential accounts converging on a theme?"*
+
+That is two questions wearing one sentence, and treating them as one is how
+a project ends up shipping a chart that quietly implies a forecast it never
+earned. **"Use it as an indicator" is a predictive claim** and had to clear
+the same bar as everything else here. **"Make it clearer" is a legibility
+request** and did not. The first was tested and rejected; the second
+shipped. What follows is the separation, kept explicit because the two
+answers live on the same screen.
+
+**The design was fixed before any number was seen.** Three candidates, all
+built from quantities the desk has already accepted, so nothing new had to
+be justified: **C1 breadth**, the influence-weighted count of distinct
+voices on a name in the trailing seven days; **C2 convergence**, breadth ×
+agreement; **C3 backing share**. Agreement is
+`|Σ w·s| / Σ w·|s| ∈ [0,1]` — the same arithmetic as the accepted
+`consensus`, and it encodes the distinction the desk's own question turns
+on: one voice, or many voices saying the same thing, scores 1, while a room
+split down the middle scores 0. **Many influential accounts that disagree
+is not convergence.**
+
+The author weight is where a threshold would normally sneak in, and it was
+refused. The obvious cut — take the HIGH tier — is not available on this
+store as a population: it holds **25 HIGH authors against 12,503 low**, and
+only **234 of 27,881** live calls come from a HIGH author. So authors enter
+continuously at `influence_index / 100 ∈ [0,1]`: a nobody contributes ~0,
+the strongest measured record contributes 1, and **no boundary is invented
+anywhere**. The outcome is the accepted gauge outcome copied verbatim (a
+**>10% fall inside a week**, occurring any time in the next **30 days**),
+which is what makes the comparison below like-for-like. Significance is a
+paired bootstrap resampling the **instrument** rather than the day (name-days
+inside one ticker are not independent), 5 seeds × 300 reps, Bonferroni over
+the three declared tests → confidence **0.98333**, and adoption requires the
+**worst** seed's lower bound to clear zero.
+
+One further data constraint shaped the window rather than being worked
+around: the call history is **two disjoint blocks**. 2021-06 holds 5,521
+calls spread over only **two distinct days** — an archive snapshot, not
+history — then a five-year hole, then the live block from 2026-04. A
+trailing-window feature cannot be computed across the hole, so the test runs
+on the live block only.
+
+**Result: adopted, none.** On 15,615 name-days across 233 instruments
+(2026-04-08 → 2026-06-15, base rate 0.539), the top-decile-versus-rest
+differences are C1 **−0.0291** (worst-seed lower bound −0.1701), C2
+**−0.0153** (−0.1513), C3 **−0.0103** (−0.1706).
+
+**A null is only worth reporting if the harness could have found something,
+so the same harness was given a positive control.** The accepted euphoria
+level, on the identical days through the identical code, separates cleanly:
+top decile (cut 78.91) **0.846 vs 0.414**, difference **+0.4321**, lower
+bound +0.0623; at the frozen RED edge of 85, **0.925 vs 0.428**, difference
+**+0.4970**, lower bound **+0.2515**. The window is not too short. The
+method is not broken. The feature is the thing that failed.
+
+**The decisive exhibit is the like-for-like test.** Restricted to the
+control's own 1,552 name-days across 23 instruments, with an identical
+156-day state size and a base rate of 0.457, all three candidates are
+**wrong-signed**: C1 0.237 vs 0.482 (**−0.2449**), C2 0.250 vs 0.481
+(**−0.2307**), C3 0.282 vs 0.477 (**−0.1950**). Same days, same names, same
+state size — the only thing that differs is the feature. These are not
+underpowered measurements of a weak effect; they point the other way.
+
+**And the wrong sign has a mechanism, which is what turns a rejection into
+a finding.** The top-decile-breadth names by state-days are MSFT 64, NVDA
+59, TSLA 56, AMZN 46, RDDT 45, INTC 44, AAPL 44, SNDK 38, GOOGL 37, MSTR 37
+— the influence board converges on the **most-discussed liquid mega-caps**,
+and those cliff less often than the small-cap tail. The between-name split
+settles it: "ever top-decile" **0.534** (n = 6,576) against "never"
+**0.542** (n = 9,039), nearly flat. The effect is **cross-sectional — which
+names — and not temporal — when**, and a quantity that tells you which
+names are big is not a timing indicator. Per the standing rule, no code
+from this test survives anywhere in the repo; the register (Class 6c) is
+the trace.
+
+**What shipped is the other half of the question.** The tab already had the
+right exhibit — the bubble chart placing each name by how one-sided the
+panel is (x) against its share of the room's conviction (y), with the
+CROWDED LONG / CROWDED SHORT / GENUINE DISAGREEMENT quadrants — but it was
+**ticker-only**, and the desk asked about **themes**. A names/themes toggle
+now regroups the same chart, and the roll-up reuses the accepted consensus
+and backing arithmetic through **one shared `_digest_frame(c, key)`**: a
+second copy written for themes would be a second place for those formulas
+to be wrong, and the two views sit side by side on one control where any
+disagreement would be visible to a PM and impossible to explain. Themes use
+the same membership as the euphoria Themes tab, so a theme means one thing
+across the whole application.
+
+Two consequences of the grain are stated on the control rather than hidden.
+A ticker in several themes **counts in every one** — NVDA is semiconductors
+and ai and ai_megacap, and a PM asking "is the panel crowded into AI" must
+see the NVDA call — which means theme shares are shares of the
+**theme-mapped room**, a different denominator from the ticker room, so the
+two views are not expected to agree name-for-name. And calls on tickers in
+no theme are **dropped rather than bucketed as "other"**: "other" is not
+something a desk can position in, and at **58.5% of live calls** it would
+be the largest bar on the chart purely by being a residue.
+
+The view earns its place by making a distinction the ticker view could not.
+Over 90 days, **AI megacap sits at 26.6% of the room's conviction with
+consensus +0.807** — a genuine convergence — while **semiconductors sits at
+10.2% with consensus +0.222**, which is visibly an *argument* rather than a
+crowd. That is exactly the difference the desk asked to be made clear, and
+it is invisible one ticker at a time.
+
+SO WHAT: the honest answer to "can we use influence convergence as a
+bullish indicator" is no, and the evidence for that no is stronger than the
+evidence usually offered for a yes — a pre-registered design, a positive
+control that fires, a like-for-like test that inverts, and a diagnosed
+mechanism. What the desk gets instead is a description of where the
+informed room is positioned, labelled as a description. The chart carries
+the rejection in its own caption, with the numbers, so nobody downstream
+can rediscover the indicator by looking at the picture.
+
 ## 7. Why This Is Useful for Trading
 
 The trading-translation verdict (§6.5) rules out one specific,
@@ -740,6 +1064,17 @@ defends.
     diagrams (§6.9).
 14. Western Electric Co. (1956). *Statistical Quality Control
     Handbook.* — run-rule triggers, tested and not adopted (§6.9).
+15. Hanley, J.A. & McNeil, B.J. (1982). *The Meaning and Use of the Area
+    under a Receiver Operating Characteristic (ROC) Curve.* Radiology
+    143(1). — primary source for AUROC (§5.2, §6.1).
+16. van Rijsbergen, C.J. (1979). *Information Retrieval* (2nd ed.),
+    Butterworths. — primary source for the F-measure (§6.9).
+17. Matthews, B.W. (1975). *Comparison of the predicted and observed
+    secondary structure of T4 phage lysozyme.* Biochimica et Biophysica
+    Acta 405(2). — primary source for MCC, read alongside [12] (§6.9).
+18. Efron, B. & Tibshirani, R. (1993). *An Introduction to the
+    Bootstrap.* Chapman & Hall. — the cluster (block) bootstrap used for
+    every confidence interval in §6 (§5.2, §6.2).
 
 *(The full defense reference list, keyed to slides, lives in
 `docs/DECISIONS.xlsx`, sheet 12.)*
@@ -774,6 +1109,10 @@ runs (drift-guard assert in notebook 02).
 
 | Date | Update |
 |---|---|
+| 2026-07-28 (t) | **Influence convergence tested as a bullish / euphoria indicator and REJECTED; the theme-level crowding exhibit shipped in its place** (new §6.12; parameter register Class 6c; DECISIONS "8. Influence Tracker" ×5). The desk's sentence *"lets try and use the follower monitoring (influence) for some sort of bullish / euphoria indicator? anyway to make that clearer? perhaps if we have lots of influential accounts convergint on a theme?"* contains a PREDICTIVE claim and a LEGIBILITY request, and they were answered separately. **The predictive half was pre-registered before any number was seen:** three candidates built only from accepted quantities — C1 breadth (influence-weighted count of distinct voices, trailing `ROLL = 7`), C2 convergence (breadth × agreement, agreement = `\|Σ w·s\| / Σ w·\|s\| ∈ [0,1]`, the same arithmetic as the accepted `consensus`, so *many voices that DISAGREE is not convergence*), C3 backing share — against the accepted gauge outcome copied verbatim (>10% fall inside a week, any time in the next 30 days). **No threshold was invented**: the obvious HIGH-tier population cut is unusable on this store (**25 HIGH vs 12,503 low**; only **234 of 27,881** live calls come from a HIGH author), so authors enter continuously at `influence_index/100 ∈ [0,1]` — a nobody contributes ~0, the strongest record 1. The live window starts 2026-04-01 because the call history is **two disjoint blocks** (2021-06 holds 5,521 calls over only **2 distinct days**, an archive snapshot, then a five-year hole) and a trailing window cannot cross the hole. Paired bootstrap on **instrument** (name-days inside a ticker are not independent), 5 seeds × 300 reps, Bonferroni n=3 → conf **0.98333**, worst seed must clear zero. **ADOPTED: NONE** — on 15,615 name-days / 233 instruments (2026-04-08 → 2026-06-15, base rate 0.539): C1 **−0.0291** (lo −0.1701), C2 **−0.0153** (−0.1513), C3 **−0.0103** (−0.1706). **The null is informative because the harness has a positive control**: the accepted euphoria level, identical days, identical code, DETECTS (top decile cut 78.91 → 0.846 vs 0.414, **+0.4321**, lo +0.0623; level ≥ 85 → 0.925 vs 0.428, **+0.4970**, lo **+0.2515**). **The decisive exhibit is like-for-like**: on the control's OWN 1,552 name-days / 23 instruments, identical 156-day state size, base rate 0.457, all three are **WRONG-SIGNED** — C1 0.237 vs 0.482 (**−0.2449**), C2 0.250 vs 0.481 (**−0.2307**), C3 0.282 vs 0.477 (**−0.1950**). Not underpowered; pointing the other way. **The sign is diagnosed, not just reported**: top-decile-breadth names are MSFT 64, NVDA 59, TSLA 56, AMZN 46, RDDT 45, INTC 44, AAPL 44, SNDK 38, GOOGL 37, MSTR 37 — the board converges on the most-discussed liquid mega-caps, which cliff less often than the small-cap tail — and the between-name split is nearly flat (**0.534**, n=6,576 "ever top-decile" vs **0.542**, n=9,039 "never"), so the effect is **cross-sectional (which names), not temporal (when)**, which is exactly what disqualifies it as a timing indicator. Per the standing no-dead-traces rule, **no code from this test remains in the repo**; §6.12 and Class 6c are the trace. **The legibility half shipped**: the influence tab's bubble chart gained a names/themes toggle. `suggestion_digest` and the new `theme_digest` both delegate to ONE `_digest_frame(c, key)`, so the accepted consensus and backing formulas exist in a single place and the two views cannot drift — they sit on one control where any disagreement would be visible and unexplainable. Themes reuse `src/themes.py`, so a theme means one thing app-wide. A ticker in several themes **counts in every one** (NVDA is semiconductors AND ai AND ai_megacap; a PM asking "are we crowded into AI" must see that call), which makes theme shares shares of the **theme-mapped room** — a different denominator, stated on the control, so the views are not expected to agree name-for-name. Calls on tickers in no theme are **dropped, not bucketed as "other"**: "other" is not something a desk can position in and at **58.5% of live calls** it would be the chart's largest bar purely by being a residue. Live 90-day reading, which is why the view earns its place: **AI megacap 26.6% of the room's conviction at consensus +0.807** (a real convergence) against **semiconductors 10.2% at +0.222** (visibly an argument) — a distinction invisible one ticker at a time. The chart carries the rejection above in its own caption **with the numbers**, because "we checked" is not defensible and "−0.245 on the same days the accepted signal reads +0.497" is. Two supporting fixes: `_thin_labels` gained an optional `label_w_px` because its 30px gap silently hard-coded a four-character ticker while a theme label runs to nineteen — centred labels collide when the centre gap is under the **mean of their two widths**, and with all widths at 30px that expression IS the old scalar rule, so **the ticker view is unchanged by construction** (verified: old and new keep the identical 11 and 17 labels on the live 30d / 90d cross-sections), with 7.5px per character read off the accepted 30px rather than introduced as a new constant; and a tab-local `_unit` variable was found to have rebound the module-level `_unit()` scaler — the dashboard body executes at module scope — killing the influence map three hundred lines later with `'str' object is not callable`, now fenced by a hygiene test that asserts the module's helpers are still callable after the script runs. **9 new tests (99 → 107 passed)**, including a price-free invariant on the theme path that parses the AST and drops docstrings rather than grepping source, since the prose legitimately says "not a forecast about the price". |
+| 2026-07-28 (s) | **Three legibility reports, one of which was a real chart defect** (new §6.11; parameter register Classes 3b and 8). **(i) The euphoria panel was quoting a threshold that had fired nothing.** The desk read *"its quite unclear to see WHEN is the actual change / or get out flag ... its like flat and then suddently a get out flag"* off a panel that drew one dotted line at the level-detector's walk-forward **85** and plotted the euphoria LEVEL against it — while the flags on screen come from the **desk score** crossing its own frozen threshold. MEASURED over all **95 GET OUT alerts** in the store: the plotted level sat BELOW the drawn line on **79 of them (83%)**, median plotted level at a GET OUT **74.8**. The desk was reading the chart correctly; the chart was wrong. Corrected by a rule rather than a tweak — *draw the threshold that gated the flags being drawn, and plot the series that crossed it* — with the GET OUT / GET IN scores overlaid at their frozen desk thresholds rescaled ×100 onto the panel's existing 0–100 axis (one axis, house rule), only for alert kinds that actually fired in the window, as `lines+markers` with gaps left open because the score is **sparse by construction** (`out_score` exists on **2.5% of name-days**, in runs as short as one day) and the gaps mean *not judgeable here*. The 85 line survives only on the no-desk-store fallback path. **No threshold moved.** The requested *"clear peak"* is the window maximum of the display curve, marked and dated — a label on a value already plotted, so removing it changes nothing about the signal (passed as `pd.DatetimeIndex([d])`, because a bare `[Timestamp]` survives the live app but is not JSON-serialisable by kaleido and silently breaks the PNG export the decks use). **(ii) The gauge "always shows calm" — and was right to.** MEASURED over the default window (2026-01-01 → latest): **50 of 59 instruments read calm at the last day while 17 of those same names touched the RED ZONE inside the window**, because the page is ordered by *most recent signal* so a name earns its place with an episode that may have peaked months ago while the needle correctly reports today. Softening the amber edge to make the dials look busier would have been exactly the arbitrary-threshold move §6.10 spent a page earning the right not to make; instead the dial now answers **both** questions — big needle = today, plus the window's high-water mark as one dated line behind it ('calm now, peaked 99 in red on 27 Jun'). **No edge moved, no number invented.** Drawn as TEXT rather than a second needle because plotly's Indicator has a single `threshold` slot already carrying the red edge as a hard line (colour alone does not survive greyscale or a projector), and two needles on a 268px dial reads worse than one sentence; frame 268→300px, bottom margin 36→74px to keep it in canvas. Per the desk's *"dont need to explain it fully all the time, maybe an info icon hover"*, the standing caveat and the measured band percentages moved into the `help=` tooltip — a change of **placement, not of evidence**: a page of six names had been carrying the same ~90 words six times. Gauge number and delta now `valueformat=".0f"`, because a tenth of a point on a percentile-rank index is below the resolution of the input. **(iii) Offensive handles masked on screen, and honestly labelled a CONVENTION.** There is no ground truth for "offensive", so no bootstrap can make a word list evidence-backed — what is registered instead is the **measured behaviour over all 12,528 real handles**. A naive one-list substring scan flags **345** and is dominated by false positives (`AfraidAnalyst`, `Valuable-Analyst-464`, `MeridianAllocation`, seven `Grapefruit` handles, `SatoshiTrails`). Three measured corrections: a match must lie **inside one token** (free, no word list — it alone resolves `SatoshiTrails`, *shit* spanning `oshi|Trails`, and `MeridianAllocation`, *anal* spanning `Meridian|Allocation`); six stems **demoted** to whole-token matching on counted innocent-vs-genuine hits (anal 3v2, rape 7v0, cock 3 innocent, boob 2 innocent, piss 1v0, wank 1v0); six mild words dropped entirely. Two promotions **adopted** on measurement (*retard* 10/10 genuine, *boobs* 3/3) and one **rejected** (*tits*: 2 hits, one genuine `Murrrtits` and one not, `Iplayminecraftitsfun` — a 50% error rate is not worth one handle). Fixed-point iteration is required and the proof is a real store case, not defensiveness: `Buttslut69696969` tokenises as `[Buttslut, 69696969]`, so pass 1 removes only *slut* and yields `Butt**69696969` where `Butt` IS now a whole token — that case FAILED the store-wide test before the fix. Final measured state: **97 / 12,528 masked (0.774%)**, **12,528 unique handles → 12,528 unique censored strings (zero collisions**, which is what makes span-level masking safe on a plotly category axis where duplicate labels merge into one bar), **one** residual false positive (`sashitadesol`), 4 of the top 120 by composite and 1 of the 25 HIGH-tier authors affected. Two invariants make it defensible: masking is **display-layer only** (`author` is the join key across `author_scores` / `calls` / `reply_edges`; a test asserts no mask reaches the parquet, and the map's `centre=`, the leaderboard's `_push` merge key and the ego selectbox's return value all keep the true handle), and the direction of error is deliberately **under-mask** (a missed handle is one embarrassing name on a board everyone knows is scraped from Reddit; an over-masked handle corrupts identity for every reader). Known misses and the **English-only** limitation (`fickdichdock` sits unmasked) are named in the register rather than hidden. **6 new tests (92 → 98 passed)**; AppTest 0 exceptions across 47 figures and 9 dataframes, with masking confirmed live on the rendered leaderboard, the influence-map hover and labels, and the ticker-backers axis. |
+| 2026-07-27 (q) | **The euphoria GAUGE: one dial per theme and per ticker** (new §6.10; Class 1b of the parameter register). Desk request verbatim: "a very clear speedometer thing for each graph (and showing the change) for each theme / ticker". Built so that it introduces exactly **one** new number. The needle is `lvl_raw.rolling(ROLL).mean()` read at its last day - the identical object the lower panel already plots, so the dial and the curve beneath it cannot disagree (unit-tested); the delta reference is ROLL = 7d back, the same window the curve is smoothed over. The **red edge is 85 read out of `euphoria_report.json`**, i.e. the level the walk-forward already froze for the END alert in every test year 2018-2026 - a gauge that picked its own red edge would be a second, softer threshold competing with the detector (unit-tested against the report; the notebook asserts the walk-forward agreed across years, because otherwise a single red edge would be a fiction). The **one new number is the amber edge, 76**, and the route to it is the methodological content of this row. **The obvious test was the wrong test**: comparing a 95% CI for P(drop | level>=L) against a 95% CI for the base rate found NOTHING significant at any cut from 40 to 95 - the overlapping-CI fallacy, not a null result, because with 59 instruments both intervals are wide and overlap everywhere. Bootstrapping the **DIFFERENCE** on the SAME resampled instruments cancels shared instrument-level noise and recovers a significant effect at every cut from 76 up. Resampling unit = the **instrument, never the day** (adjacent days on one name are one episode; a day-level bootstrap would call 4,000 days of a single mania 4,000 independent facts). Rule pre-stated: lowest cut on a 2-point grid from 68 whose 95% paired lower bound excludes zero under **all 5 seeds** - cut 74 flips sign across seeds (-0.0004, +0.0009, -0.0012, -0.0007, +0.0004), cut 76 does not (+0.0045, +0.0060, +0.0049, +0.0034, +0.0046), and a cut that changes sign with the seed is not a parameter. Outcome graded is the desk's own "<1 month" horizon unchanged from S6.7 (a >=10% fall over 7d STARTS within 30d, as a reversed rolling max; the last 37 days are NaN because scoring an incomplete look-ahead as "no drop" would bias the base rate down exactly at the live edge). Measured on 183,394 name-days / 59 instruments / 2017-06-29 to 2026-06-15, base rate **23.3%**: level>=76 **26.9%** (+3.9pp, CI [+0.6,+7.4]), level>=85 **30.4%** (+7.3pp [+2.1,+12.8]), danger state alone **53.8%** (+31.2pp [+22.2,+40.1]), level>=85 AND danger **71.4%** (+48.2pp [+34.3,+59.5]). **The dial admits its own weakness on its face**: the level alone at the red edge is only ~1.3x base rate, the level plus an already-run-up price is ~3.1x, so the caption quotes the band the needle is actually in and a test pins P(red AND danger) > P(red) so it can never be re-worded into implying the needle is sufficient. The dial is a **STATE, never an instruction** - GET IN / GET OUT come from the detector and can fire with the needle anywhere; a test asserts those words can never appear in a band label. Every percentage the caption prints is read from `docs/research/gauge_zones.json`, which notebook 06's own code writes; a test greps the function body to prove neither edge is a literal in `dashboard.py`, and with the JSON absent the dial declines to exist rather than inventing bands. **Layout defect caught only by rendering the PNG and looking at it**: plotly draws an Indicator `title` inside the same domain as the arc, so the two-line header was struck through by the navy value bar - the header is now paper-space annotations in the top margin, and the value bar was thinned 0.28 -> 0.15 because at 0.28 it covered the very band colours it is meant to be read against. **9 new tests (84 -> 93 passed)**; smoke-tested on the real store at 2026-07-21 (semiconductors 70.9 calm, TSLA 82.3 warming, GME 87.6 RED ZONE) with all four caption branches rendering their measured percentages. |
+| 2026-07-27 (r) | **Backlog audit against the file system, three items migrated out of a doomed document, and the repo swept.** The desk asked for the outstanding list to be *proved* rather than recalled, so every claim below is a grep or a stat, not a memory. Three findings changed the documentation. **(i) The feature bank's hand-specification was never recorded as a REJECTION** — §5.2 explained how the five onset features were derived but never that automated search (stepwise, L1 path, genetic) had been considered and refused, nor why. Now recorded with the argument that matters: the independent unit of evidence is the **instrument (59)**, not the day, so a search scoring candidates against 183,394 daily rows chooses among thousands of options on an effective n of 59 — the regime where selection noise dominates and the in-sample winner dies out of sample. Because every window is inherited from an already-validated constant, no feature adds a degree of freedom a test year has not seen; the **cost is stated openly** (per-feature AUROCs of only 0.51–0.60, and a search would very likely post better in-sample numbers). **(ii) The bootstrap replication count was in five files of code and in no register** — now Class 3, with the point that the replication count is not a lever (300 vs 1,000 moves an interval below the third decimal) while the **59-instrument cluster count** is what actually bounds every width; 200 is used only where a band is drawn at every event-window offset. **(iii) `notebooks/PROJECT_SUMMARY.md` was deleted, and it had to be**: a 28KB unreferenced reading-guide, frozen before the 2026-07-24 desk pivot, that had become a **contradiction source against this report inside the same repository** — episodes 211 vs 333, period 2021-2026 vs 2017-2026, onset capture 66% vs 23.2%, top capture 68% vs 13.1%, false alarms "0.23 budget maintained" vs the measured 0.348 that §8 lists as Limitation 4, lead time "17 days *before* starts" vs 17 days *after the trough* (sign-flipped), onset AP 0.0062 vs 0.098, test years "2025-2026" vs 2018-2026, precision "~75%" vs 0.21/0.34, START edge "+2 to +5%" vs the measured −0.81% with a CI containing zero. It also **invented a ground-truth rule that exists nowhere in the code** ("G3 duration ≥ 10 days") and preserved a **false** record of why phase-aware gating was rejected. Nineteen wrong numbers on a defence-day desk is a worse outcome than a missing document, and its three unique contributions were migrated first (items (i) and (ii) above, plus primary citations Hanley & McNeil 1982 / van Rijsbergen 1979 / Matthews 1975, now References 15–17 alongside Efron & Tibshirani 1993 for the bootstrap). Two of its unique items were deliberately **not** migrated and the refusal recorded: its asset-class scope caveat (contradicted by the commodities-in-universe decision) and its crowd-lag rationale for the 7d windows (an unmeasured assertion). **Also resolved without deleting anything: the "which euphoria report is headline, remove the loser" question has no loser** — `euphoria_desk.parquet` is the headline GET IN / GET OUT, `euphoria_onset.parquet` is the documented fallback that makes a fresh clone degrade instead of crash, and `euphoria_report.json` carries the frozen walk-forward thresholds *and is the source of the gauge's red edge 85*, so removing it would convert a derived number back into a hard-coded one. Emoji sweep completed and its boundary stated: the deleted summary was the **only** file carrying true emoji (15 codepoints plus a U+FFFD corruption); README's four U+25BA / three U+25BC arrowheads were replaced by same-width ASCII so no glyph can render as a coloured emoji, while box-drawing characters and mathematical notation (≥, −, →, ≈) are kept as **notation, not decoration**. `docs/HANDOFF_PROMPT.md` corrected: it still carried the "junior-programmer level, no clever tricks" instruction the desk scrapped on 2026-07-24, so any session bootstrapped from it re-imported a dead rule. 93 tests pass throughout. |
 | 2026-07-27 (p) | **The influence tab re-cut into units that can be spoken aloud, and two defects found only by LOOKING at the rendered charts** (§6.6, moved into numerical order and rewritten; Class 6b of the parameter register). Desk verdict on the row-(n) tab was literal — *"I still don't get it"* — and the cause was measurable: every headline number was a bare sum with no unit. A min-max composite printed as "usefulness 0.987" reads as an accuracy and is not one; a Σ(influence × conviction) printed as "3.42" cannot be compared between two windows. Both are now **rescalings of themselves**, so no ranking and no conclusion changed: `influence_index = 100·composite/max` (real-store max 0.9855, a positive rescaling) and `backing_share = 100·weighted/Σweighted` — **share of the room's conviction**, bounded 0–100, additive, immune to the long tail (30-day cross-section, 51 names: MSFT **26.10%**, ADBE 7.05, FICO 4.82, INTU 4.04, MELI 3.58, tail STRC 0.17). Read against a **DERIVED** line, `even_share(n) = 100/n` — 2.0% over 51 names, so MSFT runs 13× an even share — replacing the old 1.0× median hairline. **One intermediate REJECTED on data, and the argument for it formally withdrawn**: `backing_ratio = weighted/median(weighted)` was justified as mirroring the euphoria detector's A1 convention ("2× its own 120d median"); A1 divides a name by *its own history*, a stable reference, whereas the median NAME in a cross-section is a ticker mentioned once by one person. In the week to 2026-06-28, 163 names were mentioned and the median carried 0.24 of backing, so MSFT printed **141×**; weekly maxima ran 141×/41×/2.7×/14×/26× (30d) and **171×** (90d), and with `authors=None` the median is exactly 0 so every ratio came back **NaN**. A unit that swings 50-fold between adjacent weeks and undefines itself on an empty filter is not a unit. **Time panels re-based on all 340 recorded voices, not the top-N panel**: the top-25 weeks held 124, 25, **1**, 23, 9 calls (the one-call week is one name at 100% by definition), against 733, 404, 23, 98, 155 calls across 14–171 names for the full pool — a time series whose population changes with a slider is not a time series. Thin weeks are **ENCODED, never gated**: tilt-marker area ∝ `n_calls`, so a thin week LOOKS thin and no week is dropped by a threshold. **Two defects visible only in rendered element screenshots** (Streamlit's `full_page=True` silently returns the viewport, which is why four charts had never actually been looked at): (i) the bubble chart printed MSFT at **29.5%** while KPI 4 one row above printed **26.10%** for the same name in the same window, because the figure received `dig.head(30)` and denominated over 30 names instead of the window's 51 — one quantity cannot have two values on one screen; fixed by passing the FULL digest plus `top_n` and fixing the denominator (and `even_share`) **before** truncation, in both `fig_influence_bubbles` and `crowding_history`; (ii) labels printed through each other (INTU 4.04% vs MELI 3.58% sit 0.46pp ≈ 9px apart at 520px; a 10pt label needs 13px), fixed by `_thin_labels`, a greedy geometric de-collider, plus nudged annotations on the weekly chart where MSTR and ADBE both ended near 0.3% as one smear. `_thin_labels` is declared **the only pixel-level rule on this project** and is fenced as such: its gaps are derived from plot geometry (13px = one 10pt line box at 1.3 leading; 30px = a four-character ticker's width), it suppresses only when boxes overlap in BOTH directions, it never decides which names *matter* (every point is still drawn, still hovers, still appears in the exact-numbers table), and five unit tests pin it. Removals recorded rather than deleted: **`fig_consensus`** (it plotted the bubble chart's x-axis with the y-axis folded into bar opacity — its own docstring said so; its encoding decision is kept as a REJECTED register row), the **HIGH-tier cut display**, and the **per-author hit rate**, which the desk asked to drop — the stored `hit_rate` column is unchanged and a schema test asserts it. KPI renamed to "calls vs last week". Ingestion cadence answered from the ledger, not typed: `--dry-run` prints `comment budget: 449 pages (7.5 min) = ceiling 10.0 min − other stages 2.5 min`. **9 new tests (75 → 84 passed)**; AppTest clean, all five sidebar buttons 0 exceptions. One self-caught bug worth recording: my own de-collider's first `sort(reverse=True)` on `(y, x, i)` made the highest row index win ties, handing the label to the *least*-backed name — fixed to `key=lambda t: (-t[0], t[2])` so ties resolve toward the better-backed name. |
 | 2026-07-27 (o) | **Comments are BUDGETED, not optional — row (b)'s decoupling reversed** (§3.1b, §3.1b-i). An influence board that rescores month-old comments is not a live board, so `update_data.py` now fetches comments on every run; `--with-comments` is accepted and ignored, `--skip-comments` is the new opt-out. The reason it could not simply be switched back on is measured, not assumed: intersecting comment-call `rec_id`s with `reply_edges` gives 12,010 / 417,208 = **2.879% call rate among comments**, which against two independent months (403 and 414 comment-calls/day) implies **~14,000 comments/day ≈ 140 pages/day** across the 17-sub panel — a 7-day gap costs **16.3–16.8 min** at the API's committed 1 req/s, over the desk's 10-minute ceiling. (Caveat recorded: the call rate is measured on the edge-covered subpopulation, 48% of comment-calls.) What ships is a **page allowance** computed from two self-measuring EWMA ledgers — `pipeline_stage_times.json` (what the non-fetch stages actually cost this machine) and `reddit_comments_cost.json` (pages/day per subreddit) — allocated proportionally to each subreddit's owed days with a one-page anti-starvation floor. EWMA α is DERIVED, not typed: `N = round(28 / 3.2) = 9` runs → `α = 2/(N+1) = 0.2`. Hitting a cap sets `completed = False`, so the watermark does **not** advance and the next run resumes exactly there — deferral, never data loss: the board is never silently partial, only ever less fresh. Four alternatives REJECTED with reasons: a wall-clock stopwatch (makes data collected a function of network luck, so no two runs are comparable), parallel workers (W workers × 1s pauses = W req/s, breaking the politeness contract the project accepted when it chose a free public API), uniform window narrowing (penalises quiet subreddits to subsidise loud ones), per-subreddit yield ranking (the store has no `subreddit` column). The one legitimate speedup was removing dead time: a `Pacer` sleeping the *remainder* of the second rather than a flat second after each round-trip — **28% dead time removed at an unchanged request rate** (261ms vs 360ms over 6 requests). `PIPELINE_BUDGET_S = 600` is the single DESK-CHOSEN number here. Measured on real data: `analytics.run_analytics` 73.3s (reproduced twice), fold 0.44s, coverage 0.31s, hydrate 0.012s → residual allowance **465 pages ≈ 7.8 min ≈ 3.3 days** of panel volume, so the derived cadence is **3.32 days** — the desk chose **~2×/week**, which the ledger independently confirms. Both ledgers are gitignored (they measure ONE machine's speed). `update_comments.py` repositioned as the UNBUDGETED runner for backfills and long-gap catch-up, and its hand-written time ranges ("roughly 10–25 minutes") replaced by a ledger-computed estimate — those were typed-in numbers, which this project does not keep. Operational change only: no analytic input changed, and the euphoria detector still never reads comments. 75 tests pass; verified end-to-end with a real pipeline run (ledger written, allowance self-corrected 449 → 465) and two no-network stub tests (cap/watermark/ledger semantics; all three `fetch_all` hand-off paths). |
 | 2026-07-27 (n) | **Influence tracker: Chan (2026) replicated end-to-end, and its negative result shipped honestly (NB05).** The store is now real (5,071 authors with a judged call; 107k accounts, 259k reply edges in the raw graph), so the harness built in row (a) was run for the first time. Ported from the thesis: §4.6 composite scoring with Bayesian shrinkage, §5 network and label analysis, §6.1 eight architectures (GAT deliberately NOT ported — attention must *learn* edge weights and ~250 positives cannot support it; `mixhop_lite` is the named small-data stand-in), §7.1.2 labelling sensitivity, §7.1.3 misclassification, §7.2 ablation + DICE/random perturbation, §8 limitations. All graph layers are pure numpy/scipy — hand-rolled multi-level Louvain, Brandes sampled betweenness, k-core, Fruchterman-Reingold; **no networkx anywhere**. Headline: `logit` on the 17-feature bank, softened labels, **AP 0.0977 ± 0.0242 vs a 0.0467 random floor, AUROC 0.6681, permutation p = 0.005** (200 shuffles). **Every graph rung rejected** under the paired 10-seed CI rule (mixhop +0.0011 CI [−0.0063, +0.0085]; h2gcn −0.0078 CI [−0.0130, −0.0026], i.e. significantly worse), and the diagnosis is measured, not asserted: positive-class node homophily **0.0948** vs negative 0.9628 (sharper than Chan's 0.08/0.93), and DICE perturbation *raises* AP 0.1031 → 0.2063 at 50% corruption. Two disciplines applied beyond the thesis: `mean_conf`/`stance_sd` refused as arithmetic factors of their own target with the **price of that honesty recorded** (+0.0983 AP, CI [+0.0834, +0.1132], 10/10 seeds), and Bonferroni within the round (6 candidates → conf 0.99167) which turned the one nominally-significant bank change into **adopted: null**. Decisive limitation: on a tenure/cohort split the model sits **at the random floor for unseen authors** (lift −0.046) — so the dashboard's new INFORMATION-ONLY influence tab ranks by the **measured** record and files the model as a research exhibit. Tab ships a leaderboard, an influence-weighted "what they are suggesting" view (fade encodes weight of evidence, because bar length saturates at three agreeing voices), a k-core backbone / ego influence map over the scored pool (100% colour coverage, 0.9s vs 39.5s unrestricted), and a "why there is no model on this tab" panel quoting the four measured numbers. Nothing on the tab touches the euphoria level or the GET IN / GET OUT alerts. 17 new tests (**72 total**), AppTest clean across all six new branches, notebook re-executed 0 errors / 17 figures, `docs/research/nb05_influence.json` written. One latent bug fixed in passing: `stratified_split` shuffled a read-only view of the caller's index. |

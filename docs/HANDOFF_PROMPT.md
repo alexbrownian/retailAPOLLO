@@ -5,7 +5,7 @@ You are picking up a mature quant project. Read this fully before acting.
 ## Who I am & how to work with me
 I'm Alex, an intern (GIP 2026 project, MAARS Global Macro). Credit line used in the app: "Alex Brown - GIP 2026 Project - MAARS Global Macro".
 - When answering questions, teach me HOW each step is derived, not just the answer.
-- Code at a junior-programmer level (no clever tricks), heavily commented in a human style.
+- Code to the **best available practices for speed, efficiency and beautiful code** — heavily commented in a human style, but do NOT dumb it down. (This SUPERSEDES the earlier "junior-programmer level, no clever tricks" instruction, which I scrapped on 2026-07-24. If you are reading an older copy of this prompt, that line is dead.)
 - ALWAYS verify code works before giving it to me (run tests, run the app).
 - I present this project like a PhD defense: every rule needs evidence, every fitted number named, every limitation pre-answered.
 
