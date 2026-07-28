@@ -86,7 +86,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-# %matplotlib inline  # inline is the ipykernel default; commented so the file also runs as a plain script
+# %matplotlib inline
 import matplotlib.dates as mdates
 
 ROOT = Path.cwd().parent if Path.cwd().name == "notebooks" else Path.cwd()

@@ -20,16 +20,15 @@
 #
 # ## The pre-stated criterion (nothing here is chosen after seeing results)
 #
-# **Layer 1 — model selection (thesis §6.2.3/§7.1 convention):** models are
-# ranked by **average precision (AP)**, ties broken by AUROC, both computed
-# threshold-independently on the stacked walk-forward *test* scores. A model
-# must beat the seed-matched **random baseline** on both AP and AUROC to be
-# eligible at all — score quality is where chance must be beaten. (A random
-# alerter's raw *capture count* is deliberately not the bar: firing blindly
-# every cooldown window captures episodes by accident at several times the
-# false-alarm rate — precision-free capture is noise, not skill, and the
-# boards below display exactly this pattern.) If a learned model's AP does
-# not clear the
+# **Layer 1 — model selection:** models are ranked by **average precision
+# (AP)**, ties broken by AUROC, both computed threshold-independently on the
+# stacked walk-forward *test* scores. A model must beat the seed-matched
+# **random baseline** on both AP and AUROC to be eligible at all — score
+# quality is where chance must be beaten. (A random alerter's raw *capture
+# count* is deliberately not the bar: firing blindly every cooldown window
+# captures episodes by accident at several times the false-alarm rate —
+# precision-free capture is noise, not skill, and the boards below display
+# exactly this pattern.) If a learned model's AP does not clear the
 # rule-based bank's AP outside its instrument-cluster bootstrap 90% CI, the
 # **rules win by parsimony** — the same standard that rejected this project's
 # first ML challenger.
@@ -40,7 +39,7 @@
 # **derived, not invented**: 0.23 FAs/instrument-year — the noise level the
 # desk already accepted from the validated top detector (read from
 # `euphoria_report.json`). Out-of-sample FA rates are reported against the
-# same budget, whatever they turn out to be (the thesis's validation/test
+# same budget, whatever they turn out to be (the same validation/test
 # separation).
 #
 # **Layer 3 — prerequisites (identical for every contestant, so the race is
@@ -56,11 +55,11 @@
 #
 # | Model | What it is | Why it is here |
 # |---|---|---|
-# | `random` | uniform scores, seeds 42/100/2026 | the floor any claim must clear (thesis §6.1.8) |
+# | `random` | uniform scores, seeds 42/100/2026 | the floor any claim must clear |
 # | `rules` | un-weighted mean of the bank (the euphoria-LEVEL construction; for TOP, with the incumbent A2/A2b gates baked in) | the incumbent design — parsimony reference |
 # | `logreg` | logistic regression, class-weighted | the simplest learner; its coefficients are readable |
 # | `gbm` | small gradient-boosted trees (depth ≤ 3), class-weighted, seeds ×3 | non-linear interactions, still small enough for ~130 positives |
-# | `mlp` | one hidden layer (16), early stopping, seeds ×3 | the thesis's feature-only neural baseline (§6.1.1) |
+# | `mlp` | one hidden layer (16), early stopping, seeds ×3 | a feature-only neural baseline |
 #
 # Every learner sees exactly the bank features the rules see — no learner
 # gets information the rules lack, so any win is attributable to *weighting*,
@@ -75,7 +74,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-# %matplotlib inline  # inline is the ipykernel default; commented so the file also runs as a plain script
+# %matplotlib inline
 from sklearn.metrics import roc_auc_score, average_precision_score
 
 ROOT = Path.cwd().parent if Path.cwd().name == "notebooks" else Path.cwd()
@@ -100,7 +99,7 @@ def despine(ax, keep_bottom=True):
     ax.spines["bottom"].set_visible(keep_bottom)
 
 RESEARCH_DIR = ROOT / "docs" / "research"
-SEEDS = [42, 100, 2026]          # thesis seed convention
+SEEDS = [42, 100, 2026]          # fixed seeds so the tournament is reproducible
 
 # %% [markdown]
 # ## Data: the labelled day frame + the derived FA budget
@@ -503,12 +502,12 @@ print("VERDICT:", "ADOPTED" if adopted_pa else
       "message cleanliness is worth the captures.")
 
 # %% [markdown]
-# ## Labelling-criteria sensitivity (thesis §7.1.2)
+# ## Labelling-criteria sensitivity
 #
-# The thesis re-ran its models under a softened label to show conclusions
-# were not artifacts of one labelling constant. Here the boom thresholds
-# are probed one step softer (20% ETF / 40% single) and one step harder
-# (30% / 60%) around the desk's 25/50, and the WINNING onset model is
+# Conclusions that only hold under one labelling rule are not conclusions,
+# so the labelling constant is varied and the models re-run. Here the boom
+# thresholds are probed one step softer (20% ETF / 40% single) and one step
+# harder (30% / 60%) around the desk's 25/50, and the WINNING onset model is
 # re-run under the full discipline against each variant truth. The claim
 # being tested: the capture/FA profile moves smoothly — no cliff, no
 # sign flip.

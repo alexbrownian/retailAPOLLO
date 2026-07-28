@@ -1,37 +1,40 @@
 """
 influence_graph.py
 ==================
-The NETWORK half of the influential-users work: Chan (2026) chapter 5
-("network and label analysis") ported to RetailRadar's own reply graph,
-plus the drawing primitives the dashboard needs.
+The NETWORK half of the influential-users work: network and label
+analysis on RetailRadar's own reply graph, plus the drawing primitives
+the dashboard needs.
 
 WHY A SEPARATE MODULE (and why no networkx)
 -------------------------------------------
 `influence.py` builds the store (who said what, how good were they).
 `influence_ml.py` learns "can we spot a good voice before reading their
-record". This module answers the third, purely descriptive question the
-thesis spends a whole chapter on: *what does the crowd's conversation
-graph actually look like, and do the influential nodes sit anywhere
-special in it?* Everything here is pandas / numpy / scipy only, because
-the dashboard imports it and the desk's Windows box must not need a
-graph library to draw a picture. The notebook cross-checks the two
+record". This module answers the third, purely descriptive question:
+*what does the crowd's conversation graph actually look like, and do the
+influential nodes sit anywhere special in it?* It is worth a module of
+its own because the answer is a precondition for reading the other two:
+a graph with no community structure, or with the influential nodes
+scattered at random, tells you in advance which models can possibly
+work. Everything here is pandas / numpy / scipy only, because the
+dashboard imports it and the desk's Windows box must not need a graph
+library to draw a picture. The notebook cross-checks the two
 non-trivial routines (Louvain modularity, betweenness) against networkx
 when it happens to be installed - see NB05.
 
-WHAT IS PORTED FROM THE THESIS
-------------------------------
-5.1 network statistics  : n, m, <k>, density, L, D, C, small-world sigma,
-                          closeness, betweenness  -> `network_stats`
-5.1 degree distribution : linear + log-log tails  -> `degree_distribution`
-5.2 communities         : Louvain modularity Q, community count,
-                          inter-community edge share -> `louvain`,
-                          `community_report`
-5.3 label analysis      : edge and node homophily, overall and per class,
-                          centrality-by-class, attributes-by-class
-                          -> `homophily`, `by_class`
-5.x figures             : ego networks and the k-core backbone
-                          -> `ego_subgraph`, `kcore_subgraph`,
-                             `spring_layout`
+WHAT THIS MODULE COMPUTES
+-------------------------
+network statistics  : n, m, <k>, density, L, D, C, small-world sigma,
+                      closeness, betweenness  -> `network_stats`
+degree distribution : linear + log-log tails  -> `degree_distribution`
+communities         : Louvain modularity Q, community count,
+                      inter-community edge share -> `louvain`,
+                      `community_report`
+label analysis      : edge and node homophily, overall and per class,
+                      centrality-by-class, attributes-by-class
+                      -> `homophily`, `by_class`
+figures             : ego networks and the k-core backbone
+                      -> `ego_subgraph`, `kcore_subgraph`,
+                         `spring_layout`
 
 CONVENTIONS THAT ARE CHOICES (recorded, not hidden)
 ---------------------------------------------------
@@ -43,8 +46,9 @@ CONVENTIONS THAT ARE CHOICES (recorded, not hidden)
 * WEIGHT: edge weight = number of distinct reply records between the two
   authors, capped at MAX_EDGE_W (the same cap influence.py already uses,
   so audience counts and graph weights agree).
-* DIRECTION: undirected. A reply is an interaction; the thesis treats it
-  the same way for its structural statistics.
+* DIRECTION: undirected. A reply is an interaction between two people,
+  and which of them typed first does not change that they spoke; every
+  structural statistic here is defined on the undirected graph.
 * SAMPLING: path length, closeness and betweenness are estimated from
   PIVOT_SAMPLE random source nodes (seeded, so the number is stable
   between runs). Exact all-pairs on ~12.5k nodes is 150M shortest paths -
@@ -175,7 +179,7 @@ def edge_list(g: Graph) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 5.1  centralities
+# centralities
 # ---------------------------------------------------------------------------
 def pagerank(g: Graph, damping: float = PAGERANK_D) -> pd.Series:
     """Weighted PageRank by power iteration - the same algorithm and the
@@ -200,9 +204,9 @@ def pagerank(g: Graph, damping: float = PAGERANK_D) -> pd.Series:
 
 def eigenvector_centrality(g: Graph) -> pd.Series:
     """Leading eigenvector of the weighted adjacency (power iteration).
-    Thesis 5.1 reports it beside PageRank: PageRank rewards being replied
-    to at all, eigenvector rewards being replied to by well-connected
-    people."""
+    Reported beside PageRank, because the two disagree in a useful way:
+    PageRank rewards being replied to at all, eigenvector rewards being
+    replied to by well-connected people."""
     n = g.n
     if n == 0:
         return pd.Series(dtype=float, name="eigenvector")
@@ -238,8 +242,8 @@ def clustering_coefficient(g: Graph) -> pd.Series:
 
 def core_number(g: Graph) -> pd.Series:
     """k-core decomposition (peeling): repeatedly remove the lowest-degree
-    node, recording the degree it had when removed. The k-core backbone in
-    the thesis's figures is `core_number >= k`."""
+    node, recording the degree it had when removed. The k-core backbone
+    drawn by `kcore_subgraph` is `core_number >= k`."""
     A = g.A.copy()
     A.data = np.ones_like(A.data)
     A = A.tolil()
@@ -279,9 +283,8 @@ def _pivots(g: Graph, sample: int, seed: int) -> np.ndarray:
 def path_stats(g: Graph, sample: int = PIVOT_SAMPLE,
                seed: int = GRAPH_SEED) -> dict:
     """Sampled average shortest-path length, eccentricity-based diameter
-    lower bound, and mean closeness. Hop counts, unweighted - the thesis
-    reports the same (an interaction is one hop regardless of how many
-    replies it carried).
+    lower bound, and mean closeness. Hop counts, unweighted - an
+    interaction is one hop regardless of how many replies it carried.
 
     Closeness uses the Wasserman-Faust correction (reachable fraction
     times inverse mean distance) so nodes in small components are not
@@ -315,7 +318,8 @@ def betweenness(g: Graph, sample: int = PIVOT_SAMPLE,
                 seed: int = GRAPH_SEED) -> pd.Series:
     """Brandes betweenness from a random sample of source nodes, scaled
     to the full-source estimate and normalised by (n-1)(n-2)/2 so the
-    number is comparable with the thesis's 0.0009.
+    number sits on the standard 0-1 scale and stays comparable across
+    graphs of different sizes.
 
     HOW Brandes works, in two sweeps per source s:
       forward  - BFS from s, recording each node's distance and its
@@ -366,7 +370,7 @@ def betweenness(g: Graph, sample: int = PIVOT_SAMPLE,
 def centrality_table(g: Graph, sample: int = PIVOT_SAMPLE,
                      seed: int = GRAPH_SEED,
                      bc: pd.Series | None = None) -> pd.DataFrame:
-    """Every 5.1 centrality in one frame, indexed by author. Closeness is
+    """Every centrality in one frame, indexed by author. Closeness is
     only defined on the sampled pivots, so it is left NaN elsewhere and
     the notebook says so in the caption. Pass `bc` to reuse an already
     computed betweenness (it is by far the most expensive column)."""
@@ -383,7 +387,7 @@ def centrality_table(g: Graph, sample: int = PIVOT_SAMPLE,
 
 
 # ---------------------------------------------------------------------------
-# 5.2  communities (own Louvain - no networkx dependency)
+# communities (own Louvain - no networkx dependency)
 # ---------------------------------------------------------------------------
 def as_labels(g: Graph, comm) -> np.ndarray:
     """Coerce a partition to a POSITIONAL array aligned to `g.names`.
@@ -404,7 +408,9 @@ def modularity(g: Graph, comm, resolution: float = 1.0) -> float:
     """Newman-Girvan Q for a partition of the WEIGHTED graph:
     Q = sum_c [ w_in(c)/W - gamma*(strength(c)/(2W))^2 ],
     where W is total edge weight. Q ~ 0 means "no better than a random
-    graph with the same degrees"; the thesis reports 0.34."""
+    graph with the same degrees"; anything well above 0 is real community
+    structure. `network_stats` reports our own graph's Q as
+    `modularity_Q`."""
     comm = as_labels(g, comm)
     W = g.A.sum() / 2.0
     if W <= 0:
@@ -504,9 +510,9 @@ def louvain(g: Graph, resolution: float = 1.0,
 
 
 def community_report(g: Graph, comm: pd.Series) -> dict:
-    """Thesis 5.2's three numbers: modularity, community count, and the
-    share of edges that cross communities (their 67% - a high value means
-    the communities are loose interest clusters, not silos)."""
+    """The three community numbers: modularity, community count, and the
+    share of edges that cross communities (a high value means the
+    communities are loose interest clusters, not silos)."""
     c = comm.reindex(g.names).to_numpy()
     coo = sparse.triu(g.A, k=1).tocoo()
     cross = float((c[coo.row] != c[coo.col]).mean()) if coo.nnz else np.nan
@@ -520,18 +526,18 @@ def community_report(g: Graph, comm: pd.Series) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 5.1  the headline statistics table
+# the headline statistics table
 # ---------------------------------------------------------------------------
 def network_stats(g: Graph, sample: int = PIVOT_SAMPLE,
                   seed: int = GRAPH_SEED,
                   comm: pd.Series | None = None,
                   bc: pd.Series | None = None) -> pd.Series:
-    """Thesis Table 5.1 recomputed on our graph.
+    """The headline statistics table for our graph, in one Series.
 
     small-world sigma = (C/C_rand) / (L/L_rand) with the standard
     Erdos-Renyi references C_rand = <k>/n and L_rand = ln n / ln <k>.
-    sigma >> 1 is the small-world signature (their 17.25): tight local
-    clustering with global shortcuts.
+    sigma >> 1 is the small-world signature: tight local clustering with
+    global shortcuts.
     """
     n, m = g.n, g.m
     k = g.degree
@@ -571,7 +577,7 @@ def network_stats(g: Graph, sample: int = PIVOT_SAMPLE,
 
 
 def degree_distribution(g: Graph) -> pd.DataFrame:
-    """P(k) for the linear and log-log panels of thesis Figure 5.1. A
+    """P(k) for the linear and log-log degree-distribution panels. A
     heavy right tail (a few users replied to by hundreds) is what makes
     'influence' a meaningful word here at all."""
     k = g.degree
@@ -584,20 +590,20 @@ def degree_distribution(g: Graph) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 5.3  label analysis
+# label analysis
 # ---------------------------------------------------------------------------
 def homophily(g: Graph, labels: pd.Series) -> dict:
-    """Two standard measures, both in the thesis:
+    """Two standard measures:
 
     EDGE homophily  = share of edges whose endpoints share a label. It is
       dominated by the majority class in an imbalanced problem.
     NODE homophily   = average over nodes of "fraction of my neighbours
-      with my label". Reported per class, because that is where the
-      thesis's real finding lives: their high-predictive nodes scored
-      0.08 (their neighbours are almost all ordinary users) against 0.93
-      for low-predictive nodes. Low positive-class homophily is exactly
-      why a neighbourhood-averaging model struggles - it is a diagnosis,
-      not a bug.
+      with my label". Reported per class, because that is where the real
+      finding lives: on the live store the high-predictive nodes score
+      0.095 (their neighbours are almost all ordinary users) against
+      0.963 for the low-predictive ones - see NB05 section 3.6. Low
+      positive-class homophily is exactly why a neighbourhood-averaging
+      model struggles - it is a diagnosis, not a bug.
     """
     y = labels.reindex(g.names).fillna(0).to_numpy()
     coo = sparse.triu(g.A, k=1).tocoo()
@@ -624,9 +630,9 @@ def homophily(g: Graph, labels: pd.Series) -> dict:
 
 def by_class(tab: pd.DataFrame, label: str | pd.Series = "y",
              cols: list | None = None) -> pd.DataFrame:
-    """Thesis Tables 5.2/5.3: mean of each attribute split by class, with
-    the ratio. The ratio column is the useful one - it says which
-    attributes a classifier could plausibly separate on.
+    """Mean of each attribute split by class, with the ratio. The ratio
+    column is the useful one - it says which attributes a classifier
+    could plausibly separate on.
 
     `label` is either a column of `tab` or a Series to align onto its
     index - the second form is the common one, because the centrality
@@ -680,10 +686,10 @@ def kcore_subgraph(g: Graph, k: int | None = None, min_nodes: int = 40,
                    max_nodes: int = 400) -> tuple[Graph, int]:
     """The k-core BACKBONE: the DEEPEST core that still has at least
     `min_nodes` members (walking k down from the maximum until the
-    picture has something in it). Returns (subgraph, k). This is the
-    thesis's way of drawing a 12k-node graph honestly - instead of
-    thinning at random, it shows the densely interconnected heart of it,
-    and every node in a k-core provably has >= k neighbours inside it."""
+    picture has something in it). Returns (subgraph, k). This is the way
+    to draw a 12k-node graph honestly - instead of thinning at random, it
+    shows the densely interconnected heart of it, and every node in a
+    k-core provably has >= k neighbours inside it."""
     core = core_number(g)
     if k is None:
         k = max(int(core.max()), 1)

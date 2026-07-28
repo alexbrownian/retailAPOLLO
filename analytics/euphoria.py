@@ -557,10 +557,9 @@ def walk_forward(series: list, pxmap: dict,
 
 
 # ---------------------------------------------------------------------------
-# the ablation study (design ported from Chan's thesis, section 7.2.1:
-# remove one ingredient at a time, re-run the FULL evaluation, and report
-# how the headline metrics move - the honest way to show which rules earn
-# their place and which are passengers)
+# the ablation study: remove one ingredient at a time, re-run the FULL
+# evaluation, and report how the headline metrics move - the honest way to
+# show which rules earn their place and which are passengers
 # ---------------------------------------------------------------------------
 def _level_without(es: EuphoriaSeries, drop: str) -> EuphoriaSeries:
     """A copy of one instrument's series with one feature removed from the
@@ -573,10 +572,11 @@ def _level_without(es: EuphoriaSeries, drop: str) -> EuphoriaSeries:
 
 def ablation(series: list, pxmap: dict) -> list:
     """Knock out each rule/feature, re-run the whole walk-forward, tabulate.
-    Two caveats the thesis itself flags, which apply here too: (1) features
-    are correlated, so single-feature drops UNDERSTATE the value of
-    overlapping ingredients; (2) with few peaks, small deltas are noise -
-    read the big movements, not the decimals."""
+    Two caveats on how to read the table: (1) features are correlated, so
+    single-feature drops UNDERSTATE the value of overlapping ingredients -
+    drop either of two near-twins and the other covers for it; (2) with few
+    peaks, small deltas are noise - read the big movements, not the
+    decimals."""
     variants = [
         ("FULL (all rules)", series, {}),
         ("- E1 attention (level)", [_level_without(es, "e1") for es in series], {}),
@@ -607,14 +607,12 @@ def ablation(series: list, pxmap: dict) -> list:
 
 
 # ---------------------------------------------------------------------------
-# the ML challenger (thesis chapter 6, scaled to our data): can a learned
-# model beat the hand-written alert rule on the SAME features and the SAME
-# walk-forward discipline? The thesis compared feature-only baselines vs
-# graph models; here the comparison is hand-rules vs a logistic regression
-# - deliberately the simplest possible learner, because with ~70 positive
-# events, anything bigger memorises the past instead of learning from it
-# (the thesis's own GNNs only reached ~12% precision on 133 positives -
-# a warning against model appetite exceeding label supply).
+# the ML challenger, scaled to our data: can a learned model beat the
+# hand-written alert rule on the SAME features and the SAME walk-forward
+# discipline? The comparison is hand-rules vs a logistic regression -
+# deliberately the simplest possible learner, because with ~70 positive
+# events anything bigger memorises the past instead of learning from it.
+# The rule is model appetite must not exceed label supply.
 # ---------------------------------------------------------------------------
 ML_FEATURES = ["e1", "e2", "e3", "e5", "fade"]
 
@@ -749,30 +747,74 @@ def _stored_report() -> dict | None:
 
 
 def needs_research(stored: dict | None, data_max_year: int) -> bool:
-    """When is a full research pass (walk-forward + ablation + ML)
-    actually REQUIRED, rather than a frozen threshold being enough?
+    """When must a data pull derive a threshold for itself, rather than
+    reading one off the frozen record?
 
-    The walk-forward trains each year's threshold on STRICTLY EARLIER
-    years, so within a calendar year the daily recompute is provably a
-    no-op - today's data is not in any threshold's training set. The
-    threshold can only legitimately change when (a) no report exists yet,
-    or (b) the data has rolled into a year the stored thresholds do not
-    cover. Everything else (backfills, rule changes) is an explicit
-    --research run - a research decision, not a side effect of a pull.
-    (Desk decision, 2026-07-24: research runs once, deliberately; live
-    runs score.)"""
+    EXACTLY ONE CASE: there is no usable record to read. That is the
+    bootstrap - a machine with no `euphoria_report.json` has no frozen
+    threshold, so it cannot score at all, and refusing to research would
+    just leave the desk with nothing.
+
+    `data_max_year` is accepted (and deliberately unused) so this reads
+    as the pair of `record_lags_data` below, and so every caller keeps
+    one signature whichever question it is asking.
+
+    2026-07-28 CHANGE OF BEHAVIOUR, and why. This function used to
+    return True on a SECOND case as well: the data rolling into a
+    calendar year the stored thresholds do not cover. That meant the
+    first `update_data` run after a new year silently turned into a full
+    walk-forward + ablation + ML pass, and the desk's live threshold
+    moved underneath it as a side effect of a data pull. Two reasons it
+    is wrong, one practical and one methodological:
+
+      PRACTICAL. `update_data` is the data-refresh job. A refresh that
+      sometimes takes seconds and sometimes re-selects the model is not
+      a job anyone can schedule or reason about (desk instruction,
+      2026-07-28: "update_data should simply be to just update the data
+      and run the model on these new data downloaded").
+
+      METHODOLOGICAL, and this is the stronger one. Scoring new data at
+      the newest frozen threshold IS the out-of-sample use the
+      walk-forward was built to license - the threshold was chosen on
+      strictly earlier years and never saw this data. Re-fitting on the
+      January of a new year does not make the live threshold more
+      correct; it makes it a moving target that no stored record
+      describes. Deferring the refit to an explicit `--research` run
+      keeps the number on screen traceable to a report the desk can
+      read.
+
+    The staleness itself is not swept away - `record_lags_data` reports
+    it and the pipeline prints one line telling the desk to run the
+    research pass. Recorded in DECISIONS.xlsx ("3b. Pipeline & Cadence")
+    and docs/PARAMETER_REGISTER.md Class 9."""
+    return not stored or not stored.get("thresholds")
+
+
+def record_lags_data(stored: dict | None, data_max_year: int):
+    """The NOTICE half of the pair: has the data outgrown the frozen
+    record? Returns the newest year the stored thresholds cover when it
+    lags `data_max_year`, else None (covered, or nothing stored - the
+    bootstrap case belongs to `needs_research`).
+
+    A live run is still perfectly legitimate in this state, which is why
+    this returns a year rather than a boolean refusal: the desk is told
+    which year the frozen threshold was last confirmed on, and decides
+    when to spend a research pass."""
     if not stored or not stored.get("thresholds"):
-        return True
-    return data_max_year > max(int(y) for y in stored["thresholds"])
+        return None
+    newest = max(int(y) for y in stored["thresholds"])
+    return newest if data_max_year > newest else None
 
 
 def main(research: bool | None = None):
     """CLI: build the euphoria series and save daily levels + alerts.
 
-    research=None (the pipeline default): auto - run the FULL validation
-      (walk-forward + ablation + ML challenger) only when needs_research
-      says a frozen threshold cannot be trusted; otherwise score at the
-      stored threshold in seconds.
+    research=None (the pipeline default): score at the FROZEN threshold
+      in seconds. The full validation (walk-forward + ablation + ML
+      challenger) runs only to BOOTSTRAP a machine that has no stored
+      record at all - see `needs_research`. If the record lags the data
+      the run says so in one line and still scores; it never re-selects
+      the model behind the desk's back.
     research=True (run_analytics --research / the notebooks): always run
       the full validation and refresh euphoria_report.json.
     """
@@ -789,10 +831,18 @@ def main(research: bool | None = None):
                             for es in series).year)
     if research is None:
         research = needs_research(stored, data_max_year)
-        if research and stored:
-            print("  research pass auto-triggered: data covers "
-                  f"{data_max_year}, stored thresholds stop at "
-                  f"{max(stored['thresholds'])}")
+        if research:
+            print("  no frozen record on this machine - deriving the "
+                  "threshold once (bootstrap)")
+        else:
+            _lag = record_lags_data(stored, data_max_year)
+            if _lag is not None:
+                print(f"  NOTE: data now reaches {data_max_year}; the "
+                      f"frozen threshold was confirmed through {_lag}. "
+                      "Still scoring at it (out-of-sample, as designed). "
+                      "To refresh the record, run the research pass "
+                      "deliberately: analytics.run_analytics --what "
+                      "euphoria --research")
 
     if not research:
         # LIVE FAST PATH: the frozen threshold, today's data, seconds.
@@ -843,7 +893,7 @@ def main(research: bool | None = None):
               f"(det {r['detectable']}) | captured {r['captured']} "
               f"| FAs {r['false_alarms']}")
 
-    # --- ablation study (thesis 7.2.1 style) ---
+    # --- ablation study: drop one ingredient at a time ---
     print("\nABLATION (drop one rule, re-run the whole walk-forward):")
     abl = ablation(series, pxmap)
     for r in abl:

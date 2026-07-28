@@ -4,23 +4,22 @@ influence.py
 THE INFLUENCE TRACKER - find the users whose calls have actually been
 right, what they are saying NOW, and who follows them.
 
-Method ported from Chan (Oxford M.Eng thesis, 2026), which showed on
-r/CryptoMarkets that (a) predictive ability is concentrated in a SMALL
-subset of users, (b) that subset is NOT the loud hubs - the thesis's
-false-positive analysis found the structurally prominent users (3x the
-degree, 2x the PageRank) had barely-above-chance accuracy (40.2%) while
-the true high-predictors sat in peripheral positions with 79% accuracy -
-and (c) HOW users participate (comment-vs-post balance) is more
-informative than raw volume. This module implements those findings on
-our data:
+The module rests on three premises, each of which it then makes
+measurable on our own data rather than assuming: (a) predictive ability
+is concentrated in a SMALL subset of users, (b) that subset is NOT the
+loud hubs - being replied to a lot and being right are different
+quantities, and the loud-but-wrong flag below turns the gap into a
+column instead of an anecdote, and (c) HOW users participate
+(comment-vs-post balance) is more informative than raw volume. What the
+module computes:
 
   1. CALL EXTRACTION - every post/comment by an author that mentions a
      ticker with clearly-signed sentiment is a directional CALL
      (author, date, ticker, direction, stance strength). Neutral chatter
      is not a call.
-  2. CALL SCORING, VOLATILITY-AWARE (thesis section 4.5) - a call is
-     judged against the next HORIZON days of real closes, but the bar
-     scales with the name's own volatility:
+  2. CALL SCORING, VOLATILITY-AWARE - a call is judged against the next
+     HORIZON days of real closes, but the bar scales with the name's own
+     volatility:
          tau = max(MOVE_MIN, 0.5 * sigma)
      where sigma is the trailing 90d std of HORIZON-day moves for THAT
      ticker. A 3% move is a real call on an index ETF and noise on a
@@ -28,9 +27,9 @@ our data:
      also gets an ABNORMAL-RETURN Z (how unusual the move was vs the
      name's own recent history), and an ENHANCED outcome (correct AND
      |z| > 1 - the move was direction-right and genuinely significant).
-  3. AUTHOR "USEFULNESS" SCORING (thesis section 4.6) - three scores per
-     author, each Bayesian-shrunk toward the population mean so nobody
-     looks brilliant on three lucky calls:
+  3. AUTHOR "USEFULNESS" SCORING - three scores per author, each
+     Bayesian-shrunk toward the population mean so nobody looks
+     brilliant on three lucky calls:
        s_conf  stance-weighted accuracy      (shrink alpha=10)
        s_z     accuracy weighted by stance AND by the abnormal-return
                factor w(z)=clip(1+|z|, 0.1, 2.0)   (alpha=5 - a big-|z|
@@ -38,22 +37,27 @@ our data:
        s_enh   stance-weighted ENHANCED accuracy (alpha=10)
      Each is min-max normalised across authors, then
        COMPOSITE = 0.4*s_conf + 0.4*s_z + 0.2*s_enh
-     and authors with composite >= 0.66 get the HIGH tier - the thesis's
-     exact weighting and cutoff.
+     and authors with composite >= 0.66 get the HIGH tier. Both the
+     0.4 / 0.4 / 0.2 mix and the 0.66 cut are stated CONVENTIONS, fixed
+     a priori and never tuned: NB05 section 9 re-mixes the weights and
+     NB05 section 4 varies the cut, so each is priced, not asserted.
   4. BOOM/BUST RECORD - an author's record around the euphoria
      ground-truth peaks: bearish calls inside [peak-30d, peak+5d]
      = "called the top"; bullish calls there = "bought the top".
-  5. THE SOCIAL INTERACTION GRAPH (thesis chapters 4-5) - an undirected
-     WEIGHTED graph over authors, an edge when one replies to another,
-     weight = number of interactions. From it: degree (distinct
-     neighbours), weighted degree, and PAGERANK (the thesis ablation's
-     single most beneficial structural feature; raw degree was actually
-     HARMFUL there, so the board ranks by usefulness and shows PageRank
-     as context, never ranks by degree). Bot filters ported from the
-     thesis's cleaning table: edge weights capped at 100, star-topology
+  5. THE SOCIAL INTERACTION GRAPH - an undirected WEIGHTED graph over
+     authors, an edge when one replies to another, weight = number of
+     interactions. From it: degree (distinct neighbours), weighted
+     degree, and PAGERANK. PageRank is shown as CONTEXT and never as a
+     rank: it measures who gets replied to, which is a different
+     quantity from who is right, so the board ranks by usefulness and
+     never by degree - the leave-one-out ablation in NB05 section 11 is
+     where each structural column earns its place, and raw degree is the
+     one expected to land on the harmful side. Bot filters, applied
+     before any centrality is computed, all round a-priori caps
+     (CONVENTION): edge weights capped at 100, star-topology
      accounts (degree centrality > 0.5) and broadcast accounts
      (> 1000 comments or > 100 posts here) excluded from graph metrics.
-  6. LOUD-BUT-WRONG FLAG - the thesis's false-positive profile, made a
+  6. LOUD-BUT-WRONG FLAG - the false-positive profile, made a
      column: top-quartile PageRank AND below-median composite. These are
      the accounts a naive "follow the big names" desk would copy - and
      precisely the ones the evidence says to fade.
@@ -77,6 +81,19 @@ live pipeline run (update_data.py) fetches new comments and calls
 update(): the store builds itself from nothing on the first pull, new
 calls append on every later pull, and recently-made calls re-judge
 automatically once their 20-day windows have prices. No rebuilds, ever.
+
+  HOW MUCH is fetched per run is BUDGETED, not unlimited (desk decision
+  2026-07-27, superseding the 2026-07-24 rule that kept comments out of
+  the live pipeline entirely). The comment crawl gets the page allowance
+  left over after this machine's other stages are paid for, out of the
+  desk's ~10-minute ceiling - see src/pipeline_budget.py. At the panel's
+  measured ~14,000 comments/day that allowance covers roughly 3 days,
+  which is why the desk runs the pipeline about twice a week. If a run
+  cannot cover the whole gap, the uncrawled pages are DEFERRED (the
+  subreddit keeps its old watermark and the next run resumes there) and
+  the board is still rescored on everything already in hand - so this
+  function's output is never silently partial, only ever less fresh.
+
 Manual forms, when wanted:
     python -m analytics.influence --top 20         # print the leaderboard
     python -m analytics.influence --update         # what the pipeline runs
@@ -113,17 +130,17 @@ HORIZON = 20          # days over which a call is judged (same horizon the
                       # project uses everywhere)
 MOVE_MIN = 0.03       # the FLOOR of the correctness bar: tau never drops
                       # below 3% - sub-3% wiggles are never "calls landing"
-VOL_HALF = 0.5        # tau = max(MOVE_MIN, VOL_HALF * sigma_90d) - the
-                      # thesis's volatility-scaled threshold (its tau0 was
-                      # 0.25% on hourly crypto; ours is 3% on 20d equity
-                      # moves - same construction, domain-scaled)
+VOL_HALF = 0.5        # tau = max(MOVE_MIN, VOL_HALF * sigma_90d): the bar
+                      # is HALF the name's own typical 20d dispersion. A
+                      # round CONVENTION - well inside one sigma or nothing
+                      # is ever a hit, well clear of zero or noise is
 ENH_Z = 1.0           # enhanced-correct needs the move >= 1 sigma abnormal
-PRIOR_N_CONF = 10     # shrinkage strengths, straight from the thesis:
+PRIOR_N_CONF = 10     # shrinkage strengths, round a-priori CONVENTIONS:
 PRIOR_N_Z = 5         # the z-weighted score shrinks LESS because a big
 PRIOR_N_ENH = 10      # abnormal move is itself diagnostic evidence
-HIGH_TIER = 0.66      # composite cutoff for the HIGH tier (thesis 4.6.3)
+HIGH_TIER = 0.66      # composite cutoff for the HIGH tier (CONVENTION)
 MIN_CALLS_BOARD = 5   # leaderboard entry floor
-# --- graph hygiene (thesis table 4.1, adapted) ---
+# --- graph hygiene (round a-priori caps, CONVENTION) ---
 MAX_EDGE_W = 100      # cap pairwise interaction weight (bot-like pairs)
 MAX_COMMENTS = 1000   # accounts beyond these volumes are broadcast/bot
 MAX_POSTS = 100       # accounts - excluded from GRAPH metrics (their
@@ -178,8 +195,8 @@ def extract_calls_and_edges(paths):
     calls: rec_id, author, date, ticker, direction (+1/-1), stance, kind
     edges: replier -> author edges, resolved through BOTH the post map
            (t3_ link ids) and the comment map (t1_ parent ids), so
-           comment-on-comment threads count too - the thesis's graph is
-           built from exactly these interaction events."""
+           comment-on-comment threads count too - the graph is built
+           from exactly these interaction events."""
     from src.abstracted_data import load_universe
     from src.extract_tickers import extract_tickers_from_text
     from src.sentiment import score_text
@@ -231,7 +248,7 @@ def extract_calls_and_edges(paths):
 # ---------------------------------------------------------------------------
 def score_calls(calls: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
     """Judge every call against the next HORIZON days of real closes,
-    with the thesis's volatility-scaled bar and abnormal-return z."""
+    with the volatility-scaled bar and abnormal-return z."""
     out = calls.copy()
     out["date"] = pd.to_datetime(out["date"])
     out["fwd_ret"] = np.nan
@@ -262,7 +279,7 @@ def score_calls(calls: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
         [signed >= out["tau"], signed <= -out["tau"]],
         ["correct", "wrong"], default="flat")
     out.loc[out["fwd_ret"].isna(), "outcome"] = "unscored"
-    # enhanced (thesis eq 4.6): direction right AND the move was >= 1
+    # enhanced: direction right AND the move was >= 1
     # sigma ABNORMAL for this name - significance, not just sign
     out["enhanced"] = ((out["outcome"] == "correct")
                        & (out["z"] * out["direction"] >= ENH_Z))
@@ -270,12 +287,12 @@ def score_calls(calls: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 3. the interaction graph (thesis chapters 4-5)
+# 3. the interaction graph
 # ---------------------------------------------------------------------------
 def build_graph_metrics(edges: pd.DataFrame,
                         activity: pd.DataFrame) -> pd.DataFrame:
     """Undirected weighted author graph -> degree, weighted degree,
-    PageRank per author, with the thesis's bot filters applied first.
+    PageRank per author, with the bot filters applied first.
     activity: per-author n_comments / n_posts (for the broadcast filter).
     PageRank by plain power iteration - ~15 lines, no library needed."""
     if not len(edges):
@@ -288,7 +305,7 @@ def build_graph_metrics(edges: pd.DataFrame,
     w = (pair.groupby(["a", "b"]).size().rename("w")
          .clip(upper=MAX_EDGE_W)                       # bot-pair cap
          .reset_index())
-    # broadcast/bot accounts contribute no graph signal (thesis filters)
+    # broadcast/bot accounts contribute no graph signal at all
     bots = set(activity.index[(activity["n_comments"] > MAX_COMMENTS)
                               | (activity["n_posts"] > MAX_POSTS)])
     w = w[~w["a"].isin(bots) & ~w["b"].isin(bots)]
@@ -300,8 +317,9 @@ def build_graph_metrics(edges: pd.DataFrame,
     n = len(nodes)
     # star-topology filter: drop nodes linked to > half the graph. Only
     # meaningful once the graph is real-sized - in a 10-user graph an
-    # ordinary active member exceeds any centrality cap (the thesis's
-    # graph had 2,617 nodes when this filter earned its keep)
+    # ordinary active member exceeds any centrality cap. The live graph
+    # runs to ~12.5k nodes, which is where the filter earns its keep;
+    # n >= 50 is the floor below which it is simply switched off
     stars = set()
     if n >= 50:
         deg = pd.concat([w.groupby("a").size(), w.groupby("b").size()],
@@ -372,9 +390,8 @@ def boom_bust_record(scored: pd.DataFrame) -> pd.DataFrame:
 
 
 def _shrink(per_author_mean, n, prior_n, global_mean):
-    """Empirical-Bayes shrinkage (thesis eq 4.8): each author's mean is
-    pulled toward the population mean; the pull fades as evidence (n)
-    accumulates."""
+    """Empirical-Bayes shrinkage: each author's mean is pulled toward
+    the population mean; the pull fades as evidence (n) accumulates."""
     return (n * per_author_mean + prior_n * global_mean) / (n + prior_n)
 
 
@@ -387,14 +404,14 @@ def _minmax(s: pd.Series) -> pd.Series:
 
 def build_author_scores(scored: pd.DataFrame,
                         edges: pd.DataFrame) -> pd.DataFrame:
-    """The usefulness board: the thesis's three shrunk scores + composite
+    """The usefulness board: the three shrunk scores + composite
     + tier, the interaction-graph metrics, participation style, the
     boom/bust record, and each author's CURRENT stance."""
     judged = scored[scored["outcome"].isin(["correct", "wrong"])].copy()
     judged["y"] = (judged["outcome"] == "correct").astype(float)
     judged["conf"] = judged["stance"].abs()
     judged["s_conf"] = judged["conf"] * judged["y"]
-    wz = np.clip(1 + judged["z"].abs(), 0.1, 2.0)     # thesis w(z)
+    wz = np.clip(1 + judged["z"].abs(), 0.1, 2.0)     # the w(z) factor
     judged["s_z"] = judged["conf"] * judged["y"] * wz
     judged["s_enh"] = judged["conf"] * judged["enhanced"].astype(float)
 
@@ -408,7 +425,7 @@ def build_author_scores(scored: pd.DataFrame,
     stats["hit_rate"] = stats["hits"] / stats["n_judged"].replace(0, np.nan)
     base = judged["y"].mean() if len(judged) else 0.5
 
-    # the three usefulness scores, shrunk then normalised (thesis 4.6)
+    # the three usefulness scores, shrunk then normalised
     for col, prior in (("s_conf", PRIOR_N_CONF), ("s_z", PRIOR_N_Z),
                        ("s_enh", PRIOR_N_ENH)):
         m = g[col].mean()
@@ -422,8 +439,8 @@ def build_author_scores(scored: pd.DataFrame,
     stats["score"] = _shrink(stats["hit_rate"].fillna(base),
                              stats["n_judged"], PRIOR_N_CONF, base)
 
-    # participation style (thesis: the most informative behavioural
-    # family) + audience
+    # participation style (premise (c): the behavioural family that
+    # carries the most information here) + audience
     kinds = scored.groupby(["author", "kind"]).size().unstack(fill_value=0)
     stats["n_comments"] = kinds.get("comment", pd.Series(0, index=kinds.index))
     stats["n_posts"] = kinds.get("post", pd.Series(0, index=kinds.index))
@@ -443,7 +460,7 @@ def build_author_scores(scored: pd.DataFrame,
     gm = build_graph_metrics(edges, stats[["n_comments", "n_posts"]])
     stats = stats.join(gm, how="left")
 
-    # loud-but-wrong: the thesis's false-positive profile as a column
+    # loud-but-wrong: the false-positive profile as a column
     if stats["pagerank"].notna().any():
         pr_hi = stats["pagerank"] >= stats["pagerank"].quantile(0.75)
         comp_lo = stats["composite"] < stats["composite"].median()

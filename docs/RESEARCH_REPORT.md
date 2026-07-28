@@ -896,6 +896,199 @@ informed room is positioned, labelled as a description. The chart carries
 the rejection in its own caption, with the numbers, so nobody downstream
 can rediscover the indicator by looking at the picture.
 
+### 6.13 One line, and 100 is the trigger — the readiness panel, and the contract on when a number may change
+
+Two desk reports arrived after §6.11 shipped, and although both read as
+interface complaints, each turned out to be about something the project had
+never actually written down.
+
+**(i) "I don't get what is activating a signal, is it a crossing?
+inflection?"** The answer is that it is a crossing, and only a crossing:
+`alerts_from_scores` fires on `score >= threshold` and then suppresses
+anything inside a 21-day cooldown. There is **no inflection test anywhere in
+the firing path** — the convexity language in earlier discussion describes
+features *inside* the score, not the trigger. The panel could not show this
+because it drew five elements at equal visual weight (a faint raw level, a
+bold 7d-smoothed level, an eligibility ribbon, a dated peak marker, and the
+deciding score) and, decisively, because the two frozen thresholds sit at
+**different heights** — GET IN `0.848141`, GET OUT `0.630231`. With two dotted
+lines at two heights, neither one means *the* line.
+
+The fix is a normalisation, not a new measurement. Each rule is drawn as
+
+```
+readiness = deciding score / that rule's own frozen threshold × 100
+```
+
+which places the trigger at **100 for every name, every rule, every window**,
+and is precisely what allows both rules to share a single dotted line. **No
+new number enters the model**: the same stored score is divided by the same
+frozen threshold, the alert dates are bit-identical, and the vertical signal
+lines still come from `coherent`.
+
+Two construction choices carry a cost that is visible on screen, so both were
+measured rather than asserted. First, a rule is drawn whenever its score
+*exists* in the window, not only when it fired. With the level curve gone, the
+old draw-on-fire rule would leave the instrument-lookup box — the one place a
+PM checks a name that never alerted — showing an empty panel; and a line that
+climbs to 80 and rolls over is exactly the answer to *why did nothing fire
+here?*. Second, `connectgaps=False`, because the deciding score is sparse by
+construction: `desk_candidacy` scores a name only on days the gates permit a
+judgement, which over the live store (**63,345 name-days**) is **2.5% of days
+for GET OUT and 48.8% for GET IN**. The GET OUT arcs are drawable rather than
+dust — **1,600 scored days form 160 runs of median length 7 days** (mean 10,
+max 91, only **28 single days**) — but those 28 must still render, and a gap
+must never be bridged into a trend that was never scored. A blank day means
+nothing *could* have fired there, whatever the crowd was doing.
+
+The 0-100 euphoria level is not lost; it is what the dial above the panel
+reads. The two questions are separated rather than merged: the dial answers
+*how hot is this name*, the panel answers *how close is it to firing*.
+`level`, `hype_ok` and both raw scores are untouched in the stores.
+
+Alongside this, **performance reporting was withdrawn from the terminal**
+entirely — no hit rate, lead time, false-alarm count or confidence interval
+appears on the dashboard, and all of it lives in notebook 07. This is the
+standing research/conclusions split applied consistently rather than a new
+policy. The scope is stated here so it can be challenged: the justification
+numbers inside the decision log and the band-meaning percentages on the gauge
+were **kept**, because removing them would leave every remaining choice on the
+page looking arbitrary, which is the failure mode this entire register exists
+to prevent.
+
+**(ii) "Why does update_data have to check what is the best model every
+time?"** It does not, and the reason is defensibility rather than runtime.
+Re-fitting on every live run makes the number on screen **untraceable**:
+nothing on disk would describe how today's threshold differs from yesterday's,
+and a threshold nobody can reconstruct cannot be defended in a review. The
+contract is therefore explicit. A live run refreshes data and scores it with
+the already-frozen winner. The single exception is the bootstrap —
+`needs_research(stored)` is true only when no record exists at all, because
+you cannot score against a record that is not there. Research re-opens only by
+being typed: `run_analytics --what phases --research`, or `update_data.py
+--full`, which counts as research **because a backfill rewrites the history
+the thresholds were chosen on**, and scoring rebuilt history at thresholds
+fitted on the old history would be a silent lookahead.
+
+Staleness is *reported*, not repaired. When the frozen record stops at an
+earlier year than the data, `record_lags_data` returns that year and the run
+prints one notice line while continuing to score. That state is legitimate: it
+is out-of-sample use, which is exactly what a walk-forward licenses. Refitting
+every January would not make the threshold more correct — it would make it a
+moving target that no stored record describes.
+
+Writing this down exposed an error in shipped source. The docstring that
+argued the case pointed at DECISIONS.xlsx `"2. Pipeline & Cadence"` and
+parameter register `Class 6`; sheet 2 is *Literature* and Class 6 is the
+*influence tracker*, so the contract's own citation led nowhere. Renumbering
+the existing sheets and classes was rejected — every other cross-reference in
+the repo would have broken silently — and the missing sections were created
+instead (`3b. Pipeline & Cadence`, Class 9), with the docstring repointed.
+
+### 6.14 The firing path written out end to end, and the third legibility pass
+
+§6.13 asserted that a signal fires on a crossing. The desk then asked the
+question that assertion should already have answered — *"how does it actually
+work? the signal for get in / get out?"* — and the honest reading of that is
+that the mechanism was distributed across §6.7, §6.8, a parameter-register
+class and four source files, and had never been written out as one path. It is
+written out here, read off shipped source rather than reconstructed from
+memory, because a detector nobody can trace end to end cannot be defended in a
+room.
+
+Both rules run the same four stages, and the only differences between them are
+which days are eligible and which features are averaged.
+
+**Stage 1 — candidacy: is this day judgeable at all?** `desk_candidacy` splits
+the day frame in two. A GET OUT candidate needs `hype_ok ∧ boom_state`: the
+crowd is at or above its own swollen-attention gate *and* the price is already
+at least its ground-truth boom threshold above its own trailing 120-day low
+(25% for ETFs, 50% for single names, `boom_state_frame`, trailing closes only).
+A GET IN candidate needs `hype_raw ≥ 1 ∧ ¬end_stage_mask`: the crowd is at or
+above its own norm, and the day does not already satisfy every END gate — you
+cannot start a euphoria that is already late. Days that fail candidacy get **no
+score at all**, which is where the sparsity comes from: over 63,345 name-days
+the GET OUT score exists on 2.5% of days and the GET IN score on 48.8%. The
+price test inside the GET OUT gate is an **eligibility gate only** (§6.7); it
+is never a scored feature, and the crowd-only detectors remain the headline
+result.
+
+**Stage 2 — the score.** GET OUT: `desk_end_fit` takes the plain, unweighted
+mean of `["e1","e2","e3","e5","fade"]`, then zeroes it on any day failing
+`e1 ≥ EUPHORIA_ATT_GATE ∧ e2 > 0` — the A2/A3 gates re-expressed in score
+space, so one threshold governs the outcome instead of two. GET IN:
+`desk_onset_fit` takes the mean of
+`["attention_accel","hype_ratio","bull_inflection","influx_speed","attention_convexity"]`
+(note `source_breadth` is in `ONSET_FEATURES` but deliberately **excluded** from
+`ONSET_BANK`: its apparent skill was a coverage-regime artefact, since X and
+StockTwits exist in the archive only from 2026). Neither score is fitted —
+the family is rules, so fitting is a no-op, and that is why a live run has
+nothing to re-select.
+
+**Stage 3 — smoothing.** `_smooth_by_name` takes a **trailing** 7-day mean of
+each instrument's own candidate-day sequence (`ROLL = 7`, the house one-week
+window). Trailing, so there is no look-ahead. This is the stage that
+structurally removes one-day blip alerts, at the recorded cost of two captures
+(§6.8).
+
+**Stage 4 — the crossing, then two suppressions.** `alerts_from_scores` is
+`np.flatnonzero(s >= threshold)` walked in date order, keeping an alert only if
+at least `EUPHORIA_COOLDOWN_DAYS = 21` days have passed since the last one.
+**There is no inflection test, no peak test and no convexity test anywhere in
+the firing path** — the convexity that appears in the GET IN bank is a
+*feature* being averaged, not the trigger. The frozen thresholds are GET OUT
+`0.630231` and GET IN `0.848141`, chosen once by the budget rule on full prior
+years and never re-selected on a live run (§Class 9). Finally
+`episode_coherent_alerts` applies the asymmetric state machine: a START within
+21 days *after* an END is suppressed as a contradictory flip, an END is never
+suppressed, and on a same-day tie the END wins — asymmetric by measurement,
+since the symmetric rule cost the top detector 17 → 9 captures for only 8 fewer
+false alarms.
+
+That is the whole path, and it is what the panel's readiness line plots:
+`stage-3 score ÷ that rule's frozen threshold × 100`, so the crossing in stage
+4 is the moment the line touches 100.
+
+**The same pass fixed two rendering defects that could only be found in the
+browser.** A bold **undefined** was printing over every euphoria chart, and the
+word appears in no Python file in this repo — four source-level hypotheses were
+formed and discarded before the DOM was dumped, and the decisive step was
+reading `data-unformatted` on `text.gtitle`, which returned
+`"<b><b>undefined</b></b>"` and so named the mechanism: Streamlit's plotly
+theming rewrites the title as `"<b>" + spec.layout.title.text + "</b>"`, and
+with the title strip deliberately removed (it cost 55px per name) that inner
+value is the JavaScript `undefined`. An explicit empty string is a real string,
+so the same rewrite renders nothing. Second, the `GET OUT <date>` labels were
+being clipped: they sit at y-domain 1.0 with `yanchor="bottom"` and alternating
+`yshift` 4/18 to avoid colliding, and 9.5px text is ~13px tall, so the tallest
+reaches ~31px above the panel against an 8px top margin — 38px clears it and is
+still under the 55px the title used to cost. Both are recorded because the
+general lesson is the one from §6.11: charts have to be *looked at*, and when
+the source does not contain the symptom, the rendered object does.
+
+**The ghost line, and a reversal made honestly.** Asked for *"a continuos line
+… but maybe make it like not as prominant"*, the panel now draws each readiness
+series a second time underneath — time-interpolated across gaps, 1px, dotted,
+30% opacity, out of the legend. This reverses §6.13's own rejection of a dense
+line, which was rejected for inventing a reading on ungated days, so the
+reversal is only defensible with the reason the old version was unsafe
+identified and removed. `hoverinfo="skip"` is that reason: the ghost never
+reports a number, hover still comes only from the measured trace, and the
+earlier objection was to a dense line that could be *queried* rather than one
+that could be *seen*. `limit_area="inside"` confines interpolation to the span
+between two real scored days, so the ghost cannot imply a reading in a stretch
+the detector never judged. Nothing here touches the model and the alert dates
+are bit-identical.
+
+**Four explanation expanders left the page** on instruction — the
+seven-decision summary, the long-form evidence log, the full method record and
+the printed parameter register — leaving one plain-English opener whose label is
+now frozen. The cost is stated rather than buried: a PM who challenges a
+threshold live can no longer answer it from the page, and must go to the
+register or a notebook. The three functions and constants behind those
+expanders are left defined but unreferenced so restoring them is a two-line
+change, and they are explicitly exempt from the dead-code sweep.
+
 ## 7. Why This Is Useful for Trading
 
 The trading-translation verdict (§6.5) rules out one specific,
@@ -1109,6 +1302,9 @@ runs (drift-guard assert in notebook 02).
 
 | Date | Update |
 |---|---|
+| 2026-07-28 (w) | **The firing path written out end to end; two rendering defects root-caused in the live DOM; a ghost line added under the readiness trace; four explanation expanders removed** (new §6.14; parameter register Class 8 third pass; DECISIONS `4. Detector Design` x4; ARCHITECTURE §8; RUNBOOK lower-panel block). **(i)** Asked *"how does it actually work? the signal for get in / get out?"*, the answer existed in shipped source but had never been written out as ONE path — it was distributed across §6.7, §6.8, a register class and four files. §6.14 now states all four stages read off source: candidacy (`hype_ok ∧ boom_state` for GET OUT, `hype_raw ≥ 1 ∧ ¬end_stage` for GET IN, which is where the 2.5% / 48.8% sparsity comes from), the unweighted bank mean with the A2/A3 gates re-expressed in score space, the trailing 7-day per-name mean, then `np.flatnonzero(s >= threshold)` with a 21-day cooldown and the asymmetric coherence machine. **It is a crossing; there is no inflection, peak or convexity test anywhere in the firing path** — the convexity in the GET IN bank is a feature being averaged, not a trigger. **(ii)** A bold **undefined** was printing over every euphoria chart and appears in NO Python file in the repo; four source hypotheses were discarded before the DOM was dumped, and `data-unformatted` on `text.gtitle` gave `"<b><b>undefined</b></b>"` — Streamlit's plotly theming bolds `layout.title.text`, which is the JavaScript `undefined` when the title strip is deliberately absent. Fixed with an explicit empty string. The `GET OUT <date>` labels were separately being clipped: derived from their own geometry (yshift up to 18 plus ~13px of text = ~31px above the panel) the top margin went 8 → 38, still under the 55px the deleted title cost. **(iii)** The **ghost line**: each readiness series drawn a second time underneath, interpolated across gaps at 1px / dotted / 30% / no legend. This knowingly reverses §6.13's rejection of a dense line, and is defensible only because the reason that version was unsafe is removed — `hoverinfo="skip"`, so the ghost NEVER reports a number (the objection was to a line that could be *queried*, not seen), plus `limit_area="inside"` so interpolation never extends past a real scored day. Alert dates bit-identical. **(iv)** Four model-evidence expanders removed from the page on instruction, one plain-English opener kept with its label frozen; **the cost is recorded, not buried** — a threshold challenged live now has to be answered from the register or a notebook. `decisions_simple()`, `DECISIONS_DOC` and `EUPHORIA_DEF_FULL` are left DEFINED BUT UNREFERENCED and are exempt from the dead-code sweep. 108 tests pass. |
+| 2026-07-28 (v) | **One line, and 100 is the trigger: the euphoria panel rebuilt; performance reporting withdrawn from the terminal; the live run's research contract written down** (parameter register Class 8 continued and new Class 9; DECISIONS `4. Detector Design` x6 and new sheet `3b. Pipeline & Cadence`). **(i) The panel could not show what fires a signal.** The desk read the corrected chart from (s) and still could not answer its own question - *"i dont get what is activating a signal, is it a crossing? inflection? i just want one line"*. It **is** a crossing: `alerts_from_scores` fires on `score >= threshold` then applies a 21-day cooldown, and there is **no inflection test anywhere in the firing path**. The panel could not show that because it carried five elements at equal weight (raw level, 7d-smoothed level, eligibility ribbon, peak marker, deciding score) and the two frozen thresholds sat at DIFFERENT heights - GET IN `0.848141`, GET OUT `0.630231` - so neither dotted line meant *the* line. Replaced by one series per firing rule, **readiness = deciding score / that rule's own frozen threshold x 100**, which puts the trigger at **100 for every name, every rule, every window** and is what lets both rules share ONE line. **No new number enters the model**: same stored score, same frozen threshold, divided - alert dates are bit-identical and the vertical signal lines still come from `coherent`. Two deliberate construction choices, both with a cost that is visible on screen and therefore measured. Rules are drawn whenever their score EXISTS, not only when they fired, because with the level curve gone the draw-on-fire rule would leave the instrument-lookup box - the one place a PM checks a name that never alerted - showing an empty panel, and a line that climbs to 80 and turns over IS the answer to *why did nothing fire here*. And `connectgaps=False`, because the deciding score is sparse by construction: over the live store (**63,345 name-days**) it exists on **2.5% of days for GET OUT and 48.8% for GET IN**. The GET OUT arcs are drawable rather than dust - **1,600 scored days form 160 runs of median length 7 days** (mean 10, max 91, only **28 single days**) - but those 28 must still render and a gap must never be bridged into a trend that was never scored, since a blank day means nothing *could* fire there whatever the crowd is doing. **The 0-100 level is not lost**: it is what the dial above now reads, so the dial answers *how hot is this name* and the panel answers *how close is it to firing*; `level`, `hype_ok` and both raw scores are untouched in the stores. **(ii) Performance metrics withdrawn from the dashboard** on the desk's instruction (*"i will just keep this for the notebooks only"*), consistent with the standing split - the notebooks are the research record, the terminal states conclusions. Scope stated so it can be challenged: headline reporting is gone everywhere, but the justification numbers inside `decisions_simple()` / `DECISIONS_DOC` and the band-meaning percentages in `gauge_caption()` were KEPT, because stripping those would leave every remaining choice on the page looking arbitrary - the exact failure mode the parameter register exists to prevent. **(iii) Panel re-laid out** to *"less white space"*: header line, then dial sharing one row with five facts, then the figure at `title=None` and an 8px top margin. The old stack paid for a half-used dial row PLUS a second title strip inside the figure's own 55px margin, per name - most of a screen on a six-name page. The five facts (state, today's reading, 7d change, window peak, last signal) all answer **where this name is**; none answers how well the detector has done, which is (ii) honoured in the one place the new layout had made room to break it. The plain-English *"what is euphoria - start here"* opener was explicitly KEPT on instruction, and that is recorded so a later cleanup does not read it as leftover explanation. **(iv) The research contract, written down at last.** Asked *"why does the update_data have to check what is the best model everytime?"*, the answer is that it must not, and the reason is defensibility rather than runtime: **re-fitting on every run makes the number on screen untraceable**, since nothing on disk would describe how today's threshold differs from yesterday's, and a threshold nobody can reconstruct cannot be defended. One exception only - the bootstrap, `needs_research` true iff no record exists. Research re-opens by typing it: `run_analytics --what phases --research`, or `--full`, which counts **because a backfill rewrites the history the thresholds were chosen on** and scoring new history at old thresholds would be a silent lookahead. Staleness is REPORTED, not repaired - `record_lags_data` returns the lagging year and the run keeps scoring, which is out-of-sample use and exactly what a walk-forward licenses. Cadence and budget registered with it: ~2 runs a week, `PIPELINE_BUDGET_S = 600`. **A shipped-source pointer error was found and fixed in the same pass**: `analytics/euphoria.py::needs_research` promised this contract lived in DECISIONS `"2. Pipeline & Cadence"` and register `Class 6`, but sheet 2 is *Literature* and Class 6 is the *influence tracker*. Renumbering was rejected (it would silently break every other cross-reference in the repo); the missing sections were created and the docstring repointed. |
+| 2026-07-28 (u) | **Notebook 07 closes with a verdict and a fork table; the short deck rewritten as an adoption case; three notebooks found to be silently un-runnable.** **(i) NB07 PART D - the final scorecard.** The battery ended without saying what shipped. It now prints a 24-field side-by-side record for both signals, and every rate carries an **instrument-cluster bootstrap 90% CI** (name-days inside a ticker are not independent). The bootstrap is **self-proving**: `record_ci` decomposes capture / detectable / false alarms per instrument and **asserts all three sums equal the shipped record** before resampling, so a CI can never be reported against a decomposition that silently disagrees with the record - the assert chain passes for both signals. Headline, unchanged from the shipped walk-forward and now stated with uncertainty: GET OUT **19.7% [14.3, 25.2]** capture on 122 detectable episodes over 2020-2026, **0.195 [0.120, 0.280]** FA per instrument-year against an inherited 0.230 budget, AP 0.449 vs a 0.374 random floor; GET IN **16.0% [8.7, 23.3]** on 125 over 2018-2026, **0.255 [0.204, 0.313]** FA-iy, AP 0.084 vs 0.062. **A reporting defect in that very table was caught by reading its output rather than trusting the green run**: the single row *median warning (days before peak)* printed **69 days for GET IN**, arithmetically correct and editorially wrong, and in flat contradiction with both the shipped record (16) and the deck (17 after the trough / 66 ahead). GET IN alerts carry **two different clocks** - `after_trough` is the entry lag, `before_peak` is the rally still ahead - and collapsing them into one label meant two things at once. Split into two named rows (`n/a for this signal` where a clock does not apply, never a blank), with a printed reading note; the saved `final_verdict` now records `median_lead_d` on the after-trough clock, the shipped record's convention, with `median_rally_ahead_d` carrying the other. **16.5 here vs 16 in the record is the same statistic** - `euphoria_phases.py` truncates with `int(np.median(...))` - and the notebook now says so, because an unexplained half-day gap between two documents reads as a disagreement. **(ii) NB07 PART E - the fork table.** Every methodological choice the project made is tabulated with what was tried and why it was not adopted, read from the notebooks' own saved JSON rather than retyped: **66 forks on the record - 52 rejected, 6 shipped, 8 recorded without a change**. It puts the price question on the record in the form the project actually settled it: **price in the feature bank LOST, and the boom-state eligibility GATE shipped instead**, a labelled second claim, so the crowd-only headline stands intact. **(iii) The short deck, v1.1.** Rewritten end to end as an adoption case - each slide leads with the desk benefit and closes with the evidence - with the three negative-result slides KEPT and reframed as the warrant for the positive ones rather than as a hedge, and an explicit closing ask (run it live on the book for a quarter). **Not one figure was changed to achieve the tone**, and that is asserted in the file's own header block so it survives a challenge. Verified against a **pre-edit baseline built in the same directory** (0 overfull), because attributing overflow without a baseline is guesswork: the rewrite introduced three overfull boxes, all three cleared by prose trims, final build 15 pages / 0 overfull / 0 errors, every measured-layout comment preserved. The long deck was left untouched by decision. **(iv) A silent kernel-killer in three notebooks.** jupytext un-escapes `# %matplotlib inline` in the paired `.py` into a LIVE magic in the `.ipynb`, so a trailing same-line comment becomes invalid magic arguments and **kills the kernel at cell 1**. Notebooks 03, 04 and 06 had been un-runnable this way; fixed in both halves of each pair, which unblocks the re-execution sweep. |
 | 2026-07-28 (t) | **Influence convergence tested as a bullish / euphoria indicator and REJECTED; the theme-level crowding exhibit shipped in its place** (new §6.12; parameter register Class 6c; DECISIONS "8. Influence Tracker" ×5). The desk's sentence *"lets try and use the follower monitoring (influence) for some sort of bullish / euphoria indicator? anyway to make that clearer? perhaps if we have lots of influential accounts convergint on a theme?"* contains a PREDICTIVE claim and a LEGIBILITY request, and they were answered separately. **The predictive half was pre-registered before any number was seen:** three candidates built only from accepted quantities — C1 breadth (influence-weighted count of distinct voices, trailing `ROLL = 7`), C2 convergence (breadth × agreement, agreement = `\|Σ w·s\| / Σ w·\|s\| ∈ [0,1]`, the same arithmetic as the accepted `consensus`, so *many voices that DISAGREE is not convergence*), C3 backing share — against the accepted gauge outcome copied verbatim (>10% fall inside a week, any time in the next 30 days). **No threshold was invented**: the obvious HIGH-tier population cut is unusable on this store (**25 HIGH vs 12,503 low**; only **234 of 27,881** live calls come from a HIGH author), so authors enter continuously at `influence_index/100 ∈ [0,1]` — a nobody contributes ~0, the strongest record 1. The live window starts 2026-04-01 because the call history is **two disjoint blocks** (2021-06 holds 5,521 calls over only **2 distinct days**, an archive snapshot, then a five-year hole) and a trailing window cannot cross the hole. Paired bootstrap on **instrument** (name-days inside a ticker are not independent), 5 seeds × 300 reps, Bonferroni n=3 → conf **0.98333**, worst seed must clear zero. **ADOPTED: NONE** — on 15,615 name-days / 233 instruments (2026-04-08 → 2026-06-15, base rate 0.539): C1 **−0.0291** (lo −0.1701), C2 **−0.0153** (−0.1513), C3 **−0.0103** (−0.1706). **The null is informative because the harness has a positive control**: the accepted euphoria level, identical days, identical code, DETECTS (top decile cut 78.91 → 0.846 vs 0.414, **+0.4321**, lo +0.0623; level ≥ 85 → 0.925 vs 0.428, **+0.4970**, lo **+0.2515**). **The decisive exhibit is like-for-like**: on the control's OWN 1,552 name-days / 23 instruments, identical 156-day state size, base rate 0.457, all three are **WRONG-SIGNED** — C1 0.237 vs 0.482 (**−0.2449**), C2 0.250 vs 0.481 (**−0.2307**), C3 0.282 vs 0.477 (**−0.1950**). Not underpowered; pointing the other way. **The sign is diagnosed, not just reported**: top-decile-breadth names are MSFT 64, NVDA 59, TSLA 56, AMZN 46, RDDT 45, INTC 44, AAPL 44, SNDK 38, GOOGL 37, MSTR 37 — the board converges on the most-discussed liquid mega-caps, which cliff less often than the small-cap tail — and the between-name split is nearly flat (**0.534**, n=6,576 "ever top-decile" vs **0.542**, n=9,039 "never"), so the effect is **cross-sectional (which names), not temporal (when)**, which is exactly what disqualifies it as a timing indicator. Per the standing no-dead-traces rule, **no code from this test remains in the repo**; §6.12 and Class 6c are the trace. **The legibility half shipped**: the influence tab's bubble chart gained a names/themes toggle. `suggestion_digest` and the new `theme_digest` both delegate to ONE `_digest_frame(c, key)`, so the accepted consensus and backing formulas exist in a single place and the two views cannot drift — they sit on one control where any disagreement would be visible and unexplainable. Themes reuse `src/themes.py`, so a theme means one thing app-wide. A ticker in several themes **counts in every one** (NVDA is semiconductors AND ai AND ai_megacap; a PM asking "are we crowded into AI" must see that call), which makes theme shares shares of the **theme-mapped room** — a different denominator, stated on the control, so the views are not expected to agree name-for-name. Calls on tickers in no theme are **dropped, not bucketed as "other"**: "other" is not something a desk can position in and at **58.5% of live calls** it would be the chart's largest bar purely by being a residue. Live 90-day reading, which is why the view earns its place: **AI megacap 26.6% of the room's conviction at consensus +0.807** (a real convergence) against **semiconductors 10.2% at +0.222** (visibly an argument) — a distinction invisible one ticker at a time. The chart carries the rejection above in its own caption **with the numbers**, because "we checked" is not defensible and "−0.245 on the same days the accepted signal reads +0.497" is. Two supporting fixes: `_thin_labels` gained an optional `label_w_px` because its 30px gap silently hard-coded a four-character ticker while a theme label runs to nineteen — centred labels collide when the centre gap is under the **mean of their two widths**, and with all widths at 30px that expression IS the old scalar rule, so **the ticker view is unchanged by construction** (verified: old and new keep the identical 11 and 17 labels on the live 30d / 90d cross-sections), with 7.5px per character read off the accepted 30px rather than introduced as a new constant; and a tab-local `_unit` variable was found to have rebound the module-level `_unit()` scaler — the dashboard body executes at module scope — killing the influence map three hundred lines later with `'str' object is not callable`, now fenced by a hygiene test that asserts the module's helpers are still callable after the script runs. **9 new tests (99 → 107 passed)**, including a price-free invariant on the theme path that parses the AST and drops docstrings rather than grepping source, since the prose legitimately says "not a forecast about the price". |
 | 2026-07-28 (s) | **Three legibility reports, one of which was a real chart defect** (new §6.11; parameter register Classes 3b and 8). **(i) The euphoria panel was quoting a threshold that had fired nothing.** The desk read *"its quite unclear to see WHEN is the actual change / or get out flag ... its like flat and then suddently a get out flag"* off a panel that drew one dotted line at the level-detector's walk-forward **85** and plotted the euphoria LEVEL against it — while the flags on screen come from the **desk score** crossing its own frozen threshold. MEASURED over all **95 GET OUT alerts** in the store: the plotted level sat BELOW the drawn line on **79 of them (83%)**, median plotted level at a GET OUT **74.8**. The desk was reading the chart correctly; the chart was wrong. Corrected by a rule rather than a tweak — *draw the threshold that gated the flags being drawn, and plot the series that crossed it* — with the GET OUT / GET IN scores overlaid at their frozen desk thresholds rescaled ×100 onto the panel's existing 0–100 axis (one axis, house rule), only for alert kinds that actually fired in the window, as `lines+markers` with gaps left open because the score is **sparse by construction** (`out_score` exists on **2.5% of name-days**, in runs as short as one day) and the gaps mean *not judgeable here*. The 85 line survives only on the no-desk-store fallback path. **No threshold moved.** The requested *"clear peak"* is the window maximum of the display curve, marked and dated — a label on a value already plotted, so removing it changes nothing about the signal (passed as `pd.DatetimeIndex([d])`, because a bare `[Timestamp]` survives the live app but is not JSON-serialisable by kaleido and silently breaks the PNG export the decks use). **(ii) The gauge "always shows calm" — and was right to.** MEASURED over the default window (2026-01-01 → latest): **50 of 59 instruments read calm at the last day while 17 of those same names touched the RED ZONE inside the window**, because the page is ordered by *most recent signal* so a name earns its place with an episode that may have peaked months ago while the needle correctly reports today. Softening the amber edge to make the dials look busier would have been exactly the arbitrary-threshold move §6.10 spent a page earning the right not to make; instead the dial now answers **both** questions — big needle = today, plus the window's high-water mark as one dated line behind it ('calm now, peaked 99 in red on 27 Jun'). **No edge moved, no number invented.** Drawn as TEXT rather than a second needle because plotly's Indicator has a single `threshold` slot already carrying the red edge as a hard line (colour alone does not survive greyscale or a projector), and two needles on a 268px dial reads worse than one sentence; frame 268→300px, bottom margin 36→74px to keep it in canvas. Per the desk's *"dont need to explain it fully all the time, maybe an info icon hover"*, the standing caveat and the measured band percentages moved into the `help=` tooltip — a change of **placement, not of evidence**: a page of six names had been carrying the same ~90 words six times. Gauge number and delta now `valueformat=".0f"`, because a tenth of a point on a percentile-rank index is below the resolution of the input. **(iii) Offensive handles masked on screen, and honestly labelled a CONVENTION.** There is no ground truth for "offensive", so no bootstrap can make a word list evidence-backed — what is registered instead is the **measured behaviour over all 12,528 real handles**. A naive one-list substring scan flags **345** and is dominated by false positives (`AfraidAnalyst`, `Valuable-Analyst-464`, `MeridianAllocation`, seven `Grapefruit` handles, `SatoshiTrails`). Three measured corrections: a match must lie **inside one token** (free, no word list — it alone resolves `SatoshiTrails`, *shit* spanning `oshi|Trails`, and `MeridianAllocation`, *anal* spanning `Meridian|Allocation`); six stems **demoted** to whole-token matching on counted innocent-vs-genuine hits (anal 3v2, rape 7v0, cock 3 innocent, boob 2 innocent, piss 1v0, wank 1v0); six mild words dropped entirely. Two promotions **adopted** on measurement (*retard* 10/10 genuine, *boobs* 3/3) and one **rejected** (*tits*: 2 hits, one genuine `Murrrtits` and one not, `Iplayminecraftitsfun` — a 50% error rate is not worth one handle). Fixed-point iteration is required and the proof is a real store case, not defensiveness: `Buttslut69696969` tokenises as `[Buttslut, 69696969]`, so pass 1 removes only *slut* and yields `Butt**69696969` where `Butt` IS now a whole token — that case FAILED the store-wide test before the fix. Final measured state: **97 / 12,528 masked (0.774%)**, **12,528 unique handles → 12,528 unique censored strings (zero collisions**, which is what makes span-level masking safe on a plotly category axis where duplicate labels merge into one bar), **one** residual false positive (`sashitadesol`), 4 of the top 120 by composite and 1 of the 25 HIGH-tier authors affected. Two invariants make it defensible: masking is **display-layer only** (`author` is the join key across `author_scores` / `calls` / `reply_edges`; a test asserts no mask reaches the parquet, and the map's `centre=`, the leaderboard's `_push` merge key and the ego selectbox's return value all keep the true handle), and the direction of error is deliberately **under-mask** (a missed handle is one embarrassing name on a board everyone knows is scraped from Reddit; an over-masked handle corrupts identity for every reader). Known misses and the **English-only** limitation (`fickdichdock` sits unmasked) are named in the register rather than hidden. **6 new tests (92 → 98 passed)**; AppTest 0 exceptions across 47 figures and 9 dataframes, with masking confirmed live on the rendered leaderboard, the influence-map hover and labels, and the ticker-backers axis. |
 | 2026-07-27 (q) | **The euphoria GAUGE: one dial per theme and per ticker** (new §6.10; Class 1b of the parameter register). Desk request verbatim: "a very clear speedometer thing for each graph (and showing the change) for each theme / ticker". Built so that it introduces exactly **one** new number. The needle is `lvl_raw.rolling(ROLL).mean()` read at its last day - the identical object the lower panel already plots, so the dial and the curve beneath it cannot disagree (unit-tested); the delta reference is ROLL = 7d back, the same window the curve is smoothed over. The **red edge is 85 read out of `euphoria_report.json`**, i.e. the level the walk-forward already froze for the END alert in every test year 2018-2026 - a gauge that picked its own red edge would be a second, softer threshold competing with the detector (unit-tested against the report; the notebook asserts the walk-forward agreed across years, because otherwise a single red edge would be a fiction). The **one new number is the amber edge, 76**, and the route to it is the methodological content of this row. **The obvious test was the wrong test**: comparing a 95% CI for P(drop | level>=L) against a 95% CI for the base rate found NOTHING significant at any cut from 40 to 95 - the overlapping-CI fallacy, not a null result, because with 59 instruments both intervals are wide and overlap everywhere. Bootstrapping the **DIFFERENCE** on the SAME resampled instruments cancels shared instrument-level noise and recovers a significant effect at every cut from 76 up. Resampling unit = the **instrument, never the day** (adjacent days on one name are one episode; a day-level bootstrap would call 4,000 days of a single mania 4,000 independent facts). Rule pre-stated: lowest cut on a 2-point grid from 68 whose 95% paired lower bound excludes zero under **all 5 seeds** - cut 74 flips sign across seeds (-0.0004, +0.0009, -0.0012, -0.0007, +0.0004), cut 76 does not (+0.0045, +0.0060, +0.0049, +0.0034, +0.0046), and a cut that changes sign with the seed is not a parameter. Outcome graded is the desk's own "<1 month" horizon unchanged from S6.7 (a >=10% fall over 7d STARTS within 30d, as a reversed rolling max; the last 37 days are NaN because scoring an incomplete look-ahead as "no drop" would bias the base rate down exactly at the live edge). Measured on 183,394 name-days / 59 instruments / 2017-06-29 to 2026-06-15, base rate **23.3%**: level>=76 **26.9%** (+3.9pp, CI [+0.6,+7.4]), level>=85 **30.4%** (+7.3pp [+2.1,+12.8]), danger state alone **53.8%** (+31.2pp [+22.2,+40.1]), level>=85 AND danger **71.4%** (+48.2pp [+34.3,+59.5]). **The dial admits its own weakness on its face**: the level alone at the red edge is only ~1.3x base rate, the level plus an already-run-up price is ~3.1x, so the caption quotes the band the needle is actually in and a test pins P(red AND danger) > P(red) so it can never be re-worded into implying the needle is sufficient. The dial is a **STATE, never an instruction** - GET IN / GET OUT come from the detector and can fire with the needle anywhere; a test asserts those words can never appear in a band label. Every percentage the caption prints is read from `docs/research/gauge_zones.json`, which notebook 06's own code writes; a test greps the function body to prove neither edge is a literal in `dashboard.py`, and with the JSON absent the dial declines to exist rather than inventing bands. **Layout defect caught only by rendering the PNG and looking at it**: plotly draws an Indicator `title` inside the same domain as the arc, so the two-line header was struck through by the navy value bar - the header is now paper-space annotations in the top margin, and the value bar was thinned 0.28 -> 0.15 because at 0.28 it covered the very band colours it is meant to be read against. **9 new tests (84 -> 93 passed)**; smoke-tested on the real store at 2026-07-21 (semiconductors 70.9 calm, TSLA 82.3 warming, GME 87.6 RED ZONE) with all four caption branches rendering their measured percentages. |

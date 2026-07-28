@@ -788,10 +788,15 @@ means adding its name to that tuple.
 **The EUPHORIA GAUGE (added 2026-07-27) — one dial above every chart.**
 `draw_chart` is called once per instrument in both the Themes and the
 Singles tab, so wiring the dial there gives the desk's "for each theme /
-ticker" for free. The dial sits in the left of a `[1, 2.1]` column pair;
-the right column carries a one-sentence caption quoting the MEASURED risk
-of the band the needle is in, plus a standing reminder that the dial is a
-state and not an instruction.
+ticker" for free. **Re-laid out 2026-07-28** (see the panel-order note
+below): the dial is the left of a `[1.05, 0.95, 1.15]` column *triple*,
+and the two right columns carry the five facts a PM reads before looking
+at the chart. The measured-risk sentence that used to sit beside it
+moved into the dial's `help=` tooltip — a page of six names was printing
+the same ~90 words six times, which buried the reading that mattered
+under its own footnotes. The evidence is not weakened, only demoted: it
+is one hover away when someone challenges the band, and silent when
+nobody is asking.
 
 Four functions, immediately before `fig_series_vs_price`:
 
@@ -832,6 +837,128 @@ The two edges, and the fact that only ONE of them is a new number, are in
 Class 1b of `docs/PARAMETER_REGISTER.md`; the derivation is §6.10 of the
 research report and the code that produced it is in notebook 06. Nine tests
 in `TestEuphoriaGauge` fence it.
+
+**The READINESS PANEL (rebuilt 2026-07-28) — one line, and 100 is the
+trigger.** The desk could not tell what fired a signal: *"i dont get what
+is activating a signal, is it a crossing? inflection?"*. It **is** a
+crossing — `alerts_from_scores` fires on `score >= threshold` and then
+applies a 21-day cooldown; there is no inflection test anywhere in the
+firing path — but the old panel could not show that, because it carried
+five things at equal weight (a faint raw level, a bold 7d-smoothed level,
+an ochre eligibility ribbon, a dated peak marker, and the deciding score
+with its own dotted threshold), and the two thresholds sat at *different*
+heights (GET IN `0.848141`, GET OUT `0.630231`), so neither line meant
+"the line".
+
+What is drawn now is one series per firing rule:
+
+```
+readiness = deciding score / that rule's frozen threshold × 100
+```
+
+so the firing line is **always 100** — every name, every rule, every
+window — and "did it fire?" is answered by "did the line touch the top?".
+That normalisation is also what lets both rules share ONE dotted line.
+**No new number enters the model:** same stored score, same frozen
+threshold, divided. The alert dates are bit-identical and the vertical
+signal lines still come from `coherent`.
+
+Two construction details, both load-bearing. First, a rule is drawn
+whenever its score *exists* in the window, not only when it fired: with
+the level curve gone, the old draw-on-fire rule would leave the
+instrument-lookup box — the one place a PM checks a name that never
+alerted — showing an empty panel, and a line that climbs to 80 and turns
+over is precisely the answer to "why did nothing fire here?". Second,
+`connectgaps=False` with `lines+markers`, because the deciding score is
+**sparse by construction**: `desk_candidacy` only scores a name on days
+the gates permit a judgement, which over the live store (63,345
+name-days) is 2.5% of days for GET OUT and 48.8% for GET IN. Those GET
+OUT days are not dust — 1,600 scored days form 160 runs of median length
+7 days (mean 10, max 91, only 28 single days) — but the 28 one-day runs
+must still be visible, and a gap must never be bridged into a trend that
+was never scored. A blank day means nothing *could* fire there, whatever
+the crowd is doing.
+
+**The GHOST LINE (added 2026-07-28, third pass).** The gaps above are
+correct and they are also hard to read across: *"can we make the euphoria
+still have like a continuos line? but maybe make it like not as
+prominant"*. The arcs answer *could it fire, and how close was it*
+faithfully, but they leave the eye with nothing to follow, so a reader has
+to reconstruct the shape of an episode themselves. The panel now draws
+that shape once, **underneath** the bold trace and at deliberately low
+prominence: the same series, time-interpolated across gaps, 1px, dotted,
+30% opacity, out of the legend, added *first* so it renders behind. This
+reverses — knowingly — the earlier rejection of a dense line, which was
+rejected because it *"invents a reading on ungated days"*. Three guards
+are what make the reversal defensible, and the first is the one that
+matters: `hoverinfo="skip"`, so the ghost **never reports a number** —
+hover still comes only from the bold trace, and no ungated day can be read
+off the screen as a score. The earlier objection was to a dense line that
+could be *queried*, not to one that could be *seen*.
+`limit_area="inside"` is the second: interpolation happens only *between*
+two real scored days, never past the first or last, so the ghost cannot
+imply a reading in a stretch the detector never judged at all. Third, at
+1px dotted 30% it reads as a construction line — the solid 2.4px
+markered trace is still the only thing on the panel that looks like a
+measurement. Nothing here feeds the model and the alert dates are
+untouched.
+
+**The level is not lost.** The 0-100 euphoria level is exactly what the
+dial above now reads, with its 7-day change and dated window peak beside
+it. The two questions are simply separated: the dial answers "how hot is
+this name", the panel answers "how close is it to firing". `level`,
+`hype_ok` and both raw scores are untouched in the stores.
+
+**Panel order and the metrics removal (2026-07-28).** Header line
+(name · symbol · state badge) → dial + five facts on one row → the figure
+with **no figure title** and a 38px top margin. The old stack paid for a
+half-used dial row *plus* a second title strip inside the figure's own
+55px top margin, per name — on a six-name page, most of a screen spent on
+furniture. Two follow-ups from the screen on 2026-07-28, both worth
+recording because neither was guessable from the source. (i) The title
+must be set to an explicit **empty string**, `title=dict(text="")`, and
+not merely left unset: Streamlit's plotly theming rewrites the title as
+`"<b>" + spec.layout.title.text + "</b>"`, and with no title in the spec
+that inner value is the JavaScript `undefined`, so the browser was handed
+the literal `"<b><b>undefined</b></b>"` and printed a bold **undefined**
+over every chart. The word appears in no Python file in this repo, which
+is why it had to be traced in the live DOM (`layout.title.text` on the
+rendered figure). An empty string is a real string, so the same rewrite
+yields `"<b></b>"` and renders nothing. (ii) The top margin is 38px, not
+8: the signal labels sit at y-domain 1.0 with `yanchor="bottom"` and
+alternating `yshift` 4/18 to avoid colliding, and 9.5px text is ~13px
+tall, so the tallest label reaches ~31px above the price panel — at t=8
+the second row was cut in half by the canvas edge. 38 clears it and is
+still well under the 55px the title strip used to cost. The five facts
+are state, today's reading, the 7-day change,
+the window peak and the last signal: every one of them describes **where
+this name is**, and none describes how well the detector has done. That
+is the standing no-performance-metrics decision, honoured in the one
+place where the new layout had made room to break it. Hit rate, lead time
+and false alarms live in notebook 07. Both decisions are recorded in
+PARAMETER_REGISTER Class 8 and DECISIONS.xlsx `4. Detector Design`.
+
+**The MODEL-EVIDENCE EXPANDERS ARE GONE FROM THE PAGE (2026-07-28):**
+*"for the explanations, just keep the what is euphoria one … dont change
+the current what is euphoria? (start here - plain English) just remove the
+rest"*. Four expanders were removed — two page-level (*"WHY THE MODEL DOES
+WHAT IT DOES"*, which called `decisions_simple()` and listed seven
+decisions each with the number that settled it, and the long-form evidence
+log that printed `DECISIONS_DOC`) and two on the euphoria tab (*"full
+method & measured record"*, `EUPHORIA_DEF_FULL`, and the deep archive that
+read `docs/PARAMETER_REGISTER.md` off disk and printed the whole file).
+One explainer survives, and **its label is not to be edited**: *"what is
+euphoria?  (start here - plain English)"*, retained verbatim on
+instruction. The reasoning those four carried is not lost and not
+weakened — it is the same content as this file, `docs/DECISIONS.xlsx`,
+`docs/PARAMETER_REGISTER.md` and the notebooks, which are the research
+record by standing instruction. **What it costs, recorded because the
+argument went the other way and was overruled:** a PM who challenges a
+threshold live can no longer answer it from the page; the answer now
+requires the register or a notebook. `decisions_simple()`, `DECISIONS_DOC`
+and `EUPHORIA_DEF_FULL` are therefore left **defined but unreferenced** in
+`dashboard.py` rather than deleted, so restoring any of this is a two-line
+change — they must not be swept as dead code.
 
 **The INFLUENCE tab (rebuilt 2026-07-27, re-cut later the same day after
 the charts were finally LOOKED at) — information only.** It opens with a
@@ -955,6 +1082,34 @@ snapshots (never revised) → price pull → publish (external) → text-free
 safety check → run summary. Guards ported from RetailFlow1: the stale-
 aggregate abort (tail splice would leave a hole), the cross-machine
 `--full` revert guard, and per-step environment pre-flight.
+
+**The research contract (desk decision 2026-07-28).** The orchestrator
+does not choose a model, re-select a threshold, or re-run the
+walk-forward, the ablation or the ML challenger, and it prints no
+performance statistics. It refreshes data and scores it with the
+already-frozen winner, so a live run is one predictable job. The reason
+is defensibility rather than runtime: **re-fitting on every run makes
+the number on screen untraceable** — nothing on disk would describe how
+today's threshold differs from yesterday's, and a threshold nobody can
+reconstruct cannot be defended.
+
+There is exactly one exception, the bootstrap: `needs_research(stored)`
+is True only for `not stored or not stored.get("thresholds")`, because
+you cannot score against a record that does not exist. Research is
+otherwise re-opened only by typing it — `run_analytics --what phases
+--research`, or `update_data.py --full`, which counts because a backfill
+rewrites the history the thresholds were chosen on and scoring the new
+history against the old thresholds would be a silent lookahead.
+
+Staleness is *reported*, not repaired: when the frozen record stops at
+an earlier year than the data, `record_lags_data` returns that year and
+the run prints one notice line while continuing to score. That state is
+legitimate — it is out-of-sample use, which is what a walk-forward
+licenses. Refitting every January would not make the threshold more
+correct; it would make it a moving target no stored record describes.
+Full argument in `analytics/euphoria.py::needs_research`; the decision
+is DECISIONS.xlsx `3b. Pipeline & Cadence` and PARAMETER_REGISTER
+Class 9.
 
 ## 10. Testing (`tests/test_pipeline.py`)
 

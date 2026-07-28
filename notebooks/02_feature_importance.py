@@ -15,8 +15,7 @@
 #
 # Notebook 01 wrote the exam. This one grades the *ingredients*: every
 # candidate feature for the onset (GET IN) and top (GET OUT) detectors, put
-# through the importance battery adapted from Chan (2026), *Informed Trading
-# Decisions via Social Network Analysis*.
+# through the importance battery below.
 #
 # > **The one question this notebook answers:** does any single crowd
 # > measurement detect euphoria on its own — and if not, which ones deserve a
@@ -48,7 +47,7 @@
 # | Does the combined scorer depend on one fragile input? | **No.** Every perturbation curve degrades gradually; nothing is a knife-edge. | §8 |
 # | So what ships? | A **five-feature onset bank** and the unchanged five-feature top bank, into the notebook-03 tournament. No feature is a detector; the combination has to earn it. | §7, §9 |
 #
-# **Two caveats inherited verbatim from the thesis**, because both bite here:
+# **Two caveats carried into every reading below**, because both bite here:
 # (1) correlated features make single-feature drops **understate** importance;
 # (2) with few positives, small deltas are noise — read big movements, never
 # decimals.
@@ -57,12 +56,12 @@
 #
 # ## The battery, section by section
 #
-# | Thesis | Their test | Our adaptation | Here |
-# |---|---|---|---|
-# | §6.2.3 | AP + AUROC as threshold-independent metrics | per-feature AUROC/AP vs the episode labels, CIs by instrument-cluster bootstrap | §4 |
-# | §7.1.3 | misclassification profiling | the `source_breadth` integrity check — a feature that works for the wrong reason is a false positive of *research*, not of trading | §3 |
-# | §7.2.1 | single-feature ablation on the model | drop-one ablation of a reference scorer (the un-weighted bank mean — the exact construction of the validated euphoria LEVEL) | §7 |
-# | §7.2.2 | graph perturbation — does the model *rely* on structure? | feature-noise perturbation — does the scorer *rely* on each input? | §8 |
+# | Test | What it does here | Here |
+# |---|---|---|
+# | Threshold-independent scoring | per-feature AUROC/AP vs the episode labels, CIs by instrument-cluster bootstrap | §4 |
+# | Integrity profiling | the `source_breadth` integrity check — a feature that works for the wrong reason is a false positive of *research*, not of trading | §3 |
+# | Single-feature ablation | drop-one ablation of a reference scorer (the un-weighted bank mean — the exact construction of the validated euphoria LEVEL) | §7 |
+# | Input perturbation | feature-noise perturbation — does the scorer *rely* on each input? | §8 |
 
 # %% [markdown]
 # ## 0 · Setup
@@ -110,7 +109,7 @@ def despine(ax, keep_bottom=True):
     ax.spines["bottom"].set_visible(keep_bottom)
 
 RESEARCH_DIR = ROOT / "docs" / "research"
-RNG = np.random.default_rng(42)   # thesis seed convention (42/100/2026)
+RNG = np.random.default_rng(42)   # fixed seed convention (42/100/2026) so every run is reproducible
 
 # %% [markdown]
 # ## 1 · The words this notebook uses
@@ -244,7 +243,7 @@ print(f"{time.time()-t0:.0f}s | {len(frame):,} candidate days, "
 #
 # **HOW IT WORKS**
 #
-# * The thesis's §7.1.3 lesson is to profile *why* something scores well before
+# * The rule this section applies: profile *why* something scores well before
 #   trusting it. So before scoring anything, count the archive by source and by
 #   year. This is a check on the **data**, not on the model, which is why it
 #   runs first.
@@ -331,10 +330,9 @@ ALL_FEATS = ONSET_BANK + TOP_BANK
 #
 # **HOW IT WORKS**
 #
-# * **AP leads, AUROC follows** (thesis §6.2.3). Under class imbalance AP is
-#   the metric that punishes false positives; AUROC summarises ranking quality
-#   but flatters rare classes. Both are reported so neither can be cherry-
-#   picked.
+# * **AP leads, AUROC follows.** Under class imbalance AP is the metric that
+#   punishes false positives; AUROC summarises ranking quality but flatters
+#   rare classes. Both are reported so neither can be cherry-picked.
 # * **AP is always quoted against its no-skill baseline**, which is the label
 #   prevalence — DERIVED, not chosen. An AP of 0.08 means nothing until you
 #   know the base rate is 0.06.
@@ -344,7 +342,7 @@ ALL_FEATS = ONSET_BANK + TOP_BANK
 #   produce intervals several times too tight and would let us call noise
 #   significant. The cluster is the instrument because that is the unit
 #   plausibly independent. 300 resamples, 90% interval, seed 42 (CONVENTION,
-#   the thesis's seed).
+#   the project's fixed seed, so the interval is reproducible).
 # * **`separates` is the pre-stated test**: the lower bound of the interval
 #   must clear 0.5. "Point estimate above 0.5" is not a finding, it is a
 #   coin-flip with a direction.
@@ -466,7 +464,9 @@ plt.show()
 # * Every feature is a percentile rank on [0,1], so the horizontal distance
 #   between the two humps is directly comparable across panels — no rescaling
 #   is needed and none is applied.
-# * This is the thesis's Figure-5.5 view, on our data.
+# * This is the distribution view of what §4 scored: one panel per feature,
+#   onset days against ordinary days, so the separation can be seen and not
+#   only read off a number.
 
 # %%
 fig, axes = plt.subplots(1, len(ONSET_BANK), figsize=(12.5, 2.9),
@@ -508,7 +508,7 @@ plt.show()
 #
 # **WHY THIS**
 #
-# * The thesis's own caveat, inherited verbatim: **correlated features make
+# * Caveat 1 from the verdict box bites here: **correlated features make
 #   single-feature drops understate importance.** Section 4 measured ten
 #   features as if independent. They are not.
 # * The decision that hangs on it: whether "five onset features" is really five
@@ -560,7 +560,7 @@ plt.show()
 # * **What changes: nothing is dropped here, but §7 is now read differently.**
 #   Because these features overlap, every drop-one result below **understates**
 #   the dropped feature's importance — the survivors absorb its job. That is
-#   the thesis's caveat, and it is why §7 refuses to adopt on the strength of
+#   exactly caveat 1, and it is why §7 refuses to adopt on the strength of
 #   a small delta.
 #
 # ---
@@ -586,8 +586,8 @@ plt.show()
 #   cooldowns, walk-forward — already lives in `analytics/euphoria.py` and is
 #   re-run on every rebuild; this is the score-function view of the same
 #   question.
-# * **Read big movements, not decimals** (thesis caveat 2, inherited): with
-#   these positive counts, a Δ AUROC of 0.002 is noise wearing a sign.
+# * **Read big movements, not decimals** (caveat 2 above): with these
+#   positive counts, a Δ AUROC of 0.002 is noise wearing a sign.
 
 # %%
 def bank_score(df, feats):
@@ -686,10 +686,9 @@ plt.show()
 #   not: a scraper misses a day, a platform changes its API, sentiment scoring
 #   drifts after a model update. A research result that only holds on pristine
 #   data is not a result a desk can run.
-# * This is the thesis's §7.2.2 perturbation test, adapted. Chan corrupted the
-#   *graph* to prove her model relied on structure rather than on node
-#   attributes. The equivalent question here is whether the bank relies on any
-#   one *feed* — so the corruption is applied to one feature at a time.
+# * This is a perturbation test. The question it answers is whether the bank
+#   relies on any one *feed* — so the corruption is applied to one feature at
+#   a time, and the cost of degrading it is measured.
 #
 # **HOW IT WORKS**
 #
@@ -784,8 +783,8 @@ print(f"most damaging feed to lose: {plain(_worst_feat)} "
 #
 # * **No single crowd measurement is a euphoria detector.** AUROCs sit in the
 #   0.51–0.59 band. This is not a disappointing result to be buried — it is the
-#   same finding the thesis reaches, that attention features *select
-#   candidates* while gates, combination and confirmation do the actual work.
+#   finding that attention features *select candidates* while gates,
+#   combination and confirmation do the actual work.
 #   Anyone shipping a single magic crowd variable would be shipping an overfit.
 # * **The weak signal is nonetheless real.** Eight of ten feature/label pairs
 #   clear no-skill with the confidence interval excluding 0.5, and precision

@@ -2,14 +2,14 @@
 
 WHY THIS MODULE EXISTS
 ----------------------
-The methods in this repo follow Chan (2026) closely, and her notation is the
-right notation for a thesis: ``s_conf``, ``s_z``, ``s_enh``, ``e1..e5``, AP,
+The research half of this repo uses research notation, and that is the right
+notation for a research record: ``s_conf``, ``s_z``, ``s_enh``, ``e1..e5``, AP,
 AUROC, homophily, DICE.  It is the wrong notation for a portfolio manager
 reading a chart between meetings.  The desk decision (2026-07-27) was
 therefore:
 
-* the METHODS keep Chan's definitions, unchanged - the research must stay
-  replicable against her thesis;
+* the METHODS keep their formal definitions, unchanged - the research must
+  stay reproducible;
 * every LABEL a human reads is translated into the words that human would
   use;
 * the translation lives in exactly ONE file, imported by the dashboard and by
@@ -72,7 +72,7 @@ PLAIN: dict[str, str] = {
     "top": "euphoria ending (GET OUT)",
     "lead_days": "days of warning before the drop",
     "hit": "the drop actually came",
-    # --- influence scoring (Chan section 4.6) ------------------------------
+    # --- influence scoring ------------------------------------------------
     "composite": "usefulness score",
     "s_conf": "how reliably their calls worked",
     "s_z": "how much better than chance",
@@ -120,7 +120,7 @@ PLAIN: dict[str, str] = {
 # THE DEFINITIONS
 #
 # One or two sentences each, written to answer "what IS that" for a reader who
-# has never seen the thesis.  The notebooks print this; the dashboard uses the
+# has never seen the notebooks.  The notebooks print this; the dashboard uses the
 # short PLAIN form in help= tooltips.  Anything a defence panel could ask
 # "define that" about should have an entry.
 # ---------------------------------------------------------------------------

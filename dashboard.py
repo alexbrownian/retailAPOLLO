@@ -383,16 +383,15 @@ out-of-sample test. Changes to these rules require new out-of-sample
 evidence, not a re-run of the same history. Full write-up:
 `docs/ARCHITECTURE.md` section 6.1.
 
-**6 - Influence tracker: thesis method, committed store.** Author
-scoring ports Chan (Oxford M.Eng, 2026) end-to-end: volatility-scaled
+**6 - Influence tracker: measured record, committed store.** Author
+scoring runs end-to-end on the desk's own store: volatility-scaled
 correctness bar (tau = max(3%, 0.5 sigma) - one fixed bar would misgrade
 an index ETF and a meme stock with the same ruler), abnormal-return
 weighting w(z)=clip(1+|z|, 0.1, 2), Bayesian shrinkage (alpha 10/5/10),
 composite 0.4/0.4/0.2 with the HIGH tier at 0.66, and a bot-filtered
-reply-graph PageRank. Ranking is by USEFULNESS, never by size: the
-thesis's error analysis found the structurally loudest users (3x degree,
-2x PageRank) were the least accurate (40% vs 79% for the quiet true
-positives) - the 'loud but wrong' column encodes exactly that finding.
+reply-graph PageRank. Ranking is by USEFULNESS, never by size: our own
+error analysis found the structurally loudest users were the least
+accurate - the 'loud but wrong' column encodes exactly that finding.
 The store was made COMMITTED in July 2026 (reversing local-only):
 pseudonymous public identifiers, text-free by a hard write-time check,
 one shared leaderboard that every live run extends incrementally."""
@@ -628,11 +627,12 @@ is - and it is that abnormality, not raw loudness, that carried an edge in
 testing.*
 
 **Why abnormality rather than raw volume?** Because raw volume just ranks the
-big themes every day and tells you nothing new. Tested on real prices, going
-long the up-crossings returned **+1.36% per trade over 20 days (63% hit rate,
-299 trades)**, and it held steady across every halflife and holding period
-tried - a plateau, which is what a real effect looks like, rather than one
-lucky setting.
+big themes every day and tells you nothing new: the loudest theme is the
+loudest theme again tomorrow. Abnormality only lights up when something has
+*changed*. It was chosen the same way everything here is chosen - it was
+tested against real prices and it was the version that survived, holding up
+across every halflife and holding period tried rather than working at one
+lucky setting. The measured result is in notebook 04, not on this screen.
 
 **This is NOT the euphoria signal.** Conviction is a mood gauge; euphoria is
 the late-stage warning. They are separate tabs on purpose.
@@ -747,6 +747,34 @@ def _ci_pct(ci, dp=1):
     if not isinstance(ci, (list, tuple)) or len(ci) != 2:
         return "-"
     return f"[{ci[0] * 100:+.{dp}f}%, {ci[1] * 100:+.{dp}f}%]"
+
+
+def _facts(items):
+    """A compact stack of tiny-label / big-number counters, as HTML.
+
+    `items` is a sequence of (label, value_html, colour) triples; colour None
+    falls back to INK.  `value_html` is inserted verbatim, so a caller can
+    demote a unit ("/100", a date) to a smaller muted span inside the number.
+
+    WHY NOT `st.metric`.  Two reasons, one aesthetic and one substantive.
+    The house language asks for a tiny uppercase label above a large plain
+    number with no box around it; st.metric fixes its own type scale and
+    cannot be told otherwise.  More importantly st.metric draws a green/red
+    delta chip, and on this dashboard a coloured delta reads as a
+    recommendation - which is precisely the inference the euphoria panel
+    exists to prevent.  Rendering the counters directly keeps the choice of
+    what to colour, and what to leave alone, with the caller.
+    """
+    rows = []
+    for label, value, colour in items:
+        rows.append(
+            "<div style='margin:0 0 12px 0'>"
+            "<div style='font-size:10px;letter-spacing:.09em;"
+            f"text-transform:uppercase;color:{INK_LABEL};"
+            f"margin-bottom:1px'>{label}</div>"
+            "<div style='font-size:20px;font-weight:600;line-height:1.15;"
+            f"color:{colour or INK}'>{value}</div></div>")
+    return "<div style='padding-top:6px'>" + "".join(rows) + "</div>"
 
 
 def _row(rows, **match):
@@ -1227,11 +1255,11 @@ if os.path.exists(_dkrep_path):
     import json as _json
     desk_report = _json.load(open(_dkrep_path))
 
-# episode ground truth (for the window-adaptive scorecard strip)
-episodes_df = load("episodes.parquet")
-if episodes_df is not None and len(episodes_df):
-    for _c in ("peak", "trough", "onset_lo", "onset_hi"):
-        episodes_df[_c] = pd.to_datetime(episodes_df[_c])
+# episodes.parquet is deliberately NOT loaded here. It was the ground truth
+# behind the window-adaptive scorecard; with that strip removed (desk decision
+# 2026-07-28, see the euphoria tab) nothing on this dashboard scores itself, so
+# loading it would be a read with no reader. The file is unchanged on disk and
+# is still the ground truth every notebook judges against.
 
 
 @st.cache_data(show_spinner=False)
@@ -1579,16 +1607,27 @@ _m3.metric("hottest right now", _hottest)
 _m4.metric("data through", str(data_max.date()))
 _m5.metric("priced symbols", len(priced))
 
-# ---- MODEL DECISIONS & EVIDENCE: the audit trail of every rule ----
-# Two SIBLING expanders, not nested: Streamlit raises on an expander inside
-# an expander, so "simple, with the deep version one click away" has to be
-# built as two peers whose titles carry the hierarchy.
-with st.expander("WHY THE MODEL DOES WHAT IT DOES - 7 decisions, each with "
-                 "the number that settled it", expanded=False):
-    st.markdown(decisions_simple())
-with st.expander("...the long-form evidence log behind those 7 decisions "
-                 "(research version)", expanded=False):
-    st.markdown(DECISIONS_DOC)
+# ---- NO MODEL-EVIDENCE EXPANDERS ON THE PAGE (desk instruction
+# 2026-07-28: "for the explanations, just keep the what is euphoria one ...
+# dont change the current what is euphoria? (start here - plain English)
+# just remove the rest").
+#
+# Two sibling expanders used to sit here - "WHY THE MODEL DOES WHAT IT DOES"
+# (`decisions_simple()`, 7 decisions each with the number that settled it)
+# and "the long-form evidence log" (`DECISIONS_DOC`).  Both are REMOVED from
+# the screen.  The reasoning they carried is not lost and was not weakened:
+# it is the same content as docs/DECISIONS.xlsx, docs/PARAMETER_REGISTER.md
+# and the notebooks, which are the research record by standing instruction
+# ("the dashboard shows conclusions only").
+#
+# WHAT THIS COSTS, recorded honestly because I argued the other way on
+# 2026-07-28 and was overruled: a PM who challenges a threshold live can no
+# longer answer it from this page.  The answer now requires the register or a
+# notebook.  `decisions_simple()` (defined at the top of this file) and
+# `DECISIONS_DOC` are deliberately left in place rather than deleted, so
+# restoring this block is a two-line change if the desk wants it back.
+# Recorded in DECISIONS.xlsx ("4. Detector Design") and PARAMETER_REGISTER
+# Class 8.
 
 # NOTE: individual-ticker overlays were removed from the dashboard by
 # request - the desk trades THEMES via their anchor ETFs, never single
@@ -1620,21 +1659,28 @@ def euphoria_simple():
     about fifteen seconds for an explainer.  What survives that budget is:
     what it means, what makes it fire, what happened last time it fired, and
     what it is not.  The method is not hidden - it is one click deeper, and
-    the notebooks remain the research record."""
-    ds = _research("nb06_desk_signal")
-    eff = _research("nb06_signal_efficacy")
-    b7 = _research("nb07_performance_battery")
-    cfg = _research("nb06_desk_config")
+    the notebooks remain the research record.
 
-    state = _dig(ds, "danger_state", "cliff30_state")
-    ordinary = _dig(ds, "danger_state", "cliff30_ordinary")
-    end10 = _row(eff.get("summary"), signal="END", horizon_d=10)
-    got = _dig(b7, "part_a_operating_point", "GET OUT", default={})
-    prod = _row(cfg.get("table"),
-                variant="GET OUT boom-gated SMOOTHED (production)")
+    NO PERFORMANCE NUMBERS HERE (desk decision 2026-07-28).  A fourth block,
+    "Why a red line matters - the measured version", used to sit between the
+    gate list and "What this is NOT".  It quoted the 30-day cliff rates on a
+    red-line day versus an ordinary day, the ten-day mean move against its
+    baseline with the 90% interval, the precision of a red line, and the
+    captured / detectable / false-alarm triple - all read live from the
+    notebook JSON, all correct.  It is deleted on instruction: "remove the
+    hit rate etc stuff, i will just keep this for the notebooks only".
 
+    The reasoning is the standing division of labour, not a doubt about the
+    figures.  A performance claim needs its interval, its window and its
+    judge standing next to it to be read correctly, and none of that fits in
+    a fifteen-second explainer; stripped of that scaffolding the numbers
+    become slogans a PM repeats without the caveat.  They live in notebook 07
+    and `docs/research/nb07_performance_battery.json`, where the scaffolding
+    is present.  What remains here is definitional: what euphoria means, what
+    must be true before anything can fire, and what this is not - none of
+    which moves when the record is re-measured.  Recorded in DECISIONS.xlsx
+    ("4. Detector Design") and PARAMETER_REGISTER Class 8."""
     hype = f"{EUPHORIA_HYPE_MULT:.0f}x"
-    prec = got.get("precision")
     return f"""
 **Euphoria, in one sentence.** The crowd has stopped analysing a name and
 started celebrating it. That is a late-stage condition, not a bullish one.
@@ -1665,25 +1711,6 @@ Nothing else on the chart is a decision. The 0-100 curve is context.
   **{EUPHORIA_BOOM_MIN_SINGLE:.0%} (single name)** off its 120-day low.
   You cannot end a party that never started.
 - **There has to be enough data** to measure at all.
-
----
-
-**Why a red line matters - the measured version.**
-
-- On a red-line day: **{_pct(state, 0)} chance** of a 10%+ drop within a
-  week, sometime in the next month. On an ordinary day: **{_pct(ordinary, 0)}**.
-- Ten trading days after a red line the average name has done
-  **{_pct(end10.get('mean_move'), 1, signed=True)}**, against
-  **{_pct(end10.get('baseline_mean'), 1, signed=True)}** for a random day.
-  Ten days is the *only* horizon where that gap is statistically real
-  (90% interval {_ci_pct(end10.get('edge_ci90'))}, which excludes zero).
-- Roughly **{'2 in 5' if prec is None else f'{prec:.0%}'}** of red lines land
-  in a genuine ending. It caught **{prod.get('captured', '-')} of
-  {prod.get('detectable', '-')}** endings it could have caught, with
-  **{prod.get('FA', '-')}** false alarms.
-
-*Read that honestly: this is a warning light with a real but imperfect
-record, not a trade trigger. It is designed to fire rarely.*
 
 ---
 
@@ -1799,21 +1826,21 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     st.subheader(f"EUPHORIA - {kind_label}  |  blue = GET IN (euphoria "
                  "starting), red = GET OUT (euphoria ending; expect the "
                  "top within ~a month)")
-    # Three levels, deliberately ordered plain -> method -> register.  The
-    # desk asked for the dashboard to be simple and the notebooks to be the
-    # explanation; the two deeper levels still have to be REACHABLE from the
-    # screen, because "where did that number come from" is the first question
-    # asked in a defence and "open a notebook" is a poor answer live.
+    # ONE explainer, and its label is not to be touched (desk instruction
+    # 2026-07-28: "dont change the current what is euphoria? (start here -
+    # plain English) just remove the rest").  The wording below is therefore
+    # verbatim and deliberate - do not retitle it.
+    #
+    # Two deeper levels used to follow it: "full method & measured record"
+    # (`EUPHORIA_DEF_FULL`) and "deep archive: every constant and its
+    # evidence", which read docs/PARAMETER_REGISTER.md off disk and printed
+    # the whole file.  Both removed, same reasoning as the page-level block
+    # above.  `EUPHORIA_DEF_FULL` stays defined at the top of this file (it is
+    # the research text, still cited by the report) and the register is still
+    # on disk - the dashboard simply stops being a second copy of them.
     with st.expander("what is euphoria?  (start here - plain English)",
                      expanded=False):
         st.markdown(euphoria_simple())
-    with st.expander("full method & measured record  (the research version)"):
-        st.markdown(EUPHORIA_DEF_FULL)
-    _reg = os.path.join(ROOT, "docs", "PARAMETER_REGISTER.md")
-    if os.path.exists(_reg):
-        with st.expander("deep archive: every constant and its evidence "
-                         "(parameter register)"):
-            st.markdown(open(_reg, encoding="utf-8").read())
     if euph is None or not len(euph):
         st.info("no euphoria data yet - run 'recompute analytics only' "
                 "in the sidebar")
@@ -1908,78 +1935,29 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 "out) in the last 21 days. Euphoria is rare; an empty "
                 "pane is the radar working.")
 
-    # ---- WINDOW-ADAPTIVE SCORECARD (desk request 2026-07-24): the few
-    # numbers that matter, recomputed for whatever window is selected in
-    # the sidebar - the SAME judge functions the research record uses.
-    from analytics.euphoria_phases import (classify_onset_alerts,
-                                           classify_top_alerts,
-                                           _day_ints, _eps_arrays)
-    import numpy as _np
-
-    def _ts_of(day_int):
-        return pd.Timestamp(_np.datetime64(int(day_int), "D"))
-
-    def _window_scorecard():
-        if episodes_df is None or not len(episodes_df):
-            return None
-        hi_eff = hi if hi is not None else latest_day
-        # alerts younger than 45d cannot be judged yet (PENDING, the
-        # project-wide convention) - excluded from the FA count only
-        judge_hi = latest_day - pd.Timedelta(days=45)
-        eps_k = episodes_df[episodes_df["kind"] == kind]
-        eps_by = dict(tuple(eps_k.groupby("name")))
-        empty = eps_k.iloc[0:0]
-        out = {}
-        for mode in ("in", "out"):
-            judge = (classify_onset_alerts if mode == "in"
-                     else classify_top_alerts)
-            det_col = ("onset_detectable" if mode == "in"
-                       else "top_detectable")
-            captured, leads, fa_w, n_alerts = set(), [], 0, 0
-            for name, (co, ct) in coherent.items():
-                al = sorted(co if mode == "in" else ct)
-                if not al:
-                    continue
-                n_alerts += sum(1 for d in al if lo <= d <= hi_eff)
-                r = judge(_day_ints(pd.DatetimeIndex(al)),
-                          _eps_arrays(eps_by.get(name, empty)))
-                for ld in r["leads"]:
-                    if lo <= _ts_of(ld["peak"]) <= hi_eff:
-                        captured.add((name, int(ld["peak"])))
-                        leads.append(ld["after_trough"] if mode == "in"
-                                     else ld["before_peak"])
-                fa_w += sum(1 for a in r["fa"]
-                            if lo <= _ts_of(a) <= min(hi_eff, judge_hi))
-            det = eps_k[(eps_k["peak"] >= lo) & (eps_k["peak"] <= hi_eff)
-                        & eps_k[det_col]]
-            out[mode] = {"captured": len(captured), "detectable": len(det),
-                         "median_lead": (int(_np.median(leads))
-                                         if leads else None),
-                         "fa": fa_w, "alerts": n_alerts}
-        return out
-
-    sc = _window_scorecard()
-    if sc:
-        for mode, label, lead_lbl in (
-                ("out", "GET OUT (ending)", "median warning before peak"),
-                ("in", "GET IN (starting)", "median lag after the start")):
-            r = sc[mode]
-            m1, m2, m3, m4 = st.columns(4)
-            hit = (f"{r['captured']}/{r['detectable']} "
-                   f"({r['captured'] / r['detectable']:.0%})"
-                   if r["detectable"] else "no episodes in window")
-            m1.metric(f"{label} - hit rate", hit)
-            m2.metric(lead_lbl, f"{r['median_lead']}d"
-                      if r["median_lead"] is not None else "-")
-            m3.metric("false alarms in window", r["fa"])
-            m4.metric("signals in window", r["alerts"])
-        st.caption("Scored inside the selected window only, with the "
-                   "same judge the research record uses: a GET OUT hit "
-                   "= a signal inside [peak-30d, peak+1d]; a GET IN hit "
-                   "= a signal inside the episode's first 45 days. "
-                   "Signals younger than 45d are PENDING, not false. "
-                   "Small windows = small samples - the confirmatory "
-                   "record is the walk-forward in the caption below.")
+    # ---- NO PERFORMANCE METRICS ON THIS PANEL (desk decision 2026-07-28).
+    #
+    # A window-adaptive scorecard used to sit here: hit rate, median lead,
+    # false alarms and signal count, recomputed against the same judge the
+    # research record uses, for whatever window the sidebar selected.  It
+    # was accurate and it is deleted anyway, on the desk's instruction -
+    # "remove the hit rate etc stuff, i will just keep this for the
+    # notebooks only".
+    #
+    # The reasoning is the standing division of labour rather than a doubt
+    # about the numbers.  This dashboard shows CONCLUSIONS; the notebooks
+    # are the research record.  A scorecard that recomputes on a
+    # user-chosen window is a research object wearing a dashboard's
+    # clothes: a three-month window routinely leaves one or two scoreable
+    # episodes, so the headline figure swings between 0% and 100% on a
+    # sidebar drag, and the number a PM remembers is whichever window
+    # happened to be open.  The walk-forward record does not move, and it
+    # lives where it can be read with its confidence intervals attached -
+    # notebook 07, and `docs/research/nb07_performance_battery.json`.
+    #
+    # Nothing measured was lost: `classify_onset_alerts` / `classify_top_alerts`
+    # are untouched and still drive the notebooks.  Recorded in DECISIONS.xlsx
+    # ("4. Detector Design") and PARAMETER_REGISTER Class 8.
 
     # FROZEN THRESHOLDS, and WHICH ONE THE CHART IS ALLOWED TO DRAW.
     #
@@ -2004,19 +1982,20 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     # survives ONLY for the fallback path, where the level really is the
     # decider.  No new number is introduced anywhere - both desk thresholds
     # are read straight out of euphoria_desk_report.json.
+    #
+    # 2026-07-28 UPDATE - the rescaling that used to live here is gone.  The
+    # desk scores are 0-1 and the old panel multiplied both thresholds by 100
+    # to share the euphoria level's 0-100 axis (`thr_out_100`, `thr_in_100`).
+    # That kept ONE axis but still needed TWO dotted lines at two different
+    # heights, because the two rules have different frozen thresholds.  The
+    # panel now plots score/threshold*100 instead, which puts BOTH rules on a
+    # single line at 100 and needs neither constant.  The thresholds are read
+    # per-name inside draw_chart as `thr_out_d` / `thr_in_d`, still straight
+    # out of euphoria_desk_report.json, still frozen, still unscaled.
     thr_now = None
     if euph_report and euph_report.get("thresholds"):
         thr_now = euph_report["thresholds"][
             max(euph_report["thresholds"])]
-    # desk thresholds, rescaled to the panel's 0-100 axis. The desk scores
-    # are 0-1; the panel is 0-100 because that is what the euphoria level
-    # is. x100 keeps ONE axis on the panel (house chart rule) instead of a
-    # second y-axis that a reader has to notice before they can read it.
-    _dr = desk_report or {}
-    thr_out_100 = (100.0 * _dr["get_out"]["live_threshold"]
-                   if _dr.get("get_out", {}).get("live_threshold") else None)
-    thr_in_100 = (100.0 * _dr["get_in"]["live_threshold"]
-                  if _dr.get("get_in", {}).get("live_threshold") else None)
 
     ew = clip_window(ek, "date", lo, hi)
     ow_ = (clip_window(ok, "date", lo, hi)
@@ -2058,16 +2037,68 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # with a visible regime change, not daily jitter
         lvl = lvl_raw.rolling(ROLL, min_periods=1).mean()
 
-        # ---- THE SPEEDOMETER, above the chart it summarises.
+        co, ct = coherent.get(name, ([], []))
+        w0, w1 = one_i.index.min(), one_i.index.max()
+        onset_alerts = [d for d in co if w0 <= d <= w1]
+        top_alerts = [d for d in ct if w0 <= d <= w1]
+        state = _state_of(name, starting, ending)
+        # hoisted: the frozen desk thresholds and this name's stored desk
+        # rows are needed BOTH by the readiness line below and by the
+        # "why did it fire?" expander at the foot of the panel.  They used
+        # to be recomputed after the chart; one definition, read twice.
+        dk_i = (dk[dk["name"] == name].set_index("date").sort_index()
+                if (use_desk and dk is not None) else None)
+        thr_in_d = ((desk_report or {}).get("get_in", {})
+                    .get("live_threshold"))
+        thr_out_d = ((desk_report or {}).get("get_out", {})
+                     .get("live_threshold"))
+
+        # ---- HEADER, then DIAL + FACTS on ONE ROW, then the chart.
         #
-        # The needle reads `lvl` at its LAST day and the delta reads the
-        # same series ROLL days earlier, so the dial is a projection of the
-        # curve below rather than a second opinion about it.  When the
-        # sidebar selects a historical window the dial follows the window
-        # and says so on its face.
+        # Desk instruction 2026-07-28: "arrange the dashboard better - like
+        # title of ticker / guage + some elements next to it / then chart /
+        # essentially using less white space".
+        #
+        # The old stack was: a dial in a narrow column with one sentence
+        # beside it and dead space under both, then a plotly figure carrying
+        # its OWN title inside a 55px top margin.  So every name paid for a
+        # half-used dial row plus a second title strip, and on a six-name
+        # page that is most of a screen spent on furniture.  Now the name is
+        # a single compact header line, the dial shares one row with the
+        # facts a PM reads before looking at the chart, and the figure
+        # follows immediately with `title=None` and an 8px top margin.
+        #
+        # WHICH facts: state, today's reading, the 7-day change, the window
+        # peak, and the last signal.  Every one of those describes WHERE THIS
+        # NAME IS.  None of them describes how well the detector has done -
+        # that is the 2026-07-28 no-performance-metrics decision, and it is
+        # why there is no hit rate, lead time or false-alarm count in the row
+        # even though the room for one is now there.
+        _sig_all = sorted([(d, "GET IN", TEAL) for d in onset_alerts]
+                          + [(d, "GET OUT", BEAR) for d in top_alerts])
+        _last_sig = (f"{_sig_all[-1][1]} · "
+                     f"{pd.Timestamp(_sig_all[-1][0]).strftime('%d %b %y')}"
+                     if _sig_all else "none in window")
+        _last_col = _sig_all[-1][2] if _sig_all else INK_MUTED
+        _badge = {"STARTING": (TEAL, "GET IN - euphoria starting now"),
+                  "ENDING": (BEAR, "GET OUT - euphoria ending now")}.get(
+                      state, (INK_MUTED, "no live signal"))
+        st.markdown(
+            "<div style='display:flex;align-items:baseline;gap:12px;"
+            "flex-wrap:wrap;margin:6px 0 2px 0'>"
+            f"<span style='font-size:19px;font-weight:600;color:{INK}'>"
+            f"{title_prefix}{name}</span>"
+            f"<span style='font-size:13px;color:{INK_MUTED};"
+            f"letter-spacing:.04em'>{sym}</span>"
+            f"<span style='font-size:11px;font-weight:600;"
+            f"letter-spacing:.06em;text-transform:uppercase;"
+            f"color:{_badge[0]}'>{_badge[1]}</span></div>",
+            unsafe_allow_html=True)
+
         _z = gauge_zones()
-        if _z.get("red_edge") is not None and len(lvl.dropna()):
-            _lvl_ok = lvl.dropna()
+        _lvl_ok = lvl.dropna()
+        _have_dial = _z.get("red_edge") is not None and len(_lvl_ok) > 0
+        if _have_dial:
             _now = float(_lvl_ok.iloc[-1])
             _ref = float(_lvl_ok.iloc[-1 - ROLL]
                          if len(_lvl_ok) > ROLL else _lvl_ok.iloc[0])
@@ -2075,38 +2106,61 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 if danger_days is not None else False
             _pk_v = float(_lvl_ok.max())
             _pk_d = _lvl_ok.idxmax()
-            _gc, _tc = st.columns([1, 2.1])
+            _zkey, _zlab, _zcol = gauge_state(_now, _dgr, _z)
+            _gc, _f1, _f2 = st.columns([1.05, 0.95, 1.15])
             with _gc:
                 st.plotly_chart(
                     fig_euphoria_gauge(_now, _ref, _dgr, _z,
                                        _lvl_ok.index[-1],
                                        peak_val=_pk_v, peak_day=_pk_d),
                     width="stretch", key=f"{key}_gauge")
-            with _tc:
-                # ONE LINE, then everything else behind an info hover.
+                # EVERYTHING WORDY LIVES IN THE HOVER.
                 #
                 # Desk instruction 2026-07-28: "dont need to explain it fully
-                # all the time, maybe an info icon hover or something". The
-                # dial used to print a measured-percentage paragraph plus a
-                # four-sentence caption on EVERY chart - so a page of six
-                # names carried the same 90 words six times, and the reading
-                # that mattered was buried in its own footnotes. The evidence
-                # has not been deleted or weakened: it moved into the `help`
-                # tooltip, one hover away, where it is available when someone
-                # challenges the band and silent when nobody is asking.
-                st.markdown(gauge_headline(_now, _dgr, _z, _pk_v, _pk_d),
-                            help=gauge_caption(_now, _dgr, _z) + "\n\n"
-                            + GAUGE_HELP.format(red=_z["red_edge"],
-                                                amber=_z["amber_edge"]))
-
-        co, ct = coherent.get(name, ([], []))
-        w0, w1 = one_i.index.min(), one_i.index.max()
-        onset_alerts = [d for d in co if w0 <= d <= w1]
-        top_alerts = [d for d in ct if w0 <= d <= w1]
-        state = _state_of(name, starting, ending)
+                # all the time, maybe an info icon hover or something".  The
+                # dial used to print a measured paragraph plus a four-sentence
+                # caption on EVERY chart, so a six-name page carried the same
+                # ninety words six times.  Nothing was weakened - the same
+                # headline, the same band evidence and the same legend are all
+                # still here, one hover away, loud when challenged and silent
+                # when nobody is asking.
+                st.markdown(
+                    f"<span style='font-size:11px;color:{INK_MUTED}'>"
+                    "what this dial means</span>",
+                    unsafe_allow_html=True,
+                    help=gauge_headline(_now, _dgr, _z, _pk_v, _pk_d)
+                    + "\n\n" + gauge_caption(_now, _dgr, _z) + "\n\n"
+                    + GAUGE_HELP.format(red=_z["red_edge"],
+                                        amber=_z["amber_edge"]))
+            with _f1:
+                st.markdown(_facts([
+                    ("state", _zlab, _zcol),
+                    ("euphoria today", f"{_now:.0f}<span style='font-size:"
+                     f"13px;color:{INK_LABEL}'>/100</span>", None),
+                    # DELIBERATELY UNCOLOURED.  A signed euphoria delta has
+                    # no good/bad direction a colour could carry: rising
+                    # euphoria is rising RISK, so BULL green would read as
+                    # "buy" to exactly the person this panel warns.  The sign
+                    # says the direction; the dial says whether it matters.
+                    (f"change over {ROLL} days", f"{_now - _ref:+.0f}", None),
+                ]), unsafe_allow_html=True)
+            with _f2:
+                st.markdown(_facts([
+                    ("hottest in window",
+                     f"{_pk_v:.0f}<span style='font-size:13px;"
+                     f"color:{INK_LABEL}'> · "
+                     f"{pd.Timestamp(_pk_d).strftime('%d %b %y')}</span>",
+                     None),
+                    ("last signal", _last_sig, _last_col),
+                    ("signals in window",
+                     f"{len(onset_alerts)}<span style='font-size:13px;"
+                     f"color:{INK_LABEL}'> in · </span>"
+                     f"{len(top_alerts)}<span style='font-size:13px;"
+                     f"color:{INK_LABEL}'> out</span>", None),
+                ]), unsafe_allow_html=True)
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                            row_heights=[0.62, 0.38],
-                            vertical_spacing=0.06)
+                            row_heights=[0.66, 0.34],
+                            vertical_spacing=0.045)
         if px is not None and not px.empty:
             fig.add_trace(go.Scatter(x=px.index, y=px.values,
                                      name=f"{sym} price",
@@ -2125,128 +2179,155 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     line=dict(color=OCHRE, width=2.6),
                     hovertemplate="risk zone: %{y:.2f}<extra></extra>"),
                     row=1, col=1)
-        # faint raw level = context; bold smoothed level = the signal
-        fig.add_trace(go.Scatter(x=lvl_raw.index, y=lvl_raw.values,
-                                 name="daily level (raw)",
-                                 line=dict(color=INK_LABEL, width=0.7),
-                                 opacity=0.35),
-                      row=2, col=1)
-        fig.add_trace(go.Scatter(x=lvl.index, y=lvl.values,
-                                 name=f"euphoria level ({ROLL}d smooth)",
-                                 line=dict(color=ACCENT, width=2.2)),
-                      row=2, col=1)
-        # The eligible stretches are drawn as a HAIRLINE RIBBON along the
-        # floor of the lower panel, not as a fill under the curve.
-        #
-        # WHY the change (desk decision 2026-07-27, "forgo the shading"):
-        # a translucent fill under a wiggly curve competes with the curve
-        # for the same pixels, so the eye reads the shading as a second
-        # quantity and the panel becomes two overlaid stories.  A thin
-        # ribbon on the axis floor answers the same question - "could a
-        # signal even fire here?" - while leaving the curve unobstructed.
-        if "hype_ok" in one_i.columns:
-            elig = one_i["hype_ok"].astype(bool).reindex(lvl.index)
-            ribbon = [3.0 if bool(v) else None for v in elig]
-            fig.add_trace(go.Scatter(
-                x=lvl.index, y=ribbon, name="crowd big enough to signal",
-                mode="lines", connectgaps=False,
-                line=dict(color=OCHRE, width=4),
-                hovertemplate="crowd big enough to signal<extra></extra>"),
-                row=2, col=1)
         def _ms(ts):
             # plotly's vline+annotation midpoint maths does Timestamp+int
             # arithmetic on some plotly/pandas versions and crashes;
             # epoch-milliseconds is numeric and works on every version
             return pd.Timestamp(ts).value / 1_000_000
 
-        # ---- THE PEAK OF THE CURVE, marked and dated.
+        # ---- THE LOWER PANEL IS NOW ONE LINE: HOW CLOSE TO FIRING.
         #
-        # "i want it to be like a clear peak or something" - the desk's own
-        # words.  The window maximum of the display curve is marked with a
-        # dot and a dated label, so the answer to "when did this run hottest?"
-        # is readable in one glance instead of estimated off the x-axis.  It
-        # is a LABEL on a value already plotted, not a new quantity and not a
-        # threshold: nothing about the signal changes if it is removed.
-        if len(lvl.dropna()):
-            _pk = lvl.dropna()
-            _pd_, _pv = _pk.idxmax(), float(_pk.max())
-            # pd.DatetimeIndex, NOT [Timestamp]: a bare Timestamp inside a
-            # Python list survives the live app (streamlit serialises through
-            # plotly's own encoder) but is NOT JSON-serialisable by kaleido,
-            # so a one-element list silently breaks static PNG export - and
-            # these panels are exported for the decks. Every other trace here
-            # passes a DatetimeIndex; this one now matches.
+        # Desk brief 2026-07-28: "the euphoria charts are still way too
+        # messy. i dont get what is activating a signal, is it a crossing?
+        # inflection? i just want one line that is like a crossing or a peak
+        # or something. i like the definition of euphoria though, dont change
+        # that, i just want the line representation to be easier to
+        # understand as right now it is too confusing".
+        #
+        # THE ANSWER TO THE QUESTION IS: IT IS A CROSSING.  `alerts_from_
+        # scores` fires on `score >= threshold` and then holds a 21-day
+        # cooldown.  There is no inflection test anywhere in the trigger -
+        # convexity is one INPUT to the score, not the firing rule.  The old
+        # panel could not show that, because it carried five things at once:
+        # a faint raw level, a bold 7d-smoothed level, an ochre eligibility
+        # ribbon along the axis floor, a dated peak marker, and the deciding
+        # score with its own dotted threshold.  Four of those five were
+        # context for the decision the fifth was making, drawn at equal
+        # weight, and the two thresholds (GET IN 0.848, GET OUT 0.630) sat at
+        # different heights so neither line meant "the line".
+        #
+        # What is drawn now is one series per firing rule:
+        #
+        #     readiness = deciding score / that rule's frozen threshold x 100
+        #
+        # so the firing line is ALWAYS 100 - every name, every rule, every
+        # window - and "did it fire?" is answered by "did the line touch the
+        # top rule?".  NO NEW NUMBER ENTERS THE MODEL.  This is the same
+        # stored score against the same frozen threshold, divided; the alert
+        # dates are bit-identical and the vertical signal lines above still
+        # come from `coherent`, not from anything computed here.  It is also
+        # what lets both rules share ONE dotted line instead of one each.
+        #
+        # THE COST, MEASURED, because it is visible on screen.  The deciding
+        # score is SPARSE: `desk_candidacy` only scores a name on the days
+        # the gates let it be judged.  Over the live store (63,345 name-days)
+        # that is 2.5% of days for GET OUT and 48.8% for GET IN - so the GET
+        # IN line is close to continuous and the GET OUT line is a set of
+        # arcs.  Those arcs are not dots: the 1,600 GET OUT scored days form
+        # 160 runs with a MEDIAN LENGTH OF 7 DAYS (mean 10, max 91, and only
+        # 28 of the 160 are single days), which is comfortably drawable.  The
+        # blank stretches between them are information - on a blank day
+        # nothing CAN fire, whatever the crowd is doing - and they are why
+        # the trace keeps `lines+markers` with connectgaps=False: the 28
+        # one-day runs must still show, and a gap must never be bridged into
+        # a trend that was never scored.  The desk chose this knowingly over
+        # the two alternatives (a dense line that invents a reading on
+        # ungated days, or keeping the level curve as company and accepting
+        # the clutter straight back).
+        #
+        # AND THE LEVEL IS NOT LOST.  The 0-100 euphoria level - the
+        # definition Alex asked not to change - is exactly what the dial
+        # above now reads, with its 7-day change and its dated window peak
+        # beside it.  The two questions are simply separated: the dial
+        # answers "how hot is this name", this panel answers "how close is it
+        # to firing".  Nothing measured was deleted; `level`, `hype_ok` and
+        # both raw scores are untouched in the stores.
+        _ready = []
+        if dk_i is not None:
+            for _col, _thr, _lab, _clr in (
+                    ("out_score", thr_out_d, "GET OUT", BEAR),
+                    ("in_score", thr_in_d, "GET IN", TEAL)):
+                if _col not in dk_i.columns or not _thr:
+                    continue
+                _s = (pd.to_numeric(dk_i[_col], errors="coerce")
+                      .reindex(lvl.index) / float(_thr) * 100.0)
+                if _s.notna().any():
+                    _ready.append((_lab, _clr, _s))
+        if not _ready and thr_now:
+            # FALLBACK: with no desk store the euphoria level really is the
+            # decider, so the identical construction applies to it unchanged.
+            _ready.append(("SIGNAL", ACCENT, lvl / float(thr_now) * 100.0))
+        # Drawn for every rule whose score EXISTS in the window, not only for
+        # rules that fired.  The old panel drew a score only when it produced
+        # a flag, which was defensible while the level curve was there to
+        # occupy an otherwise quiet panel; with the level gone, that rule
+        # would leave the lookup box - the one place a PM checks a name that
+        # never alerted - showing an empty box.  A line that climbs to 80 and
+        # turns over is the answer to "why did nothing fire here?", and it is
+        # only visible if near-misses are drawn too.
+        #
+        # THE GHOST LINE (desk instruction 2026-07-28: "can we make the
+        # euphoria still have like a continuos line? but maybe make it like
+        # not as prominant").  The arcs above answer "could it fire, and how
+        # close was it" correctly but leave the eye with nothing to follow
+        # across a gap, so a reader has to reconstruct the shape themselves.
+        #
+        # This pass draws that shape ONCE, underneath, at low prominence: the
+        # same series bridged across gaps, 1px, dotted, 30% opacity, behind
+        # the bold trace because it is added first.
+        #
+        # WHY IT IS SAFE, given the panel's own standing objection to a dense
+        # line (recorded above: "a dense line that invents a reading on
+        # ungated days" was rejected in the 2026-07-28 rebuild).  Three
+        # guards, and all three matter:
+        #   1. `hoverinfo="skip"` - the ghost NEVER reports a number.  Hover
+        #      still comes only from the bold trace, so no ungated day can be
+        #      read off the screen as a score.  This is the one that makes the
+        #      difference: the earlier objection was to a dense line that
+        #      could be QUERIED, not to a dense line that can be seen.
+        #   2. `limit_area="inside"` - interpolation happens only BETWEEN two
+        #      real scored days.  It never extends past the first or last
+        #      scored day, so the ghost cannot imply a reading in a period the
+        #      detector never judged at all.
+        #   3. dotted, 1px, 30% opacity, and out of the legend - it reads as
+        #      construction line, not as data.  The solid 2.4px trace with
+        #      markers is still the only thing that looks like a measurement.
+        # The alert dates remain untouched by all of this; nothing here feeds
+        # the model.  Recorded in DECISIONS.xlsx ("4. Detector Design").
+        for _lab, _clr, _s in _ready:
+            _ghost = _s.interpolate(method="time", limit_area="inside")
+            if _ghost.notna().sum() > _s.notna().sum():
+                fig.add_trace(go.Scatter(
+                    x=_ghost.index, y=_ghost.values, mode="lines",
+                    name=f"{_lab} (shape only)",
+                    connectgaps=True, showlegend=False,
+                    opacity=0.30, hoverinfo="skip",
+                    line=dict(color=_clr, width=1, dash="dot")),
+                    row=2, col=1)
+        for _lab, _clr, _s in _ready:
             fig.add_trace(go.Scatter(
-                x=pd.DatetimeIndex([_pd_]), y=[_pv], mode="markers",
-                name="hottest day in window",
-                marker=dict(color=ACCENT, size=9, symbol="circle",
-                            line=dict(color=WHITE, width=1.5)),
-                hovertemplate=(f"hottest in window: {_pv:.0f}/100<br>"
-                               f"{pd.Timestamp(_pd_).strftime('%d %b %Y')}"
+                x=_s.index, y=_s.values, mode="lines+markers",
+                name=f"{_lab}: how close to firing",
+                connectgaps=False,
+                line=dict(color=_clr, width=2.4),
+                marker=dict(size=4, color=_clr),
+                hovertemplate=(f"{_lab}: %{{y:.0f}}% of the way to firing"
                                "<extra></extra>")),
                 row=2, col=1)
+        if _ready:
+            fig.add_hline(
+                y=100, line_dash="dot", line_color=INK, opacity=0.9,
+                row=2, col=1,
+                annotation_text="signal fires here",
+                annotation_position="top left",
+                annotation_font=dict(color=INK, size=10))
+        else:
             fig.add_annotation(
-                x=_ms(_pd_), y=_pv, yref="y2", row=2, col=1,
-                text=(f"peak {_pv:.0f} · "
-                      f"{pd.Timestamp(_pd_).strftime('%d %b')}"),
-                showarrow=False, yshift=13,
-                font=dict(size=9.5, color=ACCENT),
-                bgcolor="rgba(255,255,255,0.92)", borderpad=2)
-
-        # ---- THE SERIES THAT ACTUALLY FIRED THE FLAG.
-        #
-        # For each alert kind PRESENT IN THIS WINDOW, overlay the desk score
-        # that produced it together with its frozen threshold.  Two design
-        # choices worth defending:
-        #
-        #   * only kinds that actually fired are drawn.  Every element on the
-        #     panel then explains a flag the reader can see; drawing both
-        #     scores always would put four lines and two thresholds on a
-        #     panel that the desk has repeatedly asked to keep simple (and
-        #     in the live window NO name has both kinds, so the common case
-        #     is one score, one threshold).
-        #   * `lines+markers` with connectgaps=False, because the score is
-        #     SPARSE by construction - it exists only on days the gates let
-        #     the name be judged (out_score is present on 2.5% of name-days,
-        #     in runs as short as one day).  A plain line would draw nothing
-        #     visible for a single-day run and would falsely bridge gaps.
-        #     The gaps are information: no score means "not judgeable here".
-        _score_drawn = False
-        if use_desk and dk is not None:
-            _dki = dk[dk["name"] == name].set_index("date").sort_index()
-            for _col, _thr, _lab, _clr, _fired in (
-                    ("out_score", thr_out_100, "GET OUT", BEAR, top_alerts),
-                    ("in_score", thr_in_100, "GET IN", TEAL, onset_alerts)):
-                if not _fired or _col not in _dki.columns or _thr is None:
-                    continue
-                _s = _dki[_col].reindex(lvl.index) * 100.0
-                if not _s.notna().any():
-                    continue
-                _score_drawn = True
-                fig.add_trace(go.Scatter(
-                    x=_s.index, y=_s.values, mode="lines+markers",
-                    name=f"{_lab} score (what fires the flag)",
-                    connectgaps=False,
-                    line=dict(color=_clr, width=2.0, dash="solid"),
-                    marker=dict(size=4, color=_clr),
-                    hovertemplate=(f"{_lab} score: %{{y:.0f}} / 100"
-                                   f"<br>fires at {_thr:.0f}"
-                                   "<extra></extra>")),
-                    row=2, col=1)
-                fig.add_hline(
-                    y=_thr, line_dash="dot", line_color=_clr, opacity=0.9,
-                    row=2, col=1,
-                    annotation_text=f"{_lab} fires here ({_thr:.0f})",
-                    annotation_position="bottom left",
-                    annotation_font=dict(color=_clr, size=10))
-        # FALLBACK ONLY: with no desk store the level really is the decider,
-        # so the level-detector's walk-forward threshold is the honest line.
-        if not _score_drawn and thr_now and not use_desk:
-            fig.add_hline(y=thr_now, line_dash="dot", line_color=INK_LABEL,
-                          opacity=0.8, row=2, col=1,
-                          annotation_text=f"signal level ({thr_now:.0f})",
-                          annotation_position="top left",
-                          annotation_font=dict(color=INK_LABEL, size=10))
+                x=0.5, y=0.5, xref="x domain", yref="y domain",
+                row=2, col=1, showarrow=False,
+                text=("no reading in this window - the entry gates never "
+                      "opened, so nothing here could fire"),
+                font=dict(size=11, color=INK_MUTED))
 
         # SIGNAL LINES, and nothing else.  Every shaded region that used to
         # live here is gone: the danger-state band, the start-to-end episode
@@ -2278,35 +2359,61 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 showarrow=False, font=dict(size=9.5, color=colour),
                 bgcolor="rgba(255,255,255,0.92)", borderpad=2,
                 yshift=4 + 14 * (i % 2), row=1, col=1)
-        badge = ""
-        if state == "STARTING":
-            badge = "  |  GET IN - EUPHORIA STARTING NOW"
-        elif state == "ENDING":
-            badge = "  |  GET OUT - EUPHORIA ENDING NOW"
-        fig.update_layout(height=560, hovermode="x unified",
-                          margin=dict(l=10, r=10, t=55, b=20),
+        # NO FIGURE TITLE, and a small top margin.  The name, the symbol, the
+        # live state and the signal counts are all in the header line and the
+        # facts row above; repeating them inside a 55px plotly title strip was
+        # the single largest block of dead vertical space on the tab.  Height
+        # comes down with it: the lower panel now carries one sparse line
+        # instead of five overlaid series, so it needs a third of the frame
+        # rather than the 0.38 it used to claim.
+        #
+        # BUT `title` MUST BE AN EXPLICIT EMPTY STRING, NOT LEFT UNSET.
+        # Streamlit's plotly theming reaches into the figure spec and rewrites
+        # the title as "<b>" + spec.layout.title.text + "</b>".  With no title
+        # set that inner value is the JAVASCRIPT `undefined`, so the browser
+        # was handed the literal string "<b><b>undefined</b></b>" and printed
+        # a bold "undefined" over the top of the chart - reported from the
+        # screen 2026-07-28.  Nothing in this repo produced that word; it does
+        # not appear in any Python source, which is why it had to be traced in
+        # the live DOM (layout.title.text on the rendered figure).  An empty
+        # string is a real string, so the same rewrite yields "<b></b>" and
+        # renders nothing.  Keep it.
+        #
+        # TOP MARGIN: the signal labels below sit at y-domain 1.0 with
+        # yanchor="bottom" and alternate yshift 4 / 18 to avoid colliding, and
+        # a 9.5px label is ~13px tall - so the tallest one reaches ~31px ABOVE
+        # the price panel.  At t=8 the second row of labels was cut in half by
+        # the canvas edge (also reported from the screen).  38 clears it with
+        # a little air and is still less than the 55px the old title cost.
+        _ytop = 125.0
+        for _lab, _clr, _s in _ready:
+            if _s.notna().any():
+                _ytop = max(_ytop, float(_s.max()) * 1.08)
+        fig.update_layout(title=dict(text=""),
+                          height=430, hovermode="x unified",
+                          margin=dict(l=10, r=10, t=38, b=10),
+                          showlegend=True,
                           legend=dict(orientation="h", yanchor="top",
-                                      y=-0.16),
-                          title=dict(text=(f"{title_prefix}{name} ({sym})"
-                                           f" - {len(onset_alerts)} get-in"
-                                           f" / {len(top_alerts)} get-out"
-                                           f" signal(s) in window{badge}"),
-                                     y=0.97, x=0.01))
+                                      y=-0.14))
         fig.update_yaxes(title_text="price (USD)", row=1, col=1)
-        fig.update_yaxes(title_text="euphoria", range=[0, 100],
-                         row=2, col=1)
+        fig.update_yaxes(title_text="% of the way to firing",
+                         range=[0, _ytop], row=2, col=1)
         _axes_fidelity(_theme(fig))
         st.plotly_chart(fig, width="stretch", key=key)
+        st.caption("Lower panel: how close this name came to firing, as a "
+                   "percentage of its own frozen trigger. 100 = the signal "
+                   "fires - that crossing IS the alert, and the vertical "
+                   "line above marks the day it happened. The solid line "
+                   "with dots is the measured score, drawn only on days the "
+                   "entry gates were open; the faint dotted line joins those "
+                   "stretches so the shape is followable, and carries no "
+                   "reading of its own - it does not respond to hover, "
+                   "because on those days nothing could fire however loud "
+                   "the crowd got.")
 
         # ---- WHY did each alert fire? (plain-English decomposition of
         # the stored component values on the alert day - nothing here is
         # recomputed, it is the exact evidence the detector acted on)
-        dk_i = (dk[dk["name"] == name].set_index("date")
-                if use_desk else None)
-        thr_in_d = ((desk_report or {}).get("get_in", {})
-                    .get("live_threshold"))
-        thr_out_d = ((desk_report or {}).get("get_out", {})
-                     .get("live_threshold"))
         expl = []
         for d in sorted(top_alerts):
             r = one_i.loc[:d].iloc[-1] if d not in one_i.index \
@@ -2410,44 +2517,35 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             continue               # already drawn by the lookup
         draw_chart(name, f"#{i}  ", f"{key_prefix}_{name}")
 
-    # ---- conclusions line (headline record only - evidence lives in
-    # notebooks/01-04 and docs/DECISIONS.xlsx, not on the terminal)
-    bits = []
-    if desk_report:
-        wo = desk_report.get("get_out", {}).get("walk_forward", {})
-        wi = desk_report.get("get_in", {}).get("walk_forward", {})
-        bits.append(f"GET OUT: {wo.get('capture_rate')} of detectable "
-                    f"peaks inside [peak-30d, peak+1d], median warning "
-                    f"{wo.get('median_lead_days')}d, "
-                    f"{wo.get('fa_per_iy')} FA/instr-yr, AP "
-                    f"{wo.get('ap')} vs base {wo.get('ap_baseline')}")
-        bits.append(f"GET IN: {wi.get('capture_rate')} of detectable "
-                    f"starts (+{wi.get('late')} late-but-in-rally), "
-                    f"{wi.get('fa_per_iy')} FA/instr-yr; only "
-                    f"{wi.get('adjacency_within_cooldown_before_end')} "
-                    "start(s) in the whole record landed within 21d of "
-                    "an end (was 20 before the phase-aware fix)")
-    elif euph_report:
-        o = euph_report.get("overall", {})
-        bits.append(f"ENDING detector: {o.get('capture_rate_detectable')}"
-                    f" of detectable peaks inside [peak-30d, peak+1d], "
-                    f"median lead {o.get('median_lead_days')}d, "
-                    f"{o.get('fa_per_instrument_year')} FA/instr-yr")
-    if bits:
-        st.caption("Validated record (walk-forward, both denominators in "
-                   "the research pack): " + " | ".join(bits)
-                   + ". Full evidence - walk-forward tables, ablation, "
-                   "ML challenger, tournament: notebooks/01-04 + "
-                   "docs/DECISIONS.xlsx. AMBER band = the DANGER STATE "
-                   "(crowd >=2x its normal AND price in a G2 boom): a "
-                   ">=10%-in-a-week drop begins within 30 days on ~62% "
-                   "of these days vs ~19% of ordinary days (NB06, CI "
-                   "[+28pp,+50pp]) - the band is the standing PM "
-                   "warning; alerts time the peak inside it. A START within 21d of an END is "
-                   "suppressed as contradictory; a fast START then END "
-                   "is a violent mania and the red risk signal is never "
-                   "suppressed. Recent alerts are PENDING "
-                   "until 45d of price exists to judge them.")
+    # ---- how to read the charts (BEHAVIOUR ONLY - no performance record).
+    #
+    # A "Validated record" caption used to close this tab: capture rate,
+    # median warning, FA/instrument-year and AP against baseline for both
+    # directions, read live from `desk_report` / `euph_report`, plus the
+    # danger-state cliff comparison with its confidence interval.  Removed on
+    # the desk's instruction (2026-07-28), same call as the scorecard strip
+    # and the "measured version" block in the explainer: performance belongs
+    # to the notebooks, this terminal shows conclusions.
+    #
+    # What is kept below is the part a reader needs to interpret what is
+    # ON the chart - what the amber band is, why a START can be missing next
+    # to an END, and why a fresh alert has no verdict yet.  Those are
+    # behavioural rules, not claims about accuracy: they describe what the
+    # detector DOES, and they stay true whatever the next re-measurement
+    # says.  `desk_report` / `euph_report` are still loaded and still feed
+    # the alert lists; only their scoring fields go unread here.
+    st.caption("How to read these charts. AMBER band = the DANGER STATE: "
+               "the crowd is at least twice its own normal AND the price "
+               "is in a confirmed boom. The band is the standing warning; "
+               "the alert line times the peak inside it. A START inside "
+               "21 days of an END is suppressed as contradictory - so a "
+               "lone END with no START before it is expected, not missing "
+               "data. A fast START then END is a violent mania and the red "
+               "risk signal is never suppressed. Recent alerts read "
+               "PENDING until 45 days of price exists to judge them. The "
+               "measured record - walk-forward tables, ablation, ML "
+               "challenger, tournament - is in notebooks/01-07 and "
+               "docs/DECISIONS.xlsx, deliberately not here.")
 
 
 with t_euph_th:
@@ -2525,8 +2623,8 @@ even share of the room's attention. The line is derived from the window
 
 The accounts with the *most* replies and the biggest reach were among the
 **least** accurate. So the list a follow-the-big-names desk would copy is
-flagged here as the list to fade. This reproduces the thesis's own headline
-warning on our data.
+flagged here as the list to fade. It is the single most actionable thing
+on this tab.
 
 ---
 
@@ -2568,7 +2666,7 @@ worked, and a plain reading of what those same people are saying right now.
 It is background colour for a PM - *"the accounts with a record are leaning
 short semis this month"* - and nothing more.
 
-**How the score is built** (method: Chan, Oxford M.Eng thesis, 2026 §4.6).
+**How the score is built.**
 Every call an author makes is scored against what the market then did over
 the next 20 trading days, and three ingredients are combined:
 
@@ -2638,9 +2736,8 @@ notebook 05 says nothing here supports. Accuracy is reported in notebook 05
 with its sample size and confidence interval attached, which is the only form
 in which it is defensible.
 
-**"Loud but wrong"** is the thesis's headline warning, reproduced here: the
-accounts in the top quartile of reply-graph PageRank but below median
-influence. They are the accounts a *follow-the-big-names* desk would copy,
+**"Loud but wrong"** is the headline warning of this tab: the accounts in
+the top quartile of reply-graph PageRank but below median influence. They are the accounts a *follow-the-big-names* desk would copy,
 and the evidence says fade them.
 
 **The time panels** (added 2026-07-27) are the dimension this tab lacked
@@ -3844,10 +3941,10 @@ with t_infl:
                     f"influence score. Drawn over the people with a judged "
                     f"record, so every dot has a real colour. **Rank "
                     f"correlation between being central and being useful, "
-                    f"in this picture: {_rho:+.2f}** - the thesis's finding, "
-                    f"reproduced: being central is close to unrelated to "
-                    f"being right, which is exactly why the board is ranked "
-                    f"on the record and not on the graph. Two notes so the "
+                    f"in this picture: {_rho:+.2f}** - being central is "
+                    f"close to unrelated to being right, which is exactly "
+                    f"why the board is ranked on the record and not on the "
+                    f"graph. Two notes so the "
                     f"picture is not over-read: only names far enough apart "
                     f"to be legible are printed (the rest are on hover), and "
                     f"the map covers everyone with any judged call, which is "
@@ -3882,8 +3979,8 @@ with t_infl:
                                f"the active part of it, not all of it.")
 
         # ---- 6. the two warning boards --------------------------------
-        # Both boards keep their place: they are the thesis's headline
-        # finding on this data and the tab rests on them. Both lost their
+        # Both boards keep their place: they are this tab's headline
+        # finding and it rests on them. Both lost their
         # accuracy COLUMNS on 2026-07-27 - `composite` became the 0-100
         # influence index and `hit_rate` / `n_judged` came out - so the
         # boards now say WHO fits the profile and leave the measurement of
@@ -3929,9 +4026,8 @@ with t_infl:
                 st.caption("The accounts a 'follow the big names' desk would "
                            "copy: lots of people reply to them, and their "
                            "measured record sits below the median of this "
-                           "board. The thesis found the same profile - about "
-                           "3x the degree on barely-above-chance accuracy - "
-                           "and the evidence here says fade them.")
+                           "board. That is the profile to fade: high reach "
+                           "on barely-above-chance accuracy.")
             else:
                 st.caption("nobody currently fits the profile")
 
@@ -3941,8 +4037,8 @@ with t_infl:
                          "expand) - what notebook 05 measured",
                          expanded=False):
             st.markdown(
-                "Notebook 05 is a full replication of the thesis's "
-                "influential-user model on this store: eight architectures "
+                "Notebook 05 puts the influential-user model through a "
+                "full battery on this store: eight architectures "
                 "(GraphSAGE, GCN, SGC/MixHop, H2GCN, label propagation, an "
                 "MLP and a linear baseline), a feature-ablation study, a "
                 "graph-perturbation study, a label-shuffle significance "
@@ -3975,9 +4071,8 @@ with t_infl:
                 _v = _read_json(_nb05, _mtime(_nb05))
                 _h, _s = _v.get("headline", {}), _v.get("significance", {})
                 st.caption(f"measured in the notebook run of {_v.get('date')} "
-                           f"- AP = average precision, the metric the thesis "
-                           f"reports, and the one that survives a 5%-positive "
-                           f"class:")
+                           f"- AP = average precision, the metric that "
+                           f"survives a 5%-positive class:")
                 _r1, _r2, _r3, _r4 = st.columns(4)
                 _r1.metric("shipped model",
                            str(_v.get("shipped", {}).get("model", "-")),

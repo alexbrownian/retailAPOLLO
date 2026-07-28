@@ -540,6 +540,6 @@ print(f"saved {out_path.name} ({len(catalog)} episodes) "
 # ---
 #
 # **Next (Notebook 02):** the six-feature onset bank vs the incumbent E1–E5,
-# put through the thesis-style importance battery — per-feature AUROC/AP,
+# put through the importance battery — per-feature AUROC/AP,
 # leave-one-out ablation, perturbation robustness, and the correlation
 # matrix — all scored against these labels.

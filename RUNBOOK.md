@@ -98,6 +98,22 @@ The same command on both machines — it auto-detects which one it is on:
 python update_data.py
 ```
 
+**What this run does NOT do (desk decision 2026-07-28).** It does not
+pick a model, re-select a threshold, or re-run the walk-forward,
+ablation or ML challenger, and it prints no performance statistics. It
+refreshes the data and scores it with the already-frozen winner, so the
+job is the same job every time. Research is decided once, in the
+notebooks, and frozen. If the frozen record stops at an earlier year
+than the data, the run prints one notice line and **keeps scoring at
+it** — that is out-of-sample use, which is exactly what the walk-forward
+licenses. Re-open the question deliberately, never by drift:
+
+```powershell
+python -m analytics.run_analytics --what phases --research
+python update_data.py --full     # a backfill IS new research: it rewrites
+                                 # the history the thresholds were chosen on
+```
+
 Then commit the updated aggregates + the influence store (the store is
 committed by design — text-free, pseudonymous; the safety check covers
 both):
@@ -127,8 +143,42 @@ git push
   state strip (names STARTING = onset alert in the last 21d, names
   ENDING = top alert in the last 21d - empty is the radar working), then
   per-instrument charts with the state ON the chart: BLUE vertical line
-  = euphoria starting, RED vertical line = euphoria ending, euphoria
-  level underneath, "EUPHORIA STARTING/ENDING NOW" badge in the title.
+  = euphoria starting, RED vertical line = euphoria ending, and a
+  "EUPHORIA STARTING/ENDING NOW" badge on the header line.
+
+  **Reading the lower panel (rebuilt 2026-07-28).** It now carries ONE
+  line per firing rule, and that line is **how close the rule is to
+  firing, as a percentage**: the deciding score divided by that rule's
+  own frozen threshold, times 100. So the dotted line at **100 is the
+  trigger, always** — every name, every rule, every window — and the
+  question "what activated this signal?" has a visible answer: **the
+  line touched the top.** It is a crossing, not an inflection. Nothing
+  new was computed: same stored score, same frozen threshold, divided,
+  and the alert dates are unchanged. A rule is drawn whenever its score
+  exists in the window, not only when it fired, so a line that climbs to
+  80 and turns over tells you why nothing fired. **Gaps are real** — the
+  GET OUT score only exists on days the gates allow a judgement (2.5% of
+  name-days, in runs of about a week), and a blank stretch means nothing
+  *could* have fired there. **Behind the solid line there is a faint
+  dotted one** (added 2026-07-28) joining those stretches so the shape of
+  an episode is followable at a glance. It is a construction line and
+  nothing more: it carries **no reading of its own and does not respond to
+  hover**, and it never extends past the first or last scored day. If you
+  want a number, read the solid line with the dots — that is the measured
+  score. The 0-100 euphoria level did not go away: it is what the dial
+  above the chart reads.
+
+  **Only one explainer is left on the page** (desk decision 2026-07-28):
+  *"what is euphoria? (start here - plain English)"*. The four deeper
+  expanders — the seven-decision summary, the long-form evidence log, the
+  full method & measured record, and the printed parameter register — were
+  removed from the dashboard. If someone challenges a threshold, the
+  answer is in `docs/PARAMETER_REGISTER.md`, `docs/DECISIONS.xlsx` or the
+  notebook that produced it, not on the screen.
+
+  **No performance numbers appear on this page** (desk decision
+  2026-07-28) — hit rate, lead time and false alarms live in notebook
+  07, which prints the full scorecard with confidence intervals.
   An AMBER band on the price panel marks the DANGER STATE (crowd ≥2×
   its normal AND price ≥25/50% above its 120d low): sharp drops (≥10%
   in a week) begin within 30d on ~62% of these days vs ~19% of ordinary

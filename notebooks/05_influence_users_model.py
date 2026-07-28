@@ -13,9 +13,9 @@
 # %% [markdown]
 # # Notebook 05 — Can we tell who is worth listening to?
 #
-# **A full replication of Chan (2026) on RetailRadar's own live influence
-# store**, plus the four things the thesis names as future work and does not
-# do. The question is the thesis's question, in her words:
+# **A full study of RetailRadar's own live influence store** — the network,
+# eight model architectures, and the four hardest questions anyone would
+# put to the result. The question is:
 #
 # > *Can HIGH-influence authors be identified from how they behave and where
 # > they sit in the reply graph — **without** reading their track record?*
@@ -42,7 +42,7 @@
 #   this work, with the answers. They are marked so you can find them.
 # * **Nothing here is a threshold somebody liked the look of.** Every
 #   constant is tagged with where it came from: LEARNED from data, DERIVED
-#   from a definition, CONVENTION (inherited from the thesis, and ablated),
+#   from a definition, CONVENTION (a stated convention, and ablated),
 #   GROUND TRUTH, or DESK DECISION.
 # * Section 1 defines every term used, so no jargon is load-bearing.
 #
@@ -64,41 +64,26 @@
 #
 # ---
 #
-# ## The port, section by section
+# ## What this notebook covers, section by section
 #
-# | Thesis | Theirs | Ours | Here |
-# |---|---|---|---|
-# | §3 | semi-supervised transductive node classification, 2,617 nodes, 13:1 imbalance | same task, live store; unlabelled authors stay in the graph as context | §2 |
-# | §4.6 | composite score 0.4·s_conf + 0.4·s_z + 0.2·s_enh, Bayesian shrinkage, HIGH ≥ 0.66 | implemented verbatim in `influence.py`; it *is* the label here | §9 |
-# | §5.1 | network statistics table, degree distribution, centralities | recomputed on our graph, side by side with their numbers | §3.1–3.3 |
-# | §5.2 | Louvain communities, modularity, inter-community share | our own Louvain (no networkx), + positives-per-community | §3.4 |
-# | §5.3 | homophily, per-class | same, and it is the key diagnostic | §3.6 |
-# | §6.1 | MLP / LabelProp / GCN / GAT / GraphSAGE / H₂GCN / MixHop / random | eight architectures in linearised small-data form + a linear control | §6 |
-# | §6.2 | stratified 60/20/20, seeds 42/100/2026, class-weighted loss, threshold = max precision s.t. recall ≥ 0.05 on val, AP + AUROC on test | identical | §6, §13 |
-# | §6.2 | leakage guard | identical, **and extended** — see §5 | §5 |
-# | §7.1 | Table 7.1 leaderboard, ROC, operating point | same + a **paired** adoption test the thesis does not run | §6, §7 |
-# | §7.1.1 | single run vs ensemble | same, and explained why it is a no-op for our linear readouts | §8 |
-# | §7.1.2 | labelling-criteria sensitivity | three label regimes + a pre-registered maturity bar | §4 |
-# | §7.1.3 | misclassification analysis, top-5 FNs | same | §10 |
-# | §7.2.1 | feature ablation (raw degree *hurts*) | same, + correlation matrix for their own caveat, + bank candidates through the adoption rule with Bonferroni | §11 |
-# | §7.2.2 | random and DICE perturbation, accuracy reported | same + a degree-preserving swap mode they only claim | §12 |
-# | §8 | limitations: correlated features, no unseen-author validation, no significance test | **all three measured** | §11, §15, §14 |
-#
-# **Benchmark (thesis Table 7.1):** GraphSAGE AP 0.140 ± 0.002, AUROC
-# 0.632 ± 0.016, ≈ +61% AP over their random floor of 0.087; operating
-# precision ≈ 12% at threshold 0.56.
-#
-# ### `IF ASKED` — "your numbers differ from hers. Replication or not?"
-#
-# Both, and the distinction is the point:
-#
-# * Her **ordering** reproduces here — SAGE > GCN > MLP > LabelProp, same
-#   sequence, on a completely different dataset.
-# * The **size** of her gaps does not survive a paired test.
-# * That combination is a *stronger* result than either half alone: it says
-#   the ranking she found was real, and the margin she reported was seed
-#   noise. A replication that agreed on everything would be less
-#   informative, because it could not have told the two apart.
+# | Section | The question it answers |
+# |---|---|
+# | §2 | Semi-supervised transductive node classification on the live store; unlabelled authors stay in the graph as context |
+# | §3.1–3.3 | Network statistics, degree distribution, centralities |
+# | §3.4 | Louvain communities (our own implementation, no networkx), modularity, inter-community share, positives-per-community |
+# | §3.6 | Homophily, per class — the key diagnostic |
+# | §4 | Labelling-criteria sensitivity: three label regimes plus a pre-registered maturity bar |
+# | §5 | The leakage guard, and the extension of it that caught a circular feature |
+# | §6 | Eight architectures — MLP / LabelProp / GCN / GAT / GraphSAGE / H₂GCN / MixHop / random — in linearised small-data form, plus a linear control. Stratified 60/20/20, seeds 42/100/2026, class-weighted loss, threshold = max precision s.t. recall ≥ 0.05 on val, AP + AUROC on test |
+# | §7 | A **paired** adoption test: does any graph architecture beat the linear control on the same splits? |
+# | §8 | Single run vs ensemble, and why it is a no-op for linear readouts |
+# | §9 | The scoring rule itself: composite 0.4·s_conf + 0.4·s_z + 0.2·s_enh with Bayesian shrinkage, HIGH ≥ 0.66, implemented in `influence.py` — it *is* the label here |
+# | §10 | Misclassification analysis, top-5 false negatives |
+# | §11 | Feature ablation, correlation matrix, and bank candidates through the adoption rule with Bonferroni |
+# | §12 | Random, DICE and degree-preserving-swap perturbation |
+# | §13 | Class weighting, measured rather than assumed |
+# | §14 | A permutation significance test |
+# | §15 | Generalisation to authors the model has never seen |
 #
 # ### `IF ASKED` — "why is a notebook full of negative results worth keeping?"
 #
@@ -168,12 +153,13 @@ pd.set_option("display.max_columns", 40)
 #
 # **SO WHAT**
 #
-# * Anywhere below that a chart says "usefulness score" and the thesis says
+# * Anywhere below that a chart says "usefulness score" and the code says
 #   `composite`, they are the same number. The stored column names never
 #   change; only the labels a human reads do.
 
 # %%
-from analytics.plain_english import glossary_md                   # noqa: E402
+from analytics.plain_english import (glossary_md,                 # noqa: E402
+                                     censor_series)
 
 # The terms this particular notebook leans on, in the order they first
 # matter.  Listing them (rather than dumping the whole glossary) is the
@@ -196,9 +182,9 @@ print(glossary_md([
 # * Every number later in the notebook is bounded by how much labelled data
 #   exists. Reading a result before reading the census is how people
 #   over-trust small samples.
-# * The thesis worked on 2,617 nodes and 133 positives. If our store were
-#   smaller, none of the paired tests below would have the power to reject
-#   anything, and the honest move would be to stop here.
+# * A study of this kind needs on the order of 130 positives before a paired
+#   test can reject anything at all. If our store were smaller than that,
+#   the honest move would be to stop here rather than report a number.
 #
 # **HOW IT WORKS**
 #
@@ -210,8 +196,8 @@ print(glossary_md([
 # * It **keeps unlabelled authors**. An author with no *judged* call carries
 #   no label but still occupies a graph position and still contributes to
 #   every neighbourhood average. That is what makes the setup
-#   *transductive* rather than plain supervised — and it is the thesis's
-#   design, adopted unchanged (CONVENTION).
+#   *transductive* rather than plain supervised — a stated design choice,
+#   held fixed across every experiment below (CONVENTION).
 # * The table is built on `WIDE_BANK` so the score-adjacent columns *exist*
 #   and can be priced in §5. Every experiment names its own feature list,
 #   and the shipped one never includes them.
@@ -232,9 +218,12 @@ for p, what in [(SCORES_PATH, "author board"), (CALLS_PATH, "calls"),
                 (EDGES_PATH, "reply edges")]:
     assert Path(p).exists(), (
         f"influence store missing ({what}: {p}).\n"
-        "The store seeds itself on the first live `python update_comments.py` "
-        "(or `update_data.py`) run - do that once, then re-run this "
-        "notebook. The board is a forward record from inception.")
+        "The store seeds itself on the first `python update_data.py` run - "
+        "comments are fetched on every live run under a measured page "
+        "allowance - so do that once, then re-run this notebook. To seed it "
+        "in one long sitting instead of across a few runs, use the "
+        "unbudgeted runner: `python update_comments.py`. The board is a "
+        "forward record from inception.")
 
 board = pd.read_parquet(SCORES_PATH)
 calls = pd.read_parquet(CALLS_PATH)
@@ -258,24 +247,22 @@ census = pd.Series({
     "last call": str(pd.to_datetime(calls["date"]).max().date()),
 }, name="value")
 print(census.to_string())
-print("\nthesis reference: 2,617 nodes / 17,937 edges / 133 positives "
-      "of 1,914 labelled (6.95% prevalence)")
-print(f"our graph is {g.n / 2617:.1f}x their nodes and "
-      f"{g.m / 17937:.1f}x their edges")
+print(f"\nmaturity bar: >= {ml.MIN_POSITIVES} positives before any result "
+      "here is decision-grade (registered in section 4)")
 
 # %% [markdown]
-# **SO WHAT — read the scale difference before reading any result.**
+# **SO WHAT — read the scale before reading any result.**
 #
-# * Our graph is an order of magnitude larger than the thesis's. That cuts
-#   both ways.
-# * **In our favour:** many more positives, so the paired tests below have
-#   real power to reject a challenger rather than merely failing to detect a
+# * The store is large in nodes and thin in labels, and that cuts both ways.
+# * **In our favour:** enough positives that the paired tests below have real
+#   power to reject a challenger, rather than merely failing to detect a
 #   difference.
-# * **Against us:** a sparser, noisier graph, assembled from a live
-#   zero-touch pull rather than a curated scrape.
-# * Neither regime is "better". So every comparison with the thesis below is
-#   stated as **ordering first, magnitude second** — the ordering is what
-#   transfers between datasets of different density; the magnitude is not.
+# * **Against us:** a sparse, noisy graph, assembled from a live zero-touch
+#   pull rather than a curated scrape. Density is the thing a graph model
+#   most needs and the thing we have least of.
+# * So every model claim below is stated as **ordering first, magnitude
+#   second** — the ordering is the part that would survive on a different
+#   slice of the same crowd; the magnitude is not.
 
 # %% [markdown]
 # ## 3 · What does the network look like — and can a graph model possibly work?
@@ -297,7 +284,7 @@ print(f"our graph is {g.n / 2617:.1f}x their nodes and "
 # * Therefore §7's rejection of every graph architecture is predicted here,
 #   not discovered there.
 #
-# ### 3.1 How does our network compare with the thesis's? (their Table 5.1)
+# ### 3.1 What shape is this network?
 #
 # **HOW IT WORKS**
 #
@@ -318,10 +305,11 @@ print(f"our graph is {g.n / 2617:.1f}x their nodes and "
 #
 # **SO WHAT**
 #
-# * A `ratio` column near 1 means our graph behaves like hers on that
-#   statistic and her findings should transfer. A ratio far from 1 flags a
-#   statistic where they should not, and the notebook says so at that point
-#   rather than quietly comparing anyway.
+# * This table is the reference the rest of section 3 reads against: density
+#   tells us how much neighbourhood there is to average over, modularity
+#   tells us whether the crowd splits into groups at all, and σ tells us
+#   whether the graph has the small-world structure that makes message
+#   passing worth attempting in the first place.
 
 # %%
 t = time.time()
@@ -330,20 +318,11 @@ comm = ig.louvain(g)
 stats = ig.network_stats(g, comm=comm, bc=bc)
 print(f"(computed in {time.time() - t:.0f}s)\n")
 
-THESIS_5_1 = {
-    "nodes": 2617, "edges": 17937, "mean_degree": 12.89, "density": 0.0052,
-    "avg_path_len_sampled": 2.97, "diameter_lower_bound": 6,
-    "small_world_sigma": 17.25, "modularity_Q": 0.34, "n_communities": 14,
-    "inter_community_edge_share": 0.67,
-}
 side = pd.DataFrame({"ours": stats})
-side["thesis"] = pd.Series(THESIS_5_1)
-side["ratio"] = pd.to_numeric(side["ours"], errors="coerce") / \
-    pd.to_numeric(side["thesis"], errors="coerce")
 print(side.to_string())
 
 # %% [markdown]
-# ### 3.2 Do hubs even exist? (their Figure 5.1)
+# ### 3.2 Do hubs even exist?
 #
 # **WHY THIS**
 #
@@ -408,8 +387,7 @@ plt.tight_layout()
 plt.show()
 
 # %% [markdown]
-# ### 3.3 Are influential authors actually more central? (their Tables
-# 5.2 / 5.3)
+# ### 3.3 Are influential authors actually more central?
 #
 # **WHY THIS**
 #
@@ -462,7 +440,7 @@ plt.show()
 
 # %% [markdown]
 # ### 3.4 Does the crowd split into groups, and do the influential
-# authors bunch up inside them? (their §5.2)
+# authors bunch up inside them?
 #
 # **WHY THIS**
 #
@@ -487,7 +465,8 @@ plt.show()
 #   networkx, so the *dashboard* needs no graph library at runtime. That
 #   was licensed by an exact numerical agreement check against a reference
 #   implementation in an earlier validation pass, not by taste.
-# - The concentration test is the step the thesis does not take. For every
+# - The concentration test is the step that turns a description into a
+#   decision. For every
 #   community with ≥ 25 labelled authors (DESK DECISION — below ~25 the
 #   prevalence estimate is one or two authors wide and the ratio is noise)
 #   we compute its positive rate ÷ the overall positive rate. The 1.0 line
@@ -495,9 +474,9 @@ plt.show()
 #
 # **SO WHAT**
 #
-# - The thesis found Q = 0.34 over 14 communities with 67% of edges
-#   crossing them — loose interest clusters, not silos. Ours is a more
-#   fragmented crowd; the printed numbers below are the comparison.
+# - Read Q and the inter-community edge share together: a moderate Q with a
+#   majority of edges *crossing* groups means loose interest clusters rather
+#   than silos, which is what the printed numbers below show.
 # - The positives are **spread, not concentrated** — the best community is
 #   only a small multiple of the overall rate. So community membership is
 #   not a shortcut feature, and this is the same message as low
@@ -509,7 +488,6 @@ plt.show()
 crep = ig.community_report(g, comm)
 print({k: (round(v, 4) if isinstance(v, float) else v)
        for k, v in crep.items()})
-print("thesis: Q=0.34, 14 communities, 67% inter-community edges")
 
 cpt = ml.community_positive_table(g, comm, tab, min_size=25)
 print(f"\ncommunities with >= 25 labelled authors: {len(cpt)}")
@@ -658,26 +636,25 @@ plt.show()
 # - **Edge homophily** = the share of edges whose two endpoints share a
 #   label. On a 20:1 imbalanced problem this is near 1 no matter what,
 #   because almost every edge joins two negatives. It is close to
-#   uninformative and is reported only because the thesis reports it.
+#   uninformative, and is reported only so that the per-class figure below
+#   cannot be accused of being the flattering half of a pair.
 # - **Node homophily, per class** = for each author, the fraction of their
 #   neighbours sharing their label; then averaged within each class.
 #   Splitting by class is what rescues the measure from the imbalance, and
 #   *this* is where the finding lives.
 # - Both are DERIVED counts — there is no parameter in either, which is
 #   part of why the number is worth leaning on.
-# - The diamonds on the left panel are Chan's values (GROUND TRUTH, read
-#   from her ch. 5), plotted on our axes so the comparison is visual and
-#   not a sentence asking you to hold two numbers in your head.
 #
 # **SO WHAT**
 #
-# - The thesis measured 0.08 for high-predictive nodes against 0.93 for
-#   low-predictive ones, and treated it as a diagnosis rather than a
-#   defect: influential users are surrounded by ordinary users
-#   *essentially by definition* — being replied to **by** the crowd is
-#   what makes someone influential in the first place.
-# - We reproduce it in a sharper form (our class-1 figure is lower still).
-#   A neighbourhood-averaging architecture therefore averages a HIGH
+# - The two classes come out at opposite ends of the scale: ordinary
+#   authors sit near 1 (their neighbours are ordinary too), influential
+#   authors sit near 0 (their neighbours are not influential). Read the
+#   printed numbers below for the exact values.
+# - That is a diagnosis, not a defect. Influential users are surrounded by
+#   ordinary users *essentially by definition* — being replied to **by** the
+#   crowd is what makes someone influential in the first place.
+# - A neighbourhood-averaging architecture therefore averages a HIGH
 #   author's signal *away*: the more aggressively it uses the graph, the
 #   more it destroys the thing it is looking for.
 # - What changes: §7 stops treating "graph model lost" as a tuning
@@ -698,7 +675,6 @@ plt.show()
 h = ig.homophily(g, lab["y"])
 node_h = h.pop("node_homophily_series")
 print({k: round(v, 4) for k, v in h.items()})
-print("\nthesis: high-predictive nodes 0.08, low-predictive 0.93")
 
 fig, axes = plt.subplots(1, 2, figsize=(11, 3.3))
 ax = axes[0]
@@ -707,8 +683,6 @@ keys = ["edge_homophily", "node_homophily", "node_homophily_class_0",
 nice = ["edge\n(all)", "node\n(all)", "node\nordinary", "node\nHIGH"]
 vals = [h.get(k, np.nan) for k in keys]
 ax.bar(nice, vals, color=[GRID, MUTED, C1, C3], width=0.6)
-thesis_v = [np.nan, 0.87, 0.93, 0.08]
-ax.plot(nice, thesis_v, "d", color=INK, ms=6, label="Chan (2026)")
 for i, v in enumerate(vals):
     if np.isfinite(v):
         ax.text(i, v + 0.02, f"{v:.3f}", ha="center", fontsize=8,
@@ -716,7 +690,6 @@ for i, v in enumerate(vals):
 ax.set_ylim(0, 1.12)
 ax.set_ylabel("share of neighbours sharing my label")
 ax.set_title("Homophily — HIGH authors sit among ordinary users")
-ax.legend(frameon=False, fontsize=8)
 despine(ax)
 
 ax = axes[1]
@@ -736,7 +709,7 @@ plt.show()
 
 # %% [markdown]
 # ## 4 · Does the answer depend on where we drew the line for
-# "influential"? (thesis §7.1.2)
+# "influential"?
 #
 # **WHY THIS**
 #
@@ -754,14 +727,13 @@ plt.show()
 # | Regime | Rule | Why this one |
 # |---|---|---|
 # | `standard` | composite ≥ 0.66 (`HIGH_TIER`) | the production tier the dashboard already uses |
-# | `softened` | composite ≥ 0.50 | the thesis's own §7.1.2 softened criterion, transplanted. 0.50 is the round mid-point of a min-max-normalised score — chosen a priori, not tuned |
-# | `prevalence` | top 6.95% of labelled authors | matches the thesis's prevalence *exactly*, which is the only way our AP is directly comparable to their 0.140 rather than merely ordinally comparable (random AP **is** prevalence) |
+# | `softened` | composite ≥ 0.50 | the round mid-point of a min-max-normalised score — a stated convention, chosen a priori and never tuned |
+# | `prevalence` | top 6.95% of labelled authors | a **fixed reference prevalence**, held constant run to run. Because random AP *is* prevalence, pinning it pins the floor, so AP numbers from different vintages of the store stay directly comparable instead of only ordinally comparable |
 #
 # - **Why `softened` is the headline regime.** Not because it scores best
 #   — because of a maturity bar registered before the store was large:
-#   model output is only decision-grade at **≥ 130 labelled positives**,
-#   the scale at which the thesis's own best model still reached only
-#   ~12% operating precision. `softened` is the regime that clears that
+#   model output is only decision-grade at **≥ 130 labelled positives**.
+#   `softened` is the regime that clears that
 #   bar. Regimes that do not clear it are shown anyway, flagged
 #   `powered = False`, and are used for no decision. Picking the headline
 #   by *statistical power* rather than by *score* is the whole point: the
@@ -785,19 +757,19 @@ plt.show()
 #
 # More positives raise power, which makes a *true* effect easier to see —
 # and equally makes a false one easier to rule out. The bar was set at
-# ≥ 130 to match the thesis's own scale before we knew which of our three
-# regimes would clear it, and the two that miss it are printed rather than
-# hidden, with their scores visible next to the headline's.
+# ≥ 130 positives before we knew which of the three regimes would clear it,
+# and the two that miss it are printed rather than hidden, with their scores
+# visible next to the headline's.
 
 # %%
 t = time.time()
 regimes = ml.label_regime_table(board, calls, edges)
 print(f"(computed in {time.time() - t:.0f}s)\n")
 print(regimes.round(4).to_string(index=False))
-print(f"\nmaturity bar: >= {ml.MIN_POSITIVES} positives (thesis had 133)")
+print(f"\nmaturity bar: >= {ml.MIN_POSITIVES} labelled positives")
 print(f"headline regime: '{ml.HEADLINE_REGIME}'  |  HIGH_TIER={HIGH_TIER}, "
-      f"SOFT_TIER={ml.SOFT_TIER}, thesis prevalence="
-      f"{ml.THESIS_PREVALENCE}")
+      f"SOFT_TIER={ml.SOFT_TIER}, reference prevalence="
+      f"{ml.REFERENCE_PREVALENCE}")
 
 fig, axes = plt.subplots(1, 3, figsize=(12, 3.1))
 r = regimes.set_index("regime")
@@ -845,9 +817,8 @@ plt.show()
 # - The specific worry: one of our features is an arithmetic *ingredient*
 #   of the thing it is predicting. If so, the score is partly the model
 #   reading its own answer back, and every number downstream is inflated.
-# - This section is not in the thesis. It is the most important
-#   methodological addition in the notebook, and it moved the headline
-#   down.
+# - It is the most important methodological check in the notebook, and it
+#   moved the headline down.
 #
 # ### How the label is built
 #
@@ -965,7 +936,7 @@ plt.show()
 # `FULL_BANK`. `WIDE_BANK` is reported once, here, and never shipped.
 
 # %% [markdown]
-# ## 6 · Which architecture actually wins? (thesis §6.1 / §7.1)
+# ## 6 · Which architecture actually wins?
 #
 # **WHY THIS**
 #
@@ -987,38 +958,40 @@ plt.show()
 #   optimisers, tuning budgets or luck. A win here cannot be bought with a
 #   better learning rate.
 #
-# | Model | Thesis | What it sees |
+# | Model | Role | What it sees |
 # |---|---|---|
-# | `random` | 6.1.8 | uniform noise. Its AP **is** the prevalence — the floor every other number is quoted against |
-# | `logit` | our control | the author's own features, no graph. The simplest thing that could work |
-# | `mlp` | 6.1.1 | own features, one 16-unit hidden layer. "Behaviour alone, non-linearly" |
-# | `labelprop` | 6.1.2 | graph only, no features. "Structure alone" |
-# | `sage_lite` | 6.1.5 | GraphSAGE, one mean-aggregation layer: `[self ‖ mean(neighbours)]` |
-# | `gcn_lite` | 6.1.3 | GCN in its linear (SGC) form: propagate twice through the symmetric-normalised self-looped adjacency. Two hops is their depth |
-# | `mixhop_lite` | 6.1.7 | *concatenates* hop powers instead of composing them, so hop-0/1/2 can get different — even opposite-signed — weights |
-# | `h2gcn_lite` | 6.1.6 | ego / 1-hop / 2-hop-excluding-1-hop kept separate. Designed for **heterophily**, which §3.6 says we have |
+# | `random` | floor | uniform noise. Its AP **is** the prevalence — the floor every other number is quoted against |
+# | `logit` | control | the author's own features, no graph. The simplest thing that could work |
+# | `mlp` | no graph | own features, one 16-unit hidden layer. "Behaviour alone, non-linearly" |
+# | `labelprop` | graph only | no features at all. "Structure alone" |
+# | `sage_lite` | graph | GraphSAGE, one mean-aggregation layer: `[self ‖ mean(neighbours)]` |
+# | `gcn_lite` | graph | GCN in its linear (SGC) form: propagate twice through the symmetric-normalised self-looped adjacency |
+# | `mixhop_lite` | graph | *concatenates* hop powers instead of composing them, so hop-0/1/2 can get different — even opposite-signed — weights |
+# | `h2gcn_lite` | graph | ego / 1-hop / 2-hop-excluding-1-hop kept separate. Designed for **heterophily**, which §3.6 says we have |
 #
-# - **GAT is the one architecture not ported.** Attention has to *learn*
-#   edge weights, and with ~250 positives that is more parameters than
-#   evidence; the thesis's own §7.1 has GAT mid-table anyway. We
-#   substitute `mixhop_lite` — a different way to weight hops, with far
-#   fewer parameters — and name it as a substitution rather than passing
-#   it off as a replication.
-# - **Protocol (their §6.2, adopted unchanged):** stratified 60/20/20 over
-#   labelled nodes; seeds 42/100/2026 (CONVENTION — the thesis's own,
-#   kept so the comparison is like-for-like); class-weighted loss;
+# - **GAT is deliberately absent.** Attention has to *learn* edge weights,
+#   and with ~250 positives that is more parameters than evidence — it
+#   would be fitted noise wearing an architecture's name. `mixhop_lite`
+#   covers the same ground (hops weighted differently) at a fraction of the
+#   parameter count, and the substitution is named here rather than left
+#   for a reader to notice.
+# - **Protocol, identical for every entrant:** stratified 60/20/20 over
+#   labelled nodes; seeds 42/100/2026 (CONVENTION — the house seeds used
+#   throughout this project, fixed so results are reproducible);
+#   class-weighted loss;
 #   threshold chosen on **validation** as max precision subject to recall
 #   ≥ 5%; AP and AUROC reported on **test**, never on validation.
 # - AP is the primary metric because on a rare-positive problem its random
 #   baseline is exactly the prevalence — which is what lets `ap_lift`
-#   travel between datasets of different balance, including hers and
-#   ours.
+#   stay meaningful as the store's balance shifts over time.
 #
 # **SO WHAT**
 #
-# - Read the leaderboard for *order*, not for gaps: the thesis's ordering
-#   reproduces (SAGE on top, GCN under it, feature-only MLP under that,
-#   structure-only LabelProp at the bottom).
+# - Read the leaderboard for *order*, not for gaps: SAGE on top, GCN under
+#   it, feature-only MLP under that, structure-only LabelProp at the bottom.
+#   That ordering is the one the graph-learning literature would predict on
+#   a graph of this kind, which is a reassurance the harness is sound — not
+#   yet evidence that any of it beats the control.
 # - Nothing is adopted on the strength of this chart. The error bars are a
 #   spread over three seeds, and a spread is not a test — §7 runs the
 #   paired test that actually decides.
@@ -1038,18 +1011,16 @@ ax.barh(sub["model"], sub["ap"], xerr=sub["ap_std"].fillna(0), height=0.6,
 rnd = float(res.loc[res["model"] == "random", "ap"].iloc[0])
 ax.axvline(rnd, color=INK, lw=1, ls="--")
 ax.text(rnd, len(sub) - 0.35, "  random floor", fontsize=8, color=INK)
-ax.axvline(0.140, color=C3, lw=1.2, ls=":")
-ax.text(0.140, -0.6, " thesis GraphSAGE 0.140", fontsize=8, color=C3)
 ax.set_xlabel("test AP (mean ± std over seeds 42/100/2026)")
-ax.set_title("Leaderboard — the ORDERING reproduces; §7 asks whether the "
-             "MARGINS do")
+ax.set_title("Leaderboard — read the ORDERING; §7 asks whether the "
+             "MARGINS are real")
 despine(ax)
 plt.show()
 
 # %% [markdown]
 # **What this table does and does not say**
 #
-# - It **does** say the thesis's ordering reproduces: SAGE on top, GCN
+# - It **does** say the models rank in the expected order: SAGE on top, GCN
 #   below it, feature-only MLP below that, structure-only LabelProp at the
 #   bottom.
 # - It does **not** say SAGE is better than the linear control. A mean
@@ -1058,8 +1029,7 @@ plt.show()
 # - A leaderboard is a hypothesis generator. §7 is the test.
 
 # %% [markdown]
-# ### 6.1 At the threshold we would actually use, how wrong is it? (their
-# §7.1 figure)
+# ### 6.1 At the threshold we would actually use, how wrong is it?
 #
 # **WHY THIS**
 #
@@ -1085,8 +1055,8 @@ plt.show()
 #
 # **SO WHAT**
 #
-# - AUROC ≈ 0.67 against the thesis's 0.632: the model sorts better than
-#   chance and comparably to hers.
+# - AUROC lands around 0.67: the model sorts meaningfully better than
+#   chance.
 # - The PR curve is the sobering one: precision at the operating point is
 #   ~0.12. Roughly one flagged author in eight is genuinely influential —
 #   a real lift over the ~0.047 floor, and nowhere near a signal you would
@@ -1097,7 +1067,7 @@ plt.show()
 
 # %%
 pred = ml.prediction_frame(ctx, model=ml.BEST_MODEL, feats=ml.FULL_BANK)
-one = pred[pred["seed"] == ml.THESIS_SEEDS[0]]
+one = pred[pred["seed"] == ml.HOUSE_SEEDS[0]]
 roc = ml.roc_points(one["y"].to_numpy(), one["p"].to_numpy(),
                     float(one["thr"].iloc[0]))
 prc = ml.pr_points(one["y"].to_numpy(), one["p"].to_numpy())
@@ -1113,7 +1083,7 @@ if op is not None:
     ax.legend(frameon=False, fontsize=8, loc="lower right")
 ax.set_xlabel("false positive rate"), ax.set_ylabel("true positive rate")
 auroc = float(res.loc[res["model"] == ml.BEST_MODEL, "auroc"].iloc[0])
-ax.set_title(f"ROC — AUROC {auroc:.3f} (thesis 0.632)")
+ax.set_title(f"ROC — AUROC {auroc:.3f}")
 despine(ax)
 
 ax = axes[1]
@@ -1130,12 +1100,11 @@ plt.tight_layout()
 plt.show()
 
 # %% [markdown]
-# ## 7 · **THE ADOPTION LADDER** — is any gap in §6 real? (the decision
-# the thesis does not make)
+# ## 7 · **THE ADOPTION LADDER** — is any gap in §6 real?
 #
 # **WHY THIS**
 #
-# - The thesis reports mean ± std over three seeds. That tells you how
+# - A leaderboard reports mean ± std over three seeds. That tells you how
 #   *stable* a number is. It does not tell you whether one model is
 #   *better* than another, because the two numbers came from different
 #   random splits — and the split lottery is by far the largest source of
@@ -1215,26 +1184,25 @@ plt.show()
 #   runtime, and the fact that the winner is the simplest member of the
 #   tournament is the finding, not a shortcut.
 #
-# **IF ASKED — "so you failed to replicate the thesis."**
+# **IF ASKED — "the leaderboard in §6 said the graph won. Which is it?"**
 #
-# No: we reproduce her *ordering* and fail to reproduce her *margins*,
-# which are two different claims. §3.6 predicted exactly this — on a graph
-# where the positive class has node homophily ~0.09, neighbourhood
-# averaging destroys the signal it is meant to aggregate. The thesis found
-# the same homophily pattern and, lacking a paired test, reported the
-# leaderboard gap as a result. The gap is real in the mean and absent in
-# the pairing. Reproducing the order while showing the margin does not
-# survive a stricter test is a *stronger* replication statement than
-# either half alone.
+# Both tables are correct; they answer different questions. §6 ranks means,
+# §7 tests differences. The gap is real in the mean and absent under
+# pairing, which is the classic signature of a difference that is smaller
+# than the split lottery. §3.6 predicted exactly this — on a graph where the
+# positive class has node homophily ~0.09, neighbourhood averaging destroys
+# the signal it is meant to aggregate. An unpaired leaderboard, read alone,
+# is how a project ends up shipping a graph library it does not need.
 
 # %% [markdown]
-# ## 8 · Would averaging several re-fits help? (thesis §7.1.1)
+# ## 8 · Would averaging several re-fits help?
 #
 # **WHY THIS**
 #
-# - The thesis averages predictions over re-fits to damp seed variance,
-#   and reports it as a robustness improvement. If it helps here too, it
-#   is nearly free and we should ship it.
+# - Averaging predictions over re-fits is the standard cheap way to damp
+#   seed variance. If it helps here, it costs almost nothing and we should
+#   ship it; if it does not, we should be able to say *why* rather than
+#   just reporting a null.
 #
 # **HOW IT WORKS**
 #
@@ -1263,7 +1231,7 @@ plt.show()
 t = time.time()
 single = ml.evaluate(ctx, feats=ml.FULL_BANK, models=["mlp", ml.BEST_MODEL])
 ens = ml.evaluate(ctx, feats=ml.FULL_BANK, models=["mlp", ml.BEST_MODEL],
-                  ensemble_seeds=ml.THESIS_SEEDS)
+                  ensemble_seeds=ml.HOUSE_SEEDS)
 cmp = (single.set_index("model")[["ap", "ap_std", "auroc"]]
        .join(ens.set_index("model")[["ap", "ap_std", "auroc"]],
              lsuffix="_single", rsuffix="_ensemble"))
@@ -1275,7 +1243,7 @@ print("\nlogit d_ap == 0 confirms the determinism argument above; the mlp "
 
 # %% [markdown]
 # ## 9 · Is the finding about the model, or about one arithmetic choice in
-# the scoring rule? (thesis §4.6)
+# the scoring rule?
 #
 # **WHY THIS**
 #
@@ -1302,8 +1270,8 @@ print("\nlogit d_ap == 0 confirms the determinism argument above; the mlp "
 #
 # - AP holds above the floor even for recipes with low overlap, so the
 #   skill is not an artefact of the specific 0.4 / 0.4 / 0.2 weighting.
-# - **Nothing changes.** The production recipe stays as Chan specified it
-#   — this section buys the right to keep it, not a reason to alter it.
+# - **Nothing changes.** The production recipe keeps its 0.4 / 0.4 / 0.2
+#   mix — this section buys the right to keep it, not a reason to alter it.
 #   Read the chart left-to-right: the interesting points are the ones far
 #   to the *left* (a different set of people) that still sit well above
 #   the floor.
@@ -1332,14 +1300,14 @@ despine(ax)
 plt.show()
 
 # %% [markdown]
-# ## 10 · When the model is wrong, *how* is it wrong? (thesis §7.1.3)
+# ## 10 · When the model is wrong, *how* is it wrong?
 #
 # **WHY THIS**
 #
 # - A precision of ~0.12 says the model is wrong most of the time. It does
 #   not say whether the mistakes are random or systematic — and a
 #   systematic mistake is the one you can either fix or warn about.
-# - The specific hypothesis, from the thesis: false positives are
+# - The specific hypothesis, stated before looking: false positives are
 #   *structurally prominent* accounts — high degree, high PageRank — who
 #   simply were not right about anything.
 #
@@ -1363,8 +1331,8 @@ plt.show()
 # - The FP profile is loud: false positives sit well above the typical
 #   author on degree, PageRank and comment volume, and *not* above on the
 #   forecast-quality columns. The model is confusing **prominence** with
-#   **skill**, exactly as the thesis found (their hubs were ~40% accurate
-#   against ~79% for quiet users).
+#   **skill** — and that is the crowd's property, not the model's: the
+#   loudest accounts in this store are not the most accurate ones.
 # - The cross-check agrees: mean P(HIGH) is lower for `loud_but_wrong`
 #   authors than for the rest, which is the direction it should be.
 # - **What changes:** nothing in the model — this is a property of the
@@ -1379,7 +1347,7 @@ print(ct.to_string())
 tp, fp = int(ct.iloc[1, 1]), int(ct.iloc[0, 1])
 fn = int(ct.iloc[1, 0])
 print(f"\npooled precision {tp / max(tp + fp, 1):.3f}, "
-      f"recall {tp / max(tp + fn, 1):.3f}   (thesis ~12% precision)")
+      f"recall {tp / max(tp + fn, 1):.3f}")
 
 prof = ml.bucket_profiles(pred, tab)
 print("\nbucket profiles (mean feature value per confusion bucket):")
@@ -1407,9 +1375,14 @@ despine(ax)
 plt.show()
 
 # %%
+# Handles are masked for display only (`censor_series`): the offending
+# spans collapse to ** and everything else survives, so two authors stay
+# distinguishable on the page. The join keys upstream are the true handles.
+_miss = ml.worst_misses(pred, board, n=5).round(4)
+_miss["author"] = censor_series(_miss["author"])
 print("worst false negatives — the true HIGH authors the model ranked "
       "LOWEST:")
-print(ml.worst_misses(pred, board, n=5).round(4).to_string(index=False))
+print(_miss.to_string(index=False))
 
 if "loud_but_wrong" in board.columns and board["loud_but_wrong"].any():
     lbw = board.set_index("author")["loud_but_wrong"]
@@ -1424,8 +1397,7 @@ else:
     print("\nno loud_but_wrong flags in the board yet")
 
 # %% [markdown]
-# ## 11 · Which features are actually pulling their weight? (thesis
-# §7.2.1, with their own caveat taken seriously)
+# ## 11 · Which features are actually pulling their weight?
 #
 # **WHY THIS**
 #
@@ -1436,14 +1408,15 @@ else:
 # **HOW IT WORKS**
 #
 # - Leave-one-out ablation: refit without each feature and record the
-#   change in AP. Read the sign the way the thesis does — `d_ap < 0` means
-#   removing it **hurt**, so it was beneficial; `d_ap > 0` means removing
-#   it **helped**, so it was actively harmful. Their headline example is
-#   raw degree, which improved AP by 0.027 when dropped.
-# - The thesis attaches a caveat to this table: when two features are
+#   change in AP. Read the sign carefully — `d_ap < 0` means removing it
+#   **hurt**, so it was beneficial; `d_ap > 0` means removing it
+#   **helped**, so it was actively harmful. Raw degree is the column to
+#   watch: on a graph like this one it is expected to fall on the harmful
+#   side.
+# - Single-feature ablation has a known blind spot: when two features are
 #   near-duplicates, dropping either looks harmless because the twin
-#   covers for it, so single-feature ablation *understates both*. Rather
-#   than repeat the sentence we do two things about it:
+#   covers for it, so the table *understates both*. Rather
+#   than just note that, we do two things about it:
 #   1. the **Spearman correlation matrix** is printed, so a reader can see
 #      which pairs are twins (|ρ| ≥ 0.95 — CONVENTION, and the printed
 #      pair list makes the cut auditable rather than load-bearing);
@@ -1635,7 +1608,6 @@ plt.show()
 
 # %% [markdown]
 # ## 12 · If we vandalise the graph, does the graph model even notice?
-# (thesis §7.2.2)
 #
 # **WHY THIS**
 #
@@ -1657,14 +1629,14 @@ plt.show()
 # | Mode | What it does | What it tests |
 # |---|---|---|
 # | `random` | rewire one endpoint of a fraction of edges to a random node | pure structural noise. A model that truly uses the graph **must** degrade |
-# | `dice` | Disconnect Internally, Connect Externally — select **same-label** edges and rewire them *across* the label boundary | whether same-label neighbourhoods are helping or hurting. On a heterophilous graph this can *help*, which is what the thesis observed |
-# | `swap` | degree-preserving double-edge swap: (a→b),(c→d) become (a→d),(c→b) | isolates *who is connected to whom* from *being busy*. Every node keeps its exact degree. The thesis states degree is preserved under its perturbations; this is the strict version of that claim |
+# | `dice` | Disconnect Internally, Connect Externally — select **same-label** edges and rewire them *across* the label boundary | whether same-label neighbourhoods are helping or hurting. On a heterophilous graph this can *help*, and that is the outcome §3.6 predicts |
+# | `swap` | degree-preserving double-edge swap: (a→b),(c→d) become (a→d),(c→b) | isolates *who is connected to whom* from *being busy*. Every node keeps its exact degree, so any change is attributable to wiring alone |
 #
-# - Accuracy is plotted alongside AP because the thesis reports accuracy
-#   here (precision was too noisy at their positive count) — and the panel
-#   shows *why* that is a trap: accuracy barely moves, because predicting
-#   "ordinary" for everyone is already ~95% accurate. **AP is the panel to
-#   read**; the accuracy panel is kept as the demonstration of why.
+# - Accuracy is plotted alongside AP as a **cautionary panel**, not as a
+#   result: it barely moves under any corruption, because predicting
+#   "ordinary" for everyone is already ~95% accurate on a 20:1 problem.
+#   **AP is the panel to read**; the accuracy panel is kept to show exactly
+#   how misleading accuracy is on data shaped like this.
 #
 # **SO WHAT** — in the cell below the chart, because the DICE result is
 # the whole point of the section.
@@ -1690,8 +1662,8 @@ for metric, sd_col, ax, name in (("ap", "ap_std", axes[0], "test AP"),
     despine(ax)
 axes[0].set_title(f"{ml.BEST_GRAPH_MODEL} AP under corruption — DICE "
                   "IMPROVES it")
-axes[1].set_title("Accuracy is nearly flat — why the thesis's accuracy "
-                  "panel is uninformative")
+axes[1].set_title("Accuracy is nearly flat — which is why the accuracy "
+                  "panel is uninformative here")
 plt.tight_layout()
 plt.show()
 
@@ -1715,9 +1687,9 @@ print(f"random: AP {r0.iloc[0]:.4f} -> {r0.iloc[-1]:.4f}  "
 #   (random degrades mildly), and is being actively **misled** by
 #   same-label adjacency (DICE helps a lot).
 # * **What changes:** nothing new is adopted — but §7's rejection stops
-#   being an empirical shrug. The thesis saw the same direction on DICE
-#   and reported it as a curiosity; with §3.6's homophily numbers in hand
-#   it is not a curiosity, it is the mechanism.
+#   being an empirical shrug. Read next to §3.6's homophily numbers, the
+#   DICE result is not a curiosity, it is the mechanism: it names *why*
+#   the graph fails rather than only recording *that* it failed.
 #
 # **IF ASKED — "if breaking the graph helps, why not ship the broken
 # graph?"**
@@ -1730,24 +1702,24 @@ print(f"random: AP {r0.iloc[0]:.4f} -> {r0.iloc[-1]:.4f}  "
 # do not use the adjacency.
 
 # %% [markdown]
-# ## 13 · Was the class-weighted loss the right call? (their §6.2 choice)
+# ## 13 · Was the class-weighted loss the right call?
 #
 # **WHY THIS**
 #
-# - The thesis uses class-weighted losses throughout, and we adopted it in
-#   §6 without argument. Inheriting a choice is inheriting an assumption,
-#   and on a 20:1 problem this one is load-bearing.
+# - Class-weighted loss is the standard default on an imbalanced problem,
+#   and §6 adopted it without argument. An unargued default is still an
+#   assumption, and on a 20:1 problem this one is load-bearing.
 #
 # **HOW IT WORKS**
 #
 # - `sage_unweighted` is `sage_lite` with the weighting removed and
 #   **nothing else changed**, run through the same paired 10-seed test as
-#   every other decision. That turns an inherited choice into a measured
+#   every other decision. That turns an assumed choice into a measured
 #   one.
 #
 # **SO WHAT**
 #
-# - `adopt = False`: the weighting does not earn its place on our data at
+# - `adopt = False`: the weighting does not earn its place on this data at
 #   the 95% bar. So it is **defensible convention, not a measured gain**,
 #   and the notebook labels it that way rather than quietly presenting it
 #   as validated.
@@ -1764,12 +1736,11 @@ print(f"(computed in {time.time() - t:.0f}s)")
 print({k: (round(v, 4) if isinstance(v, float) else v)
        for k, v in cw.items()})
 print("\nreading: 'candidate' is the class-WEIGHTED version. adopt=True "
-      "means the weighting earns its place on our data too; adopt=False "
+      "means the weighting earns its place on this data; adopt=False "
       "means it is defensible convention, not a measured gain.")
 
 # %% [markdown]
-# ## 14 · Is the result distinguishable from luck? (the thesis does not
-# ask)
+# ## 14 · Is the result distinguishable from luck?
 #
 # **WHY THIS**
 #
@@ -1831,14 +1802,14 @@ despine(ax)
 plt.show()
 
 # %% [markdown]
-# ## 15 · Does it work on authors it has never seen? (thesis ch.8's own
-# limitation, measured)
+# ## 15 · Does it work on authors it has never seen?
 #
 # **WHY THIS**
 #
-# - Chapter 8 names the transductive single-snapshot setup as the main
-#   limitation: every labelled node was present when the model was fitted,
-#   so nothing in the paper shows the model working on a *new* user.
+# - The transductive single-snapshot setup used everywhere above is the
+#   main limitation of the whole exercise: every labelled node was present
+#   when the model was fitted, so nothing so far shows the model working
+#   on a *new* user.
 # - That is the **only question a desk actually asks** — *"a new name is
 #   loud this week; is it worth listening to?"* Every number before this
 #   section answers a different, easier question.
@@ -1892,7 +1863,8 @@ ax.text(len(mods) - 0.6, float(coh["ap_random"].iloc[0]) * 1.05,
 ax.set_xticks(x), ax.set_xticklabels(mods, rotation=20, ha="right")
 ax.set_ylabel("test AP")
 ax.set_title("Unseen authors — the shipped model drops to the random "
-             "floor\n(the ch.8 limitation, measured rather than noted)")
+             "floor\n(the transductive limitation, measured rather than "
+             "noted)")
 ax.legend(frameon=False, fontsize=8)
 despine(ax)
 plt.show()
@@ -1983,7 +1955,6 @@ verdict = {
         "ap_random": floor,
         "auroc": auroc,
         "pooled_precision": tp / max(tp + fp, 1),
-        "thesis_sage_ap": 0.140,
     },
     "circularity_audit": {k: v for k, v in circ.items()},
     "adoption_ladder": ladder.to_dict("records"),
@@ -1992,7 +1963,7 @@ verdict = {
                    "adopted": bank_change},
     "significance": perm,
     "class_weighting_check": cw,
-    "network_stats_vs_thesis": side["ours"].to_dict(),
+    "network_stats": side["ours"].to_dict(),
     "homophily": {k: round(float(v), 4) for k, v in h.items()},
     "perturbation": pert.to_dict("records"),
     "cohort_generalisation": coh.to_dict("records"),
@@ -2022,12 +1993,6 @@ print(f"total runtime {time.time() - T0:.0f}s")
 # %% [markdown]
 # ## References
 #
-# * Chan (2026). *Predicting influence and stock movements from social
-#   media structure.* M.Eng thesis, University of Oxford — the spine of
-#   this notebook: §4.6 composite scoring, §5 network and label analysis,
-#   §6.1 architectures, §6.2 learning setup, §7.1 results, §7.1.2
-#   labelling-criteria sensitivity, §7.1.3 misclassification, §7.2
-#   ablation and perturbation, §8 limitations.
 # * Blondel, V.D., Guillaume, J.-L., Lambiotte, R. & Lefebvre, E. (2008).
 #   "Fast unfolding of communities in large networks." *J. Stat. Mech.* —
 #   the Louvain method implemented in `influence_graph`.

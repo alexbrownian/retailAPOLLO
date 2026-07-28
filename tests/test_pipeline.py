@@ -324,8 +324,12 @@ class TestAbstractedSafety:
 # 8. EXTRACTION - the counting rules
 # ---------------------------------------------------------------------------
 class TestExtraction:
+    # staticmethod, not an instance method: a class-scoped fixture runs once
+    # while each test gets a fresh instance, so pytest deprecated the instance
+    # form (anything it set on `self` would be invisible to the tests).
+    @staticmethod
     @pytest.fixture(scope="class")
-    def universe(self):
+    def universe():
         return abstracted_data.load_universe()
 
     def test_cashtags_and_bare_caps(self, universe):
@@ -834,12 +838,12 @@ class TestInfluenceAdoption:
         from analytics import influence_ml as ml
         assert len(ml.ADOPTION_SEEDS) == 10
         assert len(set(ml.ADOPTION_SEEDS)) == 10
-        assert ml.THESIS_SEEDS == (42, 100, 2026)
+        assert ml.HOUSE_SEEDS == (42, 100, 2026)
 
     def test_maturity_bar_and_headline_regime_are_declared(self):
         """Two pre-stated numbers that must never drift silently: the
-        minimum positives before any claim is made (the thesis had 133), and
-        which label regime the headline quotes."""
+        minimum positives before any claim is made, and which label regime
+        the headline quotes."""
         from analytics import influence_ml as ml
         assert ml.MIN_POSITIVES >= 130
         assert ml.HEADLINE_REGIME in ml.LABEL_REGIMES
@@ -1059,28 +1063,43 @@ class TestDynamicPanel:
 
 
 class TestResearchLiveSplit:
-    """Desk decision 2026-07-24: research decides once, live scores.
-    The walk-forward trains each year's threshold on STRICTLY EARLIER
-    years, so within a calendar year a daily recompute is a no-op - the
-    pipeline must therefore run at frozen thresholds and re-derive them
-    only when the data rolls into an uncovered year (or on --research)."""
+    """Desk decision 2026-07-24, TIGHTENED 2026-07-28: research decides
+    once, live scores - and a data pull NEVER decides on its own.
 
-    def test_needs_research_triggers(self):
+    A pull derives a threshold in exactly one case: the machine has no
+    usable frozen record, so it cannot score at all (the bootstrap).
+    A record that exists but stops at an earlier year is out-of-sample
+    use, which is what the walk-forward licenses - it produces a NOTICE
+    (the `*_record_lags_data` half of each pair), never a silent refit
+    inside `update_data`."""
+
+    def test_needs_research_only_bootstraps(self):
         from analytics.euphoria import needs_research
         stored = {"thresholds": {"2024": 85, "2025": 85, "2026": 85}}
         assert needs_research(None, 2026)            # no report yet
         assert needs_research({}, 2026)              # empty report
         assert not needs_research(stored, 2026)      # covered year: frozen
-        assert needs_research(stored, 2027)          # year rolled over
+        # THE 2026-07-28 CONTRACT: a rolled-over year must NOT re-fit.
+        assert not needs_research(stored, 2027)
 
-    def test_onset_needs_research_triggers(self):
-        from analytics.euphoria_phases import onset_needs_research
+    def test_record_lags_data_reports_the_year(self):
+        from analytics.euphoria import record_lags_data
+        stored = {"thresholds": {"2024": 85, "2025": 85, "2026": 85}}
+        assert record_lags_data(stored, 2026) is None      # covered
+        assert record_lags_data(stored, 2027) == 2026      # notice, not refit
+        assert record_lags_data(None, 2027) is None        # bootstrap's job
+
+    def test_onset_needs_research_only_bootstraps(self):
+        from analytics.euphoria_phases import (onset_needs_research,
+                                               onset_record_lags_data)
         stored = {"live_threshold": 0.89,
                   "walk_forward": {"test_years": [2024, 2025, 2026]}}
         assert onset_needs_research(None, 2026)
         assert onset_needs_research({"walk_forward": {}}, 2026)
         assert not onset_needs_research(stored, 2026)
-        assert onset_needs_research(stored, 2027)
+        assert not onset_needs_research(stored, 2027)
+        assert onset_record_lags_data(stored, 2027) == 2026
+        assert onset_record_lags_data(stored, 2026) is None
 
 
 class TestEpisodeCoherence:
@@ -1173,8 +1192,11 @@ class TestDeskConfiguration:
         assert (sm.iloc[:7].values == sm2.iloc[:7].values).all(), \
             "smoothing looked ahead"
 
-    def test_desk_needs_research_triggers(self):
-        from analytics.euphoria_phases import desk_needs_research
+    def test_desk_needs_research_only_bootstraps(self):
+        """2026-07-28: same contract as the other two - bootstrap only,
+        a lagging record is a notice rather than a silent refit."""
+        from analytics.euphoria_phases import (desk_needs_research,
+                                               desk_record_lags_data)
         stored = {"get_in": {"walk_forward": {"test_years": [2024, 2025,
                                                             2026]}},
                   "get_out": {"walk_forward": {"test_years": [2024, 2025,
@@ -1182,7 +1204,9 @@ class TestDeskConfiguration:
         assert desk_needs_research(None, 2026)
         assert desk_needs_research({"get_in": {}}, 2026)
         assert not desk_needs_research(stored, 2026)
-        assert desk_needs_research(stored, 2027)
+        assert not desk_needs_research(stored, 2027)
+        assert desk_record_lags_data(stored, 2027) == 2026
+        assert desk_record_lags_data(stored, 2026) is None
 
     def test_desk_store_contract(self):
         """The shipped store: text-free (FORBIDDEN_COLS) and internally
@@ -1650,6 +1674,6 @@ class TestDashboardModuleHygiene:
     def test_module_level_helpers_are_still_callable_after_the_script_runs(
             self):
         import dashboard as D
-        for name in ("_unit", "_dig", "_theme", "_thin_labels"):
+        for name in ("_unit", "_dig", "_theme", "_thin_labels", "_facts"):
             assert callable(getattr(D, name)), (
                 f"dashboard.{name} was rebound by a tab-local variable")

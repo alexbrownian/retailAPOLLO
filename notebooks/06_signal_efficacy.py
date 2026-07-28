@@ -40,7 +40,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-# %matplotlib inline  # inline is the ipykernel default; commented so the file also runs as a plain script
+# %matplotlib inline
 
 ROOT = Path.cwd().parent if Path.cwd().name == "notebooks" else Path.cwd()
 sys.path.insert(0, str(ROOT))
@@ -558,7 +558,7 @@ pd.DataFrame(prec)
 # # THE DESK SIGNAL STUDY — price + crowd, one better END
 #
 # **Desk decision (2026-07-24):** the crowd-only constraint is lifted for a
-# SECOND signal family. The crowd-only detector remains the thesis headline
+# SECOND signal family. The crowd-only detector remains the headline result
 # ("the crowd alone called it"); the DESK signal may use price, and its
 # stated objective is the desk's own words: *predict sharp drops (≥10%
 # within ~a week) up to a month before they happen, with a better hit rate
@@ -773,7 +773,7 @@ if winner_row is not None:
           f"[{lo_u:+.2f}, {hi_u:+.2f}] -> "
           f"{'VALID (CI excludes zero)' if lo_u > 0 else 'NOT distinguishable from baseline'}")
     print("  ADOPTED as the DESK END signal (claim: crowd + chart). The "
-          "crowd-only detector remains the thesis headline."
+          "crowd-only detector remains the headline result."
           if lo_u > 0 else "  NOT adopted.")
 else:
     print("no variant met the eligibility constraints - nothing adopted")
@@ -907,7 +907,7 @@ print("saved nb06_signal_efficacy.json")
 #    just 1 day"* — no one-day blips.
 # 3. *"we should be using both price and the social media to predict. i
 #    want a better hit rate"* — the price gate is permitted (a labelled
-#    SECOND claim; the crowd-only detectors remain the thesis headline).
+#    SECOND claim; the crowd-only detectors remain the headline result).
 #
 # **Pre-stated selection rule:**
 # * **GET OUT** = the boom-gated crowd-bank rules (the NB03 commissioned

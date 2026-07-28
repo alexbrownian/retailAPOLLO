@@ -350,6 +350,84 @@ Classes 1–7 changed. Evidence: `dashboard.py` block comments at the
 | Gauge `valueformat` | `".0f"` on both number and delta | DERIVED | the level is a 0-100 index built from percentile ranks, so a tenth of a point is below the resolution of the thing being measured and "28.4" invites a precision the input does not have. Display only; the stored value is untouched |
 | Delta arrow inverted | rising = `BEAR`, falling = `BULL` | CONVENTION (display) | euphoria rising is the RISK direction, so "up" must not be painted green on this dial |
 
+### Class 8 continued — the second legibility pass (2026-07-28, same day, after the desk read the first one)
+
+*Four further desk instructions, all about what the panel SAYS rather than what
+the detector DOES: "the euphoria charts are still way too messy. i dont get
+what is activating a signal, is it a crossing? inflection? i just want one
+line"; "remove the hit rate etc stuff (the perfomance metrics) in the dashboard
+i will just keep this for the notebooks only"; "arrange the dashboard better /
+like title of ticker / guage + some elements next to it / then chart /
+essentially using less white space"; and "keep the what is euphoria- start here
+- plan english on the dasboard, i like it". **Again no number in Classes 1–7
+moved.** Evidence: the block comments in `dashboard.py` at the readiness-series
+block, the header/dial row, and `decisions_simple()`.*
+
+| Change | What it is | Class | Why / what the evidence says |
+|---|---|---|---|
+| ONE readiness line replaces five overlays | `readiness = deciding score / that rule's frozen threshold × 100`, one series per firing rule, one dotted line at 100 | **DERIVED — no new quantity** | the desk could not tell what fired a signal. It IS a crossing (`alerts_from_scores` fires on `score >= threshold`, then a 21-day cooldown; there is no inflection test anywhere in the firing path) but the panel could not show that, because it drew a faint raw level, a bold smoothed level, an eligibility ribbon, a peak marker and the score, at equal weight — and the two thresholds (GET IN 0.848141, GET OUT 0.630231) sat at DIFFERENT heights, so neither line meant "the line". Dividing each score by its own frozen threshold puts the firing line at **100 for every name, every rule, every window**, which is what lets both rules share ONE line. Same stored score, same frozen threshold, divided: **alert dates are bit-identical** and the vertical signal lines still come from `coherent` |
+| Near-misses drawn, not just firings | every rule whose score EXISTS in the window gets a line | CONVENTION (display) | the old panel drew a score only when it produced a flag. With the level curve gone that would leave the name-lookup box — the one place a PM checks a name that never alerted — showing an empty panel. A line that climbs to 80 and turns over IS the answer to "why did nothing fire here?" |
+| Sparsity kept visible (`connectgaps=False`) | gaps are drawn as gaps | CONVENTION (display), **cost measured** | `desk_candidacy` only scores a name on days the gates allow judgement. Over the live store (63,345 name-days) that is **2.5% of days for GET OUT and 48.8% for GET IN**, so the GET IN line is near-continuous and GET OUT is a set of arcs. Those arcs are drawable: the 1,600 GET OUT scored days form **160 runs, median length 7 days** (mean 10, max 91, only 28 single days). A blank day means nothing CAN fire there, whatever the crowd is doing — bridging it would invent a reading |
+| The 0-100 level is NOT lost | it is what the dial reads | — | the definition Alex asked not to change is untouched in the stores (`level`, `hype_ok`, both raw scores). The two questions are separated: the dial answers "how hot is this name", the panel answers "how close is it to firing" |
+| Performance metrics REMOVED from the dashboard | no hit rate, lead time, FA count or CI anywhere on the page | DESK DECISION 2026-07-28 | "i will just keep this for the notebooks only". The notebooks are the research record; the dashboard states conclusions. **Scope, stated so it can be challenged:** headline performance reporting is gone everywhere, but the justification numbers inside `decisions_simple()` / `DECISIONS_DOC` and the band-meaning percentages in `gauge_caption()` were KEPT — strip those and every remaining choice on the page looks arbitrary, which is the failure mode this whole register exists to prevent |
+| Header → dial+facts row → chart | one compact name line; dial shares a row with five facts; figure follows at `title=None`, 8px top margin | CONVENTION (display) | the old stack paid for a half-used dial row plus a second title strip inside the figure's own 55px top margin, per name — most of a screen on a six-name page. WHICH five facts: state, today's reading, the 7-day change, the window peak, the last signal. Every one describes WHERE THIS NAME IS; **none describes how well the detector has done** — that is the row above, honoured in the one place there was now room to break it |
+| Plain-English opener KEPT | "what is euphoria — start here" | DESK DECISION 2026-07-28 | explicitly retained on the desk's instruction ("i like it") during a pass whose whole direction was removal. Recorded so a later cleanup does not read it as leftover explanation and delete it |
+
+### Class 8 continued — the third pass: two screen bugs, a ghost line, and four expanders removed (2026-07-28)
+
+*Four desk items, all about the panel and **none of them about the
+detector**: "the graph is not formatted correctly"; "can we make the
+euphoria still have like a continuos line? but maybe make it like not as
+prominant"; "how does it actually work? the signal for get in / get out?";
+and "for the explanations, just keep the 'what is euphoria' one … dont
+change the current what is euphoria? (start here - plain English) just
+remove the rest". **No number in Classes 1–7 moved, and the alert dates
+are bit-identical to the previous pass.** Two of the four were real
+rendering bugs that could only be found in the live DOM, not in the
+source. Evidence: `dashboard.py` block comments at the `fig.update_layout`
+title/margin block, the ghost-line loop, the lower-panel caption and the
+two expander-removal comment blocks; live verification via Playwright
+against the running app.*
+
+| Change | What it is | Class | Why / what the evidence says |
+|---|---|---|---|
+| `title=dict(text="")`, never left unset | an explicit EMPTY STRING for the figure title | **BUG FIX, root-caused in the DOM** | a bold **undefined** was printing over every euphoria chart. The word appears in **no Python file in this repo**, which is why four source-level hypotheses were formed and discarded before the DOM was dumped: the decisive step was walking the tspan's ancestor chain and reading `data-unformatted` on `text.gtitle`, which gave `"<b><b>undefined</b></b>"` and therefore named the layer (`g-gtitle`) and the mechanism. **Streamlit's plotly theming rewrites the title as `"<b>" + spec.layout.title.text + "</b>"`**; with no title in the spec that inner value is the JavaScript `undefined`, so the literal string reached the browser. Removing the title strip was itself deliberate (it cost 55px of dead vertical space per name) — the fix is to keep it removed but make it a REAL empty string, so the same rewrite yields `"<b></b>"` and renders nothing. Verified after: rendered `_fullLayout.title.text` = `"<b><b></b></b>"`, occurrences of "undefined" on the page **6 → 0** |
+| Top margin `t=8` → `t=38` | 30px more headroom above the price panel | **BUG FIX, derived from the geometry** | the `GET OUT <date>` labels were being cut in half by the canvas edge. Derived, not tuned: the annotations sit at `y=1.0, yref="y domain", yanchor="bottom"` with alternating `yshift = 4 + 14*(i%2)` (so up to 18) to stop adjacent labels colliding, and 9.5px text is ~13px tall — the tallest label therefore reaches **~31px above the panel**. 38 clears 31 with a little air and is still **less than the 55px the deleted title strip used to cost**, so the space saving that motivated removing the title survives |
+| THE GHOST LINE | the same readiness series, time-interpolated across gaps, drawn UNDERNEATH at 1px / dotted / 30% opacity / out of the legend | CONVENTION (display) — **and a knowing reversal, so the guards are the entry** | "can we make the euphoria still have like a continuos line? but maybe make it like not as prominant". The arcs are correct but leave the eye nothing to follow, so a reader reconstructs the episode shape themselves. This **reverses** the same-day rejection of a dense line (recorded above: it "invents a reading on ungated days"), so it is only defensible with the reason the old version was unsafe identified and neutralised. **(1) `hoverinfo="skip"` — the ghost NEVER reports a number.** Hover still comes only from the bold trace, so no ungated day can be read off the screen as a score. This is the load-bearing guard: the earlier objection was to a dense line that could be *queried*, not one that could be *seen*. **(2) `limit_area="inside"`** — interpolation happens only BETWEEN two real scored days, never past the first or last, so the ghost cannot imply a reading in a stretch the detector never judged at all. **(3) 1px dotted, 30% opacity, no legend entry** — it reads as a construction line; the solid 2.4px markered trace is still the only thing on the panel that looks like a measurement. Verified live: two `(shape only)` traces present with `hoverinfo: "skip"`, `connectgaps: true`, `opacity: 0.3`, added before the bold traces so they render behind. **Nothing here feeds the model; alert dates untouched** |
+| Four model-evidence expanders REMOVED from the page | page-level *"WHY THE MODEL DOES WHAT IT DOES"* (`decisions_simple()`) and the long-form evidence log (`DECISIONS_DOC`); euphoria-tab *"full method & measured record"* (`EUPHORIA_DEF_FULL`) and the deep archive that printed this register off disk | DESK DECISION 2026-07-28 | "just remove the rest". Consistent with the standing split — the notebooks and this register are the research record, the terminal states conclusions — and the content is not lost, because all four were second copies of `DECISIONS.xlsx`, this file, and the notebooks. **What it costs, recorded because the argument went the other way and was overruled: a PM who challenges a threshold live can no longer answer it from this page.** The answer now requires the register or a notebook. Mitigation: `decisions_simple()`, `DECISIONS_DOC` and `EUPHORIA_DEF_FULL` are left **DEFINED BUT UNREFERENCED** in `dashboard.py` rather than deleted, so restoring any of them is a two-line change — **they must not be swept by the no-dead-code pass** |
+| The surviving explainer's label is FROZEN | *"what is euphoria?  (start here - plain English)"* — lower case, two spaces, that wording | DESK DECISION 2026-07-28 | a rename to *"What is Euphoria"* was proposed by the desk and then withdrawn in the same exchange ("dont change the current what is euphoria? … just remove the rest"). Recorded so the withdrawal is not re-litigated and so a later tidy-up does not "fix" the capitalisation |
+| Lower-panel caption extended | one clause describing the ghost and stating that it carries no reading | CONVENTION (display) | a faint line that cannot be hovered is only honest if the panel says so. The caption now states that the solid dotted-marker line is the measured score drawn on gated days, and that the faint line joins those stretches, carries no reading of its own, and does not respond to hover "because on those days nothing could fire however loud the crowd got" |
+
+## Class 9 — PIPELINE CADENCE & THE RESEARCH CONTRACT (added 2026-07-28)
+
+*Desk instruction: "why does the update_data have to check what is the best
+model everytime? shouldnt it just used the already pre established best model?
+no need to show me the stats everytime. if i need to know the stats i will use
+th enotebooks. update_data should simply be to just update the data and run the
+model on these new data downloaded". This class exists because the answer is a
+**contract about when a number is allowed to change**, and until now that
+contract lived only in source docstrings — including two that pointed at
+sections of this register and of DECISIONS.xlsx that did not hold it. Evidence:
+`update_data.py` module docstring, `analytics/euphoria.py::needs_research` and
+`::record_lags_data`, DECISIONS.xlsx sheet `3b. Pipeline & Cadence`.*
+
+| Rule | What it is | Class | Why / what the evidence says |
+|---|---|---|---|
+| A live run NEVER re-selects | `update_data.py` does not choose a model, re-select a threshold, or re-run the walk-forward / ablation / ML challenger | DESK DECISION 2026-07-28 | research decides ONCE, in the notebooks, and the answer is frozen into a stored record. A live run refreshes data and scores it with the already-frozen winner. This is not a shortcut: **re-fitting on every run makes the number on screen untraceable** — nothing on disk would describe how today's threshold differs from yesterday's, and a threshold nobody can reconstruct cannot be defended |
+| The ONE exception: the bootstrap | a machine with no frozen record at all derives one, once | DERIVED | `needs_research(stored)` returns True only for `not stored or not stored.get("thresholds")`. You cannot score against a record that does not exist |
+| Two explicit ways to re-open research | `python -m analytics.run_analytics --what phases --research`, or `python update_data.py --full` | CONVENTION | both are typed on purpose, never reached by drift. `--full` counts as research **because a backfill rewrites the history the thresholds were chosen on** — scoring new history against thresholds fitted on the old history would be a silent lookahead |
+| Staleness is reported, not repaired | `record_lags_data` returns the newest year the frozen record covers when the data has outgrown it; the run prints ONE notice line and keeps scoring | DERIVED | a live run in this state is perfectly legitimate — it is out-of-sample use, which is **exactly what the walk-forward licenses**. Refitting in January because a new year began does not make the threshold more correct; it makes it a moving target no stored record describes. So the pipeline tells the desk to run the research pass instead of quietly doing it |
+| No stats printed on a live run | performance output belongs to the notebooks | DESK DECISION 2026-07-28 | same principle as the dashboard's no-performance-metrics decision (Class 8): the research record is the notebooks, the operational surfaces state conclusions |
+| Cadence | the pipeline is run roughly **2× a week**; a full refresh must stay under ~10 minutes | DESK DECISION | Alex's answer when asked directly. `PIPELINE_BUDGET_S = 600` is that instruction expressed as a number the code can enforce |
+
+**Pointer correction, recorded because it was wrong in shipped source.**
+`analytics/euphoria.py` promised this contract lived in DECISIONS.xlsx
+`"2. Pipeline & Cadence"` and PARAMETER_REGISTER `Class 6`. Neither held it —
+sheet 2 is *Literature* and Class 6 is the *influence tracker*. Rather than
+renumber existing sheets and classes (every other cross-reference in the repo
+would break), the missing sections were CREATED — this class, and sheet
+`3b. Pipeline & Cadence` — and the two docstrings were repointed at them.
+
 *Full derivations: `analytics/euphoria.py` and `analytics/euphoria_phases.py`
 docstrings, `analytics/influence_graph.py` and `analytics/influence_ml.py`
 docstrings, `src/pipeline_budget.py` docstrings, `src/config.py` inline

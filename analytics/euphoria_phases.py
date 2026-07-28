@@ -14,7 +14,7 @@ WHAT THIS MODULE OWNS
    the two detectors share one notion of "a genuine euphoria event".
 2. The ONSET FEATURE BANK - six trailing, crowd-only candidate features
    aimed at the LEFT side of an episode (the crowd arriving), evaluated
-   in notebook 02 with the thesis-style importance battery.
+   in notebook 02 with the full feature-importance battery.
 3. The LABELLED DAY FRAME - one row per (instrument, candidate day) with
    features + onset/top labels, shared by notebooks 02 and 03 and by the
    production detector, so research and dashboard can never drift apart.
@@ -515,8 +515,8 @@ def run_tournament_entry(frame: pd.DataFrame, episodes: pd.DataFrame,
     """One model through the whole discipline: walk-forward scores, a
     threshold chosen per test year on its train years only, alerts,
     pooled scorecard + threshold-independent AP/AUROC on the stacked
-    test scores (the thesis's §6.2.3 separation of score quality from
-    operating point)."""
+    test scores - which keeps score QUALITY (AP/AUROC, threshold-free)
+    separate from the OPERATING POINT chosen on it."""
     from sklearn.metrics import roc_auc_score, average_precision_score
 
     n_instruments = frame["name"].nunique()
@@ -613,30 +613,47 @@ def _stored_onset_report() -> dict | None:
 
 
 def onset_needs_research(stored: dict | None, data_max_year: int) -> bool:
-    """Mirror of euphoria.needs_research: the walk-forward trains on
-    strictly earlier years, so a frozen threshold is exactly right until
-    (a) no report exists yet, or (b) the data rolls into a year the
-    stored record does not cover. Backfills / rule changes are explicit
-    --research runs."""
+    """Mirror of euphoria.needs_research, and it moved on the same date
+    for the same reasons: a data pull derives a threshold for itself in
+    EXACTLY ONE case - there is no usable frozen record to read. A
+    record that exists but stops at an earlier year is not a reason to
+    re-fit inside a refresh job; it is a reason to print a notice (see
+    `onset_record_lags_data`) and let the desk spend a `--research` run
+    when it chooses. Full argument in analytics/euphoria.py's
+    `needs_research`; recorded in DECISIONS.xlsx ("2. Pipeline &
+    Cadence")."""
     if not stored or "live_threshold" not in stored:
         return True
+    return not (stored.get("walk_forward", {}).get("test_years") or [])
+
+
+def onset_record_lags_data(stored: dict | None, data_max_year: int):
+    """Newest walk-forward test year when it lags the data, else None."""
+    if not stored or "live_threshold" not in stored:
+        return None
     years = stored.get("walk_forward", {}).get("test_years") or []
-    return not years or data_max_year > max(int(y) for y in years)
+    if not years:
+        return None
+    newest = max(int(y) for y in years)
+    return newest if data_max_year > newest else None
 
 
 def rebuild_phase_files(verbose: bool = True,
                         research: bool | None = None) -> dict:
     """Rebuild what the dashboard's start/end panes read.
 
-    LIVE mode (the pipeline default when a valid report exists and the
-    year has not rolled over): build today's features, score at the
-    FROZEN live threshold, refresh episodes.parquet +
-    euphoria_onset.parquet. Seconds beyond the unavoidable feature
-    build; the stored walk-forward scorecard is left untouched (it is a
-    research artifact with an as-of range, not a daily statistic).
+    LIVE mode (the pipeline default whenever a frozen record exists at
+    all): build today's features, score at the FROZEN live threshold,
+    refresh episodes.parquet + euphoria_onset.parquet. Seconds beyond
+    the unavoidable feature build; the stored walk-forward scorecard is
+    left untouched (it is a research artifact with an as-of range, not a
+    daily statistic). A record that lags the data prints one notice and
+    is still used - see `onset_needs_research` for why that is the
+    methodologically correct default, not a shortcut.
 
-    RESEARCH mode (research=True, or auto-triggered by
-    onset_needs_research): additionally re-runs the winner's full
+    RESEARCH mode (research=True, or the one-off bootstrap when
+    onset_needs_research finds no record): additionally re-runs the
+    winner's full
     walk-forward scorecard and re-selects the live threshold - on FULL
     years strictly before the current data year (the incumbent's
     convention, so the threshold is stable within a year by
@@ -669,9 +686,17 @@ def rebuild_phase_files(verbose: bool = True,
     stored = _stored_onset_report()
     if research is None:
         research = onset_needs_research(stored, data_max_year)
-        if research and stored and verbose:
-            print("  onset research pass auto-triggered (report missing "
-                  "the current year)")
+        if research and verbose:
+            print("  onset: no frozen record here - deriving the "
+                  "threshold once (bootstrap)")
+        elif verbose:
+            _lag = onset_record_lags_data(stored, data_max_year)
+            if _lag is not None:
+                print(f"  NOTE: onset data reaches {data_max_year}; the "
+                      f"frozen threshold was confirmed through {_lag}. "
+                      "Scoring at it out-of-sample, as designed. Refresh "
+                      "the record deliberately with "
+                      "analytics.run_analytics --what phases --research")
 
     if research:
         # the JUDGED frame (labels need 45d of future price) powers the
@@ -775,6 +800,8 @@ def rebuild_phase_files(verbose: bool = True,
             desk_stored = None
     desk_research = research or desk_needs_research(desk_stored,
                                                     data_max_year)
+    _desk_lag = (None if desk_research
+                 else desk_record_lags_data(desk_stored, data_max_year))
 
     rep_path = _os.path.join(PROCESSED_DIR, "euphoria_report.json")
     fa_budget = 0.23
@@ -854,6 +881,11 @@ def rebuild_phase_files(verbose: bool = True,
         if verbose:
             print(f"  DESK live mode: frozen thresholds in {thr_in:.3f} "
                   f"/ out {thr_out:.3f}")
+            if _desk_lag is not None:
+                print(f"  NOTE: desk data reaches {data_max_year}; these "
+                      f"thresholds were confirmed through {_desk_lag}. "
+                      "Refresh the record deliberately with "
+                      "analytics.run_analytics --what phases --research")
 
     end_live, onset_live_f = desk_candidacy(fpx_live)
     end_scored = end_live.assign(
@@ -993,15 +1025,34 @@ def desk_candidacy(frame_px: pd.DataFrame) -> tuple:
     return end_f, onset_f
 
 
-def desk_needs_research(stored: dict | None, data_max_year: int) -> bool:
-    """Same convention as onset_needs_research: frozen thresholds are
-    exactly right until the data rolls into an uncovered year."""
+def _desk_test_years(stored: dict | None) -> list:
+    """Every walk-forward test year the stored desk record covers, across
+    both rules. Shared by the bootstrap test and the staleness notice so
+    the two can never disagree about what the record contains."""
     if not stored or "get_in" not in stored or "get_out" not in stored:
-        return True
+        return []
     years = []
     for k in ("get_in", "get_out"):
         years += stored[k].get("walk_forward", {}).get("test_years") or []
-    return not years or data_max_year > max(int(y) for y in years)
+    return years
+
+
+def desk_needs_research(stored: dict | None, data_max_year: int) -> bool:
+    """Same convention as onset_needs_research, changed on the same date
+    (2026-07-28) for the same reasons: research only to BOOTSTRAP a
+    machine with no usable frozen record. A record that lags the data is
+    a notice, not a refit - see `desk_record_lags_data`."""
+    return not _desk_test_years(stored)
+
+
+def desk_record_lags_data(stored: dict | None, data_max_year: int):
+    """Newest desk walk-forward test year when it lags the data, else
+    None."""
+    years = _desk_test_years(stored)
+    if not years:
+        return None
+    newest = max(int(y) for y in years)
+    return newest if data_max_year > newest else None
 
 
 # ---------------------------------------------------------------------------

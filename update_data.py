@@ -34,6 +34,23 @@ RUNS ON BOTH MACHINES (auto-detected, exactly like RetailFlow1)
         posts fold straight into the aggregates; raw text never lands.
     Either way the run ends by verifying ABSTRACTED_DATA carries no text.
 
+WHAT THIS SCRIPT WILL NEVER DO (desk instruction, 2026-07-28)
+    It does not choose a model, re-select a threshold, or re-run the
+    walk-forward / ablation / ML challenger. It refreshes data and scores
+    it with the ALREADY-FROZEN winner, every time, so the run is one
+    predictable job. The only exception is a machine that has no frozen
+    record at all, which must derive one once before it can score
+    anything (the bootstrap).
+    Two deliberate ways to re-open the research question, both explicit:
+        python -m analytics.run_analytics --what phases --research
+        python update_data.py --full          (a backfill IS new research:
+                                               it rewrites the history the
+                                               thresholds were chosen on)
+    If the frozen record stops at an earlier year than the data, the run
+    prints ONE notice line and keeps scoring at it - that is out-of-sample
+    use, exactly what the walk-forward licenses. See
+    analytics/euphoria.py::needs_research for the full argument.
+
 WHAT REPLACED THE NOTEBOOKS
     old: nbconvert-executes 08/09/10 (+ overlays 11-16), minutes + JSON
          re-serialisation + truncation risk
@@ -65,6 +82,7 @@ import datetime
 import os
 import subprocess
 import sys
+import time
 
 try:                     # posts contain emoji/links; avoid cp1252 crashes
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -75,12 +93,28 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
 from src import config                                        # noqa: E402
+from src import pipeline_budget                               # noqa: E402
 from src.config import (LOG_DIR, SNAPSHOT_DIR, PROCESSED_DIR,  # noqa: E402
                         ABSTRACTED_DIR, PRICES_PATH, POSTS_PATH,
                         BUILD_START_DATE, FETCH_LOOKBACK_DAYS,
-                        FETCH_MAX_CREDITS, FORBIDDEN_COLS, MAX_ABSTRACTED_MB)
+                        FETCH_MAX_CREDITS, FORBIDDEN_COLS, MAX_ABSTRACTED_MB,
+                        PIPELINE_BUDGET_S)
 
 SIGNAL_FILES = ["trade_signals.parquet", "trade_signals_tickers.parquet"]
+
+
+def _read_panel_subs():
+    """The live subreddit panel, read from the same file the fetchers read
+    (ingestion/finance_subreddits.txt) so the cadence advice is computed
+    over the panel that will actually be crawled - the panel is dynamic and
+    grows at the monthly review."""
+    subs = []
+    with open(config.SUBREDDITS_FILE, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                subs.append(line)
+    return subs
 
 
 def log(msg, fh=None):
@@ -91,22 +125,36 @@ def log(msg, fh=None):
         fh.flush()
 
 
-def run(cmd, fh, dry, show=False):
+def run(cmd, fh, dry, show=False, stage=None):
     """Run a child command. show=True streams its output live to the
     terminal (long steps show progress); otherwise output is captured
-    quietly. Returns the exit code (0 on --dry-run)."""
+    quietly. Returns the exit code (0 on --dry-run).
+
+    stage=<name> also TIMES the step and folds the wall clock into
+    data/reference/pipeline_stage_times.json. That ledger is what makes the
+    comment fetch budget honest: the pages the crawl may spend are the desk
+    ceiling MINUS what THIS machine actually spends on everything else,
+    rather than minus a number someone typed. Only successful runs are
+    recorded - a stage that crashed after two seconds is not evidence that
+    it takes two seconds."""
     log("RUN  " + " ".join(cmd), fh)
     if dry:
         return 0
+    t0 = time.time()
     if show:
         r = subprocess.run(cmd, cwd=ROOT)
         if r.returncode != 0:
             log("FAIL (see the output above)", fh)
-        return r.returncode
-    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace")
-    if r.returncode != 0:
-        log("FAIL " + (r.stderr or r.stdout)[-800:], fh)
+    else:
+        r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        if r.returncode != 0:
+            log("FAIL " + (r.stderr or r.stdout)[-800:], fh)
+    if stage and r.returncode == 0:
+        try:
+            pipeline_budget.record_stage(stage, time.time() - t0)
+        except OSError:
+            pass          # a cost ledger is an optimisation, never a blocker
     return r.returncode
 
 
@@ -261,13 +309,22 @@ def main():
                    help="skip the Bloomberg price pull")
     p.add_argument("--external", action="store_true", help="force external-machine mode")
     p.add_argument("--internal", action="store_true", help="force internal-machine mode")
+    p.add_argument("--skip-comments", action="store_true",
+                   help="do NOT fetch Reddit comments this run (the "
+                        "influence board then rescores the same data it "
+                        "already had). Desk decision 2026-07-27: comments "
+                        "are ON by default in live runs, because the "
+                        "influence board is only current if the comments "
+                        "behind it are. They remain the slow species, so "
+                        "their cost is BUDGETED against "
+                        f"PIPELINE_BUDGET_S={PIPELINE_BUDGET_S}s rather "
+                        "than switched off - see src/pipeline_budget.py")
     p.add_argument("--with-comments", action="store_true",
-                   help="ALSO fetch Reddit comments in this run. Desk "
-                        "decision 2026-07-24: comments are OFF in the "
-                        "daily pipeline (they are the slow fetch - "
-                        "10-50x post volume at the API's polite 1s/page); "
-                        "the dedicated runner is update_comments.py, "
-                        "which also updates the influence board")
+                   help=argparse.SUPPRESS)
+    #   ^ accepted and ignored: comments are the default now. Kept so the
+    #     command lines printed in the RUNBOOK, the research report and any
+    #     scheduled task the desk already created keep working instead of
+    #     dying on an unrecognised argument.
     p.add_argument("--skip-panel-review", action="store_true",
                    help="skip the monthly dynamic-panel review (subreddit "
                         "discovery; it is watermarked and only actually "
@@ -343,12 +400,28 @@ def main():
         fetch_cmd = [py, "ingestion/fetch_all.py", "--no-merge",
                      "--lookback-days", str(FETCH_LOOKBACK_DAYS),
                      "--max-credits", str(FETCH_MAX_CREDITS)]
-        if not args.with_comments:
-            # comments are the slow species - the daily pipeline skips
-            # them (desk decision 2026-07-24); update_comments.py is the
-            # dedicated comments + influence runner
+        if args.skip_comments:
             fetch_cmd.append("--skip-comments")
-        run(fetch_cmd, fh, dry, show=True)
+        else:
+            # Comments ride every live run (desk decision 2026-07-27) so the
+            # influence board is rescored on data that is actually new. They
+            # are the slow species, so the crawl gets a PAGE ALLOWANCE: the
+            # desk's runtime ceiling minus what this machine measurably
+            # spends on everything else, converted to pages at the API's
+            # contracted request rate. The comment fetch runs in PARALLEL
+            # with the post fetchers inside fetch_all.py, so those pages are
+            # spent alongside the other sources, not after them.
+            allowance = pipeline_budget.allowance_pages(
+                skip_prices=args.skip_prices)
+            fetch_cmd += ["--comment-pages", str(allowance)]
+            other_s, measured = pipeline_budget.non_fetch_seconds()
+            log(f"comment budget: {allowance} pages "
+                f"({pipeline_budget.fmt_minutes(allowance / (config.COMMENT_RATE_PER_S or 1))}) "
+                f"= ceiling {pipeline_budget.fmt_minutes(PIPELINE_BUDGET_S)} "
+                f"- other stages {pipeline_budget.fmt_minutes(other_s)} "
+                f"({'measured on this machine' if measured else 'bootstrap prior'})",
+                fh)
+        run(fetch_cmd, fh, dry, show=True, stage="fetch")
     else:
         log("fetch skipped", fh)
 
@@ -362,11 +435,12 @@ def main():
     # ---- 2. APPEND into the right store (idempotent either way) ----
     if internal:
         log("folding live raw -> ABSTRACTED_DATA + hydrate", fh)
-        run([py, "ingestion/append_live_abstracted.py"], fh, dry, show=True)
+        run([py, "ingestion/append_live_abstracted.py"], fh, dry, show=True,
+            stage="fold")
     else:
         if do_fetch or full_chain:
             log("merging live raw -> posts.parquet (close viewers first)", fh)
-            run([py, "ingestion/merge_live.py"], fh, dry, show=True)
+            run([py, "ingestion/merge_live.py"], fh, dry, show=True, stage="fold")
         else:
             # the merge streams the ENTIRE master (minutes) - pointless in a
             # backtest where nothing was fetched, so skip it
@@ -393,7 +467,7 @@ def main():
                         return 1
             log("live fast path: refreshing the aggregate tail from posts.parquet", fh)
             code = run([py, "ingestion/refresh_recent_aggregates.py"],
-                       fh, dry, show=True)
+                       fh, dry, show=True, stage="fold")
             if code != 0:
                 log("ABORT: aggregate tail refresh failed", fh)
                 return 1
@@ -403,13 +477,17 @@ def main():
     # the analytics never read stale aggregates.
     if internal and not dry:
         from src import abstracted_data
+        _t = time.time()
         abstracted_data.hydrate(verbose=False)
+        pipeline_budget.record_stage("hydrate", time.time() - _t)
         log("hydrated ABSTRACTED_DATA -> data/processed", fh)
 
     # ---- 2b. DATA COVERAGE + WINDOW CHECK ----
     if not dry:
+        _t = time.time()
         print_data_coverage(fh, internal)
         check_window_coverage(fh, args.start, args.end)
+        pipeline_budget.record_stage("coverage", time.time() - _t)
 
     # ---- 3. COMPUTE - the notebook-free analytics.
     # live -> always recompute (new data just folded in); --full -> rebuild
@@ -487,7 +565,12 @@ def main():
             # validation records must be re-derived (research decides
             # once, but a backfill IS a new research question)
             analytics_cmd.append("--research")
-        code = run(analytics_cmd, fh, dry, show=True)
+        code = run(analytics_cmd, fh, dry, show=True,
+                   stage="analytics" if not args.full else None)
+        #      ^ a --full run also re-derives thresholds (--research), which
+        #        is a different and far larger job than a live recompute;
+        #        recording it as "analytics" would poison the ledger with a
+        #        cost the live path never pays.
         if code != 0:
             log("ABORT: analytics failed - later steps skipped", fh)
             return 1
@@ -507,7 +590,8 @@ def main():
     #          dashboard's price panels show their 'no prices' hint. ----
     if not dry and not args.skip_prices:
         log("pulling Bloomberg prices (Terminal must be open)", fh)
-        run([py, "pull_bloomberg_prices.py"], fh, dry, show=True)
+        run([py, "pull_bloomberg_prices.py"], fh, dry, show=True,
+            stage="prices")
         if not os.path.exists(PRICES_PATH):
             log("no data/prices/prices.parquet - price overlays will be "
                 "empty. Open the Bloomberg Terminal (and pip install "
@@ -552,6 +636,30 @@ def main():
                 s = pd.read_parquet(path_)
                 log(f"  {label:<13} : {len(s)} on file", fh)
         log(f"  prices        : {'present' if os.path.exists(PRICES_PATH) else 'MISSING (run pull_bloomberg_prices.py with the Terminal open)'}", fh)
+        # ---- INFLUENCE BOARD + the cadence this run's own timings imply ----
+        infl = os.path.join(config.REFERENCE_DIR, "influence", "author_scores.parquet")
+        if os.path.exists(infl):
+            a = pd.read_parquet(infl, columns=["author"])
+            age_h = (time.time() - os.path.getmtime(infl)) / 3600.0
+            log(f"  influence     : {len(a):,} authors scored, rebuilt "
+                f"{age_h:.1f}h ago"
+                f"{' (comments SKIPPED this run - same data rescored)' if args.skip_comments else ''}",
+                fh)
+        if do_fetch and not args.skip_comments and not dry:
+            # This is the number the desk acts on, and it is entirely
+            # measured: the fetch budget this machine has left, divided by
+            # the panel's observed comment volume. Run at least this often
+            # and no comments are ever deferred.
+            try:
+                subs = _read_panel_subs()
+                cadence = pipeline_budget.derived_cadence_days(
+                    subs, skip_prices=args.skip_prices)
+                log(f"  run cadence   : every {cadence:.1f} days or less keeps "
+                    f"the influence board fully current "
+                    f"(~{7 / max(cadence, 0.1):.1f}x/week; measured, not "
+                    "assumed - src/pipeline_budget.py)", fh)
+            except OSError:
+                pass
         log(f"  safety check  : {'PASS' if safe else 'FAIL - do NOT commit ABSTRACTED_DATA'}", fh)
         log(f"  dashboard     : python -m streamlit run dashboard.py", fh)
         log("=" * 60, fh)

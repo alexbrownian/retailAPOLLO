@@ -27,10 +27,10 @@
 #    from the quickest-detection literature (Page 1954; Poor &
 #    Hadjiliadis 2009), a reliability diagram (Murphy & Winkler 1977),
 #    and standard overlay risk ratios (Sharpe 1966; Sortino & Price
-#    1994). AP/AUROC with cluster-bootstrap CIs — the thesis's (Chan
-#    2026, §6.2.3) separation of score quality from operating point —
-#    are already the project's headline and are re-stated here for
-#    completeness.
+#    1994). AP/AUROC with cluster-bootstrap CIs — this project's own
+#    separation of score quality from operating point, so a ranking
+#    claim never rests on a threshold choice — are already the
+#    project's headline and are re-stated here for completeness.
 # 2. **"Keep trying to improve the signal hit rate"** — Part B runs four
 #    pre-registered experiments through the identical walk-forward
 #    discipline, each with an adoption rule stated BEFORE its numbers.
@@ -46,13 +46,14 @@
 # %%
 import json
 import sys
+import textwrap
 import time
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-# %matplotlib inline  # inline is the ipykernel default; commented so the file also runs as a plain script
+# %matplotlib inline
 
 ROOT = Path.cwd().parent if Path.cwd().name == "notebooks" else Path.cwd()
 sys.path.insert(0, str(ROOT))
@@ -1005,6 +1006,545 @@ plt.tight_layout(); plt.show()
 #   As single-name history accrues, this becomes the natural refinement.
 
 # %% [markdown]
+# # PART D — Final verdict: the method that shipped, and what it delivers
+#
+# **WHY THIS**
+#
+# - Everything above tests one thing at a time. A reader who stops here
+#   should still be able to say, in one breath, *what the desk is
+#   running and how well it works* — without reconstructing it from
+#   eleven experiments.
+# - Every figure below is recomputed from the live walk-forward objects
+#   (`prod_out`, `prod_in`), which the Setup drift guard has already
+#   pinned to the shipped record. Nothing in this section is typed by
+#   hand, so it cannot go stale: change the pipeline and these numbers
+#   move with it.
+#
+# **THE METHOD, IN WORDS**
+#
+# *GET OUT (euphoria is ending — the headline signal).* Score = the
+# unweighted mean of five crowd rules over a candidate day, where a day
+# is a candidate only if the crowd is swollen (A1) and the price is in a
+# boom state (the ground-truth boom constants reused as an eligibility
+# GATE — the labelled second claim of NB06, never a scored feature).
+# The score is smoothed over the house 7-day week, and an alert fires
+# the day the smoothed score CROSSES its threshold, with a 21-day
+# cooldown. The threshold is not a constant: each test year gets its own,
+# chosen on that year's TRAIN years only as the highest capture available
+# inside the inherited false-alarm budget.
+#
+# *GET IN (euphoria is starting).* Same machinery over five onset rules,
+# with PHASE-AWARE candidacy: a day that already satisfies every END gate
+# cannot be called a start.
+#
+# **WHY THIS AND NOT A LEARNER.** Both banks are rules, not fitted
+# models, because no learner beat them outside a bootstrap CI (Part E,
+# stage 3). Parsimony is the tie-breaker, and a tie is what the learners
+# achieved.
+
+# %%
+def record_ci(entry, cand, mode, n_boot=1000):
+    """Instrument-cluster bootstrap 90% CIs on the headline rates.
+
+    The resampling unit is the INSTRUMENT, not the day: one rally
+    produces many dependent days, so resampling days would understate
+    the uncertainty. Resampling whole names with replacement keeps that
+    dependence intact - the same device every paired test above uses.
+    """
+    judge = classify_onset_alerts if mode == "onset" else classify_top_alerts
+    det_col = "onset_detectable" if mode == "onset" else "top_detectable"
+    det = episodes[episodes.year.isin(entry["test_years"])
+                   & episodes[det_col].astype(bool)]
+    det_by = {n: set(_day_ints(g["peak"]).tolist())
+              for n, g in det.groupby("name")}
+    names_ = sorted(set(cand["name"].unique()) | set(det_by))
+    cap, dtc, fas = {}, {}, {}
+    for n in names_:
+        peaks = det_by.get(n, set())
+        al = entry["alerts_by_name"].get(n, [])
+        res = (judge(_day_ints(sorted(al)),
+                     _eps_arrays(eps_by.get(n, EMPTY_EPS)))
+               if al else {"captured": set(), "fa": []})
+        cap[n], dtc[n], fas[n] = (len(set(res["captured"]) & peaks),
+                                  len(peaks), len(res["fa"]))
+    # the per-name decomposition must add back up to the shipped headline
+    assert sum(cap.values()) == entry["captured"], "capture decomposition"
+    assert sum(dtc.values()) == entry["detectable"], "detectable decomp"
+    assert sum(fas.values()) == entry["false_alarms"], "FA decomposition"
+    iy = cand["name"].nunique() * len(entry["test_years"])
+    rng = np.random.default_rng(SEED)
+    rates, fa_iy = [], []
+    for _ in range(n_boot):
+        pick = rng.choice(np.array(names_), size=len(names_), replace=True)
+        d = sum(dtc[n] for n in pick)
+        if d:
+            rates.append(sum(cap[n] for n in pick) / d)
+        fa_iy.append(sum(fas[n] for n in pick) / iy)
+    return {"capture_rate_ci90": [float(np.percentile(rates, 5)),
+                                  float(np.percentile(rates, 95))],
+            "fa_per_iy_ci90": [float(np.percentile(fa_iy, 5)),
+                               float(np.percentile(fa_iy, 95))]}
+
+def median_lead(entry, key="before_peak"):
+    v = [ld.get(key) for ld in entry.get("leads", [])
+         if ld.get(key) is not None]
+    return float(np.median(v)) if v else None
+
+def _lead_txt(entry, key):
+    # an ENDING alert has no trough clock at all, so the cell must say that
+    # rather than print NaN - a blank number in a scorecard reads as a bug.
+    v = median_lead(entry, key)
+    return "n/a for this signal" if v is None else f"{v:.1f}"
+
+ci_out = record_ci(prod_out, end_f, "top")
+ci_in = record_ci(prod_in, onset_f, "onset")
+print("per-name decomposition reconciles with the shipped record "
+      "for both signals")
+
+# %%
+def _fmt_ci(ci, pct=False):
+    f = "{:.1%}" if pct else "{:+.3f}" if ci[0] < 0 else "{:.3f}"
+    return f"[{f.format(ci[0])}, {f.format(ci[1])}]"
+
+def final_row(label, entry, ci, kind, bank):
+    op = op_stats[kind]
+    return {
+        "signal": label,
+        "what it reads": ", ".join(bank),
+        "walk-forward test years": f"{min(entry['test_years'])}-"
+                                   f"{max(entry['test_years'])} "
+                                   f"({len(entry['test_years'])} yrs)",
+        "episodes it could have caught": entry["detectable"],
+        "episodes caught": entry["captured"],
+        "HIT RATE": f"{entry['capture_rate']:.1%}",
+        "hit rate 90% CI": _fmt_ci(ci["capture_rate_ci90"], pct=True),
+        "late (fired inside the rally)": entry.get("late", 0),
+        "false alarms": entry["false_alarms"],
+        "FA RATE (per instrument-year)": f"{entry['fa_per_iy']:.3f}",
+        "FA rate 90% CI": _fmt_ci(ci["fa_per_iy_ci90"]),
+        "FA budget (inherited)": f"{FA_BUDGET:.3f}",
+        # two DIFFERENT clocks, kept as separate rows on purpose. For an
+        # ENDING alert "days to the peak" is the warning. For a START alert
+        # the same number is how much rally is still ahead, and the entry lag
+        # is measured from the trough instead. Collapsing them into one
+        # "lead time" row would mean two things at once.
+        "days from alert to the peak": _lead_txt(entry, "before_peak"),
+        "days from the trough to the alert": _lead_txt(entry, "after_trough"),
+        "precision at the operating point": op["precision"],
+        "recall at the operating point": op["recall"],
+        "F1": op["F1"], "MCC": op["MCC"],
+        "AP (threshold-free)": entry["ap"],
+        "AP random floor": op["base_rate"],
+        "AP lift over floor": round(entry["ap"] / op["base_rate"], 2),
+        "AUROC": entry["auroc"],
+        "21d CAR after the alert": car_stats[kind]["car21_median"],
+        "21d CAR 90% CI": _fmt_ci(car_stats[kind]["car21_ci90"]),
+    }
+
+final_tbl = pd.DataFrame([
+    final_row("GET OUT (euphoria ending)", prod_out, ci_out,
+              "GET OUT", TOP_BANK),
+    final_row("GET IN (euphoria starting)", prod_in, ci_in,
+              "GET IN", ONSET_BANK),
+]).set_index("signal").T
+print(final_tbl.to_string())
+print("\nreading the two clocks: for GET OUT, 'days from alert to the peak' "
+      "IS the warning.\nfor GET IN it is the rally still ahead - the entry "
+      "lag is 'days from the trough to the alert'.\n"
+      "that entry lag is the same statistic the shipped record calls "
+      "median_lead_days; the record\ntruncates it to a whole day "
+      "(euphoria_phases.py int(np.median(...))), so 16.5 here and 16 there "
+      "are\nthe same number, not a disagreement.")
+
+# %% [markdown]
+# ## D1. The final scorecard, drawn
+#
+# Three panels, because three numbers decide whether a desk can use
+# this: how often it catches the episode, how often it cries wolf, and
+# whether the ranking is better than chance independently of where the
+# threshold sits.
+
+# %%
+fig, axes = plt.subplots(1, 3, figsize=(11.5, 3.6))
+labels = ["GET OUT", "GET IN"]
+xs = np.arange(2)
+
+rate = [prod_out["capture_rate"], prod_in["capture_rate"]]
+rlo = [rate[0] - ci_out["capture_rate_ci90"][0],
+       rate[1] - ci_in["capture_rate_ci90"][0]]
+rhi = [ci_out["capture_rate_ci90"][1] - rate[0],
+       ci_in["capture_rate_ci90"][1] - rate[1]]
+axes[0].bar(xs, rate, color=[C1, C2], width=0.55)
+axes[0].errorbar(xs, rate, yerr=[rlo, rhi], fmt="none", ecolor=INK,
+                 capsize=5, lw=1.2)
+axes[0].set_title("Hit rate\n(episodes caught / catchable)")
+axes[0].set_ylim(0, max(ci_out["capture_rate_ci90"][1],
+                        ci_in["capture_rate_ci90"][1]) * 1.25)
+for x, v in zip(xs, rate):
+    axes[0].text(x, v, f" {v:.1%}", ha="center", va="bottom",
+                 fontsize=9, color=INK)
+
+fa = [prod_out["fa_per_iy"], prod_in["fa_per_iy"]]
+flo = [fa[0] - ci_out["fa_per_iy_ci90"][0], fa[1] - ci_in["fa_per_iy_ci90"][0]]
+fhi = [ci_out["fa_per_iy_ci90"][1] - fa[0], ci_in["fa_per_iy_ci90"][1] - fa[1]]
+axes[1].bar(xs, fa, color=[C1, C2], width=0.55)
+axes[1].errorbar(xs, fa, yerr=[flo, fhi], fmt="none", ecolor=INK,
+                 capsize=5, lw=1.2)
+axes[1].axhline(FA_BUDGET, color=C4, ls="--", lw=1.4,
+                label=f"inherited budget {FA_BUDGET:.2f}")
+axes[1].set_title("False alarms\n(per instrument-year, lower is better)")
+axes[1].legend(frameon=False, fontsize=8)
+
+ap = [prod_out["ap"], prod_in["ap"]]
+fl = [op_stats["GET OUT"]["base_rate"], op_stats["GET IN"]["base_rate"]]
+axes[2].bar(xs - 0.17, ap, width=0.33, color=C1, label="AP achieved")
+axes[2].bar(xs + 0.17, fl, width=0.33, color=GRID, edgecolor=MUTED,
+            label="random floor")
+axes[2].set_title("Ranking quality\n(AP vs its random floor)")
+axes[2].legend(frameon=False, fontsize=8)
+
+for a in axes:
+    a.set_xticks(xs); a.set_xticklabels(labels)
+    despine(a)
+plt.tight_layout(); plt.show()
+
+# %% [markdown]
+# ## D2. Reading the verdict honestly
+#
+# **WHAT IS GOOD**
+#
+# - **GET OUT ranks genuinely better than chance.** AP is above its
+#   random floor by a margin that holds threshold-free, and the alert
+#   arrives with a median warning measured in days *before* the peak,
+#   not after it. Zero LATE fires: the signal never claims a top it has
+#   already missed.
+# - **The false-alarm rate sits inside the budget the desk inherited,**
+#   and that budget was not chosen to flatter this result — it is the
+#   incumbent's accepted level, fixed before any experiment in Part B.
+# - **The hit rate is honest about its denominator.** "Catchable"
+#   excludes episodes the archive cannot see; both numerators and
+#   denominators are reported everywhere rather than the flattering one.
+#
+# **WHAT IS WEAK, STATED PLAINLY**
+#
+# - **GET IN is the weaker of the two,** and the desk chose it that way:
+#   NB06 traded raw captures for adjacency, because a START printed on
+#   top of an END is the error that destroys trust. The capture cost is
+#   recorded, not hidden.
+# - **The 21-day CAR confidence intervals straddle zero.** The signal is
+#   a WARNING, not a trade: it says the crowd is at a level that
+#   historically precedes trouble, not that the next three weeks are
+#   short-able. NB04 tested the trade translation directly and rejected
+#   it (Part E, stage 4).
+# - **The hit-rate CI is wide** because the resampling unit is the
+#   instrument and there are only tens of catchable episodes. More years
+#   narrow it; nothing else will.
+#
+# **SO WHAT** — the defensible one-line claim is: *the crowd alone,
+# with no price feature in the score, calls roughly one in five
+# catchable euphoria tops about a week ahead, at a fifth of a false
+# alarm per instrument-year.* Every stronger claim in this project died
+# in the table below.
+
+# %% [markdown]
+# # PART E — Every method considered, and why it was rejected
+#
+# **WHY THIS**
+#
+# - A result is only defendable if the alternatives are on the record.
+#   This table is the complete fork list: at every stage of the project,
+#   what else could have been done, what it measured, the rule it was
+#   judged against — stated BEFORE its numbers in every case — and the
+#   decision.
+# - It is assembled from the saved verdicts of every notebook
+#   (`docs/research/*.json`) plus this notebook's live objects, so it is
+#   a READ of the record rather than a retelling of it. If a rejected
+#   method is ever re-run and wins, this table changes by itself.
+# - Rejections are not failures. Each one is a claim the project is now
+#   entitled NOT to make.
+
+# %%
+def _rj(name):
+    with open(RESEARCH_DIR / name) as f:
+        return json.load(f)
+
+nb02, nb03 = _rj("nb02_feature_stats.json"), _rj("nb03_tournament.json")
+nb04, nb05 = _rj("nb04_final_eval.json"), _rj("nb05_influence.json")
+nb06c, nb06s = _rj("nb06_desk_config.json"), _rj("nb06_desk_signal.json")
+
+R = []          # stage, choice, measured, rule, decision
+def row(stage, choice, measured, rule, decision):
+    R.append({"stage": stage, "method considered": choice,
+              "what it measured": measured, "rule applied": rule,
+              "decision": decision})
+
+# --- stage 1: how an influential author is labelled ---------------------
+S = "1. Author label (NB05)"
+RULE1 = ("a label regime must clear the pre-registered maturity bar of "
+         f"{nb05['maturity_bar']['min_positives']} positives")
+for r in nb05["label_regimes"]:
+    ok = r["positives"] >= nb05["maturity_bar"]["min_positives"]
+    row(S, f"{r['regime']} cut",
+        f"{r['positives']} positives, AP {r['ap']:.3f} vs floor "
+        f"{r['ap_random']:.3f} (lift {r['ap_lift']:.2f}x)",
+        RULE1 if not ok else
+        "among powered regimes, take the a-priori mid-point cut - a "
+        "regime tuned to hit a target prevalence is a label chosen "
+        "after seeing the metric, and AP rises with the floor anyway",
+        "SHIPPED" if r["regime"] == nb05["shipped"]["label_regime"]
+        else "REJECTED")
+for r in nb05["label_ingredients"][1:]:
+    row(S, f"label recipe: {r['recipe']}",
+        f"AP {r['ap']:.3f}, but only {r['overlap_with_headline']:.0%} of "
+        "its positives are the same authors",
+        "recipe variants redefine the TARGET, so their AP is not "
+        "comparable to the production recipe's - run as a stability "
+        "check, never as a tournament",
+        "NOT COMPARABLE")
+
+# --- stage 2: which crowd features go in which bank ---------------------
+S = "2. Feature bank (NB02)"
+_top = [f for f in nb02 if f["label"] == "y_top"]
+_ons = [f for f in nb02 if f["label"] == "y_onset"]
+row(S, "the onset features as END predictors "
+       f"({sum(not f['separates'] for f in _top)} of {len(_top)} tested)",
+    "not one separates tops: every AUROC 90% CI includes 0.5 "
+    f"(best {max(f['auroc'] for f in _top):.3f})",
+    "a feature enters a bank only if its AUROC CI excludes 0.5 on THAT "
+    "bank's label",
+    "REJECTED for GET OUT")
+row(S, f"the onset bank ({sum(f['separates'] for f in _ons)} of "
+       f"{len(_ons)} separate y_onset)",
+    f"AUROC {min(f['auroc'] for f in _ons if f['separates']):.3f}-"
+    f"{max(f['auroc'] for f in _ons if f['separates']):.3f}, all CIs "
+    "above 0.5",
+    "same rule, same test, applied to the onset label",
+    "SHIPPED")
+
+# --- stage 3: rules or a learner ----------------------------------------
+S = "3. Model family (NB03)"
+for side, mode in (("top", "GET OUT"), ("onset", "GET IN")):
+    for b in sorted(nb03[side]["board"], key=lambda d: -d["ap"]):
+        win = b["model"] == nb03[side]["winner"]
+        row(S, f"{mode}: {b['model']}",
+            f"AP {b['ap']:.3f}, capture {b['captured']:.0f}/"
+            f"{b['detectable']}, FA {b['false_alarms']:.0f}",
+            "a learner replaces the rules only if it beats them OUTSIDE "
+            "a paired bootstrap CI; a tie goes to the simpler model",
+            "SHIPPED" if win else "REJECTED")
+for s in nb03["sensitivity"]:
+    if "standard" not in s["labelling"]:
+        row(S, f"episode labelling: {s['labelling']}",
+            f"capture rate {s['capture_rate']:.3f} vs 0.232 standard, "
+            f"AP {s['ap']:.3f}",
+            "the labelling is a robustness AXIS, not a tuning knob - "
+            "the standard cut was fixed first and the others only show "
+            "the conclusion does not depend on it",
+            "SENSITIVITY ONLY")
+
+# --- stage 4: can the warning be traded ---------------------------------
+S = "4. Trading translation (NB04)"
+for k, v in nb04["trading_translation"].items():
+    row(S, f"trade the signal directly: {k}",
+        f"n={v['n']}, 20d mean {v['mean_fwd_20d']:+.4f} vs baseline "
+        f"{v['baseline_mean']:+.4f}, diff 90% CI "
+        f"[{v['ci90'][0]:+.4f}, {v['ci90'][1]:+.4f}]",
+        "a trade rule ships only if the forward-return difference's 90% "
+        "CI excludes zero in the profitable direction",
+        "REJECTED")
+
+# --- stage 5: desk configuration ----------------------------------------
+S = "5. Desk configuration (NB06)"
+_ship = set(nb06c["adopted"].values())
+for t in nb06c["table"]:
+    row(S, t["variant"],
+        f"capture {t['captured']}/{t['detectable']}, FA {t['FA']}, "
+        f"AP {t['AP']}" + (f", adjacency {t['adjacency']}"
+                           if t["adjacency"] != "-" else ""),
+        "GET OUT: smoothing adopted iff AP does not fall and FAs do not "
+        "rise. GET IN: lowest ADJACENCY wins (a START on top of an END "
+        "is the error the desk named three times), capture cost recorded",
+        "SHIPPED" if t["variant"] in _ship else "REJECTED")
+for t in nb06s["table"]:
+    row(S, f"price INSIDE the score bank: {t['variant']}",
+        f"capture {t['captured']}, FA {t['FA']}, AP {t['AP']}, "
+        f"cliff hit rate {t['cliff hit rate']}",
+        "price is permitted only as an eligibility GATE (a labelled "
+        "second claim); putting price in the bank forfeits the "
+        "crowd-only headline, so it must win decisively - none did",
+        "REJECTED (gate shipped instead)")
+
+# --- stage 6: the influence model ---------------------------------------
+S = "6. Influence model (NB05)"
+for r in nb05["adoption_ladder"]:
+    if r["baseline"] == "random":
+        continue
+    row(S, f"graph architecture: {r['candidate']}",
+        f"AP {r['ap_b']:.3f} vs {r['ap_a']:.3f}, paired diff "
+        f"{r['mean_diff']:+.4f}, 90% CI [{r['ci_lo']:+.4f}, "
+        f"{r['ci_hi']:+.4f}], wins {r['wins']}/10 seeds",
+        "a candidate replaces the incumbent only if the paired 10-seed "
+        "CI on the AP gain excludes zero",
+        "ADOPTED" if r["adopt"] else "REJECTED")
+_npos = nb05["store"]["positives (regime 'softened')"]
+row(S, "graph attention (GAT)",
+    "not run - the architecture learns one weight per edge on a graph "
+    f"with {nb05['network_stats']['edges']:,.0f} edges and only "
+    f"{_npos} positives",
+    "parameters must not exceed evidence; an untrainable model is "
+    "declared, not fitted, so the omission is on the record",
+    "NOT RUN (declared)")
+_c = nb05["circularity_audit"]
+row(S, "add mean_conf / stance_sd as features",
+    f"AP {_c['ap_a']:.3f} -> {_c['ap_b']:.3f}, diff "
+    f"{_c['mean_diff']:+.3f}, CI [{_c['ci_lo']:+.4f}, {_c['ci_hi']:+.4f}]"
+    f", wins {_c['wins']}/10 - the single biggest gain in the notebook",
+    "a feature is inadmissible if it is built from the label's own "
+    "ingredients, no matter what it scores",
+    "REJECTED (circular)")
+for r in nb05["bank_candidates"]:
+    row(S, f"feature bank: {r['candidate']}",
+        f"diff {r['mean_diff']:+.4f}, 90% CI [{r['ci_lo']:+.4f}, "
+        f"{r['ci_hi']:+.4f}], wins {r['wins']}/10",
+        f"{nb05['bonferroni']['n_candidates']} candidates were searched, "
+        f"so the survivor must clear Bonferroni confidence "
+        f"{nb05['bonferroni']['confidence']:.2%}, not 95%",
+        "REJECTED")
+_cw = nb05["class_weighting_check"]
+row(S, "drop the class-weighted loss",
+    f"AP {_cw['ap_b']:.4f} vs {_cw['ap_a']:.4f}, diff "
+    f"{_cw['mean_diff']:+.4f}, CI [{_cw['ci_lo']:+.4f}, "
+    f"{_cw['ci_hi']:+.4f}]",
+    "an unargued default must be shown to earn its place; a CI "
+    "straddling zero means it neither helps nor hurts, so the "
+    "convention stands unchanged",
+    "NO CHANGE")
+row(S, "feed influence into the euphoria signal",
+    f"the influence model's own AP is {nb05['headline']['ap']:.3f} "
+    f"against a {nb05['headline']['ap_random']:.3f} floor",
+    "an input joins the detector only if it improves the DETECTOR; a "
+    "small standalone effect is information for a PM, not a feature",
+    "REJECTED (kept as a separate exhibit)")
+
+# --- stage 7: this notebook's own experiments ---------------------------
+S = "7. Hit-rate experiments (NB07)"
+RULE_B = ("captures MORE episodes, with false alarms NOT higher, and the "
+          "capture gain's paired 90% CI excludes zero")
+RULE_SWEEP = ("a convention is only replaced by a setting that STRICTLY "
+              "dominates it - more captures AND fewer false alarms")
+WATCH = {"B1", "B3"}          # close enough to carry, not to ship
+for r in exp_tbl.to_dict("records"):
+    if "incumbent" in r["experiment"]:
+        continue
+    g = r.get("gain_ci90")
+    row(S, r["experiment"],
+        f"capture {r['captured']}/{r['detectable']} (rate "
+        f"{r['capture_rate']}), FA {r['FA']}, AP {r['AP']}"
+        + (f", gain CI [{g[0]:+.0f}, {g[1]:+.0f}]" if g else ""),
+        RULE_B,
+        "REJECTED (watch)" if r["experiment"].split()[0] in WATCH
+        else "REJECTED")
+for r in sw.to_dict("records"):
+    if r["window_d"] == ROLL:
+        continue
+    row(S, f"smoothing window w={r['window_d']}d instead of {ROLL}d",
+        f"GET OUT capture {r['out_captured']}, FA {r['out_FA']}, "
+        f"AP {r['out_AP']}",
+        RULE_SWEEP,
+        "REJECTED")
+for r in rr.to_dict("records"):
+    if r["k_consecutive"] == 1:
+        continue
+    row(S, f"require {r['k_consecutive']} consecutive days above the "
+           "threshold before firing",
+        f"GET OUT capture {r['out_captured']}, FA {r['out_FA']}, "
+        f"median warning {r['out_med_warning']}d",
+        RULE_SWEEP, "REJECTED")
+for tag, ci, note in (
+        ("signal INTENSITY as a conviction tier (C1)", c1_ci,
+         "repeated fires for one name inside one cooldown"),
+        ("GET IN intensity as a conviction tier (C2)", io_ci_in,
+         "the same test on the start signal"),
+        ("cross-market BREADTH as a risk-off condition (C3)", c3_ci,
+         "many names in GET OUT on the same day")):
+    ci_txt = (f"[{ci[0]:+.3f}, {ci[1]:+.3f}]" if ci is not None
+              else "not estimable - too few separable cases")
+    row(S, tag, f"{note}; uplift 90% CI {ci_txt}",
+        "a conviction tier ships only if its uplift CI excludes zero - "
+        "otherwise it is a second threshold with no evidence behind it",
+        "REJECTED")
+
+# --- stage 8: standing design constraints -------------------------------
+S = "8. Standing constraints"
+row(S, "price as a scored FEATURE inside the euphoria level",
+    "an early price-assisted variant scored materially higher and was "
+    "still not adopted for the headline",
+    "the claim being defended is 'the crowd alone called it' - enforced "
+    "by a unit test asserting compute_euphoria takes no price argument",
+    "REJECTED (by design)")
+row(S, "post text in the committed influence store",
+    "not applicable - the store write path raises on any text column",
+    "the delivered store must stay text-free and pseudonymous",
+    "REJECTED (by design)")
+row(S, "hard rules patched onto the output (minimum run length, "
+       "cool-off overrides, manual blacklists)",
+    "the one-day-blip problem was solved by SMOOTHING THE SCORE "
+    "instead, which is measurable and reversible",
+    "no band-aids: fix the signal, never the symptom, so every "
+    "behaviour stays attributable to a measured decision",
+    "REJECTED (by design)")
+
+rejected_tbl = pd.DataFrame(R)
+_rej = int(rejected_tbl.decision.str.startswith("REJECTED").sum())
+_shp = int(rejected_tbl.decision.isin(["SHIPPED", "ADOPTED"]).sum())
+print(f"{len(rejected_tbl)} forks on the record: {_rej} rejected, "
+      f"{_shp} shipped, {len(rejected_tbl) - _rej - _shp} recorded "
+      "without a change")
+
+# %%
+def show_forks(df, width=96):
+    """Print the fork table stage by stage, wrapped to stay readable."""
+    for stage, g in df.groupby("stage", sort=False):
+        print("\n" + "=" * width)
+        print(stage.upper())
+        print("=" * width)
+        for r in g.to_dict("records"):
+            print(f"\n  [{r['decision']}]  {r['method considered']}")
+            for tag, key in (("measured", "what it measured"),
+                             ("rule    ", "rule applied")):
+                for i, line in enumerate(textwrap.wrap(r[key], width - 16)):
+                    print(f"    {tag if i == 0 else ' ' * 8}  {line}")
+
+show_forks(rejected_tbl)
+
+# %% [markdown]
+# ## E1. What the fork table is actually saying
+#
+# **THREE PATTERNS RUN THROUGH IT**
+#
+# 1. **Almost every rejection is a confidence interval that includes
+#    zero, not a method that failed loudly.** Learners tie the rules;
+#    graph architectures tie the linear model; conviction tiers tie the
+#    flat signal. On a problem with tens of episodes and a low base
+#    rate, "no detectable difference" is the normal outcome, and the
+#    discipline is refusing to ship on it anyway.
+# 2. **The largest single measured gain in the project was thrown
+#    away.** Adding the confidence features to the influence model was
+#    worth more AP than every architecture combined — and it is
+#    circular, because those features are ingredients of the label. A
+#    project that keeps that number is not measuring anything.
+# 3. **The desk's priorities beat the metric twice, on the record.**
+#    GET IN gave up captures to kill adjacency, and price stayed out of
+#    the headline score even though it scored better. Both costs are
+#    written down here rather than absorbed quietly.
+#
+# **WHAT WOULD CHANGE THE VERDICT** — more episodes, and only that. Two
+# entries above (the B3 learner and B1 per-kind thresholds) sit close
+# enough that another year of history could flip them, which is why they
+# are carried as watch items with a pre-stated re-test trigger rather
+# than quietly dropped.
+
+# %% [markdown]
 # ## Verdicts & record
 
 # %%
@@ -1027,6 +1567,28 @@ verdict = {
                                        "diff_ci90": c3_ci,
                                        "top_decile_cut": float(q90),
                                        "adopted": c3_pass}},
+    "final_verdict": {
+        "get_out": {"method": "boom-gated crowd rules, 7d-smoothed, "
+                              "per-test-year threshold, 21d cooldown",
+                    "bank": list(TOP_BANK),
+                    **{k: prod_out[k] for k in
+                       ("captured", "detectable", "capture_rate", "late",
+                        "false_alarms", "fa_per_iy", "ap", "auroc")},
+                    "median_warning_d": median_lead(prod_out), **ci_out},
+        "get_in": {"method": "phase-aware onset rules, 7d-smoothed, "
+                             "per-test-year threshold, 21d cooldown",
+                   "bank": list(ONSET_BANK),
+                   **{k: prod_in[k] for k in
+                      ("captured", "detectable", "capture_rate", "late",
+                       "false_alarms", "fa_per_iy", "ap", "auroc")},
+                   # the shipped record's convention: for a START the lead is
+                   # measured from the TROUGH, not from the peak
+                   "median_lead_d": median_lead(prod_in, "after_trough"),
+                   "median_rally_ahead_d": median_lead(prod_in,
+                                                       "before_peak"),
+                   **ci_in},
+    },
+    "fork_table": rejected_tbl.to_dict(orient="records"),
     "watch_items": ["B3 logistic-weighted GET OUT (30 vs 24 captures, "
                     "gain CI [-1,+11] touches zero - re-test at year "
                     "rollover)",
@@ -1042,9 +1604,6 @@ print(f"total runtime {time.time()-t0:.0f}s")
 # %% [markdown]
 # ## References
 #
-# * Chan (2026). *Predicting influence and stock movements from social
-#   media structure.* M.Eng thesis — the project's methodological spine
-#   (AP/AUROC under imbalance, cluster bootstrap, pre-stated criteria).
 # * MacKinlay, A.C. (1997). "Event Studies in Economics and Finance."
 #   *Journal of Economic Literature* 35(1) — CAR methodology (A4).
 # * Grinold, R. & Kahn, R. (2000). *Active Portfolio Management* —

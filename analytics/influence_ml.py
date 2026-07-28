@@ -1,43 +1,41 @@
 """
 influence_ml.py
 ===============
-The influential-users MODEL - the graph-learning half of Chan (2026)
-ported to RetailRadar's own live influence store: can HIGH-predictive
-authors be identified from their behaviour and their position in the
-reply graph, BEFORE reading their track record?
+The influential-users MODEL, run on RetailRadar's own live influence
+store: can HIGH-predictive authors be identified from their behaviour and
+their position in the reply graph, BEFORE reading their track record?
 
 This module is INFORMATION ONLY. Nothing here feeds the euphoria START /
 END signal; the euphoria engine does not import it. Its output is the
 "who is worth listening to, and what are they saying" panel.
 
-RELATION TO THE THESIS (what is ported, what is adapted, what is not)
----------------------------------------------------------------------
-The thesis formulates this as semi-supervised transductive node
-classification on a weighted social-interaction graph (r/CryptoMarkets,
-2,617 nodes / 17,937 edges / 133 positives) and compares eight
-architectures; GraphSAGE wins with AP 0.140 +/- 0.002 and AUROC 0.632
-+/- 0.016, i.e. +60.9% AP over the random floor (AP 0.087 = prevalence).
-Here the same task runs on the desk's own store (data/reference/influence
-- live-only, zero-touch, text-free), with the model family scaled to the
-data:
+THE TASK, AND THE MODEL FAMILY CHOSEN FOR IT
+--------------------------------------------
+The task is semi-supervised transductive node classification on a
+weighted social-interaction graph: unlabelled authors stay in the graph
+as structural context, and only labelled nodes are split and scored. It
+runs on the desk's own store (data/reference/influence - live-only,
+zero-touch, text-free), with the model family deliberately scaled to how
+few positives that store contains:
 
-  random        Bernoulli scores - the floor (thesis 6.1.8). Its AP is the
+  random        Bernoulli scores - the floor. Its AP is the
                 positive-class prevalence, which is why every result below
                 is quoted as AP LIFT OVER RANDOM: that is the only figure
-                that is comparable across label regimes and across papers.
-  mlp           feature-only MLP (thesis 6.1.1) - "behaviour alone".
-  labelprop     structure-only label propagation (thesis 6.1.2) -
-                "position alone", no features at all.
-  sage_lite     GraphSAGE mean-aggregator, one layer (thesis 6.1.5):
+                that stays comparable across label regimes and across
+                vintages of the store.
+  mlp           feature-only MLP - "behaviour alone".
+  labelprop     structure-only label propagation - "position alone", no
+                features at all.
+  sage_lite     GraphSAGE mean-aggregator, one layer:
                 [self features | mean of neighbours' features].
-  gcn_lite      GCN (thesis 6.1.3) in its simplified/linear form: two
+  gcn_lite      GCN in its simplified/linear form: two
                 symmetric-normalised propagation steps of the features,
                 then a linear classifier (Wu et al.'s SGC identity - a
                 GCN with the non-linearities removed).
-  mixhop_lite   MixHop (thesis 6.1.7): CONCATENATE several propagation
+  mixhop_lite   MixHop: CONCATENATE several propagation
                 powers [X | SX | S^2X] instead of composing them, so the
                 classifier can weight hop distances differently.
-  h2gcn_lite    H2GCN (thesis 6.1.6): separate the ego features from the
+  h2gcn_lite    H2GCN: separate the ego features from the
                 1-hop and the 2-hop-excluding-1-hop aggregates. This is
                 the architecture built for HETEROPHILOUS graphs, and our
                 own label analysis (influence_graph.homophily) says the
@@ -49,22 +47,23 @@ The "lite" in every graph model means one thing and it is stated
 honestly: the aggregation weights are FIXED (mean / symmetric
 normalisation) rather than learned, and the read-out is a
 class-weighted logistic regression rather than a deep MLP. That is a
-deliberate response to the thesis's own central finding - with ~10^2
-positives the bigger models memorise; their GNNs still only reached ~12%
-precision. GAT (thesis 6.1.4) is NOT ported, because attention IS the
-learned part; a fixed-attention GAT would just be sage_lite.
+deliberate response to the size of the labelled set - with ~10^2
+positives, a model with learned aggregation weights has more parameters
+than evidence and memorises. GAT is NOT included for the same reason:
+attention IS the learned part, so a fixed-attention GAT would just be
+sage_lite under another name.
 
-DISCIPLINE (thesis 6.2, kept; deviations flagged)
--------------------------------------------------
-* LABELS: three pre-stated regimes (see LABEL_REGIMES). The thesis itself
-  runs this sensitivity (7.1.2 "softened criteria"), and we need it: the
-  production HIGH tier (composite >= 0.66) marks only ~25 authors, which
-  leaves ~5 test positives - not decision-grade. The headline regime is
-  therefore the SOFTENED cut, the strictest thesis-defined criterion that
-  clears the pre-registered >= 130-positives maturity bar; the strict cut
-  is still reported, labelled under-powered; and a prevalence-matched cut
-  exists purely so AP is numerically comparable with the thesis.
-  The production board tier is NOT redefined by any of this.
+DISCIPLINE
+----------
+* LABELS: three pre-stated regimes (see LABEL_REGIMES), because the
+  headline needs a sensitivity check and because the production HIGH
+  tier (composite >= 0.66) marks only ~25 authors, which leaves ~5 test
+  positives - not decision-grade. The headline regime is therefore the
+  SOFTENED cut, the strictest of the three that clears the
+  pre-registered >= 130-positives maturity bar; the strict cut is still
+  reported, labelled under-powered; and a prevalence-matched cut exists
+  so that AP stays numerically comparable as the store's balance shifts
+  over time. The production board tier is NOT redefined by any of this.
 * LEAKAGE GUARD: every column with labelling-pipeline ancestry is banned
   from the feature bank - not just the score itself but anything computed
   from forward returns or from call correctness (see LEAKAGE). The model
@@ -73,30 +72,31 @@ DISCIPLINE (thesis 6.2, kept; deviations flagged)
   stay in the graph as structural context, features z-scored on TRAIN
   statistics only, class-weighted losses.
 * operating threshold: max positive-class precision s.t. recall >=
-  min_recall, chosen on VALIDATION only (thesis 6.2.2).
+  min_recall, chosen on VALIDATION only.
 * headline metrics: AP + AUROC on TEST (threshold-independent), reported
   as mean +/- std over seeds and as lift over random.
-* robustness: per-feature and per-category ablation (7.2.1), graph
+* robustness: per-feature and per-category ablation, graph
   perturbation - random rewiring and DICE - reported on ACCURACY as well
-  as AP because the thesis found precision too noisy to read (7.2.2).
-* ADOPTION RULE (this project's own discipline, stricter than the
-  thesis): a change is adopted only if `paired_ap_test` shows a paired
-  per-seed AP improvement whose confidence interval excludes zero over
-  ADOPTION_SEEDS. Ranking tables stay on the three thesis seeds. When
+  as AP, because on a 20:1 problem precision is too noisy to read
+  reliably and accuracy is kept only to show how uninformative it is.
+* ADOPTION RULE: a change is adopted only if `paired_ap_test` shows a
+  paired per-seed AP improvement whose confidence interval excludes zero
+  over ADOPTION_SEEDS. Ranking tables stay on the three house seeds. When
   several candidates are tested in one round the confidence level is
   Bonferroni-corrected, and the ladder is climbed for ONE re-test round
   only - a ladder climbed until it stops improving is a ladder climbed
   into noise.
 
-WHAT THE REPLICATION ACTUALLY FOUND (NB05, 2026-07-27; 12,528 authors,
+WHAT THE EVALUATION ACTUALLY FOUND (NB05, 2026-07-27; 12,528 authors,
 38,201 edges, 5,071 labelled, 237 positives under the softened cut)
 ---------------------------------------------------------------------
 1. THE GRAPH DOES NOT EARN ITS COMPLEXITY. sage_lite tops the leaderboard
    on mean AP (0.107 vs logit 0.098) but the 10-seed paired test puts the
    margin at -0.003, CI [-0.010, +0.004]. Every other architecture is at
    or significantly BELOW the linear model. The parsimony rule ships
-   `logit`. The thesis's own ordering (SAGE > GCN > MLP > LabelProp) does
-   reproduce - it is the size of the gap that does not survive.
+   `logit`. The ordering the graph-learning literature would predict
+   (SAGE > GCN > MLP > LabelProp) does hold - it is the size of the gap
+   that does not survive.
 2. THE FIRST PASS WAS HALF CIRCULAR. `mean_conf` is one of the two
    multiplicands of the label (see SCORE_ADJACENT) and was worth
    +0.098 AP, CI [+0.083, +0.113] - roughly half of the apparent
@@ -108,15 +108,15 @@ WHAT THE REPLICATION ACTUALLY FOUND (NB05, 2026-07-27; 12,528 authors,
    homophily is 0.095 against 0.963 for the negative class: influential
    authors do not sit next to each other. DICE perturbation - deliberately
    rewiring same-label edges ACROSS the label boundary - raises AP from
-   0.183 to 0.378 at 50%, reproducing the thesis's DICE result in a much
-   sharper form. The reply graph's structure is actively misleading for
+   0.183 to 0.378 at 50%: deliberately damaging the graph makes the model
+   BETTER. The reply graph's structure is actively misleading for
    this label, so a model that leans on it loses.
 5. IT DOES NOT GENERALISE TO NEW AUTHORS. On the tenure split (fit on
    established voices, graded on authors who arrived later) every model
-   including logit sits at or below the random floor. This is the thesis's
-   own chapter-8 limitation, measured rather than acknowledged, and it is
-   why the dashboard ranks authors by their MEASURED record and treats
-   this model as a research exhibit.
+   including logit sits at or below the random floor. The standing
+   limitation of a transductive setup is therefore measured here rather
+   than merely acknowledged, and it is why the dashboard ranks authors by
+   their MEASURED record and treats this model as a research exhibit.
 
 The module is import-clean (no side effects): notebook 05 drives it and
 renders the narrative; nothing here writes to the store.
@@ -134,9 +134,19 @@ from analytics.influence import HIGH_TIER
 from analytics import influence_graph as ig
 
 # --- label regimes -----------------------------------------------------
-SOFT_TIER = 0.50            # thesis 7.1.2's own "softened criteria" cut
-THESIS_PREVALENCE = 0.0695  # 133 positives / 1,914 labelled nodes
-MIN_POSITIVES = 130         # pre-registered maturity bar (~thesis's 133)
+# SOFT_TIER: the round mid-point of a min-max-normalised composite. A
+#   stated convention, chosen a priori and never tuned.
+# REFERENCE_PREVALENCE: a FIXED reference prevalence, held constant run to
+#   run. Random AP *is* prevalence, so pinning it pins the floor, which
+#   keeps AP numbers from different vintages of the store directly
+#   comparable rather than only ordinally comparable.
+# MIN_POSITIVES: pre-registered maturity bar. A paired test on a
+#   rare-positive problem of this shape needs on the order of 130
+#   positives before it can reject anything at all; below the bar, no
+#   result here is decision-grade.
+SOFT_TIER = 0.50
+REFERENCE_PREVALENCE = 0.0695
+MIN_POSITIVES = 130
 
 # --- feature banks (text-free, correctness-free, store-only) ----------
 # BEHAVIOURAL = how much and in what form the author participates.
@@ -178,7 +188,7 @@ LEAKAGE = {"composite", "s_conf", "s_z", "s_enh", "hit_rate", "score",
            "bought_tops", "base_rate", "loud_but_wrong"}
 
 ADOPTION_SEEDS = tuple(range(10))       # paired test (this project's rule)
-THESIS_SEEDS = (42, 100, 2026)          # ranking tables (house seeds)
+HOUSE_SEEDS = (42, 100, 2026)           # ranking tables (house seeds)
 
 
 # ---------------------------------------------------------------------------
@@ -190,22 +200,21 @@ def label_standard(board: pd.DataFrame) -> pd.Series:
 
 
 def label_softened(board: pd.DataFrame) -> pd.Series:
-    """Thesis 7.1.2's softened criterion, transplanted: a lower composite
-    cut, chosen a priori as the round half-way point of the score scale -
-    not tuned to any result."""
+    """Softened criterion: a lower composite cut, chosen a priori as the
+    round half-way point of the score scale - not tuned to any result."""
     return (board["composite"] >= SOFT_TIER).astype(int)
 
 
 def label_prevalence(board: pd.DataFrame) -> pd.Series:
-    """Prevalence-matched: the top THESIS_PREVALENCE of LABELLED authors
+    """Prevalence-matched: the top REFERENCE_PREVALENCE of LABELLED authors
     by composite. This regime exists for one reason only - random AP
-    equals prevalence, so matching the thesis's 6.95% is what makes our
-    AP numbers directly comparable with their 0.140 rather than merely
-    ordinally comparable."""
+    equals prevalence, so pinning the reference prevalence pins the
+    floor, which is what keeps AP numbers directly comparable across
+    vintages of the store rather than merely ordinally comparable."""
     lab = board[board["n_judged"].fillna(0) > 0]
     if not len(lab):
         return pd.Series(0, index=board.index, dtype=int)
-    cut = lab["composite"].quantile(1 - THESIS_PREVALENCE)
+    cut = lab["composite"].quantile(1 - REFERENCE_PREVALENCE)
     return (board["composite"] >= cut).astype(int)
 
 
@@ -240,8 +249,9 @@ def call_features(calls: pd.DataFrame) -> pd.DataFrame:
       active_days         distinct calendar days with at least one call.
       calls_per_active_day intensity when they do show up.
       comment_call_frac   share of calls made in comments rather than
-                          posts (the thesis's comments_fraction, which
-                          their ablation found among the most useful).
+                          posts - where an author does their talking is
+                          a style, and the ablation prices whether it
+                          helps.
       stance_sd           dispersion of signed conviction - does this
                           author shout the same amplitude every time?
       span_days           first-to-last call gap: tenure.
@@ -284,7 +294,7 @@ def build_node_table(board: pd.DataFrame, calls: pd.DataFrame,
     `board` is author_scores.parquet, `calls` is calls.parquet. Only
     authors with at least one JUDGED call carry a label; everyone else
     stays in the table (and therefore in the graph) as unlabelled
-    structural context - that is the thesis's transductive setup.
+    structural context - that is what makes the setup transductive.
     """
     tab = board.set_index("author").copy()
     cf = call_features(calls)
@@ -395,7 +405,7 @@ def neighbour_mean(ctx: Ctx, feats: list, kind: str = "mean",
 
 
 # ---------------------------------------------------------------------------
-# splits + threshold rule (thesis 6.2)
+# splits + threshold rule
 # ---------------------------------------------------------------------------
 def stratified_split(y: pd.Series, seed: int,
                      frac=(0.6, 0.2, 0.2)) -> pd.Series:
@@ -420,8 +430,8 @@ def stratified_split(y: pd.Series, seed: int,
 
 def tune_threshold(y_val: np.ndarray, p_val: np.ndarray,
                    min_recall: float = 0.05) -> float:
-    """Thesis 6.2.2: sweep candidate thresholds on VALIDATION, reject any
-    with positive-class recall < min_recall, keep the highest precision."""
+    """Sweep candidate thresholds on VALIDATION, reject any with
+    positive-class recall < min_recall, keep the highest precision."""
     best_thr, best_prec = 0.5, -1.0
     for thr in np.unique(np.round(p_val, 3)):
         pred = p_val >= thr
@@ -458,14 +468,14 @@ def _fit_linear(ctx: Ctx, X_all: pd.DataFrame, part: pd.Series,
 
 
 def model_random(ctx, part, feats, seed):
-    """Thesis 6.1.8: uniform scores. Its AP is the prevalence - the floor
-    every other number is quoted against."""
+    """Uniform scores. Its AP is the prevalence - the floor every other
+    number is quoted against."""
     rng = np.random.default_rng(seed)
     return pd.Series(rng.uniform(size=len(ctx.tab)), index=ctx.tab.index)
 
 
 def model_mlp(ctx, part, feats, seed):
-    """Thesis 6.1.1: features only, no graph. 'Behaviour alone'."""
+    """Feature-only MLP: no graph at all. 'Behaviour alone'."""
     from sklearn.neural_network import MLPClassifier
     train = ctx.tab.index[part == "train"]
     X = _zscore(ctx.tab.loc[train, feats], ctx.tab[feats]).fillna(0.0)
@@ -476,7 +486,7 @@ def model_mlp(ctx, part, feats, seed):
 
 
 def model_logit(ctx, part, feats, seed):
-    """Features only, linear. Not a thesis architecture - it is the
+    """Features only, linear. Not a graph architecture - it is the
     control that tells us whether the MLP's non-linearity earns its keep
     at this sample size."""
     return _fit_linear(ctx, ctx.tab[feats], part, seed)
@@ -484,8 +494,8 @@ def model_logit(ctx, part, feats, seed):
 
 def model_labelprop(ctx, part, feats, seed, n_iter: int = 30,
                     alpha: float = 0.85):
-    """Thesis 6.1.2: structure only, no features at all. Train labels are
-    clamped and beliefs diffuse over the weighted reply graph;
+    """Label propagation: structure only, no features at all. Train
+    labels are clamped and beliefs diffuse over the weighted reply graph;
     unlabelled, val and test nodes start at the train base rate. Written
     as sparse power iteration, the same style as influence.py's PageRank.
     """
@@ -507,7 +517,7 @@ def model_labelprop(ctx, part, feats, seed, n_iter: int = 30,
 
 
 def model_sage_lite(ctx, part, feats, seed):
-    """Thesis 6.1.5, one layer with a mean aggregator:
+    """GraphSAGE, one layer with a mean aggregator:
     [self features | mean of neighbours' features]. Unlabelled nodes
     contribute to the aggregation - that IS the semi-supervised part."""
     X = pd.concat([ctx.tab[feats], neighbour_mean(ctx, feats, "mean")],
@@ -516,15 +526,16 @@ def model_sage_lite(ctx, part, feats, seed):
 
 
 def model_gcn_lite(ctx, part, feats, seed):
-    """Thesis 6.1.3 in linear (SGC) form: propagate features twice with
-    the symmetric-normalised self-looped adjacency, then classify. Two
-    hops is the thesis's own depth."""
+    """GCN in linear (SGC) form: propagate features twice with the
+    symmetric-normalised self-looped adjacency, then classify. Two hops
+    is the standard depth for this form; deeper propagation over-smooths
+    on a graph this sparse."""
     X = neighbour_mean(ctx, feats, "gcn", power=2, prefix="gcn2_")
     return _fit_linear(ctx, X, part, seed)
 
 
 def model_mixhop_lite(ctx, part, feats, seed):
-    """Thesis 6.1.7: CONCATENATE hop powers instead of composing them, so
+    """MixHop: CONCATENATE hop powers instead of composing them, so
     the classifier can give hop-0, hop-1 and hop-2 evidence different
     (and even opposite-signed) weights."""
     X = pd.concat([ctx.tab[feats],
@@ -534,7 +545,7 @@ def model_mixhop_lite(ctx, part, feats, seed):
 
 
 def model_h2gcn_lite(ctx, part, feats, seed):
-    """Thesis 6.1.6: ego / 1-hop / 2-hop-excluding-1-hop kept SEPARATE.
+    """H2GCN: ego / 1-hop / 2-hop-excluding-1-hop kept SEPARATE.
     The design target is heterophily - graphs where a node's neighbours
     tend to carry the OTHER label - which is precisely what our own
     label analysis finds for the positive class."""
@@ -546,8 +557,8 @@ def model_h2gcn_lite(ctx, part, feats, seed):
 
 def model_sage_unweighted(ctx, part, feats, seed):
     """sage_lite with the class weighting REMOVED. Not an architecture -
-    it exists so the thesis's 6.2 choice of class-weighted losses is a
-    MEASURED decision here rather than an inherited one."""
+    it exists so the choice of class-weighted losses is a MEASURED
+    decision here rather than an inherited convention."""
     from sklearn.linear_model import LogisticRegression
     X_all = pd.concat([ctx.tab[feats],
                        neighbour_mean(ctx, feats, "mean")], axis=1)
@@ -563,8 +574,8 @@ MODELS = {"random": model_random, "logit": model_logit, "mlp": model_mlp,
           "gcn_lite": model_gcn_lite, "mixhop_lite": model_mixhop_lite,
           "h2gcn_lite": model_h2gcn_lite,
           "sage_unweighted": model_sage_unweighted}
-# the eight thesis architectures (+ our linear control) that belong in the
-# headline tournament; sage_unweighted is a discipline check, not a rival.
+# the architectures (+ the linear control) that belong in the headline
+# tournament; sage_unweighted is a discipline check, not a rival.
 TOURNAMENT = ["random", "logit", "mlp", "labelprop", "sage_lite",
               "gcn_lite", "mixhop_lite", "h2gcn_lite"]
 
@@ -591,9 +602,9 @@ def _metrics(y: np.ndarray, p: np.ndarray, thr: float) -> dict:
     on a rare-positive problem it is the honest summary, and its random
     baseline is exactly the prevalence - which is why `ap_lift` below is
     the number that travels between datasets. AUROC is prevalence-free
-    but flattered by the huge negative class. ACCURACY is reported only
-    because the thesis's perturbation study uses it (precision was too
-    noisy at their positive count).
+    but flattered by the huge negative class. ACCURACY is reported as a
+    cautionary panel only: on a 20:1 problem it barely moves whatever the
+    model does, and showing that is the point.
     """
     from sklearn.metrics import roc_auc_score, average_precision_score
     pos, n = int(y.sum()), len(y)
@@ -616,7 +627,7 @@ def _metrics(y: np.ndarray, p: np.ndarray, thr: float) -> dict:
 
 
 def roc_points(y: np.ndarray, p: np.ndarray, thr: float) -> pd.DataFrame:
-    """ROC curve plus the operating point, for the thesis 7.1 figure."""
+    """ROC curve plus the operating point, for the results figure."""
     from sklearn.metrics import roc_curve
     fpr, tpr, thrs = roc_curve(y, p)
     df = pd.DataFrame({"fpr": fpr, "tpr": tpr, "thr": thrs})
@@ -632,14 +643,14 @@ def pr_points(y: np.ndarray, p: np.ndarray) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# evaluation harness (thesis 6.2 / 7.1)
+# evaluation harness
 # ---------------------------------------------------------------------------
 def _run_one(ctx: Ctx, name: str, feats: list, seed: int,
              ensemble_seeds: tuple | None = None) -> dict:
     """One (model, split-seed) cell: fit, tune the threshold on VAL,
     score TEST. If `ensemble_seeds` is given the SPLIT is held fixed and
     the model is refit under each of those seeds, then the probabilities
-    are averaged - the thesis's 7.1.1 single-run vs ensemble comparison.
+    are averaged - that is the single-run vs ensemble comparison.
     """
     lab = ctx.tab[ctx.tab["labelled"]]
     part = stratified_split(lab["y"], seed)
@@ -660,10 +671,10 @@ def _run_one(ctx: Ctx, name: str, feats: list, seed: int,
 
 
 def evaluate(ctx: Ctx, feats: list | None = None,
-             seeds=THESIS_SEEDS, models: list | None = TOURNAMENT,
+             seeds=HOUSE_SEEDS, models: list | None = TOURNAMENT,
              ensemble_seeds: tuple | None = None) -> pd.DataFrame:
     """Every model x every seed -> AP / AUROC / lift / confusion on TEST,
-    aggregated as mean +/- std per model (thesis Table 7.1's shape)."""
+    aggregated as mean +/- std per model - the leaderboard table."""
     feats = feats or FULL_BANK
     names = models or list(MODELS)
     rows = [_run_one(ctx, name, feats, seed, ensemble_seeds)
@@ -770,13 +781,14 @@ def choose_model(ladder: pd.DataFrame, floor: str = "logit") -> str:
 
 
 # ---------------------------------------------------------------------------
-# robustness (thesis 7.2)
+# robustness
 # ---------------------------------------------------------------------------
 def ablate_categories(ctx: Ctx, model: str = BEST_MODEL,
-                      seeds=THESIS_SEEDS) -> pd.DataFrame:
-    """Thesis 7.2.1 at CATEGORY level: drop a whole feature family and
+                      seeds=HOUSE_SEEDS) -> pd.DataFrame:
+    """Ablation at CATEGORY level: drop a whole feature family and
     re-run. Category drops sidestep the correlated-single-feature caveat
-    the thesis flags (drop one of two twins and the other covers for it).
+    on `ablate_features` (drop one of two twins and the other covers for
+    it, so both look harmless).
     """
     full = FULL_BANK
     variants = [("full", full)] + [
@@ -795,14 +807,15 @@ def ablate_categories(ctx: Ctx, model: str = BEST_MODEL,
 
 
 def ablate_features(ctx: Ctx, model: str = BEST_MODEL,
-                    seeds=THESIS_SEEDS, feats: list | None = None
+                    seeds=HOUSE_SEEDS, feats: list | None = None
                     ) -> pd.DataFrame:
-    """Thesis 7.2.1 proper: leave ONE feature out at a time.
+    """Leave-one-out ablation: drop ONE feature at a time.
 
-    Read the sign the way the thesis does: d_ap < 0 means removing the
-    feature HURT, so the feature was beneficial; d_ap > 0 means removing
-    it HELPED, so the feature was actively harmful (their finding for raw
-    degree, which improved AP by 0.027 when dropped).
+    Read the sign carefully: d_ap < 0 means removing the feature HURT, so
+    the feature was beneficial; d_ap > 0 means removing it HELPED, so the
+    feature was actively harmful - a live possibility at this sample
+    size, where a noisy column costs the linear read-out more than it
+    contributes.
     """
     full = list(feats or FULL_BANK)
     base = float(np.nanmean([_run_one(ctx, model, full, s)["ap"]
@@ -822,21 +835,20 @@ def ablate_features(ctx: Ctx, model: str = BEST_MODEL,
 
 def perturb_graph(edges: pd.DataFrame, rate: float, mode: str,
                   labels: pd.Series, seed: int) -> pd.DataFrame:
-    """Thesis 7.2.2: corrupt a fraction of edges.
+    """Corrupt a fraction of edges.
       'random' rewires one endpoint of each selected edge to a random
                node - pure structural noise.
       'dice'   (Disconnect Internally, Connect Externally) selects
                SAME-label edges and rewires them across the label
                boundary. On a heterophilous graph this can HELP, which is
-               what the thesis observed and what our homophily numbers
-               predict.
+               exactly what our own homophily numbers predict.
       'swap'   degree-preserving double-edge swap: take two edges
                (a->b) and (c->d) and turn them into (a->d) and (c->b).
                Every node keeps its exact degree, so this isolates the
                value of WHO is connected to WHOM from the value of simply
-               being busy. The thesis states degree is preserved under its
-               perturbations; this is the strict version of that claim,
-               and it is the cleanest test of whether the graph carries
+               being busy. 'random' and 'dice' both disturb the degree
+               sequence; this mode leaves it exactly intact, which makes
+               it the cleanest test of whether the graph carries
                information beyond degree.
     """
     if not len(edges) or rate <= 0:
@@ -872,7 +884,7 @@ def perturb_graph(edges: pd.DataFrame, rate: float, mode: str,
 def perturbation_curve(tab: pd.DataFrame, edges: pd.DataFrame,
                        model: str = BEST_GRAPH_MODEL,
                        rates=(0.0, 0.1, 0.2, 0.3, 0.5),
-                       seeds=THESIS_SEEDS,
+                       seeds=HOUSE_SEEDS,
                        modes=("random", "dice", "swap")) -> pd.DataFrame:
     """The model's TEST AP *and accuracy* as the graph degrades, in every
     mode. A structure-using model must fall under 'random' - if it does
@@ -897,14 +909,15 @@ def perturbation_curve(tab: pd.DataFrame, edges: pd.DataFrame,
 
 
 # ---------------------------------------------------------------------------
-# 7.1.2 label-criteria sensitivity + 7.1.3 misclassification analysis
+# label-criteria sensitivity + misclassification analysis
 # ---------------------------------------------------------------------------
 def label_regime_table(board: pd.DataFrame, calls: pd.DataFrame,
                        edges: pd.DataFrame, model: str = BEST_MODEL,
-                       seeds=THESIS_SEEDS) -> pd.DataFrame:
-    """Thesis 7.1.2: does the conclusion survive a different definition of
-    "influential"? One row per regime with its positive count, prevalence,
-    AP, lift over random, AUROC and positive-class node homophily."""
+                       seeds=HOUSE_SEEDS) -> pd.DataFrame:
+    """Label-criteria sensitivity: does the conclusion survive a different
+    definition of "influential"? One row per regime with its positive
+    count, prevalence, AP, lift over random, AUROC and positive-class
+    node homophily."""
     rows = []
     for regime in LABEL_REGIMES:
         tab = build_node_table(board, calls, regime=regime)
@@ -934,7 +947,7 @@ def label_regime_table(board: pd.DataFrame, calls: pd.DataFrame,
 
 def prediction_frame(ctx: Ctx, model: str = BEST_MODEL,
                      feats: list | None = None,
-                     seeds=THESIS_SEEDS) -> pd.DataFrame:
+                     seeds=HOUSE_SEEDS) -> pd.DataFrame:
     """Per-node TEST predictions pooled across seeds, with the confusion
     bucket. Pooling test folds is what makes the misclassification tables
     readable at all when a single fold holds ~40 positives."""
@@ -963,7 +976,7 @@ def prediction_frame(ctx: Ctx, model: str = BEST_MODEL,
 
 
 def confusion_table(pred: pd.DataFrame) -> pd.DataFrame:
-    """Thesis 7.1.3's 2x2, pooled over seeds."""
+    """The 2x2 confusion matrix, pooled over seeds."""
     ct = pd.crosstab(pred["y"], pred["pred"])
     ct.index = ["actual low", "actual HIGH"]
     ct.columns = [f"pred {c}" for c in ct.columns]
@@ -972,10 +985,9 @@ def confusion_table(pred: pd.DataFrame) -> pd.DataFrame:
 
 def bucket_profiles(pred: pd.DataFrame, tab: pd.DataFrame,
                     cols: list | None = None) -> pd.DataFrame:
-    """Thesis Tables 7.3-7.5: mean attributes of the TP / FP / FN / TN
-    groups. This is where the "what does the model confuse" story lives -
-    e.g. FPs being high-degree loud accounts that simply never got a call
-    right."""
+    """Mean attributes of the TP / FP / FN / TN groups. This is where the
+    "what does the model confuse" story lives - e.g. FPs being
+    high-degree loud accounts that simply never got a call right."""
     cols = cols or FULL_BANK
     j = pred.join(tab[cols], on="author")
     prof = j.groupby("bucket")[cols].mean().T
@@ -988,9 +1000,9 @@ def bucket_profiles(pred: pd.DataFrame, tab: pd.DataFrame,
 
 def worst_misses(pred: pd.DataFrame, board: pd.DataFrame,
                  n: int = 5) -> pd.DataFrame:
-    """Thesis 7.1.3's "top-5 false negatives": the true HIGH authors the
-    model scored LOWEST. Reading their store rows is the most informative
-    single exhibit for what the features are blind to."""
+    """The top-n false negatives: the true HIGH authors the model scored
+    LOWEST. Reading their store rows is the most informative single
+    exhibit for what the features are blind to."""
     fn = (pred[pred["bucket"] == "FN"]
           .sort_values("p").drop_duplicates("author").head(n))
     keep = ["author", "n_calls", "n_judged", "hit_rate", "composite",
@@ -1000,15 +1012,15 @@ def worst_misses(pred: pd.DataFrame, board: pd.DataFrame,
 
 
 # ---------------------------------------------------------------------------
-# MORE OF THE THESIS: 4.6 label-ingredient sensitivity, a significance
-# test the thesis does not run, and the two limitations its own chapter 8
-# names as future work (correlated features, no unseen-author validation)
+# GOING FURTHER: label-ingredient sensitivity, a significance test that
+# nothing else in the module supplies, and the two standing limitations
+# of this design (correlated features, no unseen-author validation)
 # ---------------------------------------------------------------------------
 def feature_correlation(tab: pd.DataFrame,
                         feats: list | None = None) -> pd.DataFrame:
     """Spearman correlation of the feature bank.
 
-    WHY this exhibit exists: the thesis's 7.2.1 ablation carries an
+    WHY this exhibit exists: the per-feature ablation carries an
     explicit caveat - when two features are near-duplicates, dropping
     either one looks harmless because the twin covers for it, so a
     single-feature ablation understates both. Printing the correlation
@@ -1021,7 +1033,7 @@ def feature_correlation(tab: pd.DataFrame,
 
 
 def composite_variants(board: pd.DataFrame) -> dict:
-    """Alternative recipes for the composite score of thesis 4.6.
+    """Alternative recipes for the composite score.
 
     Production uses 0.4*s_conf + 0.4*s_z + 0.2*s_enh. These variants
     re-mix the SAME three shrunk components, then min-max renormalise, so
@@ -1049,7 +1061,7 @@ def composite_variants(board: pd.DataFrame) -> dict:
 
 def label_ingredient_table(board: pd.DataFrame, calls: pd.DataFrame,
                            edges: pd.DataFrame, model: str = BEST_MODEL,
-                           seeds=THESIS_SEEDS,
+                           seeds=HOUSE_SEEDS,
                            n_positives: int | None = None) -> pd.DataFrame:
     """Re-run the model under each composite recipe, holding PREVALENCE
     fixed (top-`n_positives` labelled authors under each recipe) so the
@@ -1087,11 +1099,12 @@ def permutation_test(ctx: Ctx, model: str = BEST_MODEL,
                      seed: int = 42) -> dict:
     """Is the model's AP distinguishable from luck?
 
-    The thesis reports mean +/- std across three seeds, which says how
-    STABLE a number is but not whether it is REAL. This adds the missing
-    test: shuffle the labels among labelled nodes (destroying any
-    feature-label and graph-label relationship while keeping the class
-    balance and the graph exactly as they are), refit, and record the AP.
+    Mean +/- std across the house seeds says how STABLE a number is but
+    not whether it is REAL, and nothing else in the module supplies that
+    test. This one does: shuffle the labels among labelled nodes
+    (destroying any feature-label and graph-label relationship while
+    keeping the class balance and the graph exactly as they are), refit,
+    and record the AP.
     Doing that n_perm times builds the null distribution of "AP achievable
     on this data with no signal at all". The p-value is the share of
     permutations that match or beat the real AP; with n_perm draws the
@@ -1126,9 +1139,9 @@ def cohort_split(tab: pd.DataFrame, calls: pd.DataFrame,
                  seed: int = 42) -> pd.Series:
     """A split by author TENURE instead of at random.
 
-    Thesis chapter 8 lists the transductive, single-snapshot setup as its
-    main limitation: every labelled node was visible when the model was
-    fitted, so nothing in the paper shows the model working on a user it
+    The transductive, single-snapshot setup is the main limitation of
+    this design: every labelled node was visible when the model was
+    fitted, so nothing above shows the model working on an author it
     had never seen. Here the labelled authors are ordered by the date of
     their FIRST call and cut chronologically - the model learns on the
     established voices and is graded on authors who arrived later. That is
@@ -1178,8 +1191,8 @@ def evaluate_cohort(ctx: Ctx, calls: pd.DataFrame,
 
 def community_positive_table(g, comm: pd.Series, tab: pd.DataFrame,
                              min_size: int = 25) -> pd.DataFrame:
-    """Thesis 5.2 taken one step further: are the positives CONCENTRATED
-    in particular communities, or spread evenly?
+    """Community structure taken one step further: are the positives
+    CONCENTRATED in particular communities, or spread evenly?
 
     This matters for the model: if HIGH authors clustered into a few
     communities, community id alone would be a strong feature and a
