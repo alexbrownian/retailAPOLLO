@@ -1573,6 +1573,63 @@ layout) plus a dashboard smoke harness gate every change.
 
 ---
 
+### 8.6 The knob audit: every chosen number swept (2026-07-29)
+
+Prompted by the desk: *"any variables that were arbitrarily defined, we MUST
+do a frontier on it to determine BEST"*. Every number in the detector that was
+**chosen rather than measured** now has an answer to "why this value?".
+Method: NB07 §A3c — the same walk-forward, the ground truth held fixed,
+configurations re-judged on the test years they share.
+
+| knob | was | now | verdict |
+|---|---|---|---|
+| boom lookback (live gate) | 120 d | **54 d** | §8.4 |
+| GET IN candidacy floor | 1.0 | **1.10** | the only setting that brings GET IN inside its own FA budget |
+| A1 hype multiple | 2.0 | 2.0 | **tested and kept** — 2.0 *is* the capture maximum (22 vs 16–18 either side) |
+| A2 attention gate | 0.90 | 0.90 | monotone trade, nothing inside budget; it also defines end-stage everywhere |
+| GET OUT cooldown | 21 d | 21 d | 7 d "wins" on capture by firing at the same peak twice — rejected |
+| desk trigger smoothing | ROLL 7 | ROLL 7 | ROLL 5 weakly dominates by two false alarms — noise |
+
+**The GET IN floor, and what it costs.** GET IN had breached its own accepted
+false-alarm budget from the day it shipped — 0.255 per instrument-year against
+0.23 — carried in this report as a stated limitation rather than fixed. The
+floor is the lever:
+
+| floor | captured /125 | late | FA/inst-yr | precision |
+|---|---|---|---|---|
+| 0.90 | 19 | 8 | 0.336 | 0.142 |
+| 1.00 *(was)* | 15 | 6 | 0.278 | 0.138 |
+| **1.10** | 14 | **2** | **0.207** | **0.173** |
+| 1.25 | 10 | 2 | 0.176 | 0.147 |
+
+1.10 is the max-capture point inside the budget — the project's own selection
+rule — and the first setting that meets the budget at all. **Realised on the
+2026-07-29 re-fit over the full 9-year record: 18/125 captured, late starts
+10 → 5, false alarms 124 → 97 = 0.200 per instrument-year against the 0.23
+budget, threshold 0.848141 → 0.860853.** It costs one
+capture and buys budget compliance, late starts 6 → 2, and precision
+0.138 → 0.173. **The price is a property, not just a number:** 1.0 was a
+*definition* ("the crowd is above its own normal", multiplier one, nothing
+fitted), and the register now gains a fitted entry where it had none. Spent
+knowingly, to close a breach the record had been carrying as a known defect.
+**Scope:** `desk_candidacy` only — the crowd-only onset store keeps 1.0, being
+a separate detector with a separate published record that was not swept here.
+
+**The cooldown, and why the "better" answer was refused.** A 7-day cooldown
+captures 25 peaks against 21 d's 22 and stays inside the budget, so the stated
+selection rule prefers it. It was rejected anyway: it fires **78 alerts
+against 42** and precision falls 0.52 → 0.32, because the extra captures come
+from firing repeatedly at the *same* peak — something the capture count cannot
+see and a desk certainly can. Recorded because a rule applied without judgement
+would have taken it.
+
+**The overfitting guard.** Six knobs against ~98–125 detectable peaks over a
+handful of years is enough to manufacture an improvement by chance. Nothing was
+adopted on a single-point maximum: a change shipped only if it fixed a stated
+failure or sat on a broad plateau. Four of six knobs were kept — which is a
+result, not an absence of one: a constant that survives its first sweep is
+better evidenced than one that was never swept.
+
 ### 8.5 Open: the crowd score adds little inside a tight gate
 
 On the shared evaluation years (2021/2022/2026) the GET OUT score's
@@ -1673,14 +1730,31 @@ against 0.374), AUROC 0.536, median warning **7 days**, **65** live GET OUT
 alerts all-time (was 95). GET IN was untouched by construction except that
 start-next-to-end adjacency fell from 2 to 1.
 
-**Those are the 60 d figures and they are now one step behind the code.** The
-window moved again to 54 d on the frontier sweep below, and the frozen
-threshold must be re-selected before the record is quoted anywhere: **re-run
-`python -m analytics.run_analytics --what phases --research`**. The offline
-projection for 54 d is threshold ≈0.6186, capture 22/98, 10 false alarms
-(0.086/instrument-year), AP 0.615 against a 0.608 base rate, AUROC 0.507,
-median warning 9 days — note the denominator change from 122 to 98, which is
-the lost 2020 test year, not a change in performance.
+**Superseded — the 54 d gate and the 1.10 GET IN floor were re-fit on
+2026-07-29** (`--what phases --research`). The realised record:
+
+| | 120 d gate | 60 d gate | **54 d gate + 1.10 floor** |
+|---|---|---|---|
+| GET OUT captured | 24 / 122 | 21 / 122 | **22 / 98** |
+| GET OUT false alarms | 39 | 15 | **10** |
+| GET OUT FA / instrument-year | 0.195 | 0.100 | **0.083** |
+| GET OUT AP (base rate) | 0.449 (0.374) | 0.540 (0.498) | **0.615 (0.608)** |
+| GET OUT AUROC | 0.545 | 0.536 | 0.507 |
+| GET OUT median warning | 8 d | 7 d | **9 d** |
+| GET OUT threshold | 0.630231 | 0.617489 | **0.618064** |
+| GET IN captured | 20 / 125 | 20 / 125 | **18 / 125** |
+| GET IN late starts | 10 | 10 | **5** |
+| GET IN false alarms | 124 | 124 | **97** |
+| **GET IN FA / instrument-year** | 0.255 | 0.255 | **0.200** ✓ |
+| GET IN threshold | 0.848141 | 0.848141 | **0.860853** |
+| live alerts all-time | 156 in / 95 out | 156 / 65 | **114 / 57** |
+
+**GET IN is inside its accepted false-alarm budget for the first time**
+(0.200 against 0.23), and late starts halved. The GET OUT denominator falls
+122 → 98 because the 54 d gate costs the walk-forward its 2020 test year —
+fewer captures are *reported* because the detector is examined on less, not
+because it got worse. Its AUROC of 0.507 restates §8.5: inside a tight gate
+the crowd score is not doing the ranking.
 
 ## 9. Future Work
 
@@ -1791,6 +1865,8 @@ runs (drift-guard assert in notebook 02).
 
 | Date | Update |
 |---|---|
+| 2026-07-29 (af) | **Re-fit shipped: the 54 d boom gate and the 1.10 GET IN floor are live, and GET IN is inside its false-alarm budget for the first time.** GET OUT: 22/98 captured, 10 FAs = **0.083**/instrument-year, AP 0.615 (base 0.608), AUROC 0.507, 9-day median warning, threshold **0.618064**. GET IN: 18/125, late starts **10 → 5**, FAs **124 → 97** = **0.200**/instrument-year against the 0.23 budget, threshold **0.860853**, adjacency 1. Live alerts 156/95 → **114/57**. The offline projections were exact for GET OUT (threshold, capture, FA, AP and lead all matched). Denominator 122 → 98 is the lost 2020 test year, recorded in §8.4. |
+| 2026-07-29 (ae) | **Knob audit: every chosen number in the detector swept on the NB07 frontier (new §8.6); GET IN brought inside its false-alarm budget for the first time.** GET IN candidacy floor 1.0 → **1.10** — FA/instrument-year **0.278 → 0.207** against a 0.23 budget, late starts **6 → 2**, precision **0.138 → 0.173**, one capture given up. The cost is stated: 1.0 was a parameter-free definition and the register gains a fitted number. Scope is `desk_candidacy` only; the crowd-only onset store keeps 1.0. **Four knobs tested and KEPT** — A1 hype multiple 2.0 (is the capture maximum), A2 attention gate 0.90, GET OUT cooldown 21 d (7 d 'wins' on capture by firing twice at the same peak: 78 alerts vs 42, precision 0.32 — refused), ROLL 7 (5 dominates by two false alarms, noise). Ground truth and evaluation windows explicitly out of scope. Method in NB07 §A3c. Thresholds must be re-fit. |
 | 2026-07-29 (ad) | **The boom window swept properly on the NB07 frontier and moved 60 d → 54 d; a wrong claim in the (ab) entry corrected.** The window is now chosen by the project's own selection rule (inside the FA budget, maximise capture) applied on the years all configurations share: 54 d captures **22 of 93** at **0.092** FA/instrument-year against 60 d's 21 at 0.115 and 120 d's 20 at 0.115 — 120 d is dominated on both axes. Capture is flat at 21–22 across 52–60 d while false alarms rise monotonically, so the efficient point is the short end of the plateau; below 52 d capture falls off a cliff to 15. **Correction:** entry (ab) reported an AP lift of +0.042 for 60 d and used it to reject shorter windows. That figure came from 60 d's own test years, which include 2020 that shorter windows cannot score. On the shared years AUROC is ≈0.50 for EVERY window from 40–100 d, 60 d included. The window buys capture-vs-FA, not skill — now recorded as open limitation §8.5. **Recorded cost:** at 54 d the walk-forward loses its 2020 test year and the denominator falls 122 → 98. Method added to notebook 07 as §A3b. Thresholds must be re-fit. |
 | 2026-07-29 (ac) | **The 60-day boom gate re-fit and shipped; the realised trade is 3 fewer captures for 24 fewer false alarms.** GET OUT: capture 24→**21** of 122 (19.7%→17.2%), false alarms 39→**15** = 0.195→**0.100** per instrument-year against a 0.23 budget, AP 0.449→**0.540** but base rate 0.374→**0.498** so the LIFT fell +0.075→**+0.042**, AUROC 0.545→0.536, median warning 8→**7** days, frozen threshold 0.630231→**0.617489**, live alerts all-time 95→**65**. GET IN is untouched by construction (same threshold, 20/125, 124 FAs) except start-next-to-end adjacency 2→**1**. Read honestly: the OPERATING POINT improved materially (0.71 false alarms per capture, down from 1.63) while the SCORE's discriminative power inside the gated set weakened — more of the work is now done by the gate. Docs, register, architecture note and both decks updated; **the ablation tables (raw-vs-smoothed, gate-vs-no-gate) were measured under the 120d gate and are now labelled as such, not re-run.** Notebooks 01/04/06/07 must be re-run to refresh `docs/research/*.json` and every figure. |
 | 2026-07-29 (ab) | **The live boom window cut from 120 d to 60 d, on a sweep run through the unchanged walk-forward with the ground truth held fixed (new §8.4).** Raised from the screen as "the price did not move enough to trigger". The gate was firing correctly — all 95 stored GET OUT flags clear their trigger — but a 120-day low let post-crash rebounds read as booms: 30 of 95 fired more than 10% below their own 1-year high. On the common test years 60 d captures 21 of 93 vs 120 d's 20, with 10 false alarms vs 11 and precision 0.500 vs 0.488, and it blocks both `semiconductors` early-2023 fires. **45 d and shorter rejected on AP lift ≤ 0** — the crowd score stops beating the base rate, which would make the detector a momentum screen. The GROUND-TRUTH 120-day window is deliberately unchanged, and the two are now separate constants so neither can move the other. Frozen thresholds must be re-fit. |

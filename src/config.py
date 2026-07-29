@@ -246,7 +246,50 @@ EUPHORIA_CRASH_MIN_ETF = 0.15   # G3: >= 15% drawdown within 90d = ETF bust
 EUPHORIA_CRASH_MIN_SINGLE = 0.30  # >= 30% for single names (structurally
                                   # more volatile - the desk's dual-threshold
                                   # call, July 2026)
-EUPHORIA_COOLDOWN_DAYS = 21     # A4: one alert per episode per name
+# --- THE GET IN CANDIDACY FLOOR (desk decision 2026-07-29, swept).
+#
+# The onset rule may only judge a day whose 7d mention share is at least this
+# multiple of its own trailing 120d median. It USED TO BE 1.0, chosen as a
+# definition rather than a fit - "the crowd is above its own normal",
+# multiplier one, parameter-free - and that property was worth something.
+#
+# It is given up deliberately, because at 1.0 GET IN had been BREACHING ITS
+# OWN FALSE-ALARM BUDGET since it shipped: 0.255 per instrument-year against
+# the accepted 0.23, carried in the report as a stated limitation rather than
+# fixed. Swept on the NB07 A3c frontier (same walk-forward, ground truth held
+# fixed, judged on the years every configuration shares):
+#
+#   floor   captured/125   late   FA/inst-yr   precision
+#    0.90        19          8       0.336        0.142
+#    1.00        15          6       0.278        0.138   <- was
+#    1.10        14          2       0.207        0.173   <- is
+#    1.25        10          2       0.176        0.147
+#
+# 1.10 is the max-capture point INSIDE the budget - the project's own
+# selection rule - and it is the first setting at which GET IN meets the
+# budget at all. It costs one capture and buys: budget compliance, late
+# starts 6 -> 2, precision 0.138 -> 0.173.
+#
+# SCOPE: this is the DESK candidacy floor (`desk_candidacy`) only. The
+# crowd-only onset store (`frame_live[hype_raw >= 1]`, euphoria_phases 683 /
+# 705) deliberately KEEPS 1.0 - it is a separate published detector, it was
+# not swept here, and its record stands on the 1.0 frame. Changing a detector
+# on evidence gathered about a different one is the error this note exists to
+# prevent.
+#
+# Re-fit required: `python -m analytics.run_analytics --what phases --research`
+EUPHORIA_ONSET_HYPE_MIN = 1.10
+
+EUPHORIA_COOLDOWN_DAYS = 21     # A4: one alert per episode per name.
+                                # SWEPT 2026-07-29 and KEPT. 7d captures 25
+                                # vs 21d's 22 and stays inside the budget,
+                                # but it fires 78 alerts against 42 and
+                                # precision falls 0.52 -> 0.32: the extra
+                                # captures are more shots at the SAME peak,
+                                # which the capture count cannot see and a
+                                # desk certainly can. 28d is the other side
+                                # (21 captures, FA 0.086 -> 0.060, precision
+                                # 0.60) and remains available.
 EUPHORIA_FADE_DISCOUNT = 10     # A3: the fade flag (crowd maximal, mood
                                 # rolling over) lowers the trigger by this
                                 # many level-points - the fade is the LAST
@@ -300,6 +343,85 @@ PANEL_SCREEN_FRACTION = 0.5   # finance screen: the candidate's sampled
 PANEL_ADD_CAP = 1             # max auto-adds per review - one step of
                               # the share denominator per month, so the
                               # 365d percentile normalisation absorbs it
+
+# ---------------------------------------------------------------------------
+# 4b. COMMENT INGESTION BUDGET (desk decision 2026-07-27)
+#
+# NOTHING IN THIS BLOCK TOUCHES A SIGNAL. These numbers decide how much data
+# one run FETCHES, never how anything is scored. They exist because "just
+# fetch everything" and "a full update shouldn't take more than ~10 minutes"
+# (the desk's own sentence) are incompatible at the panel's real volume, and
+# the project does not resolve that with a typed-in cap.
+#
+# EXACTLY ONE number below was chosen by a human: PIPELINE_BUDGET_S. Every
+# other number here is measured, or derived from a measurement, or is a
+# property of somebody else's API that is not ours to choose. The arithmetic
+# lives in src/pipeline_budget.py; the evidence is in ARCHITECTURE 3.1b /
+# 3.1b-i and PARAMETER_REGISTER Class 7.
+# ---------------------------------------------------------------------------
+PIPELINE_BUDGET_S = 600       # DESK DECISION 2026-07-27: "~10 minutes" for a
+                              # full refresh. The only human-chosen number in
+                              # this block; everything else is measured
+                              # against it.
+COMMENT_RATE_PER_S = 1.0      # CONTRACT, NOT A KNOB. What the project
+                              # committed to when it chose a free public
+                              # archive API. Raising it - or splitting the
+                              # panel across W workers each pausing a second,
+                              # an aggregate W req/s - breaks that contract,
+                              # so it is not available as a speedup. Recorded
+                              # as rejected rather than left as a temptation.
+COMMENT_PAGE = 100            # GROUND TRUTH: the API's own page size. Not
+                              # ours to choose; it is what one request
+                              # returns.
+COMMENT_PAGES_PER_DAY_PRIOR = 140
+                              # MEASURED, and a PANEL TOTAL - not a
+                              # per-subreddit figure. Intersecting
+                              # comment-call rec_ids with reply_edges gives
+                              # 12,010 / 417,208 = 2.879% call rate among
+                              # comments; against 403 comment-calls/day
+                              # (2026-06) and 414/day (2026-07) that implies
+                              # ~14,000 comments/day = ~140 pages/day across
+                              # the 17-sub panel. Caveat: the rate is measured
+                              # on the edge-covered subpopulation (48% of
+                              # comment-calls). Used only until the machine
+                              # builds its own per-subreddit cost ledger, at
+                              # which point measurement replaces it.
+COMMENT_CADENCE_DAYS = 3.2    # DERIVED: allowance / panel pages-per-day =
+                              # how many days of volume one run can buy
+                              # (465 / 140 = 3.32 on the real panel). This is
+                              # what makes "about twice a week" a CONSEQUENCE
+                              # rather than a preference - the desk chose
+                              # 2x/week with this number in front of it.
+                              # pipeline_budget.derived_cadence_days()
+                              # recomputes it live; this constant only seeds
+                              # the EWMA span below.
+COMMENT_EWMA_RUNS = max(1, round(PANEL_REFERRAL_WINDOW / COMMENT_CADENCE_DAYS))
+                              # = round(28 / 3.2) = 9 runs. Reuse the
+                              # project's OWN 28-day measurement window (the
+                              # one E2/E3/A0 use) rather than invent a
+                              # timescale, so the cost estimate tracks regime
+                              # change on the same clock the features do.
+COMMENT_EWMA_ALPHA = 2.0 / (COMMENT_EWMA_RUNS + 1)
+                              # = 0.2. The standard EWMA-to-SMA span identity
+                              # alpha = 2/(N+1). Derived, not tuned.
+LATE_ARRIVAL_DAYS = 1         # one day of deliberate overlap so comments
+                              # posted just behind the watermark are not
+                              # missed. The seen-file dedups the re-read, so
+                              # the overlap costs pages and can never
+                              # double-count a comment.
+PIPELINE_STAGE_PRIOR_S = {    # BOOTSTRAP ONLY - what a run is assumed to cost
+    "analytics": 90.0,        # before this machine has measured itself. The
+    "prices": 60.0,           # ledger (data/reference/pipeline_stage_times
+    "fold": 0.5,              # .json) replaces each entry with a measurement
+    "coverage": 0.4,          # after one run: on the reference machine the
+    "hydrate": 0.1,           # prior's 151s became a measured 134.1s
+}                             # (analytics 73.3, prices ~60, fold 0.44,
+                              # coverage 0.31, hydrate 0.012), and the page
+                              # allowance self-corrected 449 -> 465. That the
+                              # loop closes at all is the point of measuring.
+# Both ledgers are MACHINE-LOCAL and gitignored: they measure one machine's
+# speed, so committing them would plan the laptop's run with the desktop's
+# numbers.
 
 # ---------------------------------------------------------------------------
 # 5. SAFETY - the text-free commit guard. Any of these column names in an

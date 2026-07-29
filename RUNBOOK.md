@@ -406,3 +406,30 @@ fresh aggregates and recomputes the derived outputs once).
   write fails, the script prints the manual rename fix.
 - `python -m pytest tests/ -v` — the invariants that would catch silent
   corruption (merge maths, look-ahead, dedup, text-leaks).
+- **`python tools/verify_deps.py`** — does anything reference code that is not
+  here? Static, no imports, no network, under a second; exits 1 on a finding.
+  Catches missing modules, imported names that do not exist, attributes on
+  local modules, repo paths named in strings, and CLI flags handed to a script
+  whose argparse rejects them. **Run it after any change that spans module
+  boundaries, and before pushing.** It exists because on 2026-07-29 a routine
+  `update_data.py` died on `ImportError: cannot import name
+  'pipeline_budget'` — a module that ARCHITECTURE §3.1b and PARAMETER_REGISTER
+  Class 7 both described in full, that four files called into, and that had
+  never existed on disk. Three quieter gaps rode along with it, one of them
+  hidden behind a bare `except` in the dashboard. Documentation asserting that
+  code exists is not evidence that it does.
+
+## Housekeeping scripts (tools/)
+
+Not part of any pipeline; each is run by hand when you want what it makes.
+
+- `python tools/verify_deps.py` — the dangling-reference sweep above.
+- `python tools/export_figures.py` — regenerates the figures the research
+  report and the decks embed. Run it after re-running the notebooks, or the
+  documents will keep showing the previous fit's charts.
+- `python tools/dashboard_shots.py` — headless screenshots of the dashboard
+  tabs (Playwright), for the decks.
+- `python tools/contrast_audit.py` — checks the dashboard palette against
+  WCAG contrast ratios.
+- `python tools/nb_codehash.py` — hashes the notebooks so a drifted notebook
+  is visible before it is quietly re-run.

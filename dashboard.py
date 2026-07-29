@@ -1830,8 +1830,10 @@ not been re-run), and (b) the trigger on the 7d-SMOOTHED score, which
 killed the one-day-blip alerts (AP 0.435 → 0.449, same caveat, two
 captures recorded as the cost). Since the 60d re-fit the shipped record
 is capture 21/122, 15 FAs (0.100/instrument-year against a 0.23
-budget), AP 0.540 against a 0.498 base rate, median warning 7 days -
-those are the 60d figures; the 54d threshold re-fit is pending.
+budget), AP 0.540 against a 0.498 base rate, median warning 7 days. The
+54d re-fit of 2026-07-29 supersedes those: 22/98, 10 FAs
+(0.083/instrument-year), AP 0.615, 9-day warning; and GET IN came inside
+its own budget for the first time at 0.200.
 **GET IN (blue)** = the onset detector made PHASE-AWARE: a day
 that already satisfies every ending gate is end-stage, and a "start"
 there is incoherent - so it cannot fire. That cut start-next-to-end
@@ -2067,6 +2069,46 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     ow_ = (clip_window(ok, "date", lo, hi)
            if ok is not None and len(ok) else None)
 
+    # ---- ONE MASTER DIAL FOR THE WHOLE TAB -----------------------------
+    # Desk instruction 2026-07-29: "make all the guages use a master dial".
+    #
+    # The scrubber shipped one pass earlier lived INSIDE draw_chart, so a
+    # six-name page carried six independent sliders.  That is the wrong
+    # object: the question a PM asks is "what did the book look like on
+    # 3 March", not "what did NVDA look like on 3 March while uranium is
+    # still showing today".  Six controls also means six chances to leave
+    # one behind and read two different days side by side as if they were
+    # the same moment - a comparison error the page itself would have
+    # created.
+    #
+    # So there is now ONE control, owned by the tab and read by every
+    # gauge, every state badge and every 7-day change on the page.  Each
+    # chart still resolves the date against its OWN level curve (names
+    # start and end on different days), but they all resolve the SAME
+    # date, so the page is always a single point in time.
+    master_day = None
+    if len(ew):
+        _mdi = pd.to_datetime(ew["date"]).dropna()
+        if len(_mdi):
+            _md0 = pd.Timestamp(_mdi.min()).to_pydatetime()
+            _mdn = pd.Timestamp(_mdi.max()).to_pydatetime()
+            if _md0 < _mdn:
+                _msc, _ = st.columns([1.6, 2.4])
+                with _msc:
+                    master_day = st.slider(
+                        "read every dial on", min_value=_md0,
+                        max_value=_mdn, value=_mdn, format="DD MMM YY",
+                        key=f"{key_prefix}_master_day",
+                        help="One control for the whole page. Drag to move "
+                             "EVERY dial, state badge and 7-day change on "
+                             "this tab to the same day, so the names are "
+                             "always compared at one moment. Each chart "
+                             "marks the day with a vertical line and snaps "
+                             "to its nearest reading at or before your "
+                             "pick - never forward, so a weekend cannot "
+                             "show you Monday's number. Leave it on the "
+                             "right for today.")
+
     def draw_chart(name, title_prefix, key):
         one = ew[ew["name"] == name].sort_values("date")
         if not len(one):
@@ -2189,12 +2231,61 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         _z = gauge_zones()
         _lvl_ok = lvl.dropna()
         _have_dial = _z.get("red_edge") is not None and len(_lvl_ok) > 0
+
+        # ---- THE DIAL FOLLOWS A DAY SCRUBBER (desk instruction 2026-07-29:
+        # "when i click on the price chart it updates the gauge for the
+        # actual gauge of the day ... and not just the current day", then
+        # "im still not able to click it. can you make it so it can be like
+        # hover").
+        #
+        # HOVER IS NOT AVAILABLE, and this is a property of Streamlit rather
+        # than a thing left undone.  Streamlit has no hover event: the only
+        # chart interactions it surfaces are SELECTIONS, and every one costs
+        # a full server round-trip and script rerun.  A hover-driven dial
+        # would fire a rerun per mouse-move - hundreds a second - and the
+        # page would thrash.  Plotly point-CLICKS were tried first (two
+        # passes: bare traces, then a 22px invisible marker band) and did
+        # not reach the server on the desk's build, so they are gone rather
+        # than left in as a feature that works on some machines.
+        #
+        # WHAT REPLACES THEM: a date slider, which needs no chart event at
+        # all.  It is the same interaction a hover would have given - sweep
+        # through days, watch the dial move - and it works on every
+        # Streamlit version, so there is nothing left to fail silently.  The
+        # chart marks the chosen day with a vertical line, so the control
+        # and the picture stay tied together.
+        #
+        # THE SLIDER IS NOT HERE.  It is the tab's MASTER dial, created once
+        # above and read by every chart, so the whole page is one moment in
+        # time (desk instruction 2026-07-29: "make all the guages use a
+        # master dial").  This block only RESOLVES that shared date against
+        # this name's own level curve.
+        _pos = len(_lvl_ok) - 1
+        _as_of_click = None
+        if _have_dial and len(_lvl_ok) > 1 and master_day is not None:
+            # NEAREST DAY AT OR BEFORE, never after: the slider is a
+            # calendar and the level curve has gaps, so `ffill` is what
+            # stops a non-trading day reaching forward to a reading that did
+            # not exist yet.  It is also what lets ONE date serve names with
+            # different start and end days: a name whose history stops early
+            # simply holds its last reading instead of going blank.
+            _p = int(_lvl_ok.index.get_indexer(
+                [pd.Timestamp(master_day).normalize()], method="ffill")[0])
+            if _p >= 0:
+                _pos = _p
+            if _pos != len(_lvl_ok) - 1:
+                _as_of_click = _lvl_ok.index[_pos]
+
         if _have_dial:
-            _now = float(_lvl_ok.iloc[-1])
-            _ref = float(_lvl_ok.iloc[-1 - ROLL]
-                         if len(_lvl_ok) > ROLL else _lvl_ok.iloc[0])
-            _dgr = bool(danger_days.reindex(_lvl_ok.index).iloc[-1]) \
+            _now = float(_lvl_ok.iloc[_pos])
+            _ref = float(_lvl_ok.iloc[_pos - ROLL]
+                         if _pos >= ROLL else _lvl_ok.iloc[0])
+            _dgr = bool(danger_days.reindex(_lvl_ok.index).iloc[_pos]) \
                 if danger_days is not None else False
+            # the peak stays the WINDOW's peak, not the peak up to the
+            # clicked day: it is a "how hot has this got" reference, and
+            # making it move with the cursor would turn a fixed yardstick
+            # into a second moving part.
             _pk_v = float(_lvl_ok.max())
             _pk_d = _lvl_ok.idxmax()
             _zkey, _zlab, _zcol = gauge_state(_now, _dgr, _z)
@@ -2202,9 +2293,26 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             with _gc:
                 st.plotly_chart(
                     fig_euphoria_gauge(_now, _ref, _dgr, _z,
-                                       _lvl_ok.index[-1],
+                                       _lvl_ok.index[_pos],
                                        peak_val=_pk_v, peak_day=_pk_d),
                     width="stretch", key=f"{key}_gauge")
+                # SAY WHEN, AND OFFER THE WAY BACK.  A dial showing a past
+                # day looks exactly like a dial showing today, so the date
+                # is stated whenever the reading is NOT the latest one, and
+                # a button clears the selection.  Silence would be the
+                # defect here: a PM reading a March number as "now" is worse
+                # than not having the feature.
+                # SAY WHEN.  A dial on a past day looks exactly like a
+                # dial on today, so the date is stated whenever the reading
+                # is not the latest one.  Silence is the defect here: a PM
+                # reading a March number as "now" is worse than not having
+                # the control at all.
+                if _as_of_click is not None:
+                    st.markdown(
+                        f"<span style='font-size:11px;color:{ACCENT};"
+                        "font-weight:600'>reading "
+                        + pd.Timestamp(_as_of_click).strftime("%d %b %y")
+                        + "</span>", unsafe_allow_html=True)
                 # EVERYTHING WORDY LIVES IN THE HOVER.
                 #
                 # Desk instruction 2026-07-28: "dont need to explain it fully
@@ -2226,7 +2334,9 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             with _f1:
                 st.markdown(_facts([
                     ("state", _zlab, _zcol),
-                    ("euphoria today", f"{_now:.0f}<span style='font-size:"
+                    ("euphoria today" if _as_of_click is None
+                     else "euphoria on that day",
+                     f"{_now:.0f}<span style='font-size:"
                      f"13px;color:{INK_LABEL}'>/100</span>", None),
                     # DELIBERATELY UNCOLOURED.  A signed euphoria delta has
                     # no good/bad direction a colour could carry: rising
@@ -2769,6 +2879,15 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         #   3. a line survives printing, projecting and greyscale.
         # The signal itself is UNCHANGED - identical dates, identical frozen
         # thresholds. This is presentation only.
+        # WHERE THE DIAL IS READING.  Drawn only when the slider is off
+        # the latest day, so the ordinary view is not carrying a line that
+        # always sits on the right edge saying nothing.  Grey and thin on
+        # purpose: it is a cursor, not a signal, and it must not be
+        # mistaken for one of the coloured alert rules.
+        if _have_dial and _as_of_click is not None:
+            fig.add_vline(x=_ms(_as_of_click), line_color=INK_MUTED,
+                          line_width=1.2, line_dash="dot", opacity=0.85)
+
         for d in onset_alerts:                       # GET IN
             fig.add_vline(x=_ms(d), line_color=TEAL, line_width=1.6,
                           opacity=0.9)

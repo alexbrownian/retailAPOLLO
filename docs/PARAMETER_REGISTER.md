@@ -14,7 +14,7 @@ does not ship. Updated with every change (see RESEARCH_REPORT changelog).*
 | TOP alert threshold | 85 (level units) | per test year: maximise `captures − 1.0×FAs` on strictly earlier years; ties → most conservative | NB03 "why the threshold" exhibit; per-year table in `euphoria_report.json`. **Recorded limitation:** under this utility in an FA-rich regime the selection saturates toward the conservative end of its 50–85 grid — the budget rule below is the successor selection and is interior |
 | ONSET alert threshold | ~0.90 (score units) | per test year: maximise captures SUBJECT TO the FA budget on strictly earlier years; grid = percentiles of the training scores (data-derived, not hand units) | NB03 exhibit (budget rule marked inside the feasible band); `euphoria_onset_report.json` |
 | ML challenger cutoffs | (rejected models) | same walk-forward discipline, probability grid from training percentiles | NB03 tournament; euphoria.py `ml_walk_forward` |
-| GET OUT threshold (desk) | **re-fit pending** at the 54 d gate (offline projection ≈0.6186); 0.617489 at 60 d, 0.630231 at 120 d | budget rule on full prior years, boom-gated smoothed score | NB06 adopted-configuration section; `euphoria_desk_report.json` |
+| GET OUT threshold (desk) | **0.618064** (re-fit 2026-07-29 at the 54 d gate; 0.617489 at 60 d, 0.630231 at 120 d) | budget rule on full prior years, boom-gated smoothed score | NB06 adopted-configuration section; `euphoria_desk_report.json` |
 | GET IN threshold (desk) | 0.848 (score units) | budget rule on full prior years, phase-aware smoothed score | NB06 adopted-configuration section; `euphoria_desk_report.json` |
 
 ## Class 1b — THE GAUGE'S TWO EDGES (added 2026-07-27, notebook 06)
@@ -70,7 +70,7 @@ band label, and the caption under every dial says it in words.
 | Number | Value | Derivation |
 |---|---|---|
 | FA budget | 0.23 /instr-yr | the incumbent top detector's documented, desk-accepted walk-forward FA rate — a new detector may not be noisier than the noise already accepted (read live from `euphoria_report.json`) |
-| Onset prerequisite gate | 1× own 120d median | the A1 hype-gate construction with multiplier **one** — "attention above its own normal", parameter-free |
+| Onset prerequisite gate (`EUPHORIA_ONSET_HYPE_MIN`) | **1.10×** own 120d median (was 1×, 2026-07-29) | **no longer parameter-free** — swept on the NB07 §A3c frontier and moved because at 1.0 GET IN breached its own FA budget from the day it shipped (0.278 vs 0.23). 1.10 is the max-capture point inside budget: FA/inst-yr 0.278 → **0.207**, late 6 → **2**, precision 0.138 → **0.173**, one capture given up. Scope: `desk_candidacy` only — the crowd-only onset store keeps 1.0. **Realised on the 2026-07-29 re-fit: 18/125 captured, late 10 → 5, FAs 124 → 97 = 0.200/inst-yr (budget 0.23), threshold 0.848141 → 0.860853** |
 | Onset hit window | 45 days | mirrors the existing 45d false-alarm horizon in `score_alerts` (an alert is false if no peak follows within 45d) |
 | Panel qualification bar | 100 unique referrers / 28d | literally `EUPHORIA_MIN_COVERAGE` reused — the same floor that makes a name measurable (a unit test asserts the equality) |
 | Singles display bar | 2× hype at alert | the existing A1 constant applied at display time — no new number |
@@ -310,13 +310,43 @@ the rest are measured or derived from it. Evidence: `src/config.py`'s
 COMMENT INGESTION BUDGET block, `src/pipeline_budget.py` docstrings,
 ARCHITECTURE §3.1b and §3.1b-i.*
 
+> **RECOVERED 2026-07-29.** This entire class described code that was **not
+> on disk**. `src/pipeline_budget.py` did not exist anywhere in the working
+> tree, in any git commit, or as a stale `.pyc` in any `__pycache__` — which
+> means `update_data.py` had never once imported it successfully. `src/config.py`
+> was missing `PIPELINE_BUDGET_S` and `COMMENT_RATE_PER_S`; `ingestion/fetch_all.py`
+> had no `--comment-pages` and still carried the superseded 2026-07-24 help
+> text; `ingestion/fetch_reddit_comments.py` had no page cap, no allocation
+> and still slept a flat second *after* each round-trip — the exact dead time
+> §3.1b claims was removed. `dashboard.py` imported a
+> `default_lookback_days` that was not defined (silently swallowed by a bare
+> `except`, so the comment catch-up estimate had been dead rather than wrong).
+> The surfacing symptom was an `ImportError` on a routine `python update_data.py`.
+>
+> The module and the four call sites were **rebuilt from this table and
+> ARCHITECTURE §3.1b**, which between them specify every number. Every value
+> reproduces on the live repo: bootstrap allowance **449 pages / 7.5 min**,
+> α = 0.2 from N = 9, derived live lookback **5 d**, derived cadence **3.21 d
+> = 2.2×/week** on the 17-sub panel, self-correcting to 465 / 3.32 d once the
+> ledger holds one real run. A repo-wide AST sweep (unresolved local modules,
+> imported names that do not exist, attributes on local modules, referenced
+> repo paths, CLI flags the target script does not accept) now returns **zero**
+> genuine findings. One measurement bug was found and fixed **in the rebuild**:
+> a deferred subreddit must be costed against the span it actually reached,
+> not the span it asked for, or hitting a cap books it as cheap and the
+> allocator starves it further next run.
+>
+> **Lesson recorded, not just the fix:** documentation asserting that code
+> exists is not evidence that it does. The sweep above is cheap and is now
+> the thing to run after any session that edits across module boundaries.
+
 | Number | Value | Class | Why / how it is obtained |
 |---|---|---|---|
 | `PIPELINE_BUDGET_S` | 600 s | **DESK DECISION 2026-07-27** | the desk's own sentence: "a full update of the dashboard (like weekly) running shouldn't take more than ~10 minutes". The only human-chosen number in this class; everything else is measured against it |
 | `COMMENT_RATE_PER_S` | 1.0 req/s | CONVENTION (contract, not a knob) | what the project committed to when it chose a free public archive API. Raising it, or splitting the panel across W workers each pausing a second (an aggregate W req/s), breaks that contract — so it is **not** available as a speedup. Recorded as rejected, with the reason |
 | `COMMENT_PAGE` | 100 rows/page | GROUND TRUTH (the API's own page size) | not ours to choose; it is what one request returns |
 | Comment volume | ~14,000 comments/day ≈ 140 pages/day (17-sub panel) | **MEASURED** | intersecting comment-call `rec_id`s with `reply_edges` gives 12,010 / 417,208 = **2.879%** call rate among comments; against 403 comment-calls/day (2026-06) and 414/day (2026-07) that implies ~14k comments/day. Caveat: the rate is measured on the edge-covered subpopulation (48% of comment-calls) |
-| `COMMENT_PAGES_PER_DAY_PRIOR` | 140 | DERIVED (bootstrap prior) | the row above, per panel member, used only until the machine has its own ledger — then per-subreddit measurement replaces it |
+| `COMMENT_PAGES_PER_DAY_PRIOR` | 140 | DERIVED (bootstrap prior) | the row above, as a **PANEL TOTAL** — `pipeline_budget.sub_pages_per_day` divides it by the panel size to get a per-subreddit figure. **Wording corrected 2026-07-29** (this row previously read "per panel member", which does not reconcile with any other number in this class): 140 is the cost of the whole 17-sub panel, and it is the only reading under which the cadence row below reproduces, 465 ÷ 140 = 3.3 days. Read per-member it would imply 2,380 pages/day and a 0.2-day cadence, i.e. running the pipeline five times a day. Used only until the machine has its own ledger — then per-subreddit measurement replaces it |
 | Non-fetch stage cost | measured per stage, EWMA | **MEASURED** (`pipeline_stage_times.json`) | first real run on this data: analytics 73.3 s (reproduced exactly twice), fold 0.44 s, coverage 0.31 s, hydrate 0.012 s, prices ~60 s. The allowance is the residual of `PIPELINE_BUDGET_S` after these |
 | Page allowance | 465 pages (this machine, after 1 run) | DERIVED | `(PIPELINE_BUDGET_S − measured non-fetch seconds) × COMMENT_RATE_PER_S`. Self-corrected 449 → 465 on the first real run, i.e. the loop demonstrably closes |
 | `EWMA_ALPHA` / `EWMA_RUNS` | 0.2 / 9 runs | DERIVED | span identity `α = 2/(N+1)` with `N = round(PANEL_REFERRAL_WINDOW / COMMENT_CADENCE_DAYS) = round(28/3.2) = 9`: remember about as much history as the panel's own review window. Not tuned |

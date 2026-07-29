@@ -538,10 +538,12 @@ rules with the trigger on the 7d-smoothed (ROLL) score — walk-forward
 capture 21/122, FA 15 (0.100/instr-yr), AP 0.540 against a 0.498 base
 rate, median warning 7d — the 60d re-fit of 2026-07-29 (under the
 original 120d gate: 24/122, FA 39, AP 0.449 against 0.374, 8d).
-THE GATE HAS SINCE MOVED TO 54d on the NB07 §A3b frontier and the
-threshold is RE-FIT PENDING: run `--what phases --research` before
-quoting these. Projection at 54d: 22/98, FA 10 (0.086/instr-yr),
-threshold ≈0.6186 — the denominator change is the lost 2020 test year.
+SUPERSEDED by the 2026-07-29 re-fit at the 54d gate + 1.10 GET IN
+floor: GET OUT 22/98, FA 10 (0.083/instr-yr), AP 0.615 against a 0.608
+base, AUROC 0.507, 9d warning, threshold 0.618064. GET IN 18/125, late
+10 → 5, FA 124 → 97 = 0.200/instr-yr — INSIDE the 0.23 budget for the
+first time — threshold 0.860853. Live alerts 156/95 → 114/57. The
+denominator change 122 → 98 is the lost 2020 test year.
 GET IN = the onset rules with PHASE-AWARE candidacy (a day satisfying
 every END gate — A1 ∧ A2 ∧ A3-persistence, existing constants only —
 is end-stage and cannot host a "start") plus the same smoothing —
@@ -550,8 +552,7 @@ adjacency 20→2, LATE 21→10, FA 169→124, at a RECORDED capture cost
 the raw-capture utility rule). `rebuild_phase_files()` additionally
 writes `euphoria_desk.parquet` (per-day scores, candidacy states,
 get_in/get_out alerts) and `euphoria_desk_report.json` (frozen
-thresholds GET IN 0.848 / GET OUT 0.617 at the 60d gate, re-fit pending
-at 54d + both walk-forward records),
+thresholds GET IN 0.861 / GET OUT 0.618 + both walk-forward records),
 honouring the research/live split: live runs score at the frozen
 thresholds; `--research` (or year rollover) refreezes them. The
 dashboard's EUPHORIA tabs are driven by this store — explicit GET IN /
@@ -1044,7 +1045,7 @@ construction, and the disjointness is in the candidacy step
 | rule | its candidate frame | consequence |
 |---|---|---|
 | GET OUT | `frame_px[hype_ok & boom_state]`, and `desk_end_fit` zeroes the score wherever `end_stage_mask` is unmet | the exit question is **only** asked on end-stage days |
-| GET IN | `frame_px[(hype_raw >= 1) & ~end_stage_mask(frame_px)]` | the entry question **excludes** end-stage days outright |
+| GET IN | `frame_px[(hype_raw >= EUPHORIA_ONSET_HYPE_MIN) & ~end_stage_mask(frame_px)]` (floor 1.10 since 2026-07-29; 1.0 breached the FA budget) | the entry question **excludes** end-stage days outright |
 
 Measured on the shipped store rather than asserted from the code: of
 **63,345** judged name-days, **zero** carry both readiness lines at or

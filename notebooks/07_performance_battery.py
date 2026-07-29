@@ -95,7 +95,8 @@ from analytics.loaders import load, THEME_COUNTS, THEME_SENT, \
     TICKER_COUNTS, TICKER_SENT
 from src.config import (EUPHORIA_ATT_GATE, EUPHORIA_COOLDOWN_DAYS, ROLL,
                         EUPHORIA_BOOM_MIN_ETF, EUPHORIA_BOOM_MIN_SINGLE,
-                        EUPHORIA_BOOM_WINDOW_D)
+                        EUPHORIA_BOOM_WINDOW_D, EUPHORIA_HYPE_MULT,
+                        EUPHORIA_ONSET_HYPE_MIN)
 
 t0 = time.time()
 prices = pd.read_parquet(ROOT / "data" / "prices" / "prices.parquet")
@@ -533,6 +534,147 @@ plt.tight_layout(); plt.show()
 # 122 detectable peaks to 98. Fewer captures are reported not because the
 # detector got worse but because it is being examined on less. That is a
 # real reduction in evidence and is why 60d remains defensible.
+
+# %% [markdown]
+# ## A3c. Every arbitrary knob, on the same frontier (2026-07-29)
+#
+# A3 sweeps the threshold, A3b the boom gate. This closes the audit: every
+# remaining number in the detector that was CHOSEN rather than MEASURED is
+# swept the same way, so "why this value?" has an answer for each.
+#
+# WHAT IS IN SCOPE AND WHAT IS DELIBERATELY NOT. Only the DETECTOR's knobs
+# are swept. The ground truth and the exam are not: the G1/G2/G3 episode
+# definition, the 120-day ground-truth boom window, the [peak-30d, peak+1d]
+# hit window and the 45-day judgeable horizon all stay fixed. Tuning those
+# would move the target rather than improve the shot, and it would
+# invalidate every capture rate in the record - including the ones these
+# sweeps produce.
+#
+# THE OVERFITTING GUARD. Six knobs against ~98-125 detectable peaks over a
+# handful of years is enough to manufacture an improvement by chance.
+# Nothing is adopted on a single-point maximum. A change ships only if it
+# either (a) fixes a STATED failure - GET IN was breaching its own
+# false-alarm budget - or (b) sits on a broad plateau rather than a spike.
+# Everything else is recorded as tested-and-kept, which is a result too:
+# a constant that survives its first sweep is better evidenced than one
+# that was never swept.
+
+# %%
+def _cands(hype_mult=EUPHORIA_HYPE_MULT, att_gate=EUPHORIA_ATT_GATE,
+           onset_floor=EUPHORIA_ONSET_HYPE_MIN):
+    """Both candidate frames, with the A1 / A2 / onset-floor gates
+    re-applied. `hype_ok` is exactly `hype_raw >= EUPHORIA_HYPE_MULT` in the
+    shipped frame, so these re-derive without recomputing a feature."""
+    f = fpx.copy()
+    hype_ok = f["hype_raw"] >= hype_mult
+    end_stage = (f["e1"] >= att_gate) & (f["e2"] > 0) & hype_ok
+    return (f[hype_ok & f["boom_state"].astype(bool)].copy(),
+            f[(f["hype_raw"] >= onset_floor) & ~end_stage].copy())
+
+
+def _knob(cand, mode, cooldown=EUPHORIA_COOLDOWN_DAYS):
+    """One configuration through the walk-forward, cooldown overridable.
+    NOTE `_alerts_int` binds the cooldown as a DEFAULT ARGUMENT, evaluated
+    once at import - patching the module global does nothing, and the first
+    run of this sweep silently returned identical rows for 7d and 60d
+    because of it. Rebind the function, not the constant."""
+    feats = TOP_BANK if mode == "top" else ONSET_BANK
+    fit = desk_end_fit if mode == "top" else desk_onset_fit
+    label = "y_top" if mode == "top" else "y_onset"
+    if cand.empty or cand[label].sum() < 3:
+        return None
+    import analytics.euphoria_phases as _ep
+    _old = _ep._alerts_int
+    _ep._alerts_int = (lambda d, sc, th, cd=cooldown, _f=_old:
+                       _f(d, sc, th, cd))
+    try:
+        wf = run_tournament_entry(cand, episodes, feats, label, mode, fit,
+                                  FA_BUDGET)
+    finally:
+        _ep._alerts_int = _old
+    return None if "error" in wf else (wf, cand)
+
+
+def _rejudge_mode(wf, years, n_inst, mode):
+    """A3b's _rejudge, but for either rule - the onset judge and the onset
+    denominator are different functions and a different column."""
+    judge = classify_top_alerts if mode == "top" else classify_onset_alerts
+    det_col = "top_detectable" if mode == "top" else "onset_detectable"
+    eps_by = dict(tuple(episodes.groupby("name")))
+    empty = episodes.iloc[0:0]
+    cap, fa_, late_, n_al = set(), [], [], 0
+    epoch = pd.Timestamp("1970-01-01").toordinal()
+    for nm, alerts in wf.get("alerts_by_name", {}).items():
+        a = [pd.Timestamp(x).toordinal() - epoch for x in alerts
+             if pd.Timestamp(x).year in years]
+        n_al += len(a)
+        if not a:
+            continue
+        r = judge(np.asarray(sorted(a), dtype=np.int64),
+                  _eps_arrays(eps_by.get(nm, empty)))
+        cap |= {(nm, p) for p in r["captured"]}
+        fa_ += r["fa"]; late_ += r["late"]
+    det = episodes[episodes.year.isin(years) & episodes[det_col]]
+    keys = {(r.name, int(p)) for r, p in
+            zip(det.itertuples(), _day_ints(det["peak"]))}
+    hits = len(cap & keys)
+    return {"alerts": n_al, "captured": hits, "detectable": len(keys),
+            "late": len(late_), "fa": len(fa_),
+            "fa_per_iy": len(fa_) / max(n_inst * len(years), 1),
+            "precision": hits / max(n_al, 1)}
+
+
+def _knob_sweep(label, values, build, mode):
+    runs = {}
+    for v in values:
+        cand, kw = build(v)
+        r = _knob(cand, mode, **kw)
+        if r:
+            runs[v] = r
+    shared = set.intersection(*[set(w["test_years"]) for w, _ in
+                                runs.values()])
+    out = []
+    for v, (wf, cand) in runs.items():
+        row = {label: v}
+        row.update(_rejudge_mode(wf, shared, cand["name"].nunique(), mode))
+        out.append(row)
+    return pd.DataFrame(out), sorted(shared)
+
+
+for _lab, _vals, _build, _mode in [
+        ("onset_floor", [0.9, 1.0, 1.1, 1.25, 1.5],
+         lambda v: (_cands(onset_floor=v)[1], {}), "onset"),
+        ("cooldown_out", [7, 14, 21, 28, 42],
+         lambda v: (_cands()[0], {"cooldown": v}), "top"),
+        ("hype_mult", [1.5, 1.75, 2.0, 2.5, 3.0],
+         lambda v: (_cands(hype_mult=v)[0], {}), "top"),
+        ("att_gate", [0.85, 0.90, 0.95, 0.98],
+         lambda v: (_cands(att_gate=v)[1], {}), "onset")]:
+    _df, _yrs = _knob_sweep(_lab, _vals, _build, _mode)
+    print(f"--- {_lab}  (shared test years {_yrs}) ---")
+    display(_df.round(4))
+
+# %% [markdown]
+# **The audit's verdict, knob by knob.**
+#
+# | knob | was | now | why |
+# |---|---|---|---|
+# | boom lookback (live gate) | 120 d | **54 d** | §A3b — 120 d admitted crash-rebounds; 54 d dominates it on both axes |
+# | GET IN candidacy floor | 1.0 | **1.10** | the only setting that brings GET IN inside its own FA budget (0.278 → 0.207); late starts 6 → 2, precision 0.138 → 0.173, one capture given up |
+# | A1 hype multiple | 2.0 | 2.0 | **tested and kept** — 2.0 IS the capture maximum (22 vs 16–18 either side). A fixed-a-priori choice that survived its first test |
+# | A2 attention gate | 0.90 | 0.90 | monotone capture/FA trade, nothing lands inside budget; and it defines "end-stage" everywhere, so moving it moves more than this rule |
+# | GET OUT cooldown | 21 d | 21 d | 7 d captures 25 vs 22 and stays inside budget, but fires 78 alerts against 42 at precision 0.32 — the extra captures are more shots at the SAME peak. Rejected as metric-gaming the capture count cannot see |
+# | desk trigger smoothing | ROLL=7 | ROLL=7 | 5 weakly dominates (same 22 captures, 8 FAs vs 10) but the gap is two false alarms, and adopting it would split a shared house constant on noise |
+#
+# **What the floor change costs, stated plainly.** 1.0 was a *definition* —
+# "the crowd is above its own normal", multiplier one, nothing fitted. 1.10
+# is a fitted number, and the parameter register gains an entry it did not
+# have. It is spent to close a budget breach the record had been carrying as
+# a known defect since the rule shipped.
+#
+# **Scope.** The floor moves in `desk_candidacy` only. The crowd-only onset
+# store (`frame_live[hype_raw >= 1]`) keeps 1.0: separate detector, separate
+# published record, not swept here.
 
 # %% [markdown]
 # ## A4. Event-study CAR (MacKinlay 1997), drift-adjusted

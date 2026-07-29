@@ -6,10 +6,21 @@
 # (the post they belong to) and parent_id (what they reply to) - the last
 # two are the edges of the social interaction graph.
 #
-#   python ingestion/fetch_reddit_comments.py                       # live: last 7d
+#   python ingestion/fetch_reddit_comments.py            # live, derived window
 #   python ingestion/fetch_reddit_comments.py --lookback-days 30
+#   python ingestion/fetch_reddit_comments.py --max-pages 465    # budgeted
 #   python ingestion/fetch_reddit_comments.py --backfill 2021-01-01 2021-06-30
 #   python ingestion/fetch_reddit_comments.py --test                # one page
+#
+# PAGE BUDGET (desk decision 2026-07-27): update_data.py computes how many
+#   API pages a run may spend - the desk's ~10-minute ceiling MINUS what this
+#   machine measurably spends on everything else - and passes it here as
+#   --max-pages via fetch_all.py. The allowance is shared out across the
+#   panel in proportion to what each subreddit owes, BEFORE the first
+#   request, so two runs are comparable. Hitting a cap is a DEFERRAL: the
+#   watermark does not advance and the next run resumes on the same ground.
+#   Without --max-pages the crawl is unbudgeted (backfills, catch-ups).
+#   Arithmetic and rejected alternatives: src/pipeline_budget.py.
 #
 # DATA BOUNDARY (desk decision, July 2026 - REVISED): the raw comment
 #   files stay LOCAL (gitignored, like all raw text), but the influence
@@ -72,6 +83,56 @@ MAX_SEEN = 200_000
 # files a fraction of full-comment size
 KEEP = ("id", "author", "body", "created_utc", "subreddit",
         "link_id", "parent_id", "score")
+
+
+class Pacer:
+    """Hold the crawl to ONE request per second - and no slower.
+
+    THE BUG THIS FIXES.  The original loop slept a flat PAUSE_S *after* each
+    round-trip, so the true period was RTT + 1s and the crawl ran roughly
+    1.3-1.4x slower than the politeness contract actually permits.  Measured
+    over 6 requests: 360 ms of pure dead time per request, against 261 ms
+    once the sleep became a remainder.  That is ~28% of the crawl given away
+    for nothing.
+
+    THIS IS NOT A RATE INCREASE.  The request rate is unchanged at
+    COMMENT_RATE_PER_S; only the idle gap between the response arriving and
+    the next request leaving is removed.  Raising the rate itself, or
+    splitting the panel across parallel workers, would break the contract the
+    project accepted when it chose a free public API - see
+    src/pipeline_budget.py for that rejection in full.  Removing dead time is
+    the ONE legitimate speedup available, and this is it."""
+
+    def __init__(self, period_s=PAUSE_S):
+        self.period = float(period_s)
+        self._next = 0.0
+
+    def wait(self):
+        now = time.monotonic()
+        if self._next and now < self._next:
+            time.sleep(self._next - now)
+        self._next = max(now, self._next) + self.period
+
+
+def default_lookback_days() -> int:
+    """The live window, DERIVED from how often this desk actually runs.
+
+        ceil(measured cadence) + LATE_ARRIVAL_DAYS
+
+    rather than a typed-in 3 or 7.  The window is a function of the run
+    cadence, so it moves when the cadence moves - a machine that got faster
+    (bigger allowance, longer cadence) reaches back further on its own,
+    instead of quietly under-covering until somebody notices and edits a
+    default.
+
+    Falls back to the old fixed 3d if the budget module cannot be imported,
+    so this file still runs standalone on a machine without the package on
+    its path.  Also read by the dashboard's comment-catch-up estimate."""
+    try:
+        from src import pipeline_budget
+        return int(pipeline_budget.live_lookback_days())
+    except Exception:                                 # noqa: BLE001
+        return 3
 
 
 def read_subreddits():
@@ -226,16 +287,32 @@ def fetch_page(sub, after, before, retries=4):
 def main():
     p = argparse.ArgumentParser(description="Arctic Shift comment ingestion "
                                             "(influence tracker source)")
-    p.add_argument("--lookback-days", type=int, default=3,
-                   help="live window (default 3d - the per-subreddit "
-                        "watermark makes every later run incremental, so "
-                        "only the FIRST live run pays for the window)")
+    p.add_argument("--lookback-days", type=int, default=None,
+                   help="live window in days. Default is DERIVED from this "
+                        "machine's measured run cadence "
+                        "(ceil(cadence) + LATE_ARRIVAL_DAYS, currently "
+                        f"{default_lookback_days()}d) rather than typed in - "
+                        "the per-subreddit watermark makes every later run "
+                        "incremental, so only the FIRST live run pays for "
+                        "the whole window")
     p.add_argument("--backfill", nargs=2, metavar=("START", "END"),
                    help="historical range YYYY-MM-DD YYYY-MM-DD (end excl); "
                         "desk scope is the current year only, e.g. "
                         "2026-01-01 <today>")
+    p.add_argument("--max-pages", type=int, default=None,
+                   help="TOTAL API pages this run may spend across the whole "
+                        "panel (the budgeted path - update_data.py computes "
+                        "it from the desk's runtime ceiling and passes it "
+                        "through fetch_all.py). Omitted = UNBUDGETED: crawl "
+                        "until the data runs out, which is what "
+                        "update_comments.py does for backfills and "
+                        "catch-ups. A subreddit that hits its share keeps "
+                        "its old watermark, so nothing is lost - it is "
+                        "deferred to the next run and printed as such")
     p.add_argument("--test", action="store_true")
     args = p.parse_args()
+    if args.lookback_days is None:
+        args.lookback_days = default_lookback_days()
 
     subs = read_subreddits()
     if args.backfill:
@@ -266,6 +343,54 @@ def main():
     seen = set(seen_list)
     marks = _load(WM_FILE)
 
+    # ---- THE PAGE ALLOWANCE, SHARED OUT BEFORE A SINGLE REQUEST IS MADE ----
+    # Allocating up front - rather than crawling until a clock runs out - is
+    # what makes two runs comparable: every subreddit knows its share before
+    # the first request, so what gets collected does not depend on network
+    # luck or on the order the panel happens to be listed in.
+    #
+    # A subreddit's share is proportional to what it OWES: the days since its
+    # watermark, times its own measured pages/day.  A subreddit crawled an
+    # hour ago owes almost nothing; one that has not been reached for a week
+    # owes a week.  See src/pipeline_budget.allocate for the one-page floor
+    # and why surplus is deliberately not redistributed mid-run.
+    plan, budget = {}, None
+    if args.max_pages:
+        try:
+            from src import pipeline_budget
+            now_s = time.time()
+            span_d = max(0.0, (before - after) / 86400.0)
+            owed = {}
+            for s in subs:
+                wm = marks.get(s)
+                if incremental and wm:
+                    owed[s] = min(span_d,
+                                  max(0.0, (now_s - float(wm)) / 86400.0))
+                else:
+                    # never crawled (or a backfill): it owes the whole window
+                    owed[s] = span_d
+            plan = pipeline_budget.allocate(owed, int(args.max_pages))
+            budget = int(args.max_pages)
+            print(f"page budget {budget} across {len(subs)} subreddits "
+                  f"(allocated {sum(plan.values())}): "
+                  + ", ".join(
+                      f"r/{s} {plan[s]}"
+                      for s in sorted(plan, key=lambda k: -plan[k])[:5])
+                  + (" ..." if len(plan) > 5 else ""), flush=True)
+        except Exception as e:                        # noqa: BLE001
+            # A BUDGET FAILING MUST NOT STOP AN INGESTION.  If the allocator
+            # cannot be imported or the ledger is unreadable, crawl unbudgeted
+            # and say so, rather than fetching nothing because the accounting
+            # broke.
+            print(f"  page budget unavailable ({type(e).__name__}: {e}) - "
+                  "crawling unbudgeted", flush=True)
+            plan, budget = {}, None
+
+    # ONE PACER FOR THE WHOLE CRAWL, not one per subreddit: the contract is a
+    # rate for this process, so the clock must not reset at every panel member.
+    pacer = Pacer(PAUSE_S)
+    deferred = []
+
     if not acquire_lock(label):
         return 1
 
@@ -291,13 +416,31 @@ def main():
             got, newest, completed = 0, int(wm) if wm else 0, True
             cursor = before                   # epoch, stays epoch
             page_num = 0
+            pages_used = 0
+            oldest_ts = None                  # how far back this crawl got
+            cap = plan.get(sub) if budget is not None else None
             while True:
+                # THE CAP IS A DEFERRAL, NOT A TRUNCATION.  Breaking here
+                # leaves `completed` False, so the watermark below does NOT
+                # advance and the next run resumes on exactly this ground.
+                # Without that, a capped run would jump its watermark past
+                # days it never crawled - silent data loss, and the one
+                # failure mode nothing downstream could detect.
+                if cap is not None and page_num >= cap:
+                    completed = False
+                    deferred.append(sub)
+                    print(f"    page budget reached ({cap} page"
+                          f"{'' if cap == 1 else 's'}) - the rest of "
+                          f"r/{sub} is deferred to the next run", flush=True)
+                    break
                 page_num += 1
                 print(f"    fetching page {page_num}...", flush=True)
+                pacer.wait()
                 rows = fetch_page(sub, sub_after, cursor)
                 if rows is None:
                     completed = False
                     break
+                pages_used += 1
                 if not rows:
                     print(f"    page {page_num}: no rows", flush=True)
                     break
@@ -312,17 +455,44 @@ def main():
                     writer.write((json.dumps(slim) + "\n").encode("utf-8"))
                     got += 1
                 oldest = min(int(r["created_utc"]) for r in rows)
+                oldest_ts = oldest if oldest_ts is None else min(oldest_ts,
+                                                                 oldest)
                 print(f"    page {page_num}: +{got} new comments so far "
                       f"({len(rows)} rows)", flush=True)
                 if len(rows) < PAGE:
                     break
                 cursor = oldest               # epoch int, same as page 1
-                time.sleep(PAUSE_S)
-            print(f"  r/{sub:<24} {got:>6} new comments", flush=True)
+                # NO sleep here: the Pacer above already spends whatever is
+                # left of the second before the NEXT request goes out. The
+                # old flat sleep here was the dead time - see Pacer.
+            print(f"  r/{sub:<24} {got:>6} new comments "
+                  f"({pages_used} page{'' if pages_used == 1 else 's'})",
+                  flush=True)
             if incremental and completed and newest:
                 marks[sub] = newest
             total += got
-            time.sleep(PAUSE_S)
+            # WHAT THIS SUBREDDIT ACTUALLY COST, fed straight back into the
+            # ledger that plans the next run. This is the loop that lets the
+            # budget stop being a guess after one run: pages and comments are
+            # observed here, not assumed anywhere.
+            #
+            # MEASURE THE SPAN THE CRAWL COVERED, NOT THE SPAN IT ASKED FOR.
+            # A subreddit that hit its cap after 3 pages covered ~half a day,
+            # not the whole 5-day window - dividing its pages by the window
+            # would book it as CHEAP precisely because it ran out of budget,
+            # and the allocator would then hand it even fewer pages next
+            # time. That is a spiral, not a measurement, so a deferred crawl
+            # is measured against how far back it actually reached.
+            _cov = (max(0.0, (before - sub_after) / 86400.0) if completed
+                    else (max(0.0, (before - oldest_ts) / 86400.0)
+                          if oldest_ts else 0.0))
+            try:
+                from src import pipeline_budget
+                pipeline_budget.record_pages(sub, pages_used, got, _cov)
+            except Exception:                     # noqa: BLE001
+                pass          # a cost ledger is an optimisation, never a
+                              # blocker - a run that fetched data has already
+                              # done its job
     except KeyboardInterrupt:
         interrupted = True
         print("\ninterrupted - keeping the comments fetched so far",
@@ -343,6 +513,19 @@ def main():
         finally:
             raw.close()
         release_lock()
+
+    # EVERY DEFERRAL IS PRINTED. The pipeline never silently collects less
+    # than it claims: if the allowance ran out, the run says which
+    # communities it stopped short on and what closes the gap. A budget the
+    # operator cannot see is indistinguishable from a bug.
+    if deferred:
+        print(f"deferred (page budget): {len(deferred)} subreddit"
+              f"{'' if len(deferred) == 1 else 's'} - "
+              + ", ".join("r/" + s for s in deferred), flush=True)
+        print("  their watermarks did NOT advance: the next run resumes "
+              "exactly here. Run more often, or use "
+              "'python update_comments.py' to catch up unbudgeted.",
+              flush=True)
 
     if total == 0:
         os.remove(tmp_path)

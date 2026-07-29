@@ -962,7 +962,8 @@ def rebuild_phase_files(verbose: bool = True,
 # ---------------------------------------------------------------------------
 from src.config import (ROLL, EUPHORIA_ATT_GATE,  # noqa: E402
                         EUPHORIA_BOOM_MIN_ETF, EUPHORIA_BOOM_MIN_SINGLE,
-                        EUPHORIA_BOOM_WINDOW_D, EUPHORIA_BOOM_WINDOW_MIN_D)
+                        EUPHORIA_BOOM_WINDOW_D, EUPHORIA_BOOM_WINDOW_MIN_D,
+                        EUPHORIA_ONSET_HYPE_MIN)
 
 
 def boom_state_frame(series: list, pxmap: dict) -> pd.DataFrame:
@@ -1031,10 +1032,18 @@ def desk_onset_fit(train, apply, feats):
 
 def desk_candidacy(frame_px: pd.DataFrame) -> tuple:
     """The two desk candidate frames from a day frame already merged
-    with boom_state. Returns (end_frame, onset_frame)."""
+    with boom_state. Returns (end_frame, onset_frame).
+
+    THE ONSET FLOOR IS EUPHORIA_ONSET_HYPE_MIN (1.10), NOT 1.0, since
+    2026-07-29 - at 1.0 this rule breached its own false-alarm budget
+    (0.255 vs 0.23) from the day it shipped. The sweep, the cost (one
+    capture) and what it buys (budget compliance, late starts 6 -> 2) are
+    in src/config.py beside the constant. The CROWD-ONLY onset store above
+    still uses 1.0 on purpose: different detector, different record, not
+    swept here."""
     end_f = frame_px[frame_px["hype_ok"].astype(bool)
                      & frame_px["boom_state"].astype(bool)].copy()
-    onset_f = frame_px[(frame_px["hype_raw"] >= 1)
+    onset_f = frame_px[(frame_px["hype_raw"] >= EUPHORIA_ONSET_HYPE_MIN)
                        & ~end_stage_mask(frame_px)].copy()
     return end_f, onset_f
 

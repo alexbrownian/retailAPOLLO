@@ -150,16 +150,31 @@ def main():
                    help="run fetchers one at a time (easier-to-read output)")
     p.add_argument("--skip-comments", action="store_true",
                    help="skip the Reddit COMMENTS fetcher (the influence "
-                        "tracker source). Desk decision 2026-07-24: the "
-                        "daily pipeline runs without comments by default "
-                        "(they are the slow species - 10-50x post volume "
-                        "at 1s/page); update_comments.py is the dedicated "
-                        "comments + influence runner")
+                        "tracker source). SUPERSEDED DEFAULT: the 2026-07-24 "
+                        "decision was to leave comments OUT of the daily run "
+                        "because they are the slow species (10-50x post "
+                        "volume at 1s/page). Desk decision 2026-07-27 turned "
+                        "them back ON by default - an influence board is "
+                        "only current if the comments behind it are - and "
+                        "solved the runtime instead, by BUDGETING the crawl "
+                        "against the desk's ~10-minute ceiling "
+                        "(--comment-pages). This flag remains the way to opt "
+                        "one run out; update_comments.py is the unbudgeted "
+                        "catch-up runner")
     p.add_argument("--lookback-days", type=int, default=7,
                    help="how far back the fetch reaches (top posts of the "
                         "last N days); overlap never duplicates")
     p.add_argument("--max-credits", type=int, default=90,
                    help="FetchLayer credit cap per source per run")
+    p.add_argument("--comment-pages", type=int, default=None,
+                   help="TOTAL Arctic Shift comment pages this run may "
+                        "spend, forwarded to fetch_reddit_comments.py as "
+                        "--max-pages. update_data.py computes it as the "
+                        "desk's runtime ceiling MINUS what this machine "
+                        "measurably spends on every other stage "
+                        "(src/pipeline_budget.py). Omitted = unbudgeted, "
+                        "which is the right thing for a manual backfill and "
+                        "the wrong thing for a scheduled run")
     args = p.parse_args()
 
     # ---- TESTING MODE ---------------------------------------------------
@@ -178,13 +193,21 @@ def main():
         return 0
 
     # the two knobs travel to every fetcher that understands them
-    # (the comments fetcher deliberately keeps its OWN 3d default rather
-    # than inheriting the 7d post lookback - comments are ~10x volume)
+    # (the comments fetcher deliberately does NOT inherit the post lookback -
+    # comments are ~10x volume, and its own window is DERIVED from this
+    # machine's measured run cadence rather than typed in)
     knobs = {"fetch_reddit_arctic.py": ["--lookback-days", str(args.lookback_days)],
              "fetch_reddit_live.py": ["--lookback-days", str(args.lookback_days),
                                       "--max-credits", str(args.max_credits)],
              "fetch_x_live.py": ["--lookback-days", str(args.lookback_days),
                                  "--max-credits", str(args.max_credits)]}
+    # the PAGE ALLOWANCE reaches the comment crawl only when one was granted:
+    # an absent budget must mean "unbudgeted", never "zero pages", so the
+    # flag is added rather than passed as a default that could silently
+    # switch comment ingestion off.
+    if args.comment_pages:
+        knobs["fetch_reddit_comments.py"] = ["--max-pages",
+                                             str(int(args.comment_pages))]
     # per-fetcher time budget: comments get 3x - their FIRST run (no
     # watermark yet) crawls a few dense days at 1s/page; every later run
     # is watermark-incremental and finishes with the others
