@@ -892,8 +892,9 @@ nearest scored days is a guess about a number nobody computed. It was
 replaced within the day, not because it was unsafe but because a real
 number turned out to be available instead.
 
-**The WATCH TRACK (added 2026-07-28, fourth pass — replaces the ghost).**
-Desk instruction: *"i dont want the red / blue dots to appead just
+**The WATCH TRACK (2026-07-28, fourth pass) — SUPERSEDED the same day by
+the fifth pass below, recorded because its measurement is still the
+load-bearing guard on what ships.** Desk instruction: *"i dont want the red / blue dots to appead just
 suddenly, perhaps plot it when it is not eligable (not boom_state) but
 still hype_ok, e.g. tracks it until boom_state and then becoems colored
 and becomes an alert"*. The grey stretch is now **computed, not
@@ -952,11 +953,197 @@ computed from the **unclipped** store, never the window-clipped frame, so
 the trailing mean does not shift when the sidebar window moves. Nothing
 here feeds the model and the alert dates are untouched.
 
-**The level is not lost.** The 0-100 euphoria level is exactly what the
-dial above now reads, with its 7-day change and dated window peak beside
-it. The two questions are simply separated: the dial answers "how hot is
-this name", the panel answers "how close is it to firing". `level`,
-`hype_ok` and both raw scores are untouched in the stores.
+**ONE SOLID LINE PER RULE (2026-07-28, fifth pass) — still the shape of the
+readiness line, but SUPERSEDED as a description of the panel by the sixth
+pass below, which puts the level curve back beside it.**
+The desk read the two-state line and asked for the earlier one back on a
+percentage axis: *"i liked the original 7 day on the graph actually
+instead of the dotted lines (interpolated lines)"* / *"i liked the
+euphoria graph back how it was before"* / *"but same as nbefore but 0 to
+100% now"*. So the state change is gone and each rule draws **one
+continuous solid line**:
+
+| property | value | why |
+|---|---|---|
+| series | production scorer over the WIDE domain, `combine_first`-ed **under** the stored score | the stored value wins on every day one exists |
+| smoothing | `_smooth_by_name`, `ROLL = 7`, trailing | the same object the detector smooths |
+| units | `score / that rule's own frozen threshold × 100` | **100 is the trigger by construction**, so the axis needs no caption to explain it |
+| style | `mode="lines"`, solid, rule colour, one legend entry | one line, one meaning — no second visual state to decode |
+| gaps | `connectgaps=False`, **no `.interpolate()` anywhere** | a hole is a real hole |
+| eligibility | **not shown on the line** | it is shown by the flags; the desk reads one line faster than two states |
+
+`INK_MUTED`, `hoverinfo="skip"`, the dashed style and `limit_area="inside"`
+are no longer used by this panel — there is no second trace for them to
+apply to. The **masking argument survives in a stronger form**: because
+`combine_first` gives the stored series priority on every judged day, the
+4.1% crossing disagreement measured above cannot appear on screen at all.
+It is *unobservable*, not *displayed* — which also means this panel cannot
+be used to audit the tracking scorer, and that is a notebook's job, not
+the dashboard's.
+
+**GET OUT never breaks; a break in GET IN has exactly one meaning, and it
+was verified against the store's definition rather than assumed.** GET OUT
+inputs exist every calendar day, and the DOM confirms one unbroken segment
+with zero nulls on every drawn name. GET IN does break, and the first
+draft of the caption asserted that a break meant "no crowd at all to
+score" — **that was wrong and was corrected before delivery**. The onset
+store is literally `frame_live[frame_live.hype_raw >= 1]`
+(`analytics/euphoria_phases.py:683`), and store membership agrees with that
+test on **61,872 of 61,872** day-frame rows — zero exceptions. Over the
+140,858 calendar days inside names' onset spans:
+
+| state of a GET IN day | share | what it is |
+|---|---|---|
+| onset row present | **23.1%** | the crowd was building and was measured |
+| in the day frame, `hype_raw < 1` | **20.5%** | measured, but the 7-day chatter share sat **at or below this name's own 120-day median** |
+| never reached the day frame | **56.5%** | `build_day_frame` gates: `es.coverage_ok` unmet, day before the judgeable price window `j0`, or too little history for the percentiles |
+
+Both absences mean *the crowd was not building*; one fifth of them do have
+chatter, so neither the caption nor this document may say "no crowd at
+all". **`phase_day_frame.parquet` was evaluated as a way to close the gaps
+and REJECTED**: it carries every `ONSET_BANK` feature and is 98.5%
+one-day dense, but it ends **2026-06-06** while the live window runs to
+**2026-07-21** — buying continuity with six weeks of the most recent
+signal is a pure loss on a desk tool.
+
+**WHAT SHIPS NOW — THE END-STAGE BAND, AND THE PANEL FINALLY STATES WHAT
+EACH LINE IS (2026-07-29, seventh pass).** From the screen, holding the
+sixth-pass chart: *"how does this chart even work? how can there both be
+get in and get out at the same time? doesnt that not make sense? is the
+red line the gradient of the black line? it is very unclear."* Three
+questions, and **two of them had correct answers the panel was hiding
+rather than wrong answers**. No score, threshold, feature or alert date
+changes in this pass.
+
+*Question 2 first, because it re-reads the whole chart.* The red GET OUT
+line is **not** the gradient of the navy level line — it is its
+**sibling**. `analytics/euphoria.py:330` builds the level as
+`100 × mean(e1, e2, e3, e5)`; `desk_end_fit` builds the GET OUT score as
+the mean of `TOP_FEATURES = [e1, e2, e3, e5, fade]`, zeroed off
+end-stage days and rescaled by its frozen threshold. **Four of five
+ingredients are shared**, which is why the two move together and why a
+derivative reading is such a natural mistake to make. The line that
+actually behaves like a slope is the **teal GET IN** one: four of the
+five `ONSET_BANK` terms are short-window-versus-long-window ratios, so
+it measures *how fast* attention is climbing, not how high it already
+is. The panel's grammar, stated in the caption from this pass on: **navy
+= how high; red = high and rolling over; teal = climbing fast.**
+
+*Questions 1 and 3.* The two rules **cannot** both fire, by
+construction, and the disjointness is in the candidacy step
+(`analytics/euphoria_phases.py:1018`), not in a tie-break afterwards:
+
+| rule | its candidate frame | consequence |
+|---|---|---|
+| GET OUT | `frame_px[hype_ok & boom_state]`, and `desk_end_fit` zeroes the score wherever `end_stage_mask` is unmet | the exit question is **only** asked on end-stage days |
+| GET IN | `frame_px[(hype_raw >= 1) & ~end_stage_mask(frame_px)]` | the entry question **excludes** end-stage days outright |
+
+Measured on the shipped store rather than asserted from the code: of
+**63,345** judged name-days, **zero** carry both readiness lines at or
+above 100, **zero** fire both alerts (95 GET OUT / 156 GET IN
+historically, never the same name-day), and **zero** end-stage days
+carry a GET IN score. 189 name-days carry two non-zero scores — the
+trailing `ROLL = 7` mean drags a score across a state change — but none
+of them reaches both triggers. `episode_coherent_alerts` then suppresses
+any GET IN landing within `EUPHORIA_COOLDOWN_DAYS = 21` after a GET OUT.
+
+**THE DEFECT WAS OURS, AND IT WAS THE TRACKING FILL.** The fifth pass
+draws GET IN on days the detector never judged (`_s.combine_first(_tr)`,
+calling `desk_onset_fit` on the display frame) so the line reads as one
+continuous series. It draws those hypothetical readings in the **same
+colour and the same weight** as judged ones, so a teal line sailing over
+100 with no vertical mark beneath it reads as a bug or a contradiction.
+It is neither — it is a what-it-would-have-said reading that cannot
+fire. On the charted example (theme `memory`, symbol SMH) GET IN was
+judged on **10 of ~82** days from 2026-05-01 and fired **not once**,
+while **79** days sat in the end stage.
+
+| property | value | why |
+|---|---|---|
+| band source | `dk_i["end_stage"]`, read straight off `euphoria_desk.parquet`, reindexed onto the level index | nothing is computed or inferred; the band is the store's own flag |
+| geometry | one `add_vrect` per contiguous run, padded `±12h` | a one-day run has zero width and would be invisible; 12h is the store's resolution |
+| style | `BEAR`, opacity **0.06**, `line_width=0`, `layer="below"`, row 2 | it must sit under the lines and must not read as a signal; it carries no number |
+| label | once, on the **widest** run only, `"shaded: exit question only"` | repeating it on every band is the label-collision defect the signal marks already solved; a longer label measured **wider than its own band**, which read as if the shading spanned further than it does |
+| internal check | all four GET OUT alert dates on the charted name (05-10, 05-31, 06-22, 07-13) fall **inside** shaded runs | GET OUT can only fire on an end-stage day, so any mark outside a band would be a store/display disagreement |
+
+**THIS PARTIALLY REVERSES the "signal lines, and nothing else" removal**
+recorded below, and the reversal is argued rather than silently
+overwritten. Of that removal's three reasons, two do not apply and the
+third is answered: shading that says *"somewhere in this region"* is
+wrong for a dated verdict but **right for a region statement**, and
+"entry was off the table across these days" is exactly a region
+statement; three overlapping translucent bands mixing into a fourth
+colour cannot happen when there is **one** band on the panel; and a 6%
+tint survives greyscale and print as a light grey block, with the label
+printing as text. **The alternative was put to the desk and NOT chosen**
+— dropping the tracking fill so the teal line simply breaks would have
+cut GET IN to ~10 visible points on this name.
+
+**A PLOTLY TRAP WORTH NAMING, BECAUSE IT COST A DEBUG CYCLE.**
+`add_vrect` defaults to `exclude_empty_subplots=True`, so a band added
+to row 2 **before row 2 has any traces is silently dropped** — no error,
+no shape, and the annotation beside it still renders, so the panel looks
+merely unshaded rather than broken. The first cut failed exactly this
+way (instrumented DOM read: `runs=3 shp=0`). The block is therefore
+placed **after** the readiness trace loop; z-order does not depend on
+insertion order, `layer="below"` is what puts the band under the lines,
+so moving it down costs nothing.
+
+**WHAT THE SIXTH PASS SHIPPED — THE LEVEL CURVE PLUS THE READINESS LINE,
+ONE SHARED 0-100 AXIS (2026-07-29, sixth pass; still current, extended
+by the seventh pass above).** From the screen, holding a
+photograph of the third-pass chart: *"i like this original graph more BUT
+i want it to be 0 to 100% signal fires like what you did in these newer
+ones ... as in a mix of the two (i like the continous line of this image
+but i like the 0 to 100% of the new one)"*. The readiness lines above are
+unchanged in every respect; what changes is that the lower panel carries
+the 7-day-smoothed euphoria level again, drawn first so the decision lines
+sit on top of it.
+
+| property | value | why |
+|---|---|---|
+| level series | `euphoria_levels.level`, trailing `ROLL = 7` mean, on **every calendar day** | the only continuous daily series on the panel — it is what makes the GET IN holes read as holes rather than as a broken chart |
+| level colour / weight | `ACCENT` (navy), width 1.8, under the readiness lines | context, not the decision |
+| axis | ONE shared axis, `range=[0, max(125, 1.08 × readiness max)]` | `level` is bounded 0-100 by construction (store max exactly 100.0) and readiness is a percent of its own trigger, so both fit one scale untransformed |
+| axis title | `0-100: level, and % of trigger` | the axis names both units; the legend and hover name each line |
+| drawn when | only when the readiness comes from the desk store | in the no-desk fallback the readiness line **is** the level over a threshold; drawing both would put one series on the panel twice at two scales |
+
+**A dual axis was the alternative and was rejected**, on the desk's own
+choice and for a structural reason: with two axes the 100 rule can be
+placed anywhere relative to the level curve, which reintroduces exactly the
+*"why is the threshold HERE?"* ambiguity that scaling every rule to 100
+existed to remove. The two lines are **not the same quantity** — 70 on the
+level is not "70% of the way to a signal" — and that is carried by the
+legend, the hover text and the caption rather than by geometry.
+
+**Why the dial was not enough (withdrawing the fifth pass's argument).**
+The fifth pass moved the level into the dial on the grounds that the dial
+answers "how hot" and the panel answers "how close to firing". That is
+right about the questions and wrong about the reading: a dial is a single
+number, so it cannot show that the crowd had been building for three weeks
+before the score reached its trigger, and that **shape** is the thing the
+PM is being warned about.
+
+**A REAL DEFECT FOUND WHILE IMPLEMENTING THIS, AND FIXED (2026-07-29).**
+The displayed level was smoothed **after** the sidebar window clip with
+`min_periods=1`. The first six days of any window were therefore the
+average of one, two, … six days — a ramp-up artefact — so the same
+calendar day read differently depending on how far back the reader
+happened to be looking, while the readiness line beside it had always been
+built on the unclipped frame for exactly this reason. The level is now
+smoothed on the unclipped history and then clipped. Measured over all 59
+names with a usable window:
+
+| what was measured | result |
+|---|---|
+| last day of the window | **identical for all 59 names** — the dial, the "today" reading and the 7-day change are untouched |
+| days per name that move | at most **6** (the `ROLL − 1` ramp), median 6 |
+| largest single-day correction | **22.08** level points |
+| names whose stated window peak moves >0.5 | **5 of 59** — five *"Peaked at N on DATE"* facts that were artefacts of where the window started |
+| alerts changed | **none** — `level` is not an input to either firing rule |
+
+`level`, `hype_ok` and both raw scores are untouched in the stores, and no
+number on this panel enters the model.
 
 **Panel order and the metrics removal (2026-07-28).** Header line
 (name · symbol · state badge) → dial + five facts on one row → the figure

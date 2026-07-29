@@ -156,35 +156,86 @@ git push
   new was computed: same stored score, same frozen threshold, divided,
   and the alert dates are unchanged. A rule is drawn whenever its score
   exists in the window, not only when it fired, so a line that climbs to
-  80 and turns over tells you why nothing fired. **Gaps are real** — the
-  GET OUT score only exists on days the gates allow a judgement (2.5% of
-  name-days, in runs of about a week), and a blank stretch means nothing
-  *could* have fired there.
+  80 and turns over tells you why nothing fired.
 
-  **GREY DASHED = WATCHING. COLOURED SOLID = LIVE** (2026-07-28, fourth
-  pass — this replaces the faint interpolated line the third pass added).
-  Ahead of the coloured stretch the same score is drawn in grey, computed
-  by the *production* scorer over a wider set of days: every day the crowd
-  was big enough to watch, with the eligibility gate dropped (for GET OUT
-  that means the price/boom gate, for GET IN the end-stage veto). So one
-  line runs the whole way through — grey while the name is being watched
-  and **cannot** fire, then rule-coloured on the day eligibility opens, and
-  a crossing of 100 in the coloured stretch is the alert. **Nothing
-  appears out of nowhere**, which is what the grey is for.
+  **SHADED DAYS = THE EXIT QUESTION ONLY, AND WHY BOTH LINES CAN LOOK HOT
+  AT ONCE** (2026-07-29, seventh pass). A faint red band sits behind the
+  days when the name was **end-stage** — the crowd had already cleared
+  every exit gate. On those days the detector asks **only** the exit
+  question: the entry rule leaves end-stage days out of its candidate set
+  altogether. So inside a band the teal GET IN line is a
+  *what-it-would-have-said* reading, drawn so the line stays continuous
+  and readable, and it **cannot fire however high it goes**. That is why
+  both lines can look hot at the same time without contradicting each
+  other, and it is not a loophole: in the whole record, **no name-day has
+  ever fired both**, and no end-stage day even carries a GET IN score.
+  Outside a band, a teal line touching 100 is a real alert with a
+  vertical mark under it.
 
-  Two things about the grey that look wrong and are not. It **can sit above
-  100 with nothing happening** — that is the answer to "why did nothing
-  fire here?": the crowd score alone was there and the price gate held it
-  back (measured on 1,891 GET OUT name-days). And **grey flat on the axis
-  is not a gap in the data** — the scorer zeroes the score when the
-  attention gate is shut, so on a busy-but-ungated day the score really is
-  zero. The grey carries **no reading of its own, does not respond to
-  hover, and is never drawn on a day the detector actually judged** (the
-  wide recomputation is close to the stored number but not identical — it
-  disagrees about the crossing on 4.1% of overlapping days — so the two are
-  kept from ever appearing on the same day). If you want a number, read
-  the coloured line with the dots. The 0-100 euphoria level did not go
-  away: it is what the dial above the chart reads.
+  **THE RED LINE IS NOT THE SLOPE OF THE NAVY LINE.** It is the same
+  blend of ingredients **plus one more** — mood rolling over while the
+  crowd is still large — rescaled so 100 is its own trigger. They share
+  four of five ingredients, which is why they move together. The
+  **slope-like line is the teal one**: it is built from short-window
+  versus long-window comparisons, so it asks *how fast* attention is
+  climbing rather than how high it already is. Read the panel as: **navy
+  = how high, red = high and rolling over, teal = climbing fast.**
+
+  **TWO THINGS ON ONE 0-100 SCALE** (2026-07-29, sixth pass). The **navy
+  line is the euphoria level, 7-day smoothed** — how hot the crowd is, the
+  same number the dial reads, drawn on every calendar day so you can see
+  the build-up rather than just today's reading. The **coloured lines are
+  how close each rule is to firing**, as a percentage of its own trigger.
+  Both run 0-100 and higher is hotter in both, but they are **not the same
+  quantity**: a level of 70 is not "70% of the way to a signal", so read
+  each line against its own legend entry. One axis rather than two is
+  deliberate — with two axes the "fires here" rule could be drawn at any
+  height relative to the level curve, which is exactly the *"why is the
+  threshold there?"* question the 100 scaling exists to answer.
+
+  **ONE SOLID LINE PER RULE, AND NOTHING ON IT IS INTERPOLATED**
+  (2026-07-28, fifth pass — this replaced the grey/coloured two-state
+  line the fourth pass added). Each rule is drawn once, solid, in its own
+  colour, 7-day smoothed, as a percentage of its own trigger. There is no
+  second style to decode: **the line is the score, 100 is the trigger, a
+  crossing is the alert.** Whether the name was *eligible* to fire on a
+  given day is no longer shown on the line — that is what the flags are
+  for. The number plotted is the production scorer's own output, and on
+  every day the detector actually judged, the **stored** value is the one
+  you see, so the panel can never print a number that contradicts a flag.
+
+  **GET OUT never breaks. A break in GET IN means the crowd was not
+  building.** GET OUT inputs are recorded every calendar day, so that line
+  runs edge to edge. GET IN breaks where there was no build-up to measure,
+  and that splits two ways: either the 7-day chatter share sat **at or
+  below this name's own normal level** (its 120-day median — 20.5% of days
+  inside a name's span), or there was too little of it to measure at all
+  (56.5% — the coverage gate, days before the price history is judgeable,
+  or not enough history for the percentiles). A gap is **not** "nobody was
+  talking" — one fifth of gap days do have chatter, just not above the
+  name's own normal. Nothing is drawn across a gap.
+
+  **A one-day spike is a real fire, and it is not less accurate.** If a
+  line shoots through 100 and drops back, that is a fast build, not a
+  glitch. Measured: 29 of 109 above-threshold stretches last a single day,
+  and those thin alerts hit **37.9%** of the time against **36.4%** for
+  alerts sitting on a full 7-day window — a difference a Fisher exact test
+  puts at **p = 1.0**. Requiring a full window before firing would delete
+  29 alerts, 11 hits and **10 of the 26 captured episodes**, so it was
+  measured and rejected (research report §6.16).
+
+  **If a reading looks different from last time you widened the window,
+  that was a bug and it is fixed** (2026-07-29). The level curve used to be
+  7-day-averaged *after* the window was cut, so the first six days of
+  whatever window you had chosen were an average of one, two, … six days —
+  meaning the same date could read differently depending on how far back
+  you were looking. It is now averaged over the full history and then cut
+  to the window. Checked on all 59 names: the **last** day is identical
+  either way (so today's reading, the dial and the 7-day change never
+  moved), at most six days per name change, the largest correction is 22
+  level points, and five names had a *"Peaked at N"* figure that was an
+  artefact of the window start. **No signal date changed** — the level is
+  not an input to either rule.
 
   **Only one explainer is left on the page** (desk decision 2026-07-28):
   *"what is euphoria? (start here - plain English)"*. The four deeper
@@ -243,7 +294,15 @@ git push
   signal or the GET IN / GET OUT alerts.* Who has actually been right on
   Reddit, and what they are saying now. **Re-cut 2026-07-27 so every
   number on it has a unit you can say out loud** — the previous version
-  printed bare sums, which is why it did not read. Six sections, in the
+  printed bare sums, which is why it did not read. **Re-laid-out
+  2026-07-28 into four sub-tabs** — *What they are pushing*, *Building or
+  fading?*, *The names*, *The map* — after the desk read a single
+  scrolling column and asked *"why is everything crowded long?"*. Nothing
+  was removed: the window and panel-size controls sit **above** the
+  sub-tabs so one population feeds every view (a view whose population
+  changed with the tab would not be comparable), and the "why there is no
+  model on this tab" footnote stays at page level because it governs all
+  four. Six sections, in the
   order a PM reads them: (1) **what the panel is pushing** — one bubble
   per ticker, left/right is net direction, **height is that name's share
   of the room's conviction in per cent**, dot area is how many calls, and
@@ -284,14 +343,19 @@ filters stack on the euphoria tabs, and only the last is a preference.
 (1) The name must have euphoria rows inside the selected window. (2) **It
 must have ALERTED inside the window** — the tabs show names with a
 detected episode, not a padded top-N, and this is what usually binds: in
-the default window (1 Jan → 21 Jul 2026) 8 of 34 themes and 3 of the 8
-present singles alerted, while over all history 30/31 themes and 22/23
-singles have alerted at some point. So "only 8 charts" is a statement
-about the window, not about the cap — widen the window and the count
-rises. (3) The sidebar's `items per section` slider (3–60, default 6),
-newest alert first. A line above the charts always states *how many names
-qualified out of how many exist*, and says so explicitly when the slider
-is what is holding the rest back, so the cap is never silent. The window
+the default window (1 Jan → 21 Jul 2026) 8 of 34 themes and **3 of the 25
+singles present in the window** alerted (AAPL, MSFT, PLTR), while over
+all history 30/31 themes and 22/23 singles have alerted at some point. So
+"only 3 charts" is a statement about the window, not about the cap —
+widen the window and the count rises. (3) The sidebar's `items per
+section` slider (3–60, default 6), newest alert first. A line above the
+charts always states **how many names had data in the window against how
+many of those alerted** — coverage and alerting are reported as two
+separate numbers, so an empty tab can never be mistaken for a quiet
+universe — and it says so explicitly when the slider is what is holding
+the rest back, so the cap is never silent. A name whose history ends
+before the window is counted out loud in the same line rather than
+folded into the denominator, because it is *absent*, not *calm*. The window
 controls at the top drive every tab at once. Chart
 note: days with under `MIN_TOTAL` total mentions are masked as too thin;
 those stretches draw as a dotted, dimmed bridge with the legend key

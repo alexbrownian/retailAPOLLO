@@ -2061,8 +2061,26 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         lvl_raw = one_i["level"]
         # the DISPLAY curve is 7d-smoothed (the house ROLL constant):
         # one loud afternoon is not a trend - alerts should coincide
-        # with a visible regime change, not daily jitter
-        lvl = lvl_raw.rolling(ROLL, min_periods=1).mean()
+        # with a visible regime change, not daily jitter.
+        #
+        # SMOOTHED ON THE UNCLIPPED HISTORY, THEN CLIPPED TO THE WINDOW
+        # (2026-07-29).  The mean used to be taken AFTER the sidebar clip
+        # with min_periods=1, so the first six days of any window were the
+        # average of one, two, ... six days - a ramp-up artefact - and the
+        # SAME calendar day read differently depending on how far back the
+        # reader happened to be looking.  The readiness line below has
+        # always been built on the unclipped frame for exactly this reason
+        # (see `_base` there); this makes the two consistent.  Only the
+        # left edge of the window moves: the LAST day, which the dial and
+        # the "today" fact read, is identical either way.
+        _lvl_hist = ek[ek["name"] == name].sort_values("date")
+        if len(_lvl_hist):
+            _ls = _lvl_hist.set_index("date")["level"]
+            _ls = _ls[~_ls.index.duplicated(keep="last")]
+            lvl = (_ls.rolling(ROLL, min_periods=1).mean()
+                   .reindex(one_i.index))
+        else:
+            lvl = lvl_raw.rolling(ROLL, min_periods=1).mean()
 
         co, ct = coherent.get(name, ([], []))
         w0, w1 = one_i.index.min(), one_i.index.max()
@@ -2212,7 +2230,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             # epoch-milliseconds is numeric and works on every version
             return pd.Timestamp(ts).value / 1_000_000
 
-        # ---- THE LOWER PANEL IS NOW ONE LINE: HOW CLOSE TO FIRING.
+        # ---- THE LOWER PANEL: HOW HOT (the level) AND HOW CLOSE TO FIRING
+        # (the readiness), on one shared 0-100 axis.
         #
         # Desk brief 2026-07-28: "the euphoria charts are still way too
         # messy. i dont get what is activating a signal, is it a crossing?
@@ -2245,30 +2264,48 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # come from `coherent`, not from anything computed here.  It is also
         # what lets both rules share ONE dotted line instead of one each.
         #
-        # THE COST, MEASURED, because it is visible on screen.  The deciding
-        # score is SPARSE: `desk_candidacy` only scores a name on the days
-        # the gates let it be judged.  Over the live store (63,345 name-days)
-        # that is 2.5% of days for GET OUT and 48.8% for GET IN - so the GET
-        # IN line is close to continuous and the GET OUT line is a set of
-        # arcs.  Those arcs are not dots: the 1,600 GET OUT scored days form
-        # 160 runs with a MEDIAN LENGTH OF 7 DAYS (mean 10, max 91, and only
-        # 28 of the 160 are single days), which is comfortably drawable.  The
-        # blank stretches between them are information - on a blank day
-        # nothing CAN fire, whatever the crowd is doing - and they are why
-        # the trace keeps `lines+markers` with connectgaps=False: the 28
-        # one-day runs must still show, and a gap must never be bridged into
-        # a trend that was never scored.  The desk chose this knowingly over
-        # the two alternatives (a dense line that invents a reading on
-        # ungated days, or keeping the level curve as company and accepting
-        # the clutter straight back).
+        # THE SPARSITY THIS USED TO EXPOSE.  The STORED deciding score is
+        # sparse by construction - `desk_candidacy` scores a name only on the
+        # days its gates permit a judgement, which over the live store
+        # (63,345 name-days) is 2.5% of days for GET OUT and 48.8% for GET IN.
+        # For three passes that sparsity was drawn (as arcs, then as an
+        # interpolated ghost, then as a dashed watch track) and the desk
+        # rejected all three.  It is no longer drawn at all: the block below
+        # computes the score on every day and lets the stored value take
+        # priority where it exists, so sparsity affects only the HOVER LABEL,
+        # never the line's shape.  The rejected drawings are recorded in
+        # RESEARCH_REPORT 6.13-6.16 and DECISIONS.xlsx; no trace of them is
+        # kept here.
         #
-        # AND THE LEVEL IS NOT LOST.  The 0-100 euphoria level - the
-        # definition Alex asked not to change - is exactly what the dial
-        # above now reads, with its 7-day change and its dated window peak
-        # beside it.  The two questions are simply separated: the dial
-        # answers "how hot is this name", this panel answers "how close is it
-        # to firing".  Nothing measured was deleted; `level`, `hype_ok` and
-        # both raw scores are untouched in the stores.
+        # AND THE LEVEL IS ON THE PANEL AGAIN (2026-07-29, sixth pass, from
+        # the screen: "i like this original graph more BUT i want it to be 0
+        # to 100% signal fires like what you did in these newer ones ... a
+        # mix of the two (i like the continous line of this image but i like
+        # the 0 to 100% of the new one)").
+        #
+        # For one pass the level lived only in the dial, on the argument that
+        # the dial answers "how hot" and the panel answers "how close to
+        # firing".  That argument was sound about the QUESTIONS and wrong
+        # about the READING: a dial is a single number, so it cannot show
+        # that the crowd had been building for three weeks before the score
+        # reached its trigger, and the shape of that build-up is the thing a
+        # PM is being warned about.  The level curve is the only continuous
+        # daily series on the panel, and it is what the desk kept asking to
+        # have back - three separate times now.
+        #
+        # WHY THE TWO CAN SHARE ONE AXIS.  `level` is bounded 0-100 by
+        # construction (store max is exactly 100.0), and readiness is a
+        # percentage of its own trigger, so both are "0-100, and higher is
+        # hotter".  They are NOT the same quantity - 70 on the level and 70
+        # on a readiness line mean different things - and that is carried by
+        # the legend, the hover text and the caption rather than by a second
+        # y-axis.  A dual axis was the alternative and was rejected on the
+        # desk's instruction: two axes let the 100 rule be placed anywhere
+        # relative to the level curve, which reintroduces exactly the "why is
+        # the threshold HERE?" ambiguity that scaling to 100 existed to kill.
+        # Nothing measured was deleted or added; `level`, `hype_ok` and both
+        # raw scores are untouched in the stores, and no number on this panel
+        # enters the model.
         _ready = []
         if dk_i is not None:
             for _col, _thr, _lab, _clr in (
@@ -2293,115 +2330,222 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # turns over is the answer to "why did nothing fire here?", and it is
         # only visible if near-misses are drawn too.
         #
-        # THE WATCH TRACK (desk instruction 2026-07-28, fourth pass: "i dont
-        # want the red / blue dots to appead just suddenly, perhaps plot it
-        # when it is not eligable (not boom_state) but still hype_ok, e.g.
-        # tracks it until boom_state and then becoems colored and becomes an
-        # alert").
+        # ONE CONTINUOUS LINE PER RULE, AND NO INTERPOLATION ANYWHERE
+        # (desk instruction 2026-07-28, fifth pass: "i liked the original 7 day
+        # on the graph actually instead of the dotted lines (interpolated
+        # lines)" / "i liked the euphoria graph back how it was before" / "but
+        # same as nbefore but 0 to 100% now").
         #
-        # WHAT REPLACED WHAT.  The previous pass drew a GHOST: the stored score
-        # linearly INTERPOLATED across its own gaps.  That is a drawing, not a
-        # measurement - it says "the score probably went about here" on days
-        # nobody computed a score at all.  This pass throws the interpolation
-        # away on the days where a real number can be had instead, and computes
-        # the score the detector WOULD have produced, using the production
-        # scorer, on the wider candidate set the desk asked for:
+        # WHAT THIS REPLACES, AND WHY EACH PREDECESSOR LOST.  Three drawings
+        # have now been tried for the same panel, and the desk rejected the
+        # first two for the same underlying reason:
+        #   - the GHOST (third pass) linearly INTERPOLATED the stored score
+        #     across its own gaps.  A straight line between two scored days is
+        #     a number nobody computed;
+        #   - the WATCH TRACK (fourth pass) computed a real number on a wider
+        #     candidate set, but had to be drawn DASHED and masked off every
+        #     judged day, because the wide recomputation is not the stored
+        #     number (below).  Two line styles and a hole at every handover is
+        #     what "the dotted lines" refers to.
+        # This pass removes both by removing their cause.  The score is
+        # computed on EVERY day the features exist - no gate filter at all -
+        # and the STORED score is then laid over the top wherever it exists.
         #
-        #   GET OUT  wide domain = every `hype_ok` day (the price/boom gate
-        #            dropped).  2.5% -> 24.1% of all name-days; 15,244 rows.
-        #   GET IN   wide domain = every onset row (`hype_raw >= 1` holds on
-        #            100% of them), the end-stage veto dropped.  48.8% ->
-        #            52.6%; 33,306 rows.
+        # WHY THAT IS ONE HONEST SERIES AND NOT A BLEND.  `combine_first` gives
+        # the stored value priority on every day the detector really judged, so
+        # on those days the curve IS the number that fired - the crossing at
+        # 100 is exact, and the vertical alert line above always lands on it.
+        # On the remaining days there is no stored number to contradict, so the
+        # recomputed one is the only reading available.  The two can therefore
+        # never disagree on screen, which is what the fourth pass needed
+        # masking and `connectgaps=False` to achieve, and what made it dashed.
+        # This matters because the wide recomputation genuinely differs from
+        # the stored score - measured over the 1,600 overlapping name-days,
+        # median absolute difference 0.0000 but p95 0.2234 (= 35 threshold-
+        # points), max 0.7505 (= 119 points), and disagreement about the
+        # crossing on 66 days (4.1%).  The cause is not a bug: `_smooth_by_name`
+        # rolls ROLL days over each name's CANDIDATE-DAY SEQUENCE, not over the
+        # calendar, so widening the candidate set changes which days fall in
+        # each window.  Priority-merging is what makes that difference
+        # unobservable rather than displayed.
         #
-        # So the grey answers exactly the desk's question - "the crowd was
-        # already being watched here, and here is how loud it was" - and then
-        # the line turns bold and hoverable on the day the name became
-        # ELIGIBLE, which is the day it could actually fire.  On ineligible
-        # days the track is at or above 100 on 1,891 GET OUT name-days (13.9%
-        # of them) and 425 GET IN name-days: that is not a contradiction, it is
-        # the visible answer to "why did nothing fire here?" - the crowd score
-        # alone was there and the price gate held it back.
+        # WHY NO INTERPOLATION IS NEEDED NOW.  `euphoria_levels` is dense on the
+        # calendar - 3,310 days per name, 100% of consecutive gaps exactly one
+        # day - so the GET OUT line is unbroken without a single invented point.
+        # `euphoria_onset` is 90.6% one-day-dense where it exists, with genuine
+        # multi-year holes (max gap 1,773 days), and those stay holes:
+        # `connectgaps=False`.  A hole in GET IN is now the ONLY kind of break
+        # on the panel, and it has exactly ONE meaning, verified against the
+        # source rather than assumed: the onset store is
+        # `frame_live[frame_live.hype_raw >= 1]` (euphoria_phases.py:683), and
+        # store membership agrees with that test on 61,872 of 61,872 day-frame
+        # rows - zero exceptions.  So a gap is a day with NO BUILD-UP TO
+        # MEASURE, and it splits two ways: over the 140,858 calendar days
+        # inside the names' onset spans, 23.1% carry an onset row, 20.5% were
+        # measured but the 7-day chatter share sat at or below the name's own
+        # 120-day median (hype_raw < 1), and 56.5% never reached the day frame
+        # at all (coverage gate A0 unmet, before the judgeable price window, or
+        # too little history for the percentiles).  Both absences are "the
+        # crowd was not building", which is what the caption says - it does NOT
+        # claim "no crowd at all", because 20.5% of gaps do have chatter, just
+        # not above the name's own normal.
         #
-        # WHY THE GREY IS MASKED OFF EVERY ELIGIBLE DAY, which is the load-
-        # bearing guard.  `_smooth_by_name` rolls ROLL days over each name's
-        # CANDIDATE-DAY SEQUENCE, not over the calendar - so widening the
-        # candidate set changes which days fall inside each window, and the
-        # wide recomputation is NOT the stored number.  Measured over the 1,600
-        # overlapping name-days: median absolute difference 0.0000, but p95
-        # 0.2234 (= 35 threshold-points) and max 0.7505 (= 119 points), and the
-        # two disagree about whether the threshold was crossed on 66 days
-        # (4.1%).  Drawing the track on top of a day the detector really judged
-        # would therefore re-open the exact self-contradiction fixed on 27 Jul
-        # - a curve sitting under the line while a flag flies.  Masking is what
-        # makes the two series incapable of disagreeing: the bold trace owns
-        # every judged day, the grey owns only days with no verdict at all.
-        #
-        # THE OTHER GUARDS, carried over from the ghost and still doing work:
-        #   1. `hoverinfo="skip"` and out of the legend - the track NEVER
-        #      reports a number, so a watch-day cannot be read off the screen
-        #      as if it were a score the detector stood behind.
-        #   2. `limit_area="inside"` - the fill between watch days never
-        #      extends past the first or last one, so the grey cannot imply a
-        #      reading in a stretch the crowd was never even watched in.
-        #   3. `connectgaps=False` - a masked stretch is a real hole.  With
-        #      True, plotly would bridge straight across the eligible days and
-        #      undo the masking that is the whole point.
-        #   4. 1px, dashed, INK_MUTED, 45% opacity: deliberately NOT the rule
-        #      colour.  Colour is what the panel already uses to mean "this can
-        #      fire" (red GET OUT / teal GET IN), so a grey line reads as
-        #      pre-signal by construction rather than by convention.
+        # WHAT THE READER GIVES UP, stated because it was a deliberate trade.
+        # Eligibility is no longer visible in the line's style: a day the name
+        # could not have fired on looks the same as a day it could.  The desk
+        # chose this over the dashed handover, and it is recoverable on demand -
+        # the hover says "judged" or "tracking - could not fire" per point - but
+        # it is no longer readable at a glance.  The compensating guard is that
+        # the ALERT still comes only from `coherent` (the stored flags), so a
+        # tracking-day crossing draws no vertical line and produces no alert:
+        # the line can sit above 100 with nothing firing, which is the visible
+        # answer to "why did nothing fire here?".
         # Alert dates are untouched by all of this; nothing here feeds the
         # model.  Recorded in DECISIONS.xlsx ("4. Detector Design").
-        _tracks = {}
-        for _lab, _col, _thr, _src, _fit, _feats in (
-                ("GET OUT", "out_score", thr_out_d, "levels",
-                 desk_end_fit, TOP_FEATURES),
-                ("GET IN", "in_score", thr_in_d, "onset",
-                 desk_onset_fit, ONSET_BANK)):
-            if not _thr:
-                continue
-            # the UNCLIPPED frame, deliberately: the trailing ROLL-day mean
-            # must not shift when the sidebar window moves, or the same day
-            # would read differently depending on how far back the reader
-            # happens to be looking.
-            _base = ek if _src == "levels" else ok
-            if _base is None or not len(_base):
-                continue
-            _w = _base[_base["name"] == name]
-            if _src == "levels":                       # drop the boom gate
-                _w = _w[_w["hype_ok"].astype(bool)]
-            if not len(_w) or not set(_feats).issubset(_w.columns):
-                continue
-            _w = _w.sort_values("date")
-            _tr = pd.Series(_fit(None, _w, _feats), index=_w["date"].values)
-            _tr = _tr[~_tr.index.duplicated(keep="last")]
-            _tr = (_tr.reindex(lvl.index) / float(_thr) * 100.0
-                   ).interpolate(method="time", limit_area="inside")
-            _tracks[_lab] = _tr
+        _merged = []
         for _lab, _clr, _s in _ready:
-            _tr = _tracks.get(_lab)
-            if _tr is None:
-                continue
-            _tr = _tr.where(_s.isna())      # the bold trace owns judged days
-            if not _tr.notna().any():
-                continue
+            _spec = {"GET OUT": ("levels", desk_end_fit, TOP_FEATURES,
+                                 thr_out_d),
+                     "GET IN": ("onset", desk_onset_fit, ONSET_BANK,
+                                thr_in_d)}.get(_lab)
+            _full = _s
+            if _spec is not None:
+                _src, _fit, _feats, _thr = _spec
+                # the UNCLIPPED frame, deliberately: the trailing ROLL-day mean
+                # must not shift when the sidebar window moves, or the same day
+                # would read differently depending on how far back the reader
+                # happens to be looking.
+                _base = ek if _src == "levels" else ok
+                if (_thr and _base is not None and len(_base)
+                        and set(_feats).issubset(_base.columns)):
+                    _w = _base[_base["name"] == name].sort_values("date")
+                    if len(_w):
+                        _tr = pd.Series(_fit(None, _w, _feats),
+                                        index=_w["date"].values)
+                        _tr = _tr[~_tr.index.duplicated(keep="last")]
+                        _tr = _tr.reindex(lvl.index) / float(_thr) * 100.0
+                        # stored wins wherever it exists; no interpolation.
+                        _full = _s.combine_first(_tr)
+            _merged.append((_lab, _clr, _s, _full))
+        # The level is drawn FIRST so the readiness lines sit on top of it -
+        # it is context, they are the decision.  It is skipped in the
+        # no-desk-store fallback above, where the readiness line IS the level
+        # divided by a threshold: drawing both would put the same series on
+        # the panel twice at two different scales.
+        _lvl_on_panel = bool(_ready) and _ready[0][0] != "SIGNAL"
+        if _lvl_on_panel and lvl.notna().any():
             fig.add_trace(go.Scatter(
-                x=_tr.index, y=_tr.values, mode="lines",
-                name=f"{_lab} (watching - cannot fire)",
-                connectgaps=False, showlegend=False,
-                opacity=0.45, hoverinfo="skip",
-                line=dict(color=INK_MUTED, width=1, dash="dash")),
+                x=lvl.index, y=lvl.values, mode="lines",
+                name="euphoria level (7d smooth)",
+                connectgaps=False,
+                line=dict(color=ACCENT, width=1.8),
+                hovertemplate="euphoria level: %{y:.0f}/100<extra></extra>"),
                 row=2, col=1)
-        for _lab, _clr, _s in _ready:
+        for _lab, _clr, _s, _full in _merged:
+            _judged = (_s.reindex(_full.index).notna()
+                       .map({True: "judged - this number fired "
+                                   "or could have",
+                             False: "tracking - could not fire "
+                                    "on this day"}).values)
             fig.add_trace(go.Scatter(
-                x=_s.index, y=_s.values, mode="lines+markers",
+                x=_full.index, y=_full.values, mode="lines",
                 name=f"{_lab}: how close to firing",
                 connectgaps=False,
                 line=dict(color=_clr, width=2.4),
-                marker=dict(size=4, color=_clr),
-                hovertemplate=(f"{_lab}: %{{y:.0f}}% of the way to firing"
-                               "<extra></extra>")),
+                customdata=_judged,
+                hovertemplate=(
+                    f"{_lab}: %{{y:.0f}}% of the way to firing"
+                    "<br>%{customdata}<extra></extra>")),
                 row=2, col=1)
+        # ---- THE END-STAGE BAND (2026-07-29, seventh pass, from the desk:
+        # "how can there both be get in and get out at the same time? doesnt
+        # that not make sense?").
+        #
+        # It DOES make sense, and the panel was hiding the reason.  The two
+        # rules ask different questions of different day sets:
+        #   * GET OUT's score is zeroed unless the day is END-STAGE
+        #     (`e1 >= EUPHORIA_ATT_GATE & e2 > 0 & hype_ok`, i.e.
+        #     `end_stage_mask`);
+        #   * GET IN's candidate frame is `(hype_raw >= 1) & ~end_stage_mask`,
+        #     i.e. it EXCLUDES end-stage days outright.
+        # So on any day the exit question is live, the entry question is not
+        # asked at all.  Measured on the shipped store rather than asserted
+        # from the code: of 63,345 judged name-days, ZERO carry both readiness
+        # lines at or above 100, ZERO fire both alerts (95 GET OUT / 156 GET IN
+        # historically, never the same name-day), and ZERO end-stage days carry
+        # a GET IN score.  A 21-day state machine then suppresses any GET IN
+        # landing after a GET OUT as a contradictory flip.
+        #
+        # What the reader actually saw: the tracking fill (above) draws the
+        # GET IN line straight through the end stage in the SAME colour and
+        # weight as a judged day, so a teal line sailing over 100 with no
+        # vertical line beneath it reads as a bug or a contradiction.  It is
+        # neither - it is a hypothetical.  On the charted example (theme
+        # `memory`, SMH) GET IN was judged on 10 of ~82 days from 2026-05-01
+        # and fired NOT ONCE, while 79 days sat in the end stage.
+        #
+        # THIS PARTIALLY REVERSES the "signal lines, and nothing else" removal
+        # below, and the reversal is recorded rather than silently overwritten.
+        # Two of the three reasons stated there do not apply to this band and
+        # the third is answered:
+        #   1. "shading says somewhere in this region" - correct, and this band
+        #      IS a region statement ("entry was off the table across these
+        #      days"), not a dated verdict.  It carries no signal and no
+        #      number, so it cannot be mistaken for one;
+        #   2. "three overlapping translucent bands mix into a fourth colour" -
+        #      this is the ONLY band on the panel, so nothing mixes;
+        #   3. greyscale/printing - a 6%-opacity tint survives both as a light
+        #      grey block, and the label prints as text.
+        # The alternative (dropping the tracking fill so the teal line simply
+        # breaks) was offered to the desk and NOT chosen: it would have cut the
+        # GET IN line to ~10 visible points on this name.  Nothing measured is
+        # added or removed here - `end_stage` is read straight off the store.
+        #
+        # PLACED AFTER THE TRACES DELIBERATELY, and this is a trap worth
+        # naming: `add_vrect` defaults to `exclude_empty_subplots=True`, so
+        # a band added to row 2 BEFORE row 2 has any traces is silently
+        # DROPPED - no error, no shape, and the annotation beside it still
+        # renders, so the panel looks merely unshaded rather than broken.
+        # That is exactly how the first cut of this failed (DOM read: 3
+        # runs found, 0 rect shapes emitted).  Z-order does NOT depend on
+        # insertion order here - `layer="below"` is what puts the band
+        # under the lines - so moving it down costs nothing.
+        if dk_i is not None and "end_stage" in dk_i.columns:
+            _es = (dk_i["end_stage"].astype(bool)
+                   .reindex(lvl.index, fill_value=False))
+            _runs = []
+            if _es.any():
+                _blk = (_es != _es.shift()).cumsum()
+                for _, _g in _es.groupby(_blk):
+                    if bool(_g.iloc[0]):
+                        _runs.append((_g.index[0], _g.index[-1]))
+            # a one-day run has zero width and would be invisible, so every
+            # band is padded half a day either side - the store's resolution.
+            _pad = pd.Timedelta(hours=12)
+            for _a, _b in _runs:
+                fig.add_vrect(
+                    x0=_ms(pd.Timestamp(_a) - _pad),
+                    x1=_ms(pd.Timestamp(_b) + _pad),
+                    fillcolor=BEAR, opacity=0.06, line_width=0,
+                    layer="below", row=2, col=1)
+            # labelled ONCE, on the widest run: repeating it on every band is
+            # the label-collision defect the signal marks already solved.
+            # The label is deliberately SHORT - a longer one ("... entry not
+            # asked here") measured WIDER THAN THE BAND it sits on, which read
+            # as if the shading spanned further than it does. The full sentence
+            # lives in the caption, where it has room; on the chart the label
+            # only has to say which region is meant.
+            if _runs:
+                _wide = max(_runs, key=lambda r: (r[1] - r[0]))
+                fig.add_annotation(
+                    x=_ms(pd.Timestamp(_wide[0])
+                          + (pd.Timestamp(_wide[1])
+                             - pd.Timestamp(_wide[0])) / 2),
+                    y=0.02, yref="y domain", yanchor="bottom",
+                    row=2, col=1, showarrow=False,
+                    text="shaded: exit question only",
+                    font=dict(size=9, color=INK_MUTED))
+
         if _ready:
             fig.add_hline(
                 y=100, line_dash="dot", line_color=INK, opacity=0.9,
@@ -2473,6 +2617,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # the price panel.  At t=8 the second row of labels was cut in half by
         # the canvas edge (also reported from the screen).  38 clears it with
         # a little air and is still less than the 55px the old title cost.
+        # HEADROOM.  125 keeps the 100 rule off the ceiling, and a readiness
+        # line that overshoots gets 8% of air above its own maximum.  The
+        # level curve needs no term here: it is bounded 0-100 by construction
+        # (store max exactly 100.0), so 125 already clears it.
         _ytop = 125.0
         for _lab, _clr, _s in _ready:
             if _s.notna().any():
@@ -2484,28 +2632,56 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                           legend=dict(orientation="h", yanchor="top",
                                       y=-0.14))
         fig.update_yaxes(title_text="price (USD)", row=1, col=1)
-        fig.update_yaxes(title_text="% of the way to firing",
+        fig.update_yaxes(title_text="0-100: level, and % of trigger",
                          range=[0, _ytop], row=2, col=1)
         _axes_fidelity(_theme(fig))
         st.plotly_chart(fig, width="stretch", key=key)
-        st.caption("Lower panel: how close this name came to firing, as a "
-                   "percentage of its own frozen trigger. 100 = the signal "
-                   "fires - that crossing IS the alert, and the vertical "
-                   "line above marks the day it happened. **Grey dashed = "
-                   "watching.** The crowd was already big enough to follow, "
-                   "but the name was not yet eligible to fire, so this "
-                   "stretch is a 7-day-smoothed reading with no verdict "
-                   "attached: it does not respond to hover, and it can sit "
-                   "above 100 without anything happening - that is the "
-                   "answer to \"why did nothing fire here?\". Grey flat on "
-                   "the axis is not a gap in the data: it means the crowd "
-                   "was busy but the attention gate was shut, so the score "
-                   "really is zero. **Coloured "
-                   "solid with dots = live.** The name is eligible, the "
-                   "number is the one the detector actually acted on, and a "
-                   "crossing here is an alert. The line goes grey to "
-                   "coloured on the day eligibility opens, which is why "
-                   "nothing appears out of nowhere.")
+        st.caption("Lower panel, two things on one 0-100 scale. **The navy "
+                   "line is the euphoria level, 7-day smoothed** - how hot "
+                   "the crowd is, the same definition the dial reads, drawn "
+                   "every calendar day so you can see the build-up. **The "
+                   "coloured line(s) are how close each rule is to firing, "
+                   "as a percentage of that rule's own frozen trigger.** "
+                   "Both run 0-100 and higher is hotter in both, but they "
+                   "are not the same quantity - a level of 70 is not 70% of "
+                   "the way to a signal, so read each line against its own "
+                   "legend entry. "
+                   "**The GET OUT line is not the slope of the navy line** - "
+                   "it is the same blend of ingredients plus one more (mood "
+                   "rolling over while the crowd is still large), rescaled so "
+                   "100 is its trigger, which is why the two move together. "
+                   "**The GET IN line is the slope-like one**: it is built "
+                   "from short-window-versus-long-window terms, so it asks "
+                   "how fast attention is climbing rather than how high it "
+                   "already is. "
+                   "**Shaded days are end-stage days**, where the crowd "
+                   "already cleared every exit gate. On those days only the "
+                   "exit question is asked - the entry rule excludes them by "
+                   "construction - so the GET IN line there is a "
+                   "what-it-would-have-said reading and cannot fire, however "
+                   "high it goes. That is why both lines can look hot at "
+                   "once without contradicting each other, and no name-day in "
+                   "the whole record has ever fired both. "
+                   "100 = the signal fires, so the trigger is the "
+                   "same height for every name and every rule, and a "
+                   "crossing at 100 IS the alert - the vertical line above "
+                   "marks the day. Nothing on this line is interpolated: "
+                   "where the detector judged the name, the line is exactly "
+                   "the number it acted on; on the remaining days it is the "
+                   "same 7-day arithmetic run on the same features, which is "
+                   "the only reading there is. Hover any point to see which "
+                   "of the two it is. **The line can sit above 100 without "
+                   "anything firing** - that means the crowd score was there "
+                   "but the name was not eligible that day (the price/boom "
+                   "gate), and it is the answer to \"why did nothing fire "
+                   "here?\". **Flat on the axis is not missing data:** the "
+                   "score really is zero, because the attention gate was "
+                   "shut. **GET OUT never breaks** - its inputs are recorded "
+                   "every calendar day. **A break in the GET IN line** is "
+                   "the one gap left on this panel, and it means there was "
+                   "no build-up to measure: either the chatter sat at or "
+                   "below this name's own normal level, or there was too "
+                   "little of it to measure at all.")
 
         # ---- WHY did each alert fire? (plain-English decomposition of
         # the stored component values on the alert day - nothing here is
@@ -2627,13 +2803,43 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # stated rather than left to be inferred from counting panels - and when
         # the slider is the thing holding charts back, that is said explicitly
         # instead of looking like the universe is quiet.
+        # COVERAGE IS REPORTED SEPARATELY FROM ALERTING (desk question
+        # 2026-07-28: "why does euphoria singles only show 3 graphs?").  The
+        # denominator is the names that COULD have alerted - i.e. that have
+        # rows inside the selected window - not every name in the store,
+        # because a name whose history ends before the window is not a QUIET
+        # name, and counting it as one implies a calm universe that was never
+        # measured.  Any such absent names are counted out loud in the second
+        # sentence with the fix (widen the window) attached, so the two facts
+        # stay separate: how much of the universe was watchable, and how much
+        # of it alerted.  On the store as of 2026-07-21 the two coincide - all
+        # 25 singles run to the last day, so `_tot == _present == 25` and the
+        # absence sentence does not fire; 3 of the 25 alerted (AAPL, MSFT,
+        # PLTR), which is the "only 3 graphs" the desk was counting.  The
+        # branch is kept because the meme-era names (GME, AMC, BBBY, SNDL,
+        # SPCE) did drop out of the window on an earlier store and will again
+        # whenever the window is narrowed.  Nothing is charted that did not
+        # alert.
         _tot = len(ek["name"].unique())
-        _msg = (f"**{len(last_alert)} of {_tot} "
-                f"{kind_label.lower()} alerted in this window** "
+        _present = len(ew["name"].unique()) if ew is not None else _tot
+        _msg = (f"**{len(last_alert)} of {_present} "
+                f"{kind_label.lower()} with data in this window alerted** "
                 f"({lo.date()} to "
                 f"{'newest' if hi is None else hi.date()}). "
                 "Only names that actually alerted are charted - newest "
                 "signal first, no filler.")
+        if _tot > _present:
+            _gone = sorted(set(ek["name"].unique())
+                           - set(ew["name"].unique()))
+            _last = (ek[ek["name"].isin(_gone)]
+                     .groupby("name")["date"].max().sort_values())
+            _msg += (f" A further **{_tot - _present} "
+                     f"{kind_label.lower()} have history that ends before "
+                     f"this window** and so cannot appear: "
+                     f"{', '.join(theme_label(n) for n in _last.index[-3:])}"
+                     f" and {max(0, len(_gone) - 3)} others, latest data "
+                     f"{_last.max().date()}. Widen the date window in the "
+                     "sidebar to see their episodes.")
         if len(show) < len(last_alert):
             _msg += (f" Showing the {len(show)} most recent; raise "
                      "\"items per section\" in the sidebar to see the "
@@ -3669,494 +3875,531 @@ with t_infl:
             _k4.metric("most-backed name", "-")
             _k5.metric("calls vs last week", "-")
 
-        st.markdown("---")
-        # ---- 1. WHAT THEY ARE PUSHING (the lead exhibit) ---------------
-        # This section used to be second, underneath a 25-row leaderboard.
-        # It leads now, and the reason is about what the tab is FOR: a PM
-        # does not trade a list of usernames, they trade positioning.  The
-        # first question is "what are the people with an actual record
-        # pushing, and how one-sided is it" - the names are the EVIDENCE
-        # for that answer, so they belong underneath it, and the reply map
-        # (which measured near-zero relationship between being central and
-        # being right) belongs underneath them.
-        st.markdown("#### 1. What the panel is pushing")
-        if calls is None or not len(dig):
-            st.info("no calls in the chosen window - widen it, or run a "
-                    "live comment pull to extend the store.")
-        else:
-            # NAMES or THEMES.  The desk asked the question at the theme
-            # level - "what if lots of influential accounts converge on a
-            # theme" - and the tab could only answer it one ticker at a
-            # time.  Same chart, same arithmetic, different grouping key;
-            # see ig.theme_digest for why the roll-up reuses the accepted
-            # consensus and backing formulas rather than restating them.
-            _view = st.radio(
-                "group the panel's calls by",
-                ["individual names", "themes"], horizontal=True,
-                key="infl_group",
-                help="Themes use the SAME membership as the euphoria "
-                     "Themes tab (src/themes.py), so a theme means one "
-                     "thing across the whole app. A ticker in several "
-                     "themes counts in each. Calls on tickers in no theme "
-                     "are left out, so the two views have different "
-                     "denominators and are not expected to agree "
-                     "name-for-name.")
-            _is_theme = _view == "themes"
-            _key = "theme" if _is_theme else "ticker"
-            _grain = "themes" if _is_theme else "names"
-            if _is_theme:
-                _digest = ig.theme_digest(calls, board, authors=panel,
-                                       days=days, asof=asof)
-                _voices = ig.theme_voices(calls, board, authors=panel,
-                                          days=days, asof=asof)
+        # SUB-TABS, NOT ONE LONG SCROLL (desk instruction 2026-07-28:
+        # "influence tracker why is everything crowded long?").  The tab
+        # carried six numbered sections stacked vertically - roughly six
+        # screens - so the reader had to scroll past four exhibits to reach
+        # the one they wanted, and the shared controls above scrolled out of
+        # sight with them.  Nothing is removed: the same six sections are
+        # grouped into four sub-tabs, each about one screen, and the panel
+        # size / recency controls stay pinned above them so they still govern
+        # every sub-tab.  Grouping is by QUESTION, not by section number:
+        # what is being pushed / is it building / who the people are / how
+        # they connect.
+        _i1, _i2, _i3, _i4 = st.tabs(
+            ["What they are pushing", "Building or fading?",
+             "The names", "The map"])
+        with _i1:
+            # ---- 1. WHAT THEY ARE PUSHING (the lead exhibit) ---------------
+            # This section used to be second, underneath a 25-row leaderboard.
+            # It leads now, and the reason is about what the tab is FOR: a PM
+            # does not trade a list of usernames, they trade positioning.  The
+            # first question is "what are the people with an actual record
+            # pushing, and how one-sided is it" - the names are the EVIDENCE
+            # for that answer, so they belong underneath it, and the reply map
+            # (which measured near-zero relationship between being central and
+            # being right) belongs underneath them.
+            st.markdown("#### 1. What the panel is pushing")
+            if calls is None or not len(dig):
+                st.info("no calls in the chosen window - widen it, or run a "
+                        "live comment pull to extend the store.")
             else:
-                _digest, _voices = dig, ig.ticker_voices(
-                    calls, board, authors=panel, days=days, asof=asof)
-
-            if not len(_digest):
-                st.info("none of the panel's calls in this window are on a "
-                        "ticker that belongs to a theme - switch back to "
-                        "individual names, or widen the window.")
-            else:
-                _n_all = len(_digest)
-                _nb = min(_n_all, INFL_BUBBLE_MAX)
-                # FULL digest, plus how many to draw - not _digest.head(_nb).
-                # The share and the even-split line are denominated on the
-                # whole window inside the figure, so they agree with KPI 4.
-                st.plotly_chart(
-                    fig_influence_bubbles(
-                        _digest, _voices,
-                        f"the {_nb} most-backed {_grain}, last {days} days",
-                        top_n=_nb, key=_key),
-                    width="stretch", key="infl_bubbles")
-                st.caption(
-                    f"**Read it in four steps.**\n\n"
-                    f"1. **Left or right** is which way they lean. Right of "
-                    f"the centre line is net **long**, left is net **short**, "
-                    f"and one sitting on the line is a genuine argument "
-                    f"rather than a view. Colour just repeats it so the "
-                    f"picture survives a black-and-white printout.\n"
-                    f"2. **How high** is its **share of the room's "
-                    f"conviction** - of everything this panel said in the "
-                    f"window, weighted by whose record said it and how hard, "
-                    f"what per cent went into this one. The dotted line is "
-                    f"the **even split** ({ig.even_share(_n_all):.1f}% here), "
-                    f"what each would show if all {_n_all} {_grain} in the "
-                    f"window shared attention equally, so above the line "
-                    f"means more crowded than even. Height means *who and "
-                    f"how hard*, not how many - that is the bubble size.\n"
-                    f"3. **How big** is how many times it was called. Area, "
-                    f"not width, so a bubble that looks twice as big really "
-                    f"is twice the calls.\n"
-                    f"4. **Hover** for the actual people behind it, their "
-                    f"side, and their influence on the 0-100 scale used "
-                    f"everywhere on this tab.\n\n"
-                    f"**So what.** Top-right is the corner that matters: "
-                    f"high up (people with a record), far right (all one "
-                    f"way), big (said repeatedly). That is crowded bullish "
-                    f"positioning, which is the thing worth flagging to a PM "
-                    f"before it unwinds - and top-left is the identical "
-                    f"setup on the short side. One that is far right but LOW "
-                    f"is the crowd, not the panel; one that is high but near "
-                    f"the centre is two good voices disagreeing, which is "
-                    f"information of a different kind. Showing the {_nb} "
-                    f"best-backed of {_n_all} {_grain} touched by the top "
-                    f"{panel_n} voices"
-                    + (f", to {pd.Timestamp(asof).date()}" if asof is not None
-                       else "") + ".")
-                # The desk asked whether convergence here could be read as a
-                # bullish / euphoria indicator.  It was tested rather than
-                # assumed, and the numbers below are the reason the answer is
-                # no - they are quoted, not summarised, because "we checked"
-                # is not defensible and "-0.245 on the same days the accepted
-                # signal reads +0.497" is.
-                st.caption(
-                    ":grey[**Crowding here is not a forecast - it was "
-                    "tested.** Three ways of measuring the panel converging "
-                    "(how many voices, how much they agree, how much backing "
-                    "went in) were pre-registered against the house outcome "
-                    "(a >10% fall inside a week, any time in the next 30 "
-                    "days) and all three were rejected. On the same 1,552 "
-                    "name-days where the accepted euphoria level separates "
-                    "0.925 against 0.428 (a gap of +0.497, worst case "
-                    "+0.2515), the three influence measures read 0.237 vs "
-                    "0.482, 0.250 vs 0.481 and 0.282 vs 0.477 - all pointing "
-                    "the WRONG way, because the panel converges on the "
-                    "largest liquid names and those fall less often than the "
-                    "small-cap tail. See PARAMETER_REGISTER Class 6c.]")
-                st.caption(":grey[This tab is **information, not a signal.** "
-                           "Notebook 05 measured that these scores do not "
-                           "generalise to authors the model has not seen, so "
-                           "nothing here feeds the euphoria GET IN / GET OUT "
-                           "dates. Read it as \"what the room with a track "
-                           "record is saying\", and see the expander at the "
-                           "bottom of this tab for exactly why.]")
-
-                with st.expander(f"the same {_grain} as exact numbers",
-                                 expanded=False):
-                    dv = _digest.head(24).copy()
-                    # Share over ALL rows in the window, then the head - so
-                    # the column is a share of the room, not of these 24.
-                    dv["backing"] = ig.backing_share(
-                        _digest["weighted_voices"]).head(24).round(2)
-                    dv["consensus"] = dv["consensus"].round(2)
-                    dv["last_date"] = pd.to_datetime(dv["last_date"]).dt.date
-                    if _is_theme:
-                        dv[_key] = dv[_key].map(theme_label)
-                    st.dataframe(
-                        dv[[_key, "consensus", "backing", "n_authors",
-                            "n_calls", "longs", "shorts", "last_date"]].rename(
-                            columns={"n_calls": "calls", "n_authors": "people",
-                                     "consensus": "net direction",
-                                     "backing": "share of conviction %",
-                                     "last_date": "last call"}),
-                        width="stretch", hide_index=True, height=480)
-                    st.caption(
-                        f"The numbers behind the bubbles, in the same order. "
-                        f"'net direction' is the horizontal axis, 'share of "
-                        f"conviction %' the vertical one - computed over all "
-                        f"{_n_all} {_grain} in the window, so it still sums "
-                        f"towards 100% across the whole window rather than "
-                        f"across these {min(_n_all, 24)} rows. A bar chart of "
-                        f"these same two columns used to sit here as well; it "
-                        f"was the bubble chart with one axis flattened into "
-                        f"shading, so it was dropped rather than shown twice.")
-
-            with st.expander("name by name - the actual recent calls behind "
-                             "all of this", expanded=False):
-                wide = ig.author_calls_wide(calls, panel, days=days,
-                                            asof=asof, per_author=5)
-                if len(wide):
-                    wide = wide.assign(
-                        author=censor_series(wide["author"]),
-                        date=pd.to_datetime(wide["date"]).dt.date,
-                        direction=[ig.direction_label(d)
-                                   for d in wide["direction"]],
-                        stance=wide["stance"].astype(float).round(2))
-                    st.dataframe(wide.rename(columns={
-                        "stance": "conviction", "kind": "source"}),
-                        width="stretch", hide_index=True, height=420)
-                    st.caption("'conviction' is how strongly the post was "
-                               "worded (0-1, from the extractor). 'source' "
-                               "is whether the call came from a post or a "
-                               "comment. Five most recent per author.")
+                # NAMES or THEMES.  The desk asked the question at the theme
+                # level - "what if lots of influential accounts converge on a
+                # theme" - and the tab could only answer it one ticker at a
+                # time.  Same chart, same arithmetic, different grouping key;
+                # see ig.theme_digest for why the roll-up reuses the accepted
+                # consensus and backing formulas rather than restating them.
+                _view = st.radio(
+                    "group the panel's calls by",
+                    ["individual names", "themes"], horizontal=True,
+                    key="infl_group",
+                    help="Themes use the SAME membership as the euphoria "
+                         "Themes tab (src/themes.py), so a theme means one "
+                         "thing across the whole app. A ticker in several "
+                         "themes counts in each. Calls on tickers in no theme "
+                         "are left out, so the two views have different "
+                         "denominators and are not expected to agree "
+                         "name-for-name.")
+                _is_theme = _view == "themes"
+                _key = "theme" if _is_theme else "ticker"
+                _grain = "themes" if _is_theme else "names"
+                if _is_theme:
+                    _digest = ig.theme_digest(calls, board,
+                                              authors=panel, days=days,
+                                              asof=asof)
+                    _voices = ig.theme_voices(calls, board, authors=panel,
+                                              days=days, asof=asof)
                 else:
-                    st.caption("nothing in this window")
+                    _digest, _voices = dig, ig.ticker_voices(
+                        calls, board, authors=panel, days=days, asof=asof)
 
-        # ---- 2. IS IT BUILDING OR FADING? (added 2026-07-27) -----------
-        # The tab had no time axis at all, which made every reading on it a
-        # still photograph. The store has held call dates since inception.
-        st.markdown("#### 2. Is the crowding building, or fading?")
-        if calls is None or not len(dig) or len(tilt_hist) < 2:
-            st.info("not enough history inside this window to plot a trend - "
-                    "widen the window above to 90 days, or run another live "
-                    "pull to extend the store.")
-        else:
-            # Called ONCE without a ticker filter, then filtered here: the
-            # leading names are taken from this same population's own totals
-            # rather than from `dig` (which is the top-N panel), so the lines
-            # and the shares they are drawn as cannot come from two different
-            # rooms. One pass over the calls either way.
-            _crowd_all = ig.crowding_history(calls, board, authors=recorded,
-                                             days=days, asof=asof)
-            _tn = min(int(_crowd_all["ticker"].nunique()), 5)
-            _lead_names = (_crowd_all.groupby("ticker")["backing"].sum()
-                           .sort_values(ascending=False).head(_tn)
-                           .index.tolist())
-            _crowd = _crowd_all[_crowd_all["ticker"].isin(_lead_names)]
-            st.plotly_chart(
-                fig_crowding_time(
-                    tilt_hist, _crowd,
-                    f"week by week: the room's tilt, and the {_tn} "
-                    f"most-backed names"),
-                width="stretch", key="infl_time")
-            _t_now = float(tilt_hist["tilt"].iloc[-1])
-            _t_then = float(tilt_hist["tilt"].iloc[0])
-            _dir_word = ("MORE one-sidedly long" if _t_now > _t_then
-                         else "LESS one-sidedly long")
-            st.caption(
-                f"**Read it in three steps.**\n\n"
-                f"1. **The top line** is the room on one axis: +1 means every "
-                f"voice with a record was long, with full conviction, that "
-                f"week; -1 is the same on the short side; the dotted line is "
-                f"a real two-way argument. Over this window it went from "
-                f"**{_t_then:+.2f}** to **{_t_now:+.2f}** - the room got "
-                f"{_dir_word}. **The dot size is how many calls that week "
-                f"rests on**, and it matters: the comment budget leaves the "
-                f"weeks very unequal, so a tiny dot at +1.00 is four people "
-                f"agreeing, not the market.\n"
-                f"2. **The lines below** are the leading names, each drawn as "
-                f"the **share of that week's conviction** it took. Sharing "
-                f"inside the week matters: raw totals rise and fall with how "
-                f"busy the forum was, so an un-normalised line would show "
-                f"you the posting calendar. The grey dotted line is that "
-                f"week's **even split** - it moves, because a week where the "
-                f"room touched 14 names splits differently from one where it "
-                f"touched 200. Green = the name's latest reading is net "
-                f"long, brick = net short, and each name is written at the "
-                f"end of its own line.\n"
-                f"3. **Both panels use all {len(board):,} voices with a "
-                f"record**, not the top {panel_n} in the slider. Cut to the "
-                f"top few, a single week can come down to one person on one "
-                f"name, which is 100% of that week by definition and a fact "
-                f"about nobody.\n\n"
-                f"**So what.** A line climbing week after week is people "
-                f"with a record piling into one name - the build-up phase, "
-                f"and the useful time to hear about it. A line that spikes "
-                f"and collapses is attention that has already moved on, "
-                f"which matters just as much: the position is still on the "
-                f"book but the story supporting it has gone quiet. Read the "
-                f"top panel with it - crowding into a single name while the "
-                f"whole room tilts to +1 is the configuration that precedes "
-                f"the unwinds this project exists to flag.")
-
-        # ---- 3. WHO is behind one name (added 2026-07-27) --------------
-        st.markdown("#### 3. Who is behind one name")
-        if calls is None or not len(dig):
-            st.info("no calls in the chosen window.")
-        else:
-            _pick = st.selectbox(
-                "name", dig["ticker"].tolist(), key="infl_backer_pick",
-                help="ordered most-backed first - the same order as the "
-                     "bubble chart's height")
-            _bk = ig.ticker_backers(calls, board, _pick, authors=panel,
-                                    days=days, asof=asof)
-            if not len(_bk):
-                st.caption("nobody on the panel called this name in the "
-                           "window")
-            else:
-                _b1, _b2 = st.columns([3, 2])
-                with _b1:
+                if not len(_digest):
+                    st.info("none of the panel's calls in this window are on "
+                            "a ticker that belongs to a theme - switch back "
+                            "to individual names, or widen the window.")
+                else:
+                    _n_all = len(_digest)
+                    _nb = min(_n_all, INFL_BUBBLE_MAX)
+                    # FULL digest, plus how many to draw - not
+                    # _digest.head(_nb). The share and the even-split line are
+                    # denominated on the whole window inside the figure, so
+                    # they agree with KPI 4.
                     st.plotly_chart(
-                        fig_ticker_backers(
-                            _bk, _pick,
-                            f"{_pick}: the {len(_bk)} people pushing it, "
-                            f"strongest record first"),
-                        width="stretch", key="infl_backers")
-                with _b2:
-                    _bv = _bk.assign(
-                        author=censor_series(_bk["author"]),
-                        influence=_bk["influence"].round(0).astype(int),
-                        conviction=_bk["conviction"].round(2),
-                        last_date=pd.to_datetime(_bk["last_date"]).dt.date)
-                    st.dataframe(
-                        _bv[["author", "influence", "word", "n_calls",
-                             "conviction", "last_date"]].rename(columns={
-                                 "word": "side", "n_calls": "calls",
-                                 "last_date": "last said"}),
-                        width="stretch", hide_index=True, height=430)
-                _n_long = int((_bk["word"] == "LONG").sum())
-                _n_short = int((_bk["word"] == "SHORT").sum())
-                st.caption(
-                    f"**Read it.** One bar per person. **Bar length is their "
-                    f"influence** on the 0-100 board scale - 100 is the "
-                    f"strongest measured record in the whole store, so a bar "
-                    f"at 80 means 'four-fifths as strong a record as the best "
-                    f"name we track'. **Colour and the label are their "
-                    f"side.** On {_pick} right now: **{_n_long} long, "
-                    f"{_n_short} short**"
-                    + (", mixed" if len(_bk) - _n_long - _n_short else "")
-                    + f".\n\n**So what.** The shape is the answer. A few "
-                    f"long bars, all one colour, means this name is being "
-                    f"pushed by the people with the best records and they "
-                    f"agree - the strongest version of the signal this tab "
-                    f"can produce. Many short bars means it is the crowd, "
-                    f"not the panel. Two colours means the single 'net "
-                    f"direction' number on the bubble chart is averaging an "
-                    f"argument, and should not be traded as a consensus.")
+                        fig_influence_bubbles(
+                            _digest, _voices,
+                            f"the {_nb} most-backed {_grain}, last {days} "
+                            "days",
+                            top_n=_nb, key=_key),
+                        width="stretch", key="infl_bubbles")
+                    st.caption(
+                        "**Read it in four steps.**\n\n1. **Left or right** "
+                        "is which way they lean. Right of the centre line is "
+                        "net **long**, left is net **short**, and one "
+                        "sitting on the line is a genuine argument rather "
+                        "than a view. Colour just repeats it so the picture "
+                        "survives a black-and-white printout.\n2. **How "
+                        "high** is its **share of the room's conviction** - "
+                        "of everything this panel said in the window, "
+                        "weighted by whose record said it and how hard, what "
+                        "per cent went into this one. The dotted line is the "
+                        f"**even split** ({ig.even_share(_n_all):.1f}% here), "
+                        f"what each would show if all {_n_all} {_grain} in "
+                        "the window shared attention equally, so above the "
+                        "line means more crowded than even. Height means "
+                        "*who and how hard*, not how many - that is the "
+                        "bubble size.\n3. **How big** is how many times it "
+                        "was called. Area, not width, so a bubble that looks "
+                        "twice as big really is twice the calls.\n4. "
+                        "**Hover** for the actual people behind it, their "
+                        "side, and their influence on the 0-100 scale used "
+                        "everywhere on this tab.\n\n**So what.** Top-right "
+                        "is the corner that matters: high up (people with a "
+                        "record), far right (all one way), big (said "
+                        "repeatedly). That is crowded bullish positioning, "
+                        "which is the thing worth flagging to a PM before it "
+                        "unwinds - and top-left is the identical setup on "
+                        "the short side. One that is far right but LOW is "
+                        "the crowd, not the panel; one that is high but near "
+                        "the centre is two good voices disagreeing, which is "
+                        f"information of a different kind. Showing the {_nb} "
+                        f"best-backed of {_n_all} {_grain} touched by the top "
+                        f"{panel_n} voices"
+                        + (f", to {pd.Timestamp(asof).date()}"
+                           if asof is not None else "") + ".")
+                    # The desk asked whether convergence here could be read as
+                    # a bullish / euphoria indicator.  It was tested rather
+                    # than assumed, and the numbers below are the reason the
+                    # answer is no - they are quoted, not summarised, because
+                    # "we checked" is not defensible and "-0.245 on the same
+                    # days the accepted signal reads +0.497" is.
+                    st.caption(
+                        ":grey[**Crowding here is not a forecast - it was "
+                        "tested.** Three ways of measuring the panel "
+                        "converging (how many voices, how much they agree, "
+                        "how much backing went in) were pre-registered "
+                        "against the house outcome (a >10% fall inside a "
+                        "week, any time in the next 30 days) and all three "
+                        "were rejected. On the same 1,552 name-days where the "
+                        "accepted euphoria level separates 0.925 against "
+                        "0.428 (a gap of +0.497, worst case +0.2515), the "
+                        "three influence measures read 0.237 vs 0.482, 0.250 "
+                        "vs 0.481 and 0.282 vs 0.477 - all pointing the WRONG "
+                        "way, because the panel converges on the largest "
+                        "liquid names and those fall less often than the "
+                        "small-cap tail. See PARAMETER_REGISTER Class 6c.]")
+                    st.caption(
+                        ":grey[This tab is **information, not a signal.** "
+                        "Notebook 05 measured that these scores do not "
+                        "generalise to authors the model has not seen, so "
+                        "nothing here feeds the euphoria GET IN / GET OUT "
+                        "dates. Read it as \"what the room with a track "
+                        "record is saying\", and see the expander at the "
+                        "bottom of this tab for exactly why.]")
 
-        # ---- 4. the leaderboard ---------------------------------------
-        # Per-user ACCURACY was removed from this table on 2026-07-27, by
-        # desk instruction and for a reason the tab itself demonstrates: a
-        # raw hit rate sat one column from a composite that is shrunk toward
-        # the crowd base rate, so the two numbers disagreed on purpose and
-        # every reader tried to reconcile them. `hit_rate` is still computed
-        # and still stored - the notebooks need it, it is an input to the
-        # composite - it is simply not a thing this screen asks a PM to act
-        # on. What replaced it is what the desk asked for: influence, and
-        # the tickers they are pushing.
-        st.markdown(f"#### 4. The names - their influence, and what they are "
-                    f"pushing")
-        _push = (ig.author_push_table(calls, board, authors=panel, days=days,
-                                     asof=asof)
-                 if calls is not None else pd.DataFrame())
-        _lb_cols = [c for c in ["author", "composite", "tier", "called_tops",
-                                "bought_tops", "loud_but_wrong"]
-                    if c in board.columns]
-        view = board.head(panel_n)[_lb_cols].copy()
-        view.insert(1, "influence", ig.influence_index(board).head(panel_n)
-                    .round(0).astype(int).to_numpy())
-        view = view.drop(columns=["composite"])
-        if len(_push):
-            view = view.merge(_push[["author", "pushing", "n_calls",
-                                     "n_tickers"]], on="author", how="left")
-        else:
-            view["pushing"], view["n_calls"], view["n_tickers"] = "", 0, 0
-        view["pushing"] = view["pushing"].fillna("nothing in this window")
-        view[["n_calls", "n_tickers"]] = (
-            view[["n_calls", "n_tickers"]].fillna(0).astype(int))
-        view = view.rename(columns={"pushing": f"pushing (last {days}d)",
-                                    "n_calls": "calls in window",
-                                    "n_tickers": "names",
-                                    "called_tops": "called tops",
-                                    "bought_tops": "bought tops",
-                                    "loud_but_wrong": "loud but wrong"})
-        view.insert(0, "rank", range(1, len(view) + 1))
-        # LAST, after every merge: the `author` column above is the join key
-        # for `_push`, so masking earlier would drop every masked author's
-        # tickers. Censor once the frame is final and about to be rendered.
-        view["author"] = censor_series(view["author"])
-        st.dataframe(view, width="stretch", hide_index=True, height=430,
-                     column_config={
-                         "influence": st.column_config.ProgressColumn(
-                             "influence", min_value=0, max_value=100,
-                             format="%d",
-                             help="0-100, where 100 is the strongest measured "
-                                  "record in the store. A RELATIVE scale, not "
-                                  "an accuracy: it blends how often they were "
-                                  "right, how big the moves they called were, "
-                                  "and how clearly they said it, each shrunk "
-                                  "toward the crowd average so five lucky "
-                                  "calls cannot beat fifty solid ones.")})
-        st.caption(
-            f"**What each column is.** *influence* - the 0-100 rank score "
-            f"above; the number is only meaningful against the other names "
-            f"here, which is exactly why it is drawn as a bar rather than "
-            f"printed as a decimal. *pushing* - the tickers this person "
-            f"actually called in the last {days} days, netted, most-conviction "
-            f"first, so a person who went long then short a name shows MIXED "
-            f"rather than appearing twice. *called tops* - bearish calls made "
-            f"inside a euphoria peak window that the bust then confirmed; "
-            f"*bought tops* is the opposite, bullish into the same peak. "
-            f"*loud but wrong* - heavily replied-to but below-median record.\n\n"
-            f"**No hit rate here, deliberately.** {n_high:,} of these "
-            f"{len(board):,} names are HIGH tier. Per-person accuracy is "
-            f"measured, stored and reported in notebook 05, where it can sit "
-            f"next to its sample size and its confidence interval; on a "
-            f"screen, next to a shrunk score, it only ever invited the "
-            f"comparison the shrinkage exists to prevent.")
+                    with st.expander(f"the same {_grain} as exact numbers",
+                                     expanded=False):
+                        dv = _digest.head(24).copy()
+                        # Share over ALL rows in the window, then the head - so
+                        # the column is a share of the room, not of these 24.
+                        dv["backing"] = ig.backing_share(
+                            _digest["weighted_voices"]).head(24).round(2)
+                        dv["consensus"] = dv["consensus"].round(2)
+                        dv["last_date"] = pd.to_datetime(
+                            dv["last_date"]).dt.date
+                        if _is_theme:
+                            dv[_key] = dv[_key].map(theme_label)
+                        st.dataframe(
+                            dv[[_key, "consensus", "backing", "n_authors",
+                                "n_calls", "longs", "shorts",
+                                "last_date"]].rename(
+                                    columns={
+                                        "n_calls": "calls",
+                                        "n_authors": "people",
+                                        "consensus": "net direction",
+                                        "backing": "share of conviction %",
+                                        "last_date": "last call"}),
+                            width="stretch", hide_index=True, height=480)
+                        st.caption(
+                            "The numbers behind the bubbles, in the same "
+                            "order. 'net direction' is the horizontal axis, "
+                            "'share of conviction %' the vertical one - "
+                            f"computed over all {_n_all} {_grain} in the "
+                            "window, so it still sums towards 100% across the "
+                            "whole window rather than across these "
+                            f"{min(_n_all, 24)} rows. A bar chart of these "
+                            "same two columns used to sit here as well; it "
+                            "was the bubble chart with one axis flattened "
+                            "into shading, so it was dropped rather than "
+                            "shown twice.")
 
-        # ---- 5. the influence map -------------------------------------
-        st.markdown("#### 5. The influence map - who replies to whom")
-        if not os.path.exists(_INFL_EDGES):
-            st.info("no reply_edges.parquet in the store yet - the map "
-                    "appears after one comment pull.")
-        else:
-            _e_mt = _mtime(_INFL_EDGES)
-            _mv = st.radio("view", ["the backbone (everyone who matters)",
-                                    "one author's neighbourhood"],
-                           horizontal=True, key="infl_map_view")
-            if _mv.startswith("the backbone"):
-                with st.spinner("laying out the backbone ..."):
-                    nodes, links, kcore, g_n, g_m = _backbone_frames(
-                        _e_mt, _b_mt)
-                st.plotly_chart(
-                    fig_influence_map(
-                        nodes, links,
-                        f"reply-graph backbone: the {kcore}-core "
-                        f"({len(nodes)} of {g_n:,} scored people, "
-                        f"{len(links):,} of {g_m:,} reply links drawn)"),
-                    width="stretch", key="infl_map_backbone")
-                _rho = nodes[["degree_here", "composite"]].corr(
-                    method="spearman").iloc[0, 1]
-                st.caption(
-                    f"Every person drawn has at least **{kcore} neighbours "
-                    f"inside this picture** - that is what a k-core is, and "
-                    f"it is why this is a principled slice of the "
-                    f"{g_n:,}-node graph rather than a random thinning. Dot "
-                    f"size = how many people reply to them; colour = "
-                    f"influence score. Drawn over the people with a judged "
-                    f"record, so every dot has a real colour. **Rank "
-                    f"correlation between being central and being useful, "
-                    f"in this picture: {_rho:+.2f}** - being central is "
-                    f"close to unrelated to being right, which is exactly "
-                    f"why the board is ranked on the record and not on the "
-                    f"graph. Two notes so the "
-                    f"picture is not over-read: only names far enough apart "
-                    f"to be legible are printed (the rest are on hover), and "
-                    f"the map covers everyone with any judged call, which is "
-                    f"a wider pool than the board above - the board needs "
-                    f"{INFL_MIN_JUDGED}+ judged calls before it will rank "
-                    f"someone.")
+                with st.expander("name by name - the actual recent calls "
+                                 "behind all of this", expanded=False):
+                    wide = ig.author_calls_wide(calls, panel, days=days,
+                                                asof=asof, per_author=5)
+                    if len(wide):
+                        wide = wide.assign(
+                            author=censor_series(wide["author"]),
+                            date=pd.to_datetime(wide["date"]).dt.date,
+                            direction=[ig.direction_label(d)
+                                       for d in wide["direction"]],
+                            stance=wide["stance"].astype(float).round(2))
+                        st.dataframe(wide.rename(columns={
+                            "stance": "conviction", "kind": "source"}),
+                            width="stretch", hide_index=True, height=420)
+                        st.caption("'conviction' is how strongly the post was "
+                                   "worded (0-1, from the extractor). "
+                                   "'source' is whether the call came from a "
+                                   "post or a comment. Five most recent per "
+                                   "author.")
+                    else:
+                        st.caption("nothing in this window")
+
+        with _i2:
+            # ---- 2. IS IT BUILDING OR FADING? (added 2026-07-27) -----------
+            # The tab had no time axis at all, which made every reading on it a
+            # still photograph. The store has held call dates since inception.
+            st.markdown("#### 2. Is the crowding building, or fading?")
+            if calls is None or not len(dig) or len(tilt_hist) < 2:
+                st.info("not enough history inside this window to plot a "
+                        "trend - widen the window above to 90 days, or run "
+                        "another live pull to extend the store.")
             else:
-                # `format_func`, NOT a censored option list: the value this
-                # widget returns is the key `_ego_frames` looks the person up
-                # by, so the options must stay the true handles and only
-                # their rendering is masked. `_who` is the display form,
-                # used in every string a human reads below.
-                who = st.selectbox("author", panel, key="infl_ego_who",
-                                   format_func=censor)
-                _who = censor(str(who))
-                with st.spinner("laying out the neighbourhood ..."):
-                    nodes, links, e_n, e_m = _ego_frames(who, _e_mt, _b_mt)
-                if e_n <= 1:
-                    st.info(f"{_who} has no reply links in the store - they "
-                            "post, nobody replies (or the replies are "
-                            "outside the fetched history).")
+                # Called ONCE without a ticker filter, then filtered here: the
+                # leading names are taken from this same population's own
+                # totals rather than from `dig` (which is the top-N panel), so
+                # the lines and the shares they are drawn as cannot come from
+                # two different rooms. One pass over the calls either way.
+                _crowd_all = ig.crowding_history(
+                    calls, board, authors=recorded, days=days, asof=asof)
+                _tn = min(int(_crowd_all["ticker"].nunique()), 5)
+                _lead_names = (_crowd_all.groupby("ticker")["backing"].sum()
+                               .sort_values(ascending=False).head(_tn)
+                               .index.tolist())
+                _crowd = _crowd_all[_crowd_all["ticker"].isin(_lead_names)]
+                st.plotly_chart(
+                    fig_crowding_time(
+                        tilt_hist, _crowd,
+                        f"week by week: the room's tilt, and the {_tn} "
+                        f"most-backed names"),
+                    width="stretch", key="infl_time")
+                _t_now = float(tilt_hist["tilt"].iloc[-1])
+                _t_then = float(tilt_hist["tilt"].iloc[0])
+                _dir_word = ("MORE one-sidedly long" if _t_now > _t_then
+                             else "LESS one-sidedly long")
+                st.caption(
+                    "**Read it in three steps.**\n\n1. **The top line** is "
+                    "the room on one axis: +1 means every voice with a record "
+                    "was long, with full conviction, that week; -1 is the "
+                    "same on the short side; the dotted line is a real "
+                    "two-way argument. Over this window it went from "
+                    f"**{_t_then:+.2f}** to **{_t_now:+.2f}** - the room got "
+                    f"{_dir_word}. **The dot size is how many calls that week "
+                    "rests on**, and it matters: the comment budget leaves "
+                    "the weeks very unequal, so a tiny dot at +1.00 is four "
+                    "people agreeing, not the market.\n2. **The lines below** "
+                    "are the leading names, each drawn as the **share of that "
+                    "week's conviction** it took. Sharing inside the week "
+                    "matters: raw totals rise and fall with how busy the "
+                    "forum was, so an un-normalised line would show you the "
+                    "posting calendar. The grey dotted line is that week's "
+                    "**even split** - it moves, because a week where the room "
+                    "touched 14 names splits differently from one where it "
+                    "touched 200. Green = the name's latest reading is net "
+                    "long, brick = net short, and each name is written at the "
+                    "end of its own line.\n3. **Both panels use all "
+                    f"{len(board):,} voices with a record**, not the top "
+                    f"{panel_n} in the slider. Cut to the top few, a single "
+                    "week can come down to one person on one name, which is "
+                    "100% of that week by definition and a fact about "
+                    "nobody.\n\n**So what.** A line climbing week after week "
+                    "is people with a record piling into one name - the "
+                    "build-up phase, and the useful time to hear about it. A "
+                    "line that spikes and collapses is attention that has "
+                    "already moved on, which matters just as much: the "
+                    "position is still on the book but the story supporting "
+                    "it has gone quiet. Read the top panel with it - crowding "
+                    "into a single name while the whole room tilts to +1 is "
+                    "the configuration that precedes the unwinds this project "
+                    "exists to flag.")
+
+        with _i3:
+            # ---- 3. WHO is behind one name (added 2026-07-27) --------------
+            st.markdown("#### 3. Who is behind one name")
+            if calls is None or not len(dig):
+                st.info("no calls in the chosen window.")
+            else:
+                _pick = st.selectbox(
+                    "name", dig["ticker"].tolist(), key="infl_backer_pick",
+                    help="ordered most-backed first - the same order as the "
+                         "bubble chart's height")
+                _bk = ig.ticker_backers(calls, board, _pick, authors=panel,
+                                        days=days, asof=asof)
+                if not len(_bk):
+                    st.caption("nobody on the panel called this name in the "
+                               "window")
                 else:
+                    _b1, _b2 = st.columns([3, 2])
+                    with _b1:
+                        st.plotly_chart(
+                            fig_ticker_backers(
+                                _bk, _pick,
+                                f"{_pick}: the {len(_bk)} people pushing it, "
+                                f"strongest record first"),
+                            width="stretch", key="infl_backers")
+                    with _b2:
+                        _bv = _bk.assign(
+                            author=censor_series(_bk["author"]),
+                            influence=_bk["influence"].round(0).astype(int),
+                            conviction=_bk["conviction"].round(2),
+                            last_date=pd.to_datetime(_bk["last_date"]).dt.date)
+                        st.dataframe(
+                            _bv[["author", "influence", "word", "n_calls",
+                                 "conviction", "last_date"]].rename(columns={
+                                     "word": "side", "n_calls": "calls",
+                                     "last_date": "last said"}),
+                            width="stretch", hide_index=True, height=430)
+                    _n_long = int((_bk["word"] == "LONG").sum())
+                    _n_short = int((_bk["word"] == "SHORT").sum())
+                    st.caption(
+                        "**Read it.** One bar per person. **Bar length is "
+                        "their influence** on the 0-100 board scale - 100 is "
+                        "the strongest measured record in the whole store, so "
+                        "a bar at 80 means 'four-fifths as strong a record as "
+                        "the best name we track'. **Colour and the label are "
+                        f"their side.** On {_pick} right now: **{_n_long} "
+                        f"long, {_n_short} short**"
+                        + (", mixed" if len(_bk) - _n_long - _n_short else "")
+                        + ".\n\n**So what.** The shape is the answer. A few "
+                          "long bars, all one colour, means this name is "
+                          "being pushed by the people with the best records "
+                          "and they agree - the strongest version of the "
+                          "signal this tab can produce. Many short bars means "
+                          "it is the crowd, not the panel. Two colours means "
+                          "the single 'net direction' number on the bubble "
+                          "chart is averaging an argument, and should not be "
+                          "traded as a consensus.")
+
+            # ---- 4. the leaderboard ---------------------------------------
+            # Per-user ACCURACY was removed from this table on 2026-07-27, by
+            # desk instruction and for a reason the tab itself demonstrates: a
+            # raw hit rate sat one column from a composite that is shrunk
+            # toward the crowd base rate, so the two numbers disagreed on
+            # purpose and every reader tried to reconcile them. `hit_rate` is
+            # still computed and still stored - the notebooks need it, it is an
+            # input to the composite - it is simply not a thing this screen
+            # asks a PM to act on. What replaced it is what the desk asked for:
+            # influence, and the tickers they are pushing.
+            st.markdown("#### 4. The names - their influence, and what "
+                        "they are pushing")
+            _push = (ig.author_push_table(calls, board, authors=panel,
+                                          days=days, asof=asof)
+                     if calls is not None else pd.DataFrame())
+            _lb_cols = [c for c in ["author", "composite", "tier",
+                                    "called_tops", "bought_tops",
+                                    "loud_but_wrong"]
+                        if c in board.columns]
+            view = board.head(panel_n)[_lb_cols].copy()
+            view.insert(1, "influence", ig.influence_index(board).head(panel_n)
+                        .round(0).astype(int).to_numpy())
+            view = view.drop(columns=["composite"])
+            if len(_push):
+                view = view.merge(
+                    _push[["author", "pushing", "n_calls", "n_tickers"]],
+                    on="author", how="left")
+            else:
+                view["pushing"], view["n_calls"], view["n_tickers"] = "", 0, 0
+            view["pushing"] = view["pushing"].fillna("nothing in this window")
+            view[["n_calls", "n_tickers"]] = (
+                view[["n_calls", "n_tickers"]].fillna(0).astype(int))
+            view = view.rename(columns={"pushing": f"pushing (last {days}d)",
+                                        "n_calls": "calls in window",
+                                        "n_tickers": "names",
+                                        "called_tops": "called tops",
+                                        "bought_tops": "bought tops",
+                                        "loud_but_wrong": "loud but wrong"})
+            view.insert(0, "rank", range(1, len(view) + 1))
+            # LAST, after every merge: the `author` column above is the join
+            # key for `_push`, so masking earlier would drop every masked
+            # author's tickers. Censor once the frame is final and about to be
+            # rendered.
+            view["author"] = censor_series(view["author"])
+            st.dataframe(view, width="stretch", hide_index=True, height=430,
+                         column_config={
+                             "influence": st.column_config.ProgressColumn(
+                                 "influence", min_value=0, max_value=100,
+                                 format="%d",
+                                 help=(
+                                     "0-100, where 100 is the strongest "
+                                     "measured record in the store. A "
+                                     "RELATIVE scale, not an accuracy: it "
+                                     "blends how often they were right, how "
+                                     "big the moves they called were, and "
+                                     "how clearly they said it, each shrunk "
+                                     "toward the crowd average so five lucky "
+                                     "calls cannot beat fifty solid ones."))})
+            st.caption(
+                "**What each column is.** *influence* - the 0-100 rank score "
+                "above; the number is only meaningful against the other "
+                "names here, which is exactly why it is drawn as a bar "
+                "rather than printed as a decimal. *pushing* - the tickers "
+                f"this person actually called in the last {days} days, "
+                "netted, most-conviction first, so a person who went long "
+                "then short a name shows MIXED rather than appearing twice. "
+                "*called tops* - bearish calls made inside a euphoria peak "
+                "window that the bust then confirmed; *bought tops* is the "
+                "opposite, bullish into the same peak. *loud but wrong* - "
+                "heavily replied-to but below-median record.\n\n**No hit "
+                f"rate here, deliberately.** {n_high:,} of these "
+                f"{len(board):,} names are HIGH tier. Per-person accuracy is "
+                "measured, stored and reported in notebook 05, where it can "
+                "sit next to its sample size and its confidence interval; on "
+                "a screen, next to a shrunk score, it only ever invited the "
+                "comparison the shrinkage exists to prevent.")
+
+        with _i4:
+            # ---- 5. the influence map -------------------------------------
+            st.markdown("#### 5. The influence map - who replies to whom")
+            if not os.path.exists(_INFL_EDGES):
+                st.info("no reply_edges.parquet in the store yet - the map "
+                        "appears after one comment pull.")
+            else:
+                _e_mt = _mtime(_INFL_EDGES)
+                _mv = st.radio("view", ["the backbone (everyone who matters)",
+                                        "one author's neighbourhood"],
+                               horizontal=True, key="infl_map_view")
+                if _mv.startswith("the backbone"):
+                    with st.spinner("laying out the backbone ..."):
+                        nodes, links, kcore, g_n, g_m = _backbone_frames(
+                            _e_mt, _b_mt)
                     st.plotly_chart(
                         fig_influence_map(
                             nodes, links,
-                            f"{_who}: everyone they exchange replies with "
-                            f"({e_n} people, {e_m} links)", centre=who),
-                        width="stretch", key="infl_map_ego")
-                    st.caption(f"One hop around {_who}. If the neighbourhood "
-                               f"is larger than {INFL_EGO_MAX} people the "
-                               f"busiest neighbours are kept, so this shows "
-                               f"the active part of it, not all of it.")
+                            f"reply-graph backbone: the {kcore}-core "
+                            f"({len(nodes)} of {g_n:,} scored people, "
+                            f"{len(links):,} of {g_m:,} reply links drawn)"),
+                        width="stretch", key="infl_map_backbone")
+                    _rho = nodes[["degree_here", "composite"]].corr(
+                        method="spearman").iloc[0, 1]
+                    st.caption(
+                        f"Every person drawn has at least **{kcore} "
+                        "neighbours inside this picture** - that is what a "
+                        "k-core is, and it is why this is a principled slice "
+                        f"of the {g_n:,}-node graph rather than a random "
+                        "thinning. Dot size = how many people reply to them; "
+                        "colour = influence score. Drawn over the people "
+                        "with a judged record, so every dot has a real "
+                        "colour. **Rank correlation between being central "
+                        f"and being useful, in this picture: {_rho:+.2f}** - "
+                        "being central is close to unrelated to being right, "
+                        "which is exactly why the board is ranked on the "
+                        "record and not on the graph. Two notes so the "
+                        "picture is not over-read: only names far enough "
+                        "apart to be legible are printed (the rest are on "
+                        "hover), and the map covers everyone with any judged "
+                        "call, which is a wider pool than the board above - "
+                        f"the board needs {INFL_MIN_JUDGED}+ judged calls "
+                        "before it will rank someone.")
+                else:
+                    # `format_func`, NOT a censored option list: the value this
+                    # widget returns is the key `_ego_frames` looks the person
+                    # up by, so the options must stay the true handles and only
+                    # their rendering is masked. `_who` is the display form,
+                    # used in every string a human reads below.
+                    who = st.selectbox("author", panel, key="infl_ego_who",
+                                       format_func=censor)
+                    _who = censor(str(who))
+                    with st.spinner("laying out the neighbourhood ..."):
+                        nodes, links, e_n, e_m = _ego_frames(who, _e_mt, _b_mt)
+                    if e_n <= 1:
+                        st.info(f"{_who} has no reply links in the store - "
+                                "they post, nobody replies (or the replies "
+                                "are outside the fetched history).")
+                    else:
+                        st.plotly_chart(
+                            fig_influence_map(
+                                nodes, links,
+                                f"{_who}: everyone they exchange replies with "
+                                f"({e_n} people, {e_m} links)", centre=who),
+                            width="stretch", key="infl_map_ego")
+                        st.caption(f"One hop around {_who}. If the "
+                                   "neighbourhood is larger than "
+                                   f"{INFL_EGO_MAX} people the busiest "
+                                   "neighbours are kept, so this shows the "
+                                   "active part of it, not all of it.")
 
-        # ---- 6. the two warning boards --------------------------------
-        # Both boards keep their place: they are this tab's headline
-        # finding and it rests on them. Both lost their
-        # accuracy COLUMNS on 2026-07-27 - `composite` became the 0-100
-        # influence index and `hit_rate` / `n_judged` came out - so the
-        # boards now say WHO fits the profile and leave the measurement of
-        # the profile to notebook 05, which is where it is defensible.
-        _infl_all = ig.influence_index(board)
-        st.markdown("#### 6. Two boards worth reading against the grain")
-        _w1, _w2 = st.columns(2)
-        with _w1:
-            st.markdown("**Called the tops** - most confirmed bearish calls "
-                        "inside a euphoria peak window")
-            if board["called_tops"].fillna(0).sum():
-                _ct = board.nlargest(10, "called_tops").copy()
-                _ct["influence"] = (_infl_all.reindex(_ct.index).round(0)
-                                    .astype(int))
-                _ct["author"] = censor_series(_ct["author"])
-                st.dataframe(
-                    _ct[["author", "influence", "called_tops", "bought_tops",
-                         "latest_calls"]].rename(columns={
-                             "called_tops": "called tops",
-                             "bought_tops": "bought tops",
-                             "latest_calls": "latest calls"}),
-                    width="stretch", hide_index=True)
-                st.caption("The people who were bearish INTO a euphoria peak "
-                           "that then busted. Rare by construction - most of "
-                           "the forum is long into a top.")
-            else:
-                st.caption("none recorded yet - this grows as peak windows "
-                           "overlap the call history")
-        with _w2:
-            st.markdown("**Loud but wrong** - top-quartile reply-graph "
-                        "PageRank, below-median influence")
-            if board["loud_but_wrong"].any():
-                _lw = board[board["loud_but_wrong"]].head(10).copy()
-                _lw["influence"] = (_infl_all.reindex(_lw.index).round(0)
-                                    .astype(int))
-                _lw["author"] = censor_series(_lw["author"])
-                st.dataframe(
-                    _lw[["author", "influence", "followers",
-                         "latest_calls"]].rename(columns={
-                             "followers": "people replying to them",
-                             "latest_calls": "latest calls"}),
-                    width="stretch", hide_index=True)
-                st.caption("The accounts a 'follow the big names' desk would "
-                           "copy: lots of people reply to them, and their "
-                           "measured record sits below the median of this "
-                           "board. That is the profile to fade: high reach "
-                           "on barely-above-chance accuracy.")
-            else:
-                st.caption("nobody currently fits the profile")
+            # ---- 6. the two warning boards --------------------------------
+            # Both boards keep their place: they are this tab's headline
+            # finding and it rests on them. Both lost their
+            # accuracy COLUMNS on 2026-07-27 - `composite` became the 0-100
+            # influence index and `hit_rate` / `n_judged` came out - so the
+            # boards now say WHO fits the profile and leave the measurement of
+            # the profile to notebook 05, which is where it is defensible.
+            _infl_all = ig.influence_index(board)
+            st.markdown("#### 6. Two boards worth reading against the grain")
+            _w1, _w2 = st.columns(2)
+            with _w1:
+                st.markdown("**Called the tops** - most confirmed bearish "
+                            "calls inside a euphoria peak window")
+                if board["called_tops"].fillna(0).sum():
+                    _ct = board.nlargest(10, "called_tops").copy()
+                    _ct["influence"] = (_infl_all.reindex(_ct.index).round(0)
+                                        .astype(int))
+                    _ct["author"] = censor_series(_ct["author"])
+                    st.dataframe(
+                        _ct[["author", "influence", "called_tops",
+                             "bought_tops", "latest_calls"]].rename(columns={
+                                 "called_tops": "called tops",
+                                 "bought_tops": "bought tops",
+                                 "latest_calls": "latest calls"}),
+                        width="stretch", hide_index=True)
+                    st.caption("The people who were bearish INTO a euphoria "
+                               "peak that then busted. Rare by construction - "
+                               "most of the forum is long into a top.")
+                else:
+                    st.caption("none recorded yet - this grows as peak "
+                               "windows overlap the call history")
+            with _w2:
+                st.markdown("**Loud but wrong** - top-quartile reply-graph "
+                            "PageRank, below-median influence")
+                if board["loud_but_wrong"].any():
+                    _lw = board[board["loud_but_wrong"]].head(10).copy()
+                    _lw["influence"] = (_infl_all.reindex(_lw.index).round(0)
+                                        .astype(int))
+                    _lw["author"] = censor_series(_lw["author"])
+                    st.dataframe(
+                        _lw[["author", "influence", "followers",
+                             "latest_calls"]].rename(columns={
+                                 "followers": "people replying to them",
+                                 "latest_calls": "latest calls"}),
+                        width="stretch", hide_index=True)
+                    st.caption("The accounts a 'follow the big names' desk "
+                               "would copy: lots of people reply to them, and "
+                               "their measured record sits below the median "
+                               "of this board. That is the profile to fade: "
+                               "high reach on barely-above-chance accuracy.")
+                else:
+                    st.caption("nobody currently fits the profile")
 
         # ---- 7. the honest caveat, from the notebook -------------------
         _nb05 = os.path.join(ROOT, "docs", "research", "nb05_influence.json")
