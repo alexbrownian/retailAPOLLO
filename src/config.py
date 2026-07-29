@@ -146,10 +146,102 @@ EUPHORIA_HYPE_MULT = 2.0        # A1 (Reddit-only): the 7d mention share must
                                 # SWOLLEN before an alert is even possible
                                 # ("something has to go euphoric first",
                                 # measured in the crowd, never the chart)
-EUPHORIA_BOOM_MIN_ETF = 0.25    # G2 (ground truth ONLY - price is for
-                                # testing, never prediction): an ETF/theme
-                                # peak must sit >= 25% above its 120d low
+EUPHORIA_BOOM_MIN_ETF = 0.25    # G2: an ETF/theme peak must sit >= 25%
+                                # above its trailing low. Used in TWO places
+                                # with DIFFERENT windows - see the two
+                                # constants below and read the note there
+                                # before touching either.
 EUPHORIA_BOOM_MIN_SINGLE = 0.50  # single names boom harder before they count
+
+# --- THE TWO BOOM WINDOWS. They are not the same number and must not be
+#     merged (desk decision 2026-07-29).
+#
+# G2 asks "did a boom precede this?" in two different jobs:
+#
+#   1. GROUND TRUTH - `ground_truth_peaks` / `find_episodes` use a 120-day
+#      prior window to decide what COUNTS as a peak and where its trough is.
+#      That window is the yardstick the detector is scored against, so
+#      changing it changes the exam, not the answer. It stays 120 and is
+#      NOT given a constant here deliberately: it lives inline in
+#      euphoria.py / euphoria_phases.py where the episode definition is, so
+#      that a future edit to the LIVE gate cannot move the yardstick by
+#      accident. NB01 records its known cost ("run_days <= 120 by
+#      construction"; "a boom off a 120d low admits crash-rebounds").
+#
+#   2. THE LIVE GATE - `boom_state_frame` decides which days the desk's
+#      GET OUT rule is even allowed to judge. That is a PREDICTION-TIME
+#      choice and it is what this constant sets.
+#
+# WHY 54 AND NOT 120 (swept 2026-07-29, from the screen: "why did this
+# graph fire? the price did not move enough").  The complaint was correct in
+# substance and the 120-day window was the cause: over 120 days a name that
+# had crashed and merely bounced could clear a 25% "boom" bar. `semiconductors`
+# (SMH) fired GET OUT on 2023-01-31 and 2023-03-16 at +36.9% and +27.5% above
+# its 120-day low while still 25% and 20% BELOW its Dec-2021 peak. Across the
+# 95 signals live at the time, 30 fired more than 10% below their own 1-year
+# high.
+#
+# The window was then swept through the SAME walk-forward that produces the
+# frozen record (`run_tournament_entry`, per-year thresholds chosen on train
+# years only, the GROUND TRUTH held fixed so only the judgeable day set
+# moves), with the NB07 §A3b frontier framing. Configurations differ in how
+# many years they can score, so every row below is re-judged on the years they
+# all share (2021/2022/2026, 93 detectable peaks) - capture counts on their
+# own year sets are NOT comparable and reading them that way is the mistake
+# the first pass made.
+#
+#   window  captured  FA/inst-yr  precision  warning   AP lift   AUROC
+#     45d      16       0.036       0.640      5 d     -0.013    0.478
+#     50d      15       0.035       0.577     16 d     -0.001    0.499
+#     52d      21       0.081       0.538      8 d     +0.004    0.507
+#  -> 54d      22       0.092       0.550    9.5 d     +0.005    0.506
+#     56d      21       0.092       0.525      8 d     +0.006    0.499
+#     58d      21       0.103       0.512      8 d     +0.007    0.501
+#     60d      21       0.115       0.500      8 d     +0.014    0.503
+#    120d      20       0.115       0.488      6 d     +0.082    0.546
+#    150d      21       0.125       0.488      8 d     +0.086    0.549
+#    252d      18       0.172       0.400     18 d     +0.097    0.557
+#
+# CAPTURE IS FLAT AT 21-22 ACROSS 52-60 DAYS WHILE FALSE ALARMS RISE
+# MONOTONICALLY, so the efficient point is at the SHORT end of that plateau.
+# Below 52d capture collapses 21 -> 15: a cliff, not a gradient. 54d is the
+# max-capture point inside the FA budget - the project's own pre-stated
+# selection rule (`choose_threshold`: inside budget, maximise capture) lifted
+# from the threshold to the window. It dominates the previous 120d on BOTH
+# axes (+2 captures, -20% false alarms) and dominates 60d as well. 52d is the
+# lower-FA alternative (21 captures at 0.081) if false alarms are weighted
+# harder than captures.
+#
+# WHAT THIS DOES NOT BUY, stated because an earlier draft of this comment
+# claimed the opposite. A first pass read AP lift off each window's OWN test
+# years and concluded that windows below ~60d destroy score quality. On the
+# shared years AUROC is approximately 0.50 for EVERY window from 40 to 100
+# days - including 60d, which reads 0.503 and a lift of +0.014, not the
+# +0.042 that draft quoted. Lift only becomes clearly positive at 120d+,
+# which is exactly where capture and false alarms both get worse. So the
+# honest claim is: THE WINDOW TRADES CAPTURE AGAINST FALSE ALARMS AND DOES
+# NOT BUY DETECTOR SKILL AT ANY SHORT SETTING. The gate does most of the work
+# whichever short window is chosen. That is a live limitation (RESEARCH_REPORT
+# section 8), not a settled result, and it is a bigger question than this
+# constant.
+#
+# THE COST OF GOING SHORT, also stated. The walk-forward needs >= 3 positive
+# train days before a test year; at 54d the pre-2020 candidate set no longer
+# clears it, so the shipped record loses 2020 and its denominator falls from
+# 122 detectable peaks to 98. Fewer captures get REPORTED not because the
+# detector got worse but because it is examined on less. 60d keeps the fifth
+# test year and remains defensible on that ground alone.
+#
+# NOISE. Three shared test years and 93 peaks; 21 versus 22 captures is one
+# episode. 54d also sits two steps from the 50d cliff, so a different data
+# vintage could move it - 56d or 58d buy margin for ~0.01 more FA/inst-yr.
+#
+# CHANGING THIS INVALIDATES THE FROZEN THRESHOLDS: it changes the candidate
+# set they were selected on. Re-fit deliberately with
+# `python -m analytics.run_analytics --what phases --research`.
+# The sweep itself lives in notebook 07 section A3b and re-runs from data.
+EUPHORIA_BOOM_WINDOW_D = 54     # LIVE GATE only (boom_state_frame)
+EUPHORIA_BOOM_WINDOW_MIN_D = 27  # min_periods: half the window, as before
 EUPHORIA_CRASH_MIN_ETF = 0.15   # G3: >= 15% drawdown within 90d = ETF bust
 EUPHORIA_CRASH_MIN_SINGLE = 0.30  # >= 30% for single names (structurally
                                   # more volatile - the desk's dual-threshold

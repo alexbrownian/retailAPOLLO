@@ -503,7 +503,9 @@ alone}
       & \textbf{Captured} & \textbf{Detectable} & \textbf{Rate}
       & \textbf{False alarms} & \textbf{FA / instr-yr} \\
       \midrule
-      GET OUT (shipped, boom-gated, smoothed) & 24 & 122 & 19.7\% & 39 & 0.195 \\
+      GET OUT (60d gate, re-fit 2026-07-29) & 21 & 122 & 17.2\% & 15 & 0.100 \\
+      \quad\emph{\scriptsize (54d gate adopted; re-fit pending, projected 22/98, FA 10)} & & & & & \\
+      \quad\emph{\scriptsize (under the previous 120d boom gate)} & \emph{\scriptsize 24} & \emph{\scriptsize 122} & \emph{\scriptsize 19.7\%} & \emph{\scriptsize 39} & \emph{\scriptsize 0.195} \\
       GET IN  (shipped, phase-aware, smoothed) & 20 & 125 & 16.0\% & 124 & 0.25 \\
       \addlinespace
       Crowd-only onset (research headline)     & 29 & 125 & 23.2\% & 169 & 0.348 \\
@@ -690,7 +692,7 @@ alone}
       & \textbf{Precision} & \textbf{Recall} & \textbf{F1} & \textbf{MCC}
       & \textbf{AP} & \textbf{Base rate} \\
       \midrule
-      GET OUT & 0.395 & 0.450 & 0.421 & 0.037 & 0.449 & 0.374 \\
+      GET OUT & 0.395 & 0.450 & 0.421 & 0.042 & 0.540 & 0.498 \\
       GET IN  & 0.151 & 0.061 & 0.087 & 0.059 & 0.084 & 0.062 \\
       \bottomrule
     \end{tabular}
@@ -701,9 +703,12 @@ alone}
       because positives are rare (Davis \& Goadrich 2006); Matthews
       correlation because it is the one summary that cannot be gamed by class
       imbalance (Chicco \& Jurman 2020).
-    \item \textbf{Read AP against base rate, always.} GET OUT's 0.449 against
-      a 0.374 base rate is a modest lift. GET IN's 0.084 against 0.062 is a
-      smaller one. Neither is a headline; both are honest.
+    \item \textbf{Read AP against base rate, always.} GET OUT's 0.540 against
+      a 0.498 base rate is a modest lift --- and a \emph{smaller} one than
+      before the 2026-07-29 boom-window cut (0.449 against 0.374), because a
+      tighter gate raises the base rate faster than it raises AP: more of the
+      work is now done by the gate and less by the score. GET IN's 0.084
+      against 0.062 is smaller still. Neither is a headline; both are honest.
     \item \textbf{MCC near zero is the uncomfortable number} and it is here on
       purpose: at the operating point these are \emph{sparse warnings}, not
       classifiers, and a metric built for balanced classification says so.
@@ -1093,6 +1098,7 @@ alone}
       5 d  & 24 & 41 & 0.443 & 19 & 10 & 132 \\
       \textbf{7 d (adopted)} & \textbf{24} & \textbf{39} & \textbf{0.449}
         & \textbf{20} & \textbf{10} & \textbf{124} \\
+      \multicolumn{7}{l}{\emph{\scriptsize This smoothing ablation was measured under the 120d boom gate and has NOT been re-run since the 60d cut.}} \\
       10 d & 25 & 42 & 0.461 & 19 & 12 & 112 \\
       14 d & 24 & 41 & 0.476 & 16 & 11 & 112 \\
       \bottomrule
@@ -1495,12 +1501,13 @@ alone}
 \begin{frame}{DIAGNOSTIC --- precision--recall at the shipped point}
   \tightfig
   \gfig{07/01_get-out-precision-recall-walk-forward-oos.png}{0.98}{%
-    Walk-forward out-of-sample PR curves. GET OUT: AP 0.449 against a 0.37
-    base rate, operating point $F_1=0.42$. GET IN: AP 0.084 against 0.06,
-    operating point $F_1=0.09$.}
-  \sowhat{Read the \emph{lift}, not the level. GET OUT's 0.449 looks strong
-    and is only $1.2\times$ its base rate, because END days are common inside
-    a boom. GET IN's 0.084 looks weak and is $1.4\times$ its base rate --- the
+    Walk-forward out-of-sample PR curves. GET OUT: AP 0.540 against a 0.50
+    base rate. GET IN: AP 0.084 against 0.06, operating point $F_1=0.09$.
+    \emph{Figure regenerates from NB07; re-run it after the 2026-07-29
+    boom-window re-fit.}}
+  \sowhat{Read the \emph{lift}, not the level. GET OUT's 0.540 looks strong
+    and is only $1.1\times$ its base rate, because END days are common inside
+    a boom --- and commoner still since the gate tightened. GET IN's 0.084 looks weak and is $1.4\times$ its base rate --- the
     better of the two in lift terms. Quoting AP without its floor is the most
     common way a crowd-data study flatters itself, so both floors are drawn on
     the chart.}

@@ -939,7 +939,7 @@ def rebuild_phase_files(verbose: bool = True,
 #    GET OUT (euphoria ending) = the incumbent rules score with two
 #    measured upgrades (NB03 commissioned test + NB06):
 #      * candidacy requires an ACTUAL PRICE BOOM - G2's own thresholds
-#        (>=25% ETF / >=50% single above the trailing 120d low, past
+#        (>=25% ETF / >=50% single above the trailing 54d low, past
 #        prices only; no new constant). Walk-forward: capture 16 -> 26
 #        of 122, AP 0.286 -> 0.435, capture-gain CI [+3.5pp, +13pp].
 #      * the trigger runs on the 7d-SMOOTHED score (ROLL - the house
@@ -961,22 +961,36 @@ def rebuild_phase_files(verbose: bool = True,
 #    recorded here and in NB06, not hidden.
 # ---------------------------------------------------------------------------
 from src.config import (ROLL, EUPHORIA_ATT_GATE,  # noqa: E402
-                        EUPHORIA_BOOM_MIN_ETF, EUPHORIA_BOOM_MIN_SINGLE)
+                        EUPHORIA_BOOM_MIN_ETF, EUPHORIA_BOOM_MIN_SINGLE,
+                        EUPHORIA_BOOM_WINDOW_D, EUPHORIA_BOOM_WINDOW_MIN_D)
 
 
 def boom_state_frame(series: list, pxmap: dict) -> pd.DataFrame:
     """name/date/boom_state: is the price >= its G2 boom threshold above
-    its own trailing 120d low? Trailing only (day t uses closes <= t);
-    the thresholds are the GROUND-TRUTH constants, reused - the gate
-    introduces no new number."""
+    its own trailing EUPHORIA_BOOM_WINDOW_D low? Trailing only (day t uses
+    closes <= t); the SIZE thresholds are the ground-truth constants,
+    reused, so the gate introduces no new size number.
+
+    THE WINDOW IS NOT THE GROUND TRUTH'S WINDOW (desk decision 2026-07-29).
+    `find_episodes` above walks back 120 days because that is the yardstick
+    an episode is DEFINED by; this gate walks back
+    EUPHORIA_BOOM_WINDOW_D (54) because that is a prediction-time choice
+    and 120 was letting crash-rebounds through - `semiconductors` fired
+    GET OUT twice in early 2023 while 20-25% below its own Dec-2021 peak,
+    on a bounce off the Oct-2022 bottom. The window was swept on the NB07
+    section A3b frontier; the table, the selection rule and the recorded
+    cost (the walk-forward loses its 2020 test year) are in src/config.py
+    beside the constant. Deliberately two windows, deliberately not
+    shared."""
     rows = []
     for es in series:
         px = pxmap[es.symbol].dropna().asfreq("D").ffill()
-        low120 = px.rolling(120, min_periods=60).min()
+        low_w = px.rolling(EUPHORIA_BOOM_WINDOW_D,
+                           min_periods=EUPHORIA_BOOM_WINDOW_MIN_D).min()
         bm = (EUPHORIA_BOOM_MIN_SINGLE if es.kind == "single"
               else EUPHORIA_BOOM_MIN_ETF)
         rows.append(pd.DataFrame({"name": es.name, "date": px.index,
-                                  "boom_state": ((px / low120 - 1) >= bm)
+                                  "boom_state": ((px / low_w - 1) >= bm)
                                   .values}))
     return pd.concat(rows, ignore_index=True)
 

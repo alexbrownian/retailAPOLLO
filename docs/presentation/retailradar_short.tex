@@ -188,8 +188,8 @@
       detectable subset are defined in Notebook 01 by a rule applied to price
       alone --- with no detector in existence and no feature consulted. Nothing
       downstream can move the goalposts.
-    \item \textbf{Two denominators are quoted everywhere.} 24 of 122
-      \emph{detectable} tops is also 7.2\% of all 333 episodes. Crowd coverage
+    \item \textbf{Two denominators are quoted everywhere.} 21 of 122
+      \emph{detectable} tops is also 6.3\% of all 333 episodes. Crowd coverage
       is deep in 2020--22 and 2026, thin to absent in 2023--25: there the
       detector is \textbf{blind}, which is not the same as wrong (slide 15
       costs the fix).
@@ -245,7 +245,8 @@
       & \textbf{Captured} & \textbf{Detectable} & \textbf{Rate}
       & \textbf{False alarms} & \textbf{FA / instr-yr} \\
       \midrule
-      GET OUT (shipped: boom-gated, smoothed) & 24 & 122 & 19.7\% & 39 & 0.195 \\
+      GET OUT (60d gate, re-fit 2026-07-29) & 21 & 122 & 17.2\% & 15 & 0.100 \\
+      \quad\emph{\scriptsize 54d gate adopted; re-fit pending} & & & & & \\
       GET IN  (shipped: phase-aware, smoothed) & 20 & 125 & 16.0\% & 124 & 0.25 \\
       \bottomrule
     \end{tabular}
@@ -305,7 +306,8 @@
       \textbf{What was done instead:} two changes to the signal, each measured.
       \begin{itemize}\scriptsize
         \item Trigger on the \textbf{7-day-smoothed} score. Quality
-          AP $0.435 \rightarrow 0.449$, at a recorded cost of 2 captures.
+          AP $0.435 \rightarrow 0.449$, at a recorded cost of 2 captures
+          (measured under the 120d boom gate; not re-run since the 60d cut).
         \item Make GET IN \textbf{phase-aware}: a day that already meets every
           ending condition is end-stage, so a ``start'' there cannot fire.
       \end{itemize}

@@ -535,7 +535,13 @@ pre-stated in NB06 and productionised in this module's §6 (the notebook
 imports the production functions, and a drift guard asserts its
 recomputation equals the shipped record). GET OUT = the boom-gated END
 rules with the trigger on the 7d-smoothed (ROLL) score — walk-forward
-capture 24/122, FA 39 (0.195/instr-yr), AP 0.449, median warning 8d.
+capture 21/122, FA 15 (0.100/instr-yr), AP 0.540 against a 0.498 base
+rate, median warning 7d — the 60d re-fit of 2026-07-29 (under the
+original 120d gate: 24/122, FA 39, AP 0.449 against 0.374, 8d).
+THE GATE HAS SINCE MOVED TO 54d on the NB07 §A3b frontier and the
+threshold is RE-FIT PENDING: run `--what phases --research` before
+quoting these. Projection at 54d: 22/98, FA 10 (0.086/instr-yr),
+threshold ≈0.6186 — the denominator change is the lost 2020 test year.
 GET IN = the onset rules with PHASE-AWARE candidacy (a day satisfying
 every END gate — A1 ∧ A2 ∧ A3-persistence, existing constants only —
 is end-stage and cannot host a "start") plus the same smoothing —
@@ -544,7 +550,8 @@ adjacency 20→2, LATE 21→10, FA 169→124, at a RECORDED capture cost
 the raw-capture utility rule). `rebuild_phase_files()` additionally
 writes `euphoria_desk.parquet` (per-day scores, candidacy states,
 get_in/get_out alerts) and `euphoria_desk_report.json` (frozen
-thresholds GET IN 0.848 / GET OUT 0.630 + both walk-forward records),
+thresholds GET IN 0.848 / GET OUT 0.617 at the 60d gate, re-fit pending
+at 54d + both walk-forward records),
 honouring the research/live split: live runs score at the frozen
 thresholds; `--research` (or year rollover) refreezes them. The
 dashboard's EUPHORIA tabs are driven by this store — explicit GET IN /
@@ -847,7 +854,8 @@ firing path — but the old panel could not show that, because it carried
 five things at equal weight (a faint raw level, a bold 7d-smoothed level,
 an ochre eligibility ribbon, a dated peak marker, and the deciding score
 with its own dotted threshold), and the two thresholds sat at *different*
-heights (GET IN `0.848141`, GET OUT `0.630231`), so neither line meant
+heights (GET IN `0.848141`, GET OUT `0.630231` as frozen then; the
+GET OUT value is now `0.617489`), so neither line meant
 "the line".
 
 What is drawn now is one series per firing rule:

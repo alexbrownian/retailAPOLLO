@@ -249,7 +249,7 @@ git push
   2026-07-28) — hit rate, lead time and false alarms live in notebook
   07, which prints the full scorecard with confidence intervals.
   An AMBER band on the price panel marks the DANGER STATE (crowd ≥2×
-  its normal AND price ≥25/50% above its 120d low): sharp drops (≥10%
+  its normal AND price ≥25/50% above its 60d low): sharp drops (≥10%
   in a week) begin within 30d on ~62% of these days vs ~19% of ordinary
   days (NB06) — the band is the standing PM warning, the red line the
   timing call. Above each chart sits a **EUPHORIA GAUGE**: a dial whose

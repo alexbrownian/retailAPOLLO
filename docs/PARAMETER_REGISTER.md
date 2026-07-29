@@ -14,7 +14,7 @@ does not ship. Updated with every change (see RESEARCH_REPORT changelog).*
 | TOP alert threshold | 85 (level units) | per test year: maximise `captures − 1.0×FAs` on strictly earlier years; ties → most conservative | NB03 "why the threshold" exhibit; per-year table in `euphoria_report.json`. **Recorded limitation:** under this utility in an FA-rich regime the selection saturates toward the conservative end of its 50–85 grid — the budget rule below is the successor selection and is interior |
 | ONSET alert threshold | ~0.90 (score units) | per test year: maximise captures SUBJECT TO the FA budget on strictly earlier years; grid = percentiles of the training scores (data-derived, not hand units) | NB03 exhibit (budget rule marked inside the feasible band); `euphoria_onset_report.json` |
 | ML challenger cutoffs | (rejected models) | same walk-forward discipline, probability grid from training percentiles | NB03 tournament; euphoria.py `ml_walk_forward` |
-| GET OUT threshold (desk) | 0.630 (score units) | budget rule on full prior years, boom-gated smoothed score | NB06 adopted-configuration section; `euphoria_desk_report.json` |
+| GET OUT threshold (desk) | **re-fit pending** at the 54 d gate (offline projection ≈0.6186); 0.617489 at 60 d, 0.630231 at 120 d | budget rule on full prior years, boom-gated smoothed score | NB06 adopted-configuration section; `euphoria_desk_report.json` |
 | GET IN threshold (desk) | 0.848 (score units) | budget rule on full prior years, phase-aware smoothed score | NB06 adopted-configuration section; `euphoria_desk_report.json` |
 
 ## Class 1b — THE GAUGE'S TWO EDGES (added 2026-07-27, notebook 06)
@@ -75,7 +75,7 @@ band label, and the caption under every dial says it in words.
 | Panel qualification bar | 100 unique referrers / 28d | literally `EUPHORIA_MIN_COVERAGE` reused — the same floor that makes a name measurable (a unit test asserts the equality) |
 | Singles display bar | 2× hype at alert | the existing A1 constant applied at display time — no new number |
 | DANGER STATE (amber band) | A1 2× hype AND G2 boom state | pure composition of two existing constants; measured: cliff-30 = 62% in-state vs 19% ordinary (CI [+28pp,+50pp], NB06) — shipped as the standing PM warning |
-| Price-assisted END gate | G2's boom thresholds (25%/50% above trailing 120d low) | the ground-truth boom definition applied as a LIVE gate (past prices only, no look-ahead, no new number) — changes the claim to 'crowd + chart'; offered as a labelled second signal (NB03) and ADOPTED as GET OUT candidacy (2026-07-24) |
+| Price-assisted END gate | G2's boom SIZE thresholds (25%/50%) over a trailing **60d** low (`EUPHORIA_BOOM_WINDOW_D`, was 120d until 2026-07-29) | the ground-truth boom definition applied as a LIVE gate (past prices only, no look-ahead, no new number) — changes the claim to 'crowd + chart'; offered as a labelled second signal (NB03) and ADOPTED as GET OUT candidacy (2026-07-24) |
 | End-stage mask (phase-aware GET IN) | A1 ∧ A2 ∧ A3-persistence | pure composition of the END detector's own frozen gates — a day satisfying every ending gate cannot host a "start"; no new constant (unit-tested) |
 
 ## Class 3 — CONVENTION (round a-priori units; contribution measured by ablation)
@@ -88,7 +88,7 @@ band label, and the caption under every dial says it in words.
 | Fade discount | 10 level-points | the fade is historically the last pre-top stage; a round tenth of the scale | fade off: capture −0.067 (the biggest capture lever) |
 | Cooldown | 21 days | ~one trading month = one episode, and identical to the signal engine's pre-existing `SIG_COOLDOWN` | enforced by tests; also the coherence-rule and display windows |
 | Rolling windows | 7 / 14 / 28 d | week / fortnight / 4 weeks — calendar units (ROLL=7 predates this study) | feature battery (NB02) evaluates each feature built on them |
-| Desk trigger smoothing | 7 d (ROLL, trailing) | the house one-week window, reused | measured raw vs smoothed (NB06): GET OUT AP 0.435→0.449, FA 41→39, −2 captures; GET IN adjacency 8→2 on the phase-aware frame; one-day blips structurally removed. Full sweep w∈{1,3,5,7,10,14} (NB07): no window strictly dominates w=7; run-rule triggers k>1 also dominated by the smoothed single crossing |
+| Desk trigger smoothing | 7 d (ROLL, trailing) | the house one-week window, reused | measured raw vs smoothed (NB06, measured under the previous 120d boom gate — NOT re-measured since): GET OUT AP 0.435→0.449, FA 41→39, −2 captures; GET IN adjacency 8→2 on the phase-aware frame; one-day blips structurally removed. Full sweep w∈{1,3,5,7,10,14} (NB07): no window strictly dominates w=7; run-rule triggers k>1 also dominated by the smoothed single crossing |
 | LPPLS fit window | 60 d | ~one quarter of trading days for a stable quadratic fit | E5's contribution: −0.008 capture if dropped |
 | Percentile window | 365 d (min 180) | "extreme for this name" = vs its own last year; half-year minimum before speaking | trailing-rank no-look-ahead test |
 | Hype baseline | 120 d median | ~half a year of "normal" to compare a week against | inside A1 (see above) |
@@ -128,7 +128,8 @@ them, not by intuition. Implementation: `analytics/plain_english.py`
 | Peak local-max window | ±21 d (43 d) | month-scale "the highest close around here" |
 | Boom minimum | +25% ETF / +50% single | dual thresholds are a recorded desk decision — singles are structurally more volatile |
 | Bust minimum | −15% ETF / −30% single, within 90 d | same dual-threshold decision; a quarter to confirm the break |
-| Boom lookback | 120 d | the window the trough is measured in (this right-truncates run-length at 120 — a recorded caveat, NB01) |
+| Boom lookback — GROUND TRUTH | 120 d | the window the trough is measured in, i.e. what COUNTS as a peak (this right-truncates run-length at 120 — a recorded caveat, NB01). **Unchanged**: moving it changes the yardstick, not the answer |
+| Boom lookback — LIVE GATE (`EUPHORIA_BOOM_WINDOW_D`) | **54 d** (120 d → 60 d → 54 d, 2026-07-29) | a prediction-time choice, chosen on the NB07 §A3b frontier by the project's own rule (inside the FA budget, maximise capture), judged on the years all configurations share (2021/2022/2026, 93 peaks): 54 d captures **22** at **0.092** FA/inst-yr vs 60 d's 21 at 0.115 and 120 d's 20 at 0.115 — **120 d is dominated on both axes**. Capture is flat at 21–22 across 52–60 d while FAs rise monotonically; below 52 d it collapses to 15. 52 d is the lower-FA alternative. **Recorded cost:** the walk-forward loses its 2020 test year, denominator 122 → 98. **Correction:** an earlier note rejected short windows on AP lift; that lift was read off each window's own years and is an artefact — AUROC is ≈0.50 at every window from 40–100 d (§8.5) |
 | Top hit window | [peak−30d, peak+1d] | the stated aim of the project |
 | Judgeable horizon | 45 d of future price | an unjudgeable alert is PENDING, not false |
 | Label sensitivity | 20/40 and 30/60 probes | robustness sweep values (not fitted — they test that conclusions survive ±1 step) |

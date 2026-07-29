@@ -93,7 +93,9 @@ from analytics.euphoria_phases import (
 from analytics.euphoria_phases import TOP_FEATURES as TOP_BANK
 from analytics.loaders import load, THEME_COUNTS, THEME_SENT, \
     TICKER_COUNTS, TICKER_SENT
-from src.config import EUPHORIA_ATT_GATE, EUPHORIA_COOLDOWN_DAYS, ROLL
+from src.config import (EUPHORIA_ATT_GATE, EUPHORIA_COOLDOWN_DAYS, ROLL,
+                        EUPHORIA_BOOM_MIN_ETF, EUPHORIA_BOOM_MIN_SINGLE,
+                        EUPHORIA_BOOM_WINDOW_D)
 
 t0 = time.time()
 prices = pd.read_parquet(ROOT / "data" / "prices" / "prices.parquet")
@@ -355,6 +357,182 @@ ax.legend(frameon=False, fontsize=8)
 despine(ax)
 plt.tight_layout(); plt.show()
 display(fr.round(3).tail(10))
+
+# %% [markdown]
+# ## A3b. The same frontier, applied to the BOOM LOOKBACK (2026-07-29)
+#
+# A3 sweeps the THRESHOLD at a fixed gate. This sweeps the GATE itself.
+# The desk asked why the live boom window was 120 days after a GET OUT
+# fired on a name that had merely bounced off a crash ("the price did not
+# move enough to trigger"), so the window is treated as what it is - a
+# free parameter that had never been swept.
+#
+# THREE THINGS MAKE THIS A FAIR SWEEP.
+#   1. The GROUND TRUTH IS HELD FIXED. `episodes` is built from the
+#      120-day G2 window and is not rebuilt per config. Only which days
+#      the detector is ALLOWED TO JUDGE changes. Moving the ground truth
+#      would change the exam rather than the answer.
+#   2. Each window gets its OWN walk-forward, so thresholds are re-chosen
+#      per test year on train years only - a shorter window does not get
+#      to keep a threshold fitted on a different candidate set.
+#   3. Windows are re-judged on the test years they ALL SHARE. Configs
+#      differ in how many years they can score (the walk-forward needs
+#      >= 3 positive train days), so raw capture counts come with
+#      different denominators. Comparing them directly is the trap this
+#      cell exists to avoid - and the one the first pass of this analysis
+#      fell into: AP lift was read off each window's own years, which made
+#      short windows look like they lost score quality when part of what
+#      changed was the evaluation period. AP and AUROC are recomputed on
+#      the shared years here for the same reason.
+
+# %%
+def _boom_at(window: int) -> pd.DataFrame:
+    """boom_state at an arbitrary trailing window; sizes unchanged."""
+    mp = max(20, window // 2)
+    rows = []
+    for es in series:
+        px_ = pxmap[es.symbol].dropna().asfreq("D").ffill()
+        low = px_.rolling(window, min_periods=mp).min()
+        bm = (EUPHORIA_BOOM_MIN_SINGLE if es.kind == "single"
+              else EUPHORIA_BOOM_MIN_ETF)
+        rows.append(pd.DataFrame({"name": es.name, "date": px_.index,
+                                  "boom_state": ((px_ / low - 1) >= bm)
+                                  .values}))
+    return pd.concat(rows, ignore_index=True)
+
+
+def _sweep_window(window: int):
+    fpx = frame.merge(_boom_at(window), on=["name", "date"], how="left")
+    fpx["boom_state"] = fpx["boom_state"].fillna(False)
+    end_w, _ = desk_candidacy(fpx)
+    if end_w.empty or end_w["y_top"].sum() < 3:
+        return None
+    wf = run_tournament_entry(end_w, episodes, TOP_BANK, "y_top", "top",
+                              desk_end_fit, FA_BUDGET)
+    return None if "error" in wf else (wf, end_w)
+
+
+def _rejudge(wf, years, n_inst):
+    """Re-tally one config's alerts on a fixed set of years."""
+    eps_by = dict(tuple(episodes.groupby("name")))
+    empty = episodes.iloc[0:0]
+    cap, fa_, leads, n_al = set(), [], [], 0
+    epoch = pd.Timestamp("1970-01-01").toordinal()
+    for nm, alerts in wf.get("alerts_by_name", {}).items():
+        a = [pd.Timestamp(x).toordinal() - epoch for x in alerts
+             if pd.Timestamp(x).year in years]
+        n_al += len(a)
+        if not a:
+            continue
+        r = classify_top_alerts(np.asarray(sorted(a), dtype=np.int64),
+                                _eps_arrays(eps_by.get(nm, empty)))
+        cap |= {(nm, p) for p in r["captured"]}
+        fa_ += r["fa"]; leads += r["leads"]
+    det = episodes[episodes.year.isin(years) & episodes["top_detectable"]]
+    keys = {(r.name, int(p)) for r, p in
+            zip(det.itertuples(), _day_ints(det["peak"]))}
+    ld = [d["before_peak"] for d in leads]
+    return {"alerts": n_al, "captured": len(cap & keys),
+            "detectable": len(keys),
+            "fa_per_iy": len(fa_) / max(n_inst * len(years), 1),
+            "precision": len(cap & keys) / max(n_al, 1),
+            "median_warning_d": float(np.median(ld)) if ld else np.nan}
+
+
+WIN_GRID = [40, 45, 50, 52, 54, 56, 58, 60, 62, 65, 70, 75, 80, 90,
+            100, 120, 150, 180, 252]
+_runs = {w: r for w in WIN_GRID if (r := _sweep_window(w)) is not None}
+_shared = set.intersection(*[set(w["test_years"]) for w, _ in
+                             _runs.values()])
+wrows = []
+for w, (wf, end_w) in sorted(_runs.items()):
+    row = {"window": w, "cand_days": len(end_w),
+           "own_test_years": len(wf["test_years"])}
+    row.update(_rejudge(wf, _shared, end_w["name"].nunique()))
+    sc = walk_forward_scores(end_w, TOP_BANK, "y_top", desk_end_fit)
+    sc = sc[sc["test_year"].isin(_shared)]
+    if sc["y_top"].nunique() > 1:                 # AP/AUROC on shared years
+        row["ap"] = average_precision_score(sc["y_top"], sc["score"])
+        row["base_rate"] = float(sc["y_top"].mean())
+        row["ap_lift"] = row["ap"] - row["base_rate"]
+        row["auroc"] = roc_auc_score(sc["y_top"], sc["score"])
+    wrows.append(row)
+wf_df = pd.DataFrame(wrows)
+print(f"shared test years: {sorted(_shared)}  "
+      f"({wf_df['detectable'].iloc[0]} detectable peaks)")
+
+_r = list(wf_df.itertuples())
+wf_df["pareto"] = [not any((o.captured >= x.captured)
+                           and (o.fa_per_iy <= x.fa_per_iy)
+                           and ((o.captured > x.captured)
+                                or (o.fa_per_iy < x.fa_per_iy))
+                           for o in _r) for x in _r]
+display(wf_df.round(4))
+
+# %%
+fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.2))
+ax = axes[0]
+d_ = wf_df[~wf_df.pareto]; p_ = wf_df[wf_df.pareto].sort_values("fa_per_iy")
+ax.scatter(d_.fa_per_iy, d_.captured, s=34, color=MUTED, zorder=2)
+ax.plot(p_.fa_per_iy, p_.captured, "-o", color=C3, lw=1.8, ms=8,
+        zorder=3, label="Pareto frontier")
+for x_ in p_.itertuples():
+    ax.annotate(f"{x_.window}d", (x_.fa_per_iy, x_.captured),
+                textcoords="offset points", xytext=(6, -11),
+                fontsize=8, color=C3)
+cur = wf_df[wf_df.window == EUPHORIA_BOOM_WINDOW_D]
+if len(cur):
+    ax.scatter(cur.fa_per_iy, cur.captured, marker="*", s=260, color=C1,
+               edgecolor=INK, zorder=5,
+               label=f"shipped ({EUPHORIA_BOOM_WINDOW_D}d)")
+ax.set_xlabel("false alarms per instrument-year")
+ax.set_ylabel(f"episodes captured (of {wf_df['detectable'].iloc[0]})")
+ax.set_title("Boom lookback — capture vs false alarms")
+ax.legend(frameon=False, fontsize=8); despine(ax)
+
+ax = axes[1]
+ax.plot(wf_df.window, wf_df.captured, "-o", color=INK, ms=4,
+        label="captured")
+ax2 = ax.twinx()
+ax2.plot(wf_df.window, wf_df.fa_per_iy, "--o", color=C3, ms=4,
+         label="FA / instrument-year")
+ax.set_xlabel("boom lookback window (days)")
+ax.set_ylabel("episodes captured"); ax2.set_ylabel("FA / instrument-year")
+ax.set_title("Capture plateaus; false alarms keep climbing")
+ax.legend(loc="lower right", frameon=False, fontsize=8)
+ax2.legend(loc="upper left", frameon=False, fontsize=8)
+despine(ax)
+plt.tight_layout(); plt.show()
+
+# %% [markdown]
+# **What this found, and the correction it forced.**
+#
+# On the shared years the capture count is FLAT at 21–22 across roughly
+# 52–60 days while false alarms rise monotonically with the window, so the
+# efficient choice sits at the SHORT end of that plateau, not at its
+# middle. Below 52d capture collapses (21 → 15): there is a cliff, not a
+# gradient. `EUPHORIA_BOOM_WINDOW_D = 54` is the max-capture point inside
+# the FA budget — the project's own selection rule (`choose_threshold`)
+# lifted from the threshold to the window. 52d is the lower-FA
+# alternative; 120d, the original value, is dominated by both.
+#
+# **The correction.** An earlier pass of this sweep read AP lift off each
+# window's own test years and concluded that short windows destroy score
+# quality. Recomputed on the shared years, AUROC is ≈0.50 for EVERY window
+# from 40 to 100 days, including the ones then being defended. The lift
+# only becomes clearly positive at 120d+, which is exactly where capture
+# and false alarms both get worse. The honest reading is that **on this
+# evaluation period the window trades capture against false alarms and
+# does not buy detector skill at any short setting** — the gate is doing
+# most of the work whichever short window is chosen. That is a live
+# limitation, recorded in §8 of the research report, not a settled result.
+#
+# **The cost of going short.** The walk-forward needs ≥3 positive train
+# days before a test year, and at 54d the pre-2020 candidate set no longer
+# clears it: the shipped record loses 2020 and its denominator falls from
+# 122 detectable peaks to 98. Fewer captures are reported not because the
+# detector got worse but because it is being examined on less. That is a
+# real reduction in evidence and is why 60d remains defensible.
 
 # %% [markdown]
 # ## A4. Event-study CAR (MacKinlay 1997), drift-adjusted

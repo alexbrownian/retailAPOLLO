@@ -513,9 +513,12 @@ chosen by a rule written before the deciding table was computed (NB06,
 production code path in `analytics/euphoria_phases.py §6`, so notebook
 and live system cannot drift). **GET OUT** (euphoria ending) is the
 boom-gated end detector of §6.7 with its trigger on the 7d-smoothed
-score: walk-forward capture 24/122 detectable tops, 39 false alarms
-(0.195/instr-yr), AP 0.449 versus the raw gate's 0.435, median warning
-8 days before the peak — the smoothing adopted because it lowers FAs
+score: walk-forward capture 21/122 detectable tops, 15 false alarms
+(0.100/instr-yr, against a 0.23 budget), AP 0.540 against a 0.498 base
+rate, median warning 7 days before the peak — the figures after the
+2026-07-29 boom-window re-fit (§8.4); under the previous 120-day gate
+the same configuration read 24/122, 39 FAs (0.195/instr-yr), AP 0.449
+against 0.374, 8 days — the smoothing adopted because it lowers FAs
 and raises AP while structurally removing one-day-blip alerts, at a
 recorded cost of two captures. **GET IN** (euphoria starting) is the
 tournament-winning onset rules with *phase-aware candidacy* — a day
@@ -530,7 +533,7 @@ that a START landing on an END is the failure mode that destroys PM
 trust, making adjacency the binding constraint, and the capture cost is
 carried openly in NB06 and the parameter register rather than hidden.
 Frozen live thresholds (budget rule on full prior years): GET IN 0.848,
-GET OUT 0.630. The terminal now renders these two signals as explicit
+GET OUT 0.617 (was 0.630 before the 2026-07-29 re-fit). The terminal now renders these two signals as explicit
 GET IN / GET OUT banners with a window-adaptive scorecard (hit rate,
 median lead, FAs, signal count recomputed for whatever window is
 selected, judged by the same functions as the research record); the
@@ -911,7 +914,8 @@ features *inside* the score, not the trigger. The panel could not show this
 because it drew five elements at equal visual weight (a faint raw level, a
 bold 7d-smoothed level, an eligibility ribbon, a dated peak marker, and the
 deciding score) and, decisively, because the two frozen thresholds sit at
-**different heights** — GET IN `0.848141`, GET OUT `0.630231`. With two dotted
+**different heights** — GET IN `0.848141`, GET OUT `0.630231` (as frozen at
+the time; GET OUT is now `0.617489`). With two dotted
 lines at two heights, neither one means *the* line.
 
 The fix is a normalisation, not a new measurement. Each rule is drawn as
@@ -1002,8 +1006,10 @@ which days are eligible and which features are averaged.
 **Stage 1 — candidacy: is this day judgeable at all?** `desk_candidacy` splits
 the day frame in two. A GET OUT candidate needs `hype_ok ∧ boom_state`: the
 crowd is at or above its own swollen-attention gate *and* the price is already
-at least its ground-truth boom threshold above its own trailing 120-day low
-(25% for ETFs, 50% for single names, `boom_state_frame`, trailing closes only).
+at least its ground-truth boom SIZE threshold above its own trailing
+**60-day** low (25% for ETFs, 50% for single names, `boom_state_frame`,
+trailing closes only). The window is 60 days, not the ground truth's 120:
+see §8.4 — a 120-day low let post-crash rebounds clear a boom gate.
 A GET IN candidate needs `hype_raw ≥ 1 ∧ ¬end_stage_mask`: the crowd is at or
 above its own norm, and the day does not already satisfy every END gate — you
 cannot start a euphoria that is already late. Days that fail candidacy get **no
@@ -1037,7 +1043,7 @@ at least `EUPHORIA_COOLDOWN_DAYS = 21` days have passed since the last one.
 **There is no inflection test, no peak test and no convexity test anywhere in
 the firing path** — the convexity that appears in the GET IN bank is a
 *feature* being averaged, not the trigger. The frozen thresholds are GET OUT
-`0.630231` and GET IN `0.848141`, chosen once by the budget rule on full prior
+`0.617489` (`0.630231` before the 2026-07-29 re-fit) and GET IN `0.848141`, chosen once by the budget rule on full prior
 years and never re-selected on a live run (§Class 9). Finally
 `episode_coherent_alerts` applies the asymmetric state machine: a START within
 21 days *after* an END is suppressed as a contradictory flip, an END is never
@@ -1541,10 +1547,17 @@ layout) plus a dashboard smoke harness gate every change.
 2. **Trough truncation.** The trough is the measured 120-day low, so
    `run_days ≤ 120` by construction and slow multi-quarter rallies read
    as "starting" later than their narrative start.
-3. **V-recoveries qualify.** A boom off a 120-day low admits post-crash
-   rebounds (e.g. energy 2020) as episodes. Inherited knowingly from the
-   validated boom rule; the crowd features must earn the mania-vs-
-   recovery distinction, it is not assumed.
+3. **V-recoveries qualify — in the GROUND TRUTH; fixed at the LIVE GATE
+   (2026-07-29).** A boom off a 120-day low admits post-crash rebounds
+   (e.g. energy 2020) as episodes. That is still true of the ground truth
+   and is inherited knowingly: moving the yardstick would change the exam.
+   It was ALSO true of the live gate, and there it was a defect rather
+   than a definition — `semiconductors` fired GET OUT on 2023-01-31 and
+   2023-03-16 at +36.9% / +27.5% above its 120-day low while sitting 25%
+   and 20% BELOW its Dec-2021 peak, on a bounce off the Oct-2022 bottom.
+   The live gate's window is now 60 days (§8.4); those two days read
+   +20.2% / +14.3% and are blocked. The two windows are deliberately
+   different and are documented as such beside the constant.
 4. **Onset FA above budget.** 0.348 vs 0.23 per instrument-year — the
    stated cost of onset detection at current coverage, printed on the
    pane; not hidden, not excused.
@@ -1559,6 +1572,115 @@ layout) plus a dashboard smoke harness gate every change.
    arcs a desk most needs flagged.
 
 ---
+
+### 8.5 Open: the crowd score adds little inside a tight gate
+
+On the shared evaluation years (2021/2022/2026) the GET OUT score's
+AUROC is ≈0.50 at every boom window from 40 to 100 days, and its AP
+lift over the candidate base rate is ≤0.014. The operating point is
+carried by the gate — the crowd features are not, on this period,
+ranking within it. This was surfaced by the §8.4 sweep and is stated
+here rather than buried in it, because it bears on the project's
+central claim far more than the window does. It is NOT evidence that
+the crowd features are worthless: at 120 d+ the lift is +0.08, and the
+shared-year sample is three years and 93 peaks. Resolving it needs
+more coverage, not another parameter.
+
+### 8.4 The live boom window: why 60 days, and why not shorter (2026-07-29)
+
+Raised from the screen — *"why did this graph fire? I'm pretty sure the
+price did not move enough to trigger"* — and correct in substance. The
+gate itself was working: all 95 stored GET OUT flags carry `boom_state`
+True, and every one sits at ≥1.0017 of its frozen trigger. The problem was
+the *window*. Measured against a rolling 120-day low, a name that had
+crashed and merely bounced could clear a 25% "boom" bar while still far
+below its own prior peak. Across the 95 live signals, **30 fired more than
+10% below their 1-year high and 21 more than 20% below**.
+
+The window was swept through the **same** `run_tournament_entry`
+walk-forward that produced the frozen record — per-year thresholds chosen
+on train years only, episodes and the ground truth held **fixed**, so only
+the candidate set varies. Configurations do not share test years (the
+walk-forward needs ≥3 positive train days), so every row below is
+re-judged on the years all of them share: **2021, 2022, 2026; 93
+detectable peaks**.
+
+| window | cand. days | alerts | captured | FA/inst-yr | precision | median warning | AP lift | AUROC |
+|---|---|---|---|---|---|---|---|---|
+| 45 d | 758 | 25 | 16 | 0.036 | 0.640 | 5 d | −0.013 | 0.478 |
+| 50 d | 816 | 26 | 15 | 0.035 | 0.577 | 16 d | −0.001 | 0.499 |
+| 52 d | 837 | 39 | 21 | 0.081 | 0.538 | 8 d | +0.004 | 0.507 |
+| **54 d — adopted** | 858 | 40 | **22** | 0.092 | 0.550 | 9.5 d | +0.005 | 0.506 |
+| 56 d | 874 | 40 | 21 | 0.092 | 0.525 | 8 d | +0.006 | 0.499 |
+| 58 d | 890 | 41 | 21 | 0.103 | 0.512 | 8 d | +0.007 | 0.501 |
+| 60 d | 921 | 42 | 21 | 0.115 | 0.500 | 8 d | +0.014 | 0.503 |
+| 120 d *(original)* | 1463 | 41 | 20 | 0.115 | 0.488 | 6 d | +0.082 | 0.546 |
+| 150 d | 1620 | 43 | 21 | 0.125 | 0.488 | 8 d | +0.086 | 0.549 |
+| 252 d | 1820 | 45 | 18 | 0.172 | 0.400 | 18 d | +0.097 | 0.557 |
+
+*AP lift = average precision − the base rate of that candidate set, and both
+it and AUROC are computed on the **shared** years, not on each window's own —
+see the correction below. A tighter gate raises the base rate, so raw AP rises
+even when the score is learning nothing.*
+
+**54 days adopted, and 120 d is dominated on both axes** (+2 captures, −20%
+false alarms). Capture is **flat at 21–22 across roughly 52–60 days while
+false alarms rise monotonically with the window**, so the efficient point sits
+at the short end of that plateau rather than in its middle; below 52 d capture
+collapses 21 → 15, a cliff rather than a gradient. 54 d is the max-capture
+point inside the FA budget — the project's own pre-stated selection rule
+(`choose_threshold`: inside budget, maximise capture) lifted from the
+threshold to the window. **52 d** is the lower-FA alternative (21 captures at
+0.081) if false alarms are weighted harder than captures. The sweep is
+reproducible as **notebook 07 §A3b**, which re-runs from current data.
+
+**A correction, recorded rather than quietly fixed.** The first pass of this
+sweep read AP lift off *each window's own* test years and concluded that
+windows below ~60 d destroy score quality; 60 d was adopted on that basis. It
+was an artefact of comparing across different evaluation periods — short
+windows cannot score 2020, so part of what moved was the sample, not the
+model. Recomputed on the shared years, **AUROC is ≈0.50 for every window from
+40 to 100 days**, 60 d included (0.503, lift +0.014 — not the +0.042 first
+reported). Lift only becomes clearly positive at 120 d+, which is exactly
+where capture and false alarms both get worse. The honest reading is that **on
+this evaluation period the window trades capture against false alarms and does
+not buy detector skill at any short setting** — the gate does most of the work
+whichever short window is chosen. That is a live limitation (§8.5), not a
+settled result, and it is a larger question than this constant.
+
+**The recorded cost of going short.** The walk-forward needs ≥3 positive train
+days before a test year, and at 54 d the pre-2020 candidate set no longer
+clears it: the shipped record **loses its 2020 test year** and the denominator
+falls from 122 detectable peaks to **98**. Fewer captures are reported not
+because the detector got worse but because it is examined on less. 60 d keeps
+the fifth test year and remains defensible on that ground alone.
+
+**Noise.** Three shared test years, 93 peaks; 21 versus 22 captures is one
+episode. 54 d also sits two steps from the 50 d cliff, so a different data
+vintage could move it — 56 d or 58 d buy margin for ~0.01 more FA per
+instrument-year.
+
+**What this does NOT change.** The ground-truth window stays 120 days
+(§8 limitation 2 and 3), the boom SIZE thresholds stay 25% / 50%, and the
+A1 hype baseline — a different 120 entirely, the crowd's own trailing
+median — is untouched. Adopting the new window re-fits the frozen GET OUT
+threshold on a smaller candidate set (1463 → 921 judgeable days); the
+re-fit at 60 d landed at **0.617489** against 120 d's 0.630231, and that
+re-fit (2026-07-29, `--what phases --research`) realised: capture **21/122**
+(was 24), false alarms **15** (was 39) = **0.100/instrument-year** against a
+0.23 budget (was 0.195), AP **0.540** against a **0.498** base rate (was 0.449
+against 0.374), AUROC 0.536, median warning **7 days**, **65** live GET OUT
+alerts all-time (was 95). GET IN was untouched by construction except that
+start-next-to-end adjacency fell from 2 to 1.
+
+**Those are the 60 d figures and they are now one step behind the code.** The
+window moved again to 54 d on the frontier sweep below, and the frozen
+threshold must be re-selected before the record is quoted anywhere: **re-run
+`python -m analytics.run_analytics --what phases --research`**. The offline
+projection for 54 d is threshold ≈0.6186, capture 22/98, 10 false alarms
+(0.086/instrument-year), AP 0.615 against a 0.608 base rate, AUROC 0.507,
+median warning 9 days — note the denominator change from 122 to 98, which is
+the lost 2020 test year, not a change in performance.
 
 ## 9. Future Work
 
@@ -1669,6 +1791,9 @@ runs (drift-guard assert in notebook 02).
 
 | Date | Update |
 |---|---|
+| 2026-07-29 (ad) | **The boom window swept properly on the NB07 frontier and moved 60 d → 54 d; a wrong claim in the (ab) entry corrected.** The window is now chosen by the project's own selection rule (inside the FA budget, maximise capture) applied on the years all configurations share: 54 d captures **22 of 93** at **0.092** FA/instrument-year against 60 d's 21 at 0.115 and 120 d's 20 at 0.115 — 120 d is dominated on both axes. Capture is flat at 21–22 across 52–60 d while false alarms rise monotonically, so the efficient point is the short end of the plateau; below 52 d capture falls off a cliff to 15. **Correction:** entry (ab) reported an AP lift of +0.042 for 60 d and used it to reject shorter windows. That figure came from 60 d's own test years, which include 2020 that shorter windows cannot score. On the shared years AUROC is ≈0.50 for EVERY window from 40–100 d, 60 d included. The window buys capture-vs-FA, not skill — now recorded as open limitation §8.5. **Recorded cost:** at 54 d the walk-forward loses its 2020 test year and the denominator falls 122 → 98. Method added to notebook 07 as §A3b. Thresholds must be re-fit. |
+| 2026-07-29 (ac) | **The 60-day boom gate re-fit and shipped; the realised trade is 3 fewer captures for 24 fewer false alarms.** GET OUT: capture 24→**21** of 122 (19.7%→17.2%), false alarms 39→**15** = 0.195→**0.100** per instrument-year against a 0.23 budget, AP 0.449→**0.540** but base rate 0.374→**0.498** so the LIFT fell +0.075→**+0.042**, AUROC 0.545→0.536, median warning 8→**7** days, frozen threshold 0.630231→**0.617489**, live alerts all-time 95→**65**. GET IN is untouched by construction (same threshold, 20/125, 124 FAs) except start-next-to-end adjacency 2→**1**. Read honestly: the OPERATING POINT improved materially (0.71 false alarms per capture, down from 1.63) while the SCORE's discriminative power inside the gated set weakened — more of the work is now done by the gate. Docs, register, architecture note and both decks updated; **the ablation tables (raw-vs-smoothed, gate-vs-no-gate) were measured under the 120d gate and are now labelled as such, not re-run.** Notebooks 01/04/06/07 must be re-run to refresh `docs/research/*.json` and every figure. |
+| 2026-07-29 (ab) | **The live boom window cut from 120 d to 60 d, on a sweep run through the unchanged walk-forward with the ground truth held fixed (new §8.4).** Raised from the screen as "the price did not move enough to trigger". The gate was firing correctly — all 95 stored GET OUT flags clear their trigger — but a 120-day low let post-crash rebounds read as booms: 30 of 95 fired more than 10% below their own 1-year high. On the common test years 60 d captures 21 of 93 vs 120 d's 20, with 10 false alarms vs 11 and precision 0.500 vs 0.488, and it blocks both `semiconductors` early-2023 fires. **45 d and shorter rejected on AP lift ≤ 0** — the crowd score stops beating the base rate, which would make the detector a momentum screen. The GROUND-TRUTH 120-day window is deliberately unchanged, and the two are now separate constants so neither can move the other. Frozen thresholds must be re-fit. |
 | 2026-07-29 (aa) | **The end-stage band: the panel can finally say why a line above 100 could not fire, and the GET OUT / level relationship is stated instead of left to be guessed** (new §6.18; parameter register Class 8 seventh pass; DECISIONS `4. Detector Design` ×4; ARCHITECTURE §8; RUNBOOK). From the screen, on the sixth-pass chart: *"how does this chart even work? how can there both be get in and get out at the same time? doesnt that not make sense? is the red line the gradient of the black line? it is very unclear."* **(i)** Both questions have defensible answers and both exposed a display defect. The red line is **not** a derivative of the navy one: `level = 100 x mean(e1,e2,e3,e5)` and GET OUT is `mean(e1,e2,e3,e5,fade)` gated and rescaled, so **four of five ingredients are shared** and the co-movement is arithmetic, not causation. The slope-like line is GET IN, four of whose five inputs are short-vs-long-window terms. Caption now states this (chosen over renaming the legend entries). **(ii)** The two rules **cannot** both fire: `desk_end_fit` zeroes GET OUT off `end_stage_mask`, and `desk_candidacy` builds GET IN as `(hype_raw >= 1) & ~end_stage_mask`, excluding end-stage days. Measured on the store: of **63,345** judged name-days, **0** have both readiness lines >= 100, **0** fire both alerts (95 GET OUT / 156 GET IN, never the same name-day), **0** end-stage days carry a GET IN score; 189 carry two non-zero scores via the trailing mean but none reach both triggers. **(iii)** The defect: the fifth-pass tracking fill draws unjudged days in the **same colour and weight** as judged ones, so a teal line over 100 with no vertical mark reads as a contradiction. On the charted name (`memory`/SMH) GET IN was judged on **10 of ~82** days from 2026-05-01 and fired **not once**, with **79** end-stage days. **(iv)** Fixed with a faint band (`BEAR`, opacity 0.06, `layer="below"`, row 2), labelled once on the widest run — **partially reversing §6.14's removal of all shading**, argued row by row against its three original reasons. The alternative (drop the tracking fill, let the line break) was offered and not chosen. **(v)** A silent-failure trap recorded: `add_vrect` defaults to `exclude_empty_subplots=True`, so the first cut — added before row 2 had traces — dropped all three rectangles with no error while its own label still rendered. Caught by reading `layout.shapes` from the DOM. **(vi)** 108 tests pass; flake8 identical to the delivered sixth-pass file; **3** rects DOM-verified; every GET OUT alert date falls inside a shaded run, the internal consistency check. No threshold, score, store or alert date changed. |
 | 2026-07-29 (z) | **The euphoria level returns to the lower panel beside the readiness line, on one shared 0-100 axis; a window-dependent smoothing artefact on that curve found and fixed** (new §6.17; parameter register Class 8 sixth pass; DECISIONS `4. Detector Design` ×3; ARCHITECTURE §8; RUNBOOK lower-panel block). From the screen, holding a photograph of the third-pass chart: *"i like this original graph more BUT i want it to be 0 to 100% signal fires like what you did in these newer ones ... as in a mix of the two (i like the continous line of this image but i like the 0 to 100% of the new one)"*. **(i)** The 7-day-smoothed euphoria level is drawn again in the lower panel, continuous on every calendar day, beneath one readiness line per rule; the other three series from the photographed panel (raw daily level, eligibility ribbon, dated peak marker) stay retired on the desk's own choice. **(ii)** ONE SHARED AXIS, as the photographed version had: `level` is bounded 0-100 by construction (store max exactly 100.0) and readiness is a percent of its own trigger, so both fit one scale untransformed. A dual axis was rejected because two axes let the 100 rule sit anywhere relative to the level curve, which is the *"why is the threshold HERE?"* ambiguity §6.10 existed to remove. The legend, hover and caption carry the fact that the two lines are different quantities. **(iii)** §6.16's argument that the dial covers the level is withdrawn: a dial is one number and cannot show that the crowd built for three weeks before the score reached its trigger, and that shape is the warning. **(iv) A REAL DEFECT, FOUND WHILE IMPLEMENTING AND FIXED.** The level was smoothed AFTER the sidebar clip with `min_periods=1`, so the first six days of any window were a ramp-up average and the same calendar day read differently depending on how far back the reader was looking - while the readiness line beside it had always used the unclipped frame. Now smoothed unclipped, then clipped. Measured over all **59** names: last day **identical for all 59** (dial, today's reading and the 7-day change untouched), at most **6** days per name move, largest single-day correction **22.08 level points**, and the stated window peak moves by >0.5 for **5 of 59** names - five peaks that were artefacts of where the window started. **(v)** No alert changed (the level is not an input to either rule); 108 tests pass; DOM-verified three traces on `y2` - level 202 points / 0 nulls / 1 segment, GET OUT 202 / 0 / 1 peaking at 144.1, GET IN 54 nulls in 5 segments; flake8 findings byte-identical to the delivered fifth-pass file. |
 | 2026-07-28 (y) | **One solid line per rule, nothing interpolated, no state change; a desk-proposed persistence rule measured and REJECTED; the singles count answered on the page; the influence tab split into sub-tabs** (new §6.16; parameter register Class 8 fifth pass; DECISIONS `4. Detector Design` ×5; ARCHITECTURE §8; RUNBOOK lower-panel + chart-count blocks). **(i)** *"i liked the euphoria graph back how it was before"* / *"but same as nbefore but 0 to 100% now"* reverses (x) **the same day**: the watch track's two visual states are gone and each rule draws ONE continuous solid line — the production scorer over the wide candidate set, 7-day smoothed, as **percent of that rule's own frozen threshold**, so 100 is the trigger by construction. `mode="lines"`, `connectgaps=False`, no `.interpolate()` anywhere on the panel, no eligibility filter on the line. Eligibility is no longer visible on the line, only in the flags. **(ii)** The 4.1% track-versus-stored crossing disagreement from (x) is unchanged and handled the same way — `combine_first` lets the STORED value win on every day one exists, so the divergence is **unobservable rather than displayed**; auditing the tracking scorer is a notebook's job, and the report says so rather than implying the panel can do it. **(iii)** **A wrong claim in my own caption was caught before delivery, by tracing the store to source instead of trusting an earlier density reading.** The draft said a GET IN break means "no crowd at all to score." The onset store is `frame_live[frame_live.hype_raw >= 1]` (`euphoria_phases.py:683`) and membership agrees with that test on **61,872 of 61,872** day-frame rows — zero exceptions — so over the 140,858 calendar days inside names' onset spans, **23.1%** carry a row, **20.5%** were measured but sat at or below the name's own 120-day median, and **56.5%** never reached the day frame (coverage gate, pre-`j0`, or too little history). One fifth of gaps DO have chatter, so the caption and the source comment now say "the crowd was not building", with the split quoted. GET OUT never breaks (DOM-verified: one segment, zero nulls, every chart). **(iv)** The only route to an unbroken GET IN line was **rejected**: `phase_day_frame.parquet` has every `ONSET_BANK` feature and is 98.5% one-day dense, but ends **2026-06-06** against a window running to **2026-07-21** — six weeks of the most recent signal is not a price worth paying for continuity. **(v)** *"if it is a 1 day window does that make it inaccurate?"* answered by measurement: **no.** 109 above-threshold GET OUT runs, median length 4, **29 of length 1 (26.6%)**; firing-day depth **69.5% full window vs 25.3% one day**; thin alerts hit **11/29 = 37.9%** against full **24/66 = 36.4%**, **Fisher exact p = 1.0**. A persistence rule would delete **29 alerts, 11 hits and 10 episodes outright** (BBBY, CLOV, MVIS, NOK, SNDL, biotech_pharma, gold_metals, meme_stocks, semiconductors, space — 26 → 18 captured) to buy a 1.5pp precision change indistinguishable from zero. **No code from the test remains; §6.16(iii) is the trace.** **(vi)** Three singles charts is correct and the page now prints the fact with its denominator — "3 of 25 single names with data in this window alerted" — instead of padding with names that never fired. **(vii)** The influence tab became four sub-tabs (*What they are pushing*, *Building or fading?*, *The names*, *The map*) with shared controls above them and the §6.12 no-model footnote at page level; **nothing removed, placement only.** Alert dates bit-identical; 108 tests pass; DOM-verified after a provably-AST-neutral 111-line style repair of the re-indented region. |

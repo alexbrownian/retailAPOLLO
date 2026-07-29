@@ -51,7 +51,8 @@ sys.path.insert(0, ROOT)
 from src.config import (ROLL, DERIV_SMOOTH, MIN_TOTAL, CROSS_AT,   # noqa: E402
                         MIN_GAP, PROCESSED_DIR, PRICES_PATH, REFERENCE_DIR,
                         EUPHORIA_HYPE_MULT, EUPHORIA_BOOM_MIN_ETF,
-                        EUPHORIA_BOOM_MIN_SINGLE,
+                        EUPHORIA_BOOM_MIN_SINGLE, EUPHORIA_BOOM_WINDOW_D,
+                        EUPHORIA_BOOM_WINDOW_MIN_D,
                         CONV_EXIT_LEVEL, CONV_EWM_HALFLIFE,
                         EUPHORIA_EXCLUDED_THEMES)
 from src.themes import THEME_ETFS, THEME_ETF_FALLBACKS             # noqa: E402
@@ -88,6 +89,13 @@ INK_MUTED = "#666666"      # secondary text
 INK_LABEL = "#717171"      # uppercase small labels - see note below
 HAIRLINE = "#ECECEC"       # 1px rules and gridlines - never thicker
 SLATE = "#7A8794"          # price line, raw/context series
+# The ineligible stretch of the euphoria signal line.  It has to read as
+# "present but not the point" against WHITE and PANEL while a 3px coloured
+# stroke sits on the same series - so it is deliberately BELOW the text
+# contrast floor (2.0:1 on white).  That is allowed here and only here: it is
+# never used for text and never carries a value on its own, and the number it
+# draws is always also legible from the axis and the hover.
+SLATE_LIGHT = "#B9BFC7"    # same series, on a day that could not fire
 
 # DESK DECISION - INK_LABEL departs from the brief's #8C8C8C.
 # Measured with tools/contrast_audit.py, which computes the WCAG 2.1 contrast
@@ -1221,6 +1229,28 @@ st.divider()
 
 st.sidebar.title("RetailRadar")
 
+# ---- WHICH BUILD AM I LOOKING AT?  (2026-07-29)
+#
+# `.streamlit/config.toml` sets `fileWatcherType = "none"` on purpose - the
+# watcher restarting mid-read while the pipeline rewrites parquet in place is
+# a source of spurious errors.  The cost is that an edited dashboard.py is
+# NOT picked up automatically, and there is no banner saying so.  Worse, a
+# second `streamlit run` while one is already listening quietly takes the
+# next port (8501 -> 8502), so a pinned browser tab can keep serving the OLD
+# process indefinitely - which looks exactly like "the change did not land".
+#
+# This line makes that distinguishable in one glance: it is the modification
+# time and size of THE FILE THIS PROCESS IS EXECUTING, read at import from
+# `__file__`.  If it does not match the file on disk, the tab is stale.
+# Cheap, out of the way, and it answers the question without a terminal.
+try:
+    _bs = os.stat(__file__)
+    _bt = (pd.Timestamp(_bs.st_mtime, unit="s", tz="UTC")
+           .tz_convert(None).strftime("%d %b %H:%M"))
+    st.sidebar.caption(f"build: {_bt} UTC · {_bs.st_size // 1024} KB")
+except OSError:
+    pass
+
 theme_counts = load(THEME_COUNTS)
 euph = load("euphoria_levels.parquet")
 if euph is not None:
@@ -1728,7 +1758,8 @@ Nothing else on the chart is a decision. The 0-100 curve is context.
   loud afternoon.
 - **The price has to have actually run** (for GET OUT): the name must be up
   **{EUPHORIA_BOOM_MIN_ETF:.0%} (theme ETF)** or
-  **{EUPHORIA_BOOM_MIN_SINGLE:.0%} (single name)** off its 120-day low.
+  **{EUPHORIA_BOOM_MIN_SINGLE:.0%} (single name)** off its
+  **{EUPHORIA_BOOM_WINDOW_D}-day** low.
   You cannot end a party that never started.
 - **There has to be enough data** to measure at all.
 
@@ -1789,12 +1820,19 @@ the signals shown here ("use both price and the social media - I want a
 better hit rate"), so the lines on these charts are a labelled SECOND
 signal family; the crowd-only detectors above remain the research
 headline, unchanged. **GET OUT (red)** = the ending detector with (a)
-candidacy requiring an ACTUAL price boom - G2's own thresholds (≥25%
-ETF / ≥50% single above the trailing 120d low; no new constant) - which
+candidacy requiring an ACTUAL price boom - G2's own size thresholds (≥25%
+ETF / ≥50% single, over a trailing 54d low since 2026-07-29; 120d let
+crash-rebounds through, and 54d is the max-capture point inside the
+false-alarm budget on the NB07 frontier - see src/config.py) - which
 raised walk-forward capture from 16 to 26 of 122 (gain CI [+3.5pp,
-+13pp]), and (b) the trigger on the 7d-SMOOTHED score, which killed the
-one-day-blip alerts (AP 0.435 → 0.449, two captures recorded as the
-cost). **GET IN (blue)** = the onset detector made PHASE-AWARE: a day
++13pp]; that gate ablation was measured with the 120d window and has
+not been re-run), and (b) the trigger on the 7d-SMOOTHED score, which
+killed the one-day-blip alerts (AP 0.435 → 0.449, same caveat, two
+captures recorded as the cost). Since the 60d re-fit the shipped record
+is capture 21/122, 15 FAs (0.100/instrument-year against a 0.23
+budget), AP 0.540 against a 0.498 base rate, median warning 7 days -
+those are the 60d figures; the 54d threshold re-fit is pending.
+**GET IN (blue)** = the onset detector made PHASE-AWARE: a day
 that already satisfies every ending gate is end-stage, and a "start"
 there is incoherent - so it cannot fire. That cut start-next-to-end
 adjacency from 20 to 2 and late starts from 21 to 10, at a recorded
@@ -1884,7 +1922,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     # THE SIGNAL SOURCE (desk configuration 2026-07-24): GET IN /
     # GET OUT from euphoria_desk.parquet - the boom-gated SMOOTHED end
     # + phase-aware SMOOTHED onset the desk adopted in NB06 (adjacency
-    # 20 -> 2, END AP 0.435 -> 0.449, no one-day blips). Falls back to
+    # 20 -> 2, END AP 0.435 -> 0.449 in the 120d-gate era, no one-day
+    # blips). Falls back to
     # the crowd-only research stores only if the desk store is missing.
     use_desk = dk is not None and len(dk)
     if use_desk:
@@ -2053,7 +2092,14 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 and prices is not None:
             full = prices[prices["symbol"] == sym].sort_values("date")
             pxa = full.set_index("date")["px_last"].asfreq("D").ffill()
-            low120 = pxa.rolling(120, min_periods=60).min()
+            # THE SAME WINDOW THE LIVE GATE USES, read from the constant
+            # rather than repeated as a literal.  This shading is the
+            # on-screen picture of `boom_state`; when the gate moved from
+            # 120d to 54d (2026-07-29) a hard-coded 120 here would have left
+            # the chart claiming a risk zone the detector no longer saw.
+            low120 = pxa.rolling(EUPHORIA_BOOM_WINDOW_D,
+                                 min_periods=EUPHORIA_BOOM_WINDOW_MIN_D
+                                 ).min()
             bm = (EUPHORIA_BOOM_MIN_SINGLE if kind == "single"
                   else EUPHORIA_BOOM_MIN_ETF)
             boom = ((pxa / low120 - 1) >= bm).reindex(one_i.index).eq(True)
@@ -2203,9 +2249,34 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                      f"{len(top_alerts)}<span style='font-size:13px;"
                      f"color:{INK_LABEL}'> out</span>", None),
                 ]), unsafe_allow_html=True)
+        # TWO ROWS: THE PRICE, AND THE SIGNAL.  NOTHING ELSE.
+        #
+        # Desk instruction 2026-07-29 (ninth pass): "we really need to make
+        # the bottom two charts into 1 chart ... I only want 1 chart not two
+        # (below the price chart)".
+        #
+        # WHAT LEFT, AND WHY IT COULD.  The euphoria LEVEL had its own row
+        # for one pass.  It was on the panel at all because of a rule the
+        # desk set three separate times: the lower panel must carry a
+        # CONTINUOUS DAILY SERIES, so a reader can see the crowd building for
+        # weeks before anything fires - a dial is one number and cannot show
+        # a shape.  That requirement is now met by the SIGNAL line itself,
+        # which is drawn every calendar day with no gaps.  The level was the
+        # stand-in for a continuous series back when the readiness line was
+        # sparse; it is not needed as one now, and a second panel was the
+        # price of keeping it.
+        #
+        # NOTHING MEASURED IS LOST.  `level` is unchanged in the stores, and
+        # on screen it is still the DIAL, the "euphoria today" fact, the
+        # "change over 7 days" fact and the "hottest in window" fact - all
+        # immediately above this chart - plus the hover.  Its SHAPE is also
+        # still visible on the price line: the amber "crowded AND already run
+        # up" stretch is the danger state, which is the part of the level a
+        # PM acts on.  If the curve itself is wanted back it belongs in its
+        # own expander, not stapled under the decision.
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                            row_heights=[0.66, 0.34],
-                            vertical_spacing=0.045)
+                            row_heights=[0.60, 0.40],
+                            vertical_spacing=0.05)
         if px is not None and not px.empty:
             fig.add_trace(go.Scatter(x=px.index, y=px.values,
                                      name=f"{sym} price",
@@ -2230,7 +2301,21 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             # epoch-milliseconds is numeric and works on every version
             return pd.Timestamp(ts).value / 1_000_000
 
-        # ---- THE LOWER PANEL: HOW HOT (the level) AND HOW CLOSE TO FIRING
+        # ---- THE LOWER PANEL.
+        #
+        # SUPERSEDED IN PRESENTATION ONLY, 2026-07-29 (eighth pass).  The
+        # block below still builds exactly what it always built - one
+        # readiness series per rule, `stored score / frozen threshold`,
+        # priority-merged with the recomputed series - and every word of the
+        # reasoning it records still holds for THAT construction.  What
+        # changed is the pen: the two 0-100 series are combined into ONE
+        # SIGNED LINE running -1..+1 (see "ONE SIGNED SIGNAL LINE" further
+        # down), and the level moves to its own row.  The history is kept
+        # rather than rewritten because the two rejected alternatives it
+        # describes (the interpolated ghost, the dashed watch track) must not
+        # be re-proposed.
+        #
+        # WHAT IT USED TO BE: HOW HOT (the level) AND HOW CLOSE TO FIRING
         # (the readiness), on one shared 0-100 axis.
         #
         # Desk brief 2026-07-28: "the euphoria charts are still way too
@@ -2249,7 +2334,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # ribbon along the axis floor, a dated peak marker, and the deciding
         # score with its own dotted threshold.  Four of those five were
         # context for the decision the fifth was making, drawn at equal
-        # weight, and the two thresholds (GET IN 0.848, GET OUT 0.630) sat at
+        # weight, and the two thresholds (GET IN 0.848, GET OUT 0.630 as
+        # frozen then, 0.617 now) sat at
         # different heights so neither line meant "the line".
         #
         # What is drawn now is one series per firing rule:
@@ -2427,132 +2513,243 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                         # stored wins wherever it exists; no interpolation.
                         _full = _s.combine_first(_tr)
             _merged.append((_lab, _clr, _s, _full))
-        # The level is drawn FIRST so the readiness lines sit on top of it -
-        # it is context, they are the decision.  It is skipped in the
-        # no-desk-store fallback above, where the readiness line IS the level
-        # divided by a threshold: drawing both would put the same series on
-        # the panel twice at two different scales.
-        _lvl_on_panel = bool(_ready) and _ready[0][0] != "SIGNAL"
-        if _lvl_on_panel and lvl.notna().any():
-            fig.add_trace(go.Scatter(
-                x=lvl.index, y=lvl.values, mode="lines",
-                name="euphoria level (7d smooth)",
-                connectgaps=False,
-                line=dict(color=ACCENT, width=1.8),
-                hovertemplate="euphoria level: %{y:.0f}/100<extra></extra>"),
-                row=2, col=1)
-        for _lab, _clr, _s, _full in _merged:
-            _judged = (_s.reindex(_full.index).notna()
-                       .map({True: "judged - this number fired "
-                                   "or could have",
-                             False: "tracking - could not fire "
-                                    "on this day"}).values)
-            fig.add_trace(go.Scatter(
-                x=_full.index, y=_full.values, mode="lines",
-                name=f"{_lab}: how close to firing",
-                connectgaps=False,
-                line=dict(color=_clr, width=2.4),
-                customdata=_judged,
-                hovertemplate=(
-                    f"{_lab}: %{{y:.0f}}% of the way to firing"
-                    "<br>%{customdata}<extra></extra>")),
-                row=2, col=1)
-        # ---- THE END-STAGE BAND (2026-07-29, seventh pass, from the desk:
-        # "how can there both be get in and get out at the same time? doesnt
-        # that not make sense?").
+        # ---- ONE SIGNED SIGNAL LINE, -1 .. +1.
         #
-        # It DOES make sense, and the panel was hiding the reason.  The two
-        # rules ask different questions of different day sets:
-        #   * GET OUT's score is zeroed unless the day is END-STAGE
-        #     (`e1 >= EUPHORIA_ATT_GATE & e2 > 0 & hype_ok`, i.e.
-        #     `end_stage_mask`);
-        #   * GET IN's candidate frame is `(hype_raw >= 1) & ~end_stage_mask`,
-        #     i.e. it EXCLUDES end-stage days outright.
-        # So on any day the exit question is live, the entry question is not
-        # asked at all.  Measured on the shipped store rather than asserted
-        # from the code: of 63,345 judged name-days, ZERO carry both readiness
-        # lines at or above 100, ZERO fire both alerts (95 GET OUT / 156 GET IN
-        # historically, never the same name-day), and ZERO end-stage days carry
-        # a GET IN score.  A 21-day state machine then suppresses any GET IN
-        # landing after a GET OUT as a contradictory flip.
+        # Desk brief 2026-07-29 (eighth pass, from the screen): "at the
+        # moment it is too confusing on how we get a get out flag / the lines
+        # look confusing when they start and stop / ideal output: a
+        # continuous line that perhaps goes from -1 to 1 (should be smooth
+        # and not filled in but an actual signal) with 1 being get out -1 get
+        # in (make that clear). and only the coloured part meaning eligible
+        # signal. essentially, one clear line continuous that when it crosses
+        # a boundary that's when the signal flags".
         #
-        # What the reader actually saw: the tracking fill (above) draws the
-        # GET IN line straight through the end stage in the SAME colour and
-        # weight as a judged day, so a teal line sailing over 100 with no
-        # vertical line beneath it reads as a bug or a contradiction.  It is
-        # neither - it is a hypothetical.  On the charted example (theme
-        # `memory`, SMH) GET IN was judged on 10 of ~82 days from 2026-05-01
-        # and fired NOT ONCE, while 79 days sat in the end stage.
+        # WHAT CHANGED, AND WHAT DID NOT.  No number in the model moved.  The
+        # two readiness series built above are still
+        # `stored score / that rule's frozen threshold`, still priority-merged
+        # with the recomputed series so the stored value wins on every day the
+        # detector actually judged.  All that happens here is arithmetic on
+        # those two series and a change of pen:
         #
-        # THIS PARTIALLY REVERSES the "signal lines, and nothing else" removal
-        # below, and the reversal is recorded rather than silently overwritten.
-        # Two of the three reasons stated there do not apply to this band and
-        # the third is answered:
-        #   1. "shading says somewhere in this region" - correct, and this band
-        #      IS a region statement ("entry was off the table across these
-        #      days"), not a dated verdict.  It carries no signal and no
-        #      number, so it cannot be mistaken for one;
-        #   2. "three overlapping translucent bands mix into a fourth colour" -
-        #      this is the ONLY band on the panel, so nothing mixes;
-        #   3. greyscale/printing - a 6%-opacity tint survives both as a light
-        #      grey block, and the label prints as text.
-        # The alternative (dropping the tracking fill so the teal line simply
-        # breaks) was offered to the desk and NOT chosen: it would have cut the
-        # GET IN line to ~10 visible points on this name.  Nothing measured is
-        # added or removed here - `end_stage` is read straight off the store.
+        #     signal = + (GET OUT readiness) / 100   on days the exit
+        #                                              question is asked
+        #            = - (GET IN  readiness) / 100   on days the entry
+        #                                              question is asked
         #
-        # PLACED AFTER THE TRACES DELIBERATELY, and this is a trap worth
-        # naming: `add_vrect` defaults to `exclude_empty_subplots=True`, so
-        # a band added to row 2 BEFORE row 2 has any traces is silently
-        # DROPPED - no error, no shape, and the annotation beside it still
-        # renders, so the panel looks merely unshaded rather than broken.
-        # That is exactly how the first cut of this failed (DOM read: 3
-        # runs found, 0 rect shapes emitted).  Z-order does NOT depend on
-        # insertion order here - `layer="below"` is what puts the band
-        # under the lines - so moving it down costs nothing.
+        # so +1.00 is exactly "the GET OUT score reached its frozen trigger"
+        # and -1.00 is exactly "the GET IN score reached its frozen trigger".
+        # The crossings are bit-identical to the 0-100 panel this replaces,
+        # and the vertical alert lines still come from `coherent` (the stored
+        # flags), never from anything computed here.
+        #
+        # ONE QUESTION AT A TIME - THE LINE NEVER MIXES THE TWO RULES.
+        #
+        # This replaces a SUBTRACTION (`out_readiness - in_readiness`) that
+        # shipped for one pass and was wrong.  Reported from the screen
+        # 2026-07-29: on theme `energy` (XLE) the GET OUT alerts of 05 Mar and
+        # 26 Mar fired while the line sat around +0.3, so the flag appeared to
+        # come from nowhere.  Traced to the stores, the ALERTS were exact -
+        # 05 Mar `out_score` 0.6520 / threshold 0.6302 = 1.035, 26 Mar 1.250
+        # (the threshold frozen at the time; it is 0.6175 since the
+        # 2026-07-29 boom-window re-fit, and those two `energy` days no
+        # longer clear the 60d gate at all) -
+        # and across the whole shipped store ALL 95 GET OUT flags sit at
+        # >= 1.0017 of trigger and ALL 156 GET IN flags at >= 1.0000, with
+        # zero exceptions.  The defect was entirely in the drawing: on those
+        # end-stage days `euphoria_onset` still carries rows (36 of them
+        # across that stretch, with attention-acceleration and influx ranks
+        # pinned at 1.00), so the recomputed GET IN readiness was large - and
+        # subtracting it deducted a HYPOTHETICAL entry reading, one the
+        # detector never asked for and could not have acted on, from a real
+        # exit reading.  +1.035 was drawn as +0.28.
+        #
+        # The fix is to pick, not to combine.  The stores define which
+        # question is live: `in_score` is present on 0 of 2,423 end-stage
+        # name-days, so entry is genuinely not asked there; `out_score` is
+        # present on 473 non-end-stage days, so exit is occasionally asked
+        # outside it.  On the 0.74% of days both are asked, the line takes
+        # WHICHEVER IS CLOSER TO FIRING - and that tie-break is what keeps
+        # every flag on its boundary: of the 8 GET OUT flags that land on a
+        # day carrying an entry reading, the exit readiness is the larger on
+        # 8 of 8; of the 10 GET IN flags on a day carrying an exit reading,
+        # the entry readiness is the larger on 10 of 10.  So all 251 stored
+        # flags now sit exactly on +/-1, which is the property the panel is
+        # selling.
+        #
+        # THE COST, STATED.  The line steps when the question changes - on
+        # `energy` it goes from -0.58 on 28 Feb to +0.54 on 01 Mar, because
+        # the name entered the end stage and a different rule took over.  That
+        # step is real and is not smoothed away: pretending the two readings
+        # are on one continuous scale is exactly the mistake the subtraction
+        # made.  It is continuous in TIME - no gaps, every calendar day drawn.
+        #
+        # THAT SIGN ANSWERS BOTH COMPLAINTS AT ONCE.
+        #   * "how do we get a GET OUT flag" - the line crosses +1.  One
+        #     boundary per direction, drawn, labelled, and at the same height
+        #     for every name and every window because both sides are
+        #     percentages of their own frozen trigger.
+        #   * "the lines start and stop" - they no longer can.  The old GET IN
+        #     line broke wherever the onset store had no row, and the desk read
+        #     the holes as missing data.  A day on which neither question is
+        #     asked now sits at 0 instead of leaving a gap, which is what the
+        #     absence MEANS: `euphoria_onset` is
+        #     `frame_live[frame_live.hype_raw >= 1]`, verified to agree with
+        #     store membership on 61,872 of 61,872 day-frame rows, so no row
+        #     is "no build-up to measure", not "data missing".
+        # The end-stage shading is gone with them, because the sign now carries
+        # it: a positive line IS "the exit question is the live one here".
+        #
+        # COLOUR CARRIES ELIGIBILITY - the thing the old panel could only say
+        # in a hover.  A day is drawn in COLOUR only where the detector really
+        # judged the name, i.e. where the STORED score exists for whichever
+        # side the line is on.  GREY is the same arithmetic on the same
+        # features on a day whose gates were shut: real, computable, and
+        # incapable of firing.  This is why the line may run past +/-1 in grey
+        # with no alert beneath it, and it is the visible answer to "why did
+        # nothing fire here?".  Isolated eligible days get a small marker so a
+        # one-day window cannot vanish between two grey neighbours.
+        #
+        # NOT FILLED, DELIBERATELY.  A fill under a signed series reads as an
+        # exposure or an area; this is a level, so it stays a stroke.  And it
+        # is not re-smoothed here: both scores are already the house ROLL-day
+        # mean, and any extra smoothing would slide the crossing off the alert
+        # date it has to match.
+        _idx = lvl.index
+        _nan = pd.Series(float("nan"), index=_idx, dtype="float64")
+
+        def _side(_want):
+            """stored + merged readiness for one rule, as fractions of 1.0."""
+            for _lab, _clr, _s, _full in _merged:
+                if _lab == _want:
+                    return (pd.to_numeric(_s.reindex(_idx), errors="coerce"),
+                            pd.to_numeric(_full.reindex(_idx),
+                                          errors="coerce"))
+            return (_nan.copy(), _nan.copy())
+
+        _out_s, _out_f = _side("GET OUT")
+        if _out_f.isna().all():
+            # no-desk-store fallback: the level IS the decider, and it is an
+            # exit-side reading, so it takes the positive half unchanged.
+            _out_s, _out_f = _side("SIGNAL")
+        _in_s, _in_f = _side("GET IN")
+
+        # which question the stores say is live on each day.  `end_stage`
+        # opens the exit question and closes the entry one; a stored score is
+        # itself proof that its question was asked, so it also counts.
         if dk_i is not None and "end_stage" in dk_i.columns:
             _es = (dk_i["end_stage"].astype(bool)
-                   .reindex(lvl.index, fill_value=False))
-            _runs = []
-            if _es.any():
-                _blk = (_es != _es.shift()).cumsum()
-                for _, _g in _es.groupby(_blk):
-                    if bool(_g.iloc[0]):
-                        _runs.append((_g.index[0], _g.index[-1]))
-            # a one-day run has zero width and would be invisible, so every
-            # band is padded half a day either side - the store's resolution.
-            _pad = pd.Timedelta(hours=12)
-            for _a, _b in _runs:
-                fig.add_vrect(
-                    x0=_ms(pd.Timestamp(_a) - _pad),
-                    x1=_ms(pd.Timestamp(_b) + _pad),
-                    fillcolor=BEAR, opacity=0.06, line_width=0,
-                    layer="below", row=2, col=1)
-            # labelled ONCE, on the widest run: repeating it on every band is
-            # the label-collision defect the signal marks already solved.
-            # The label is deliberately SHORT - a longer one ("... entry not
-            # asked here") measured WIDER THAN THE BAND it sits on, which read
-            # as if the shading spanned further than it does. The full sentence
-            # lives in the caption, where it has room; on the chart the label
-            # only has to say which region is meant.
-            if _runs:
-                _wide = max(_runs, key=lambda r: (r[1] - r[0]))
-                fig.add_annotation(
-                    x=_ms(pd.Timestamp(_wide[0])
-                          + (pd.Timestamp(_wide[1])
-                             - pd.Timestamp(_wide[0])) / 2),
-                    y=0.02, yref="y domain", yanchor="bottom",
-                    row=2, col=1, showarrow=False,
-                    text="shaded: exit question only",
-                    font=dict(size=9, color=INK_MUTED))
+                   .reindex(_idx, fill_value=False))
+        else:
+            _es = pd.Series(False, index=_idx)
+        _exit_live = _es | _out_s.notna()
+        _entry_live = (~_es) & (_in_s.notna() | _in_f.notna())
+        _exit_r = _out_f.where(_exit_live)
+        _entry_r = _in_f.where(_entry_live)
+        # both asked (0.74% of days): the one closer to firing takes the line.
+        _take_exit = (_exit_r.notna()
+                      & (_entry_r.isna() | (_exit_r >= _entry_r)))
+        sig = _exit_r.where(_take_exit, -_entry_r).fillna(0.0) / 100.0
+        # colour = the STORED score exists for the side the line is on, i.e.
+        # the detector really judged this name today and this number could
+        # have fired.
+        _elig = ((_take_exit & _out_s.notna())
+                 | (~_take_exit & _in_s.notna()))
 
         if _ready:
+            # the continuous base line: every day, no holes, no interpolation.
+            fig.add_trace(go.Scatter(
+                x=sig.index, y=sig.values, mode="lines",
+                name="signal (grey = could not fire that day)",
+                connectgaps=False,
+                line=dict(color=SLATE_LIGHT, width=1.7),
+                hovertemplate="signal %{y:+.2f}<extra></extra>"),
+                row=2, col=1)
+            for _m, _clr, _nm in (
+                    (_elig & (sig >= 0), BEAR,
+                     "eligible: exit side  (+1 = GET OUT)"),
+                    (_elig & (sig < 0), TEAL,
+                     "eligible: entry side  (-1 = GET IN)")):
+                if not bool(_m.any()):
+                    continue
+                _seg = sig.where(_m)
+                fig.add_trace(go.Scatter(
+                    x=_seg.index, y=_seg.values, mode="lines",
+                    name=_nm, connectgaps=False,
+                    line=dict(color=_clr, width=3.0),
+                    hovertemplate=(
+                        "signal %{y:+.2f}"
+                        "<br>eligible - this number could fire"
+                        "<extra></extra>")),
+                    row=2, col=1)
+                # A SINGLE ELIGIBLE DAY has no neighbour to draw a line to,
+                # so it would vanish between two grey ones.  It is drawn as a
+                # short horizontal stub spanning that day at that day's
+                # value - NOT as a marker.  A marker here would read as
+                # "fired", which is now a real and different mark on this
+                # panel, and the two must not be confusable.
+                _iso = (_m & ~_m.shift(1, fill_value=False)
+                        & ~_m.shift(-1, fill_value=False))
+                if bool(_iso.any()):
+                    _pad = pd.Timedelta(hours=10)
+                    _hx, _hy = [], []
+                    for _d, _v in sig.where(_iso).dropna().items():
+                        # the gap between stubs is carried by a None in Y,
+                        # not in X: a None/NaT inside a datetime x-list is
+                        # not JSON-serialisable by every plotly backend.
+                        _hx += [_d - _pad, _d + _pad, _d + _pad]
+                        _hy += [_v, _v, None]
+                    fig.add_trace(go.Scatter(
+                        x=pd.DatetimeIndex(_hx), y=_hy,
+                        mode="lines", connectgaps=False,
+                        line=dict(color=_clr, width=3.0),
+                        showlegend=False, hoverinfo="skip"),
+                        row=2, col=1)
+            # THE TWO BOUNDARIES.  Dotted, coloured to their own side, and
+            # labelled in words - the whole firing rule is "the line touched
+            # this".  Zero is drawn faintly because the sign flip is a change
+            # of QUESTION, not a signal.
+            fig.add_hline(y=0, line_color=INK, line_width=0.8, opacity=0.30,
+                          row=2, col=1)
+            # NO IN-PLOT LABELS ON THE BOUNDARIES.  They were tried on both
+            # ends and collide either way: left lands on the axis ticks,
+            # right lands on a late alert's vertical rule and its fired dot
+            # (13 Jul on theme `memory` sat underneath the label).  The
+            # boundaries are named on the AXIS instead - see the ticktext
+            # below - which cannot collide with anything and is the label a
+            # reader is already looking at while following the line up.
             fig.add_hline(
-                y=100, line_dash="dot", line_color=INK, opacity=0.9,
-                row=2, col=1,
-                annotation_text="signal fires here",
-                annotation_position="top left",
-                annotation_font=dict(color=INK, size=10))
+                y=1, line_dash="dot", line_color=BEAR, opacity=0.95,
+                row=2, col=1)
+            fig.add_hline(
+                y=-1, line_dash="dot", line_color=TEAL, opacity=0.95,
+                row=2, col=1)
+            # THE MOMENT OF FIRING, MARKED ON THE LINE ITSELF.  The
+            # vertical rules say WHICH DAY; a dot on the curve says THIS
+            # POINT, and the point is what a reader is looking at when they
+            # ask "did it actually touch?".  The dates come from the STORED
+            # flags, never from testing the drawn value, so the dot cannot
+            # drift away from the alert it marks - if a dot ever sits off a
+            # boundary, the drawing is wrong and this is how you would see
+            # it (that is exactly how the 2026-07-29 subtraction defect was
+            # caught).
+            _fx, _fy, _fc, _ft = [], [], [], []
+            for _d, _nm, _c in ([(d, "GET OUT", BEAR) for d in top_alerts]
+                                + [(d, "GET IN", TEAL)
+                                   for d in onset_alerts]):
+                if _d in sig.index and pd.notna(sig.loc[_d]):
+                    _fx.append(_d)
+                    _fy.append(float(sig.loc[_d]))
+                    _fc.append(_c)
+                    _ft.append(f"{_nm} FIRED here "
+                               f"({float(sig.loc[_d]):+.2f})")
+            if _fx:
+                fig.add_trace(go.Scatter(
+                    x=_fx, y=_fy, mode="markers",
+                    marker=dict(size=10, symbol="circle", color=_fc,
+                                line=dict(color=WHITE, width=1.6)),
+                    name="fired", text=_ft,
+                    hovertemplate="%{text}<extra></extra>"),
+                    row=2, col=1)
         else:
             fig.add_annotation(
                 x=0.5, y=0.5, xref="x domain", yref="y domain",
@@ -2578,19 +2775,49 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         for d in top_alerts:                         # GET OUT
             fig.add_vline(x=_ms(d), line_color=BEAR, line_width=1.6,
                           opacity=0.9)
-        # Labels are placed in a SEPARATE pass, alternating height, so two
-        # signals a few days apart do not print on top of each other - the
-        # exact defect that made the old chart unreadable when a start and
-        # an end landed in the same fortnight.
-        marks = ([(d, "GET IN", TEAL) for d in onset_alerts]
-                 + [(d, "GET OUT", BEAR) for d in top_alerts])
-        for i, (d, text, colour) in enumerate(sorted(marks)):
+        # Labels are placed in a SEPARATE pass, on STACKED ROWS, so two
+        # signals a few days apart do not print on top of each other.
+        #
+        # WHY THE OLD `i % 2` FAILED (reported from the screen 2026-07-29,
+        # full-history window).  Alternating two heights only guarantees
+        # separation between CONSECUTIVE labels; it says nothing about
+        # label i and label i+2, which share a row.  Over a four-year window
+        # four alerts inside two months landed as two overlapping pairs, and
+        # the whole strip became unreadable.
+        #
+        # WHAT REPLACES IT: a greedy first-fit over rows.  A label goes on
+        # the lowest row whose previous occupant ended far enough to its
+        # left, where "far enough" is the label's own width converted from
+        # characters to DAYS OF THIS WINDOW - so the packing tightens on a
+        # three-month view and loosens on a four-year one, instead of being
+        # tuned for one zoom level and wrong at every other.  Rows grow as
+        # needed; the figure's top margin grows with them (below), so a
+        # dense cluster pushes the strip up rather than overprinting.
+        marks = sorted([(d, "GET IN", TEAL) for d in onset_alerts]
+                       + [(d, "GET OUT", BEAR) for d in top_alerts])
+        _span_days = max(1.0, (one_i.index.max()
+                               - one_i.index.min()).total_seconds() / 86400)
+        _rows_used, _lvl_max = [], 0
+        for d, text, colour in marks:
+            _dt = pd.Timestamp(d)
+            # ~5.4 px per character at 9.5px bold + 2px padding either side;
+            # a 900px-wide panel is the reference the ratio is taken from.
+            _wid_days = (len(text) + 9) * 5.4 / 900.0 * _span_days
+            _lvl = 0
+            while _lvl < len(_rows_used) and _rows_used[_lvl] > _dt:
+                _lvl += 1
+            _end = _dt + pd.Timedelta(days=_wid_days)
+            if _lvl < len(_rows_used):
+                _rows_used[_lvl] = _end
+            else:
+                _rows_used.append(_end)
+            _lvl_max = max(_lvl_max, _lvl)
             fig.add_annotation(
                 x=_ms(d), y=1.0, yref="y domain", yanchor="bottom",
-                text=f"<b>{text}</b>  {pd.Timestamp(d).strftime('%d %b')}",
+                text=f"<b>{text}</b>  {_dt.strftime('%d %b %y')}",
                 showarrow=False, font=dict(size=9.5, color=colour),
                 bgcolor="rgba(255,255,255,0.92)", borderpad=2,
-                yshift=4 + 14 * (i % 2), row=1, col=1)
+                yshift=4 + 14 * _lvl, row=1, col=1)
         # NO FIGURE TITLE, and a small top margin.  The name, the symbol, the
         # live state and the signal counts are all in the header line and the
         # facts row above; repeating them inside a 55px plotly title strip was
@@ -2621,67 +2848,92 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # line that overshoots gets 8% of air above its own maximum.  The
         # level curve needs no term here: it is bounded 0-100 by construction
         # (store max exactly 100.0), so 125 already clears it.
-        _ytop = 125.0
-        for _lab, _clr, _s in _ready:
-            if _s.notna().any():
-                _ytop = max(_ytop, float(_s.max()) * 1.08)
+        # HEADROOM.  The signal axis is SYMMETRIC on purpose: an asymmetric
+        # one would make +0.8 and -0.8 look like different distances from
+        # their triggers, and "how far is it from firing" is the only
+        # question this panel answers.  1.35 is the floor so both dotted
+        # boundaries always sit inside the frame with air above them even on
+        # a quiet name; beyond that the axis grows to 12% past the largest
+        # excursion, so an overshoot is never clipped.
+        _smax = sig.abs().max() if _ready else float("nan")
+        _ylim = max(1.35, float(_smax) * 1.12) if pd.notna(_smax) else 1.35
+        # TOP MARGIN FOLLOWS THE LABEL STACK.  Each row of signal labels is
+        # ~14px and the first sits 4px above the panel, so N rows need
+        # 4 + 14*N + a little air.  A fixed 38 was right for two rows and
+        # clipped the third and fourth on a full-history window.
+        # BOTTOM MARGIN AND THE LEGEND.  The date ticks are rotated -40 deg
+        # and take ~55px; a legend placed at a negative `y` is positioned
+        # against the PLOT AREA, so it printed straight through them.
+        # `yref="container"` pins it to the bottom of the FIGURE instead,
+        # which is the one anchor the ticks cannot move.
+        _lbl_rows = _lvl_max + 1 if marks else 1
         fig.update_layout(title=dict(text=""),
-                          height=430, hovermode="x unified",
-                          margin=dict(l=10, r=10, t=38, b=10),
+                          height=440 + 14 * max(0, _lbl_rows - 2),
+                          hovermode="x unified",
+                          margin=dict(l=10, r=10,
+                                      t=24 + 14 * _lbl_rows, b=86),
                           showlegend=True,
-                          legend=dict(orientation="h", yanchor="top",
-                                      y=-0.14))
+                          legend=dict(orientation="h", yref="container",
+                                      yanchor="bottom", y=0.01,
+                                      xref="container", xanchor="center",
+                                      x=0.5))
         fig.update_yaxes(title_text="price (USD)", row=1, col=1)
-        fig.update_yaxes(title_text="0-100: level, and % of trigger",
-                         range=[0, _ytop], row=2, col=1)
+        # THE TICKS SAY WHAT THE ENDS MEAN.  A bare "-1" needs the legend or
+        # the caption to be decoded; "-1 GET IN" needs nothing, and it is the
+        # one label a reader is guaranteed to look at while following the
+        # line to a boundary.
+        fig.update_yaxes(title_text="signal", range=[-_ylim, _ylim],
+                         zeroline=False, tickmode="array",
+                         tickvals=[-1, -0.5, 0, 0.5, 1],
+                         ticktext=["-1<br>GET IN fires", "-0.5", "0",
+                                   "+0.5", "+1<br>GET OUT fires"],
+                         row=2, col=1)
         _axes_fidelity(_theme(fig))
         st.plotly_chart(fig, width="stretch", key=key)
-        st.caption("Lower panel, two things on one 0-100 scale. **The navy "
-                   "line is the euphoria level, 7-day smoothed** - how hot "
-                   "the crowd is, the same definition the dial reads, drawn "
-                   "every calendar day so you can see the build-up. **The "
-                   "coloured line(s) are how close each rule is to firing, "
-                   "as a percentage of that rule's own frozen trigger.** "
-                   "Both run 0-100 and higher is hotter in both, but they "
-                   "are not the same quantity - a level of 70 is not 70% of "
-                   "the way to a signal, so read each line against its own "
-                   "legend entry. "
-                   "**The GET OUT line is not the slope of the navy line** - "
-                   "it is the same blend of ingredients plus one more (mood "
-                   "rolling over while the crowd is still large), rescaled so "
-                   "100 is its trigger, which is why the two move together. "
-                   "**The GET IN line is the slope-like one**: it is built "
-                   "from short-window-versus-long-window terms, so it asks "
-                   "how fast attention is climbing rather than how high it "
-                   "already is. "
-                   "**Shaded days are end-stage days**, where the crowd "
-                   "already cleared every exit gate. On those days only the "
-                   "exit question is asked - the entry rule excludes them by "
-                   "construction - so the GET IN line there is a "
-                   "what-it-would-have-said reading and cannot fire, however "
-                   "high it goes. That is why both lines can look hot at "
-                   "once without contradicting each other, and no name-day in "
-                   "the whole record has ever fired both. "
-                   "100 = the signal fires, so the trigger is the "
-                   "same height for every name and every rule, and a "
-                   "crossing at 100 IS the alert - the vertical line above "
-                   "marks the day. Nothing on this line is interpolated: "
-                   "where the detector judged the name, the line is exactly "
-                   "the number it acted on; on the remaining days it is the "
-                   "same 7-day arithmetic run on the same features, which is "
-                   "the only reading there is. Hover any point to see which "
-                   "of the two it is. **The line can sit above 100 without "
-                   "anything firing** - that means the crowd score was there "
-                   "but the name was not eligible that day (the price/boom "
-                   "gate), and it is the answer to \"why did nothing fire "
-                   "here?\". **Flat on the axis is not missing data:** the "
-                   "score really is zero, because the attention gate was "
-                   "shut. **GET OUT never breaks** - its inputs are recorded "
-                   "every calendar day. **A break in the GET IN line** is "
-                   "the one gap left on this panel, and it means there was "
-                   "no build-up to measure: either the chatter sat at or "
-                   "below this name's own normal level, or there was too "
-                   "little of it to measure at all.")
+        # NO PARAGRAPH UNDER THE CHART (desk instruction 2026-07-29:
+        # "remove all of the words below each graph").  The caption that
+        # used to sit here ran to ~250 words and was printed once PER NAME,
+        # so a six-name page carried the same explanation six times and the
+        # charts themselves were pushed off the screen.  Nothing is lost:
+        # the text moves into a hover, the same pattern the dial above
+        # already uses ("what this dial means"), so it is loud when
+        # challenged and silent when nobody is asking.  The chart is now
+        # expected to explain itself - that is what the signed -1..+1 line,
+        # the two labelled boundaries and the "GET IN / GET OUT" axis ticks
+        # are for; if a reader still needs the paragraph to read the panel,
+        # the panel is wrong and the paragraph is not the fix.
+        st.markdown(
+            f"<span style='font-size:11px;color:{INK_MUTED}'>"
+            "how to read this chart</span>",
+            unsafe_allow_html=True,
+            help=(
+                "**One line, one rule.** It runs -1 to +1. **+1 is where "
+                "GET OUT fires, -1 is where GET IN fires**, and the flag is "
+                "the line touching that boundary - no inflection test, no "
+                "second condition. Both ends are a percentage of that "
+                "rule's own frozen trigger, so the boundaries sit at the "
+                "same height for every name and every window.\n\n"
+                "**The sign says which question is live.** Above zero the "
+                "exit question is being asked, below zero the entry one. "
+                "The line never mixes them: it shows one rule's reading at "
+                "a time, and on the rare day both are asked it shows "
+                "whichever is closer to firing. That is why it can step "
+                "when a name enters the end stage - a different rule took "
+                "over, and the two are not on one continuous scale.\n\n"
+                "**Only the coloured stretches can fire.** Colour means the "
+                "detector judged the name that day. Grey is the same "
+                "arithmetic on a day whose gates were shut - real, but it "
+                "could not have fired, which is why grey may pass a "
+                "boundary with no vertical mark beneath it.\n\n"
+                "No gaps and nothing interpolated: where the detector "
+                "judged the name the line is exactly the number it acted "
+                "on, and a day with no build-up contributes a real zero "
+                "rather than a hole.\n\n"
+                "**A dot on the line** is a day the signal actually "
+                "fired.\n\n"
+                "How hot the crowd is - the euphoria level - is the dial "
+                "and the facts above this chart, and its shape shows on the "
+                "price line: amber is \"crowded AND already run up\"."))
 
         # ---- WHY did each alert fire? (plain-English decomposition of
         # the stored component values on the alert day - nothing here is
@@ -2711,7 +2963,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 rd = dk_i.loc[d]
                 boom_txt = (" and the chart CONFIRMED a real boom "
                             "(price ≥ its G2 threshold above its own "
-                            "120d low - the desk price gate)"
+                            "60d low - the desk price gate)"
                             if bool(rd.get("boom_state")) else "")
                 if pd.notna(rd.get("out_score")) and thr_out_d:
                     desk_txt = (f" The 7d-smoothed desk score "
