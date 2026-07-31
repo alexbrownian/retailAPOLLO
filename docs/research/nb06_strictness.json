@@ -1,0 +1,354 @@
+{
+ "as_of": "2026-07-31T07:29:30",
+ "frozen_triggers": {
+  "get_out": 0.629839530332681,
+  "get_in": 0.8776516634050882
+ },
+ "ai_complaint": {
+  "days_raw_cleared_trigger": 320,
+  "production_get_out_flags": 0,
+  "first_fail_counts": {
+   "crowd 2x": 213,
+   "attention gate": 69,
+   "boom gate": 34,
+   "persistence": 4
+  },
+  "aiq_window": {
+   "peak": "2026-06-02",
+   "days_measurable": 32,
+   "days_trigger_cleared": 17,
+   "days_crowd2x_open": 0,
+   "max_hype_ratio": 1.3445104287924294
+  },
+  "iyw_2026_peaks": [],
+  "aiq_2026_peaks": [
+   "2026-06-02"
+  ]
+ },
+ "near_miss_census": {
+  "get_out": {
+   "days": 7319,
+   "by_cause": {
+    "1 attention gate": 1381,
+    "2 persistence": 777,
+    "3 crowd 2x": 3413,
+    "4 boom gate": 1344,
+    "5 smoothing": 75,
+    "6 cooldown": 329
+   },
+   "share_near_true_peak": 0.09646126520016396
+  },
+  "get_in": {
+   "days": 1029,
+   "by_cause": {
+    "1 entry floor 1.10x": 19,
+    "2 end-stage phase gate": 328,
+    "3 smoothing": 430,
+    "4 cooldown": 252
+   },
+   "share_near_true_start": 0.1564625850340136
+  }
+ },
+ "loosening_sweep": {
+  "shared_test_years": [
+   2021,
+   2022,
+   2023,
+   2026
+  ],
+  "table": [
+   {
+    "knob": "hype gate",
+    "value": 1.25,
+    "shipped": false,
+    "captured": 23,
+    "detectable": 98,
+    "false_alarms": 14,
+    "fa_per_iy": 0.08974358974358974,
+    "alerts": 47,
+    "pareto": true
+   },
+   {
+    "knob": "hype gate",
+    "value": 1.5,
+    "shipped": false,
+    "captured": 22,
+    "detectable": 98,
+    "false_alarms": 13,
+    "fa_per_iy": 0.09558823529411764,
+    "alerts": 45,
+    "pareto": false
+   },
+   {
+    "knob": "hype gate",
+    "value": 1.75,
+    "shipped": false,
+    "captured": 16,
+    "detectable": 98,
+    "false_alarms": 8,
+    "fa_per_iy": 0.0625,
+    "alerts": 32,
+    "pareto": true
+   },
+   {
+    "knob": "hype gate",
+    "value": 2.0,
+    "shipped": true,
+    "captured": 21,
+    "detectable": 98,
+    "false_alarms": 9,
+    "fa_per_iy": 0.075,
+    "alerts": 40,
+    "pareto": true
+   },
+   {
+    "knob": "boom gate (ETF)",
+    "value": 0.1,
+    "shipped": false,
+    "captured": 18,
+    "detectable": 98,
+    "false_alarms": 29,
+    "fa_per_iy": 0.16111111111111112,
+    "alerts": 57,
+    "pareto": false
+   },
+   {
+    "knob": "boom gate (ETF)",
+    "value": 0.15,
+    "shipped": false,
+    "captured": 18,
+    "detectable": 98,
+    "false_alarms": 19,
+    "fa_per_iy": 0.12179487179487179,
+    "alerts": 46,
+    "pareto": false
+   },
+   {
+    "knob": "boom gate (ETF)",
+    "value": 0.2,
+    "shipped": false,
+    "captured": 20,
+    "detectable": 98,
+    "false_alarms": 12,
+    "fa_per_iy": 0.08333333333333333,
+    "alerts": 42,
+    "pareto": false
+   },
+   {
+    "knob": "boom gate (ETF)",
+    "value": 0.25,
+    "shipped": true,
+    "captured": 21,
+    "detectable": 98,
+    "false_alarms": 9,
+    "fa_per_iy": 0.075,
+    "alerts": 40,
+    "pareto": true
+   },
+   {
+    "knob": "attention gate",
+    "value": 0.8,
+    "shipped": false,
+    "captured": 14,
+    "detectable": 98,
+    "false_alarms": 6,
+    "fa_per_iy": 0.05,
+    "alerts": 30,
+    "pareto": false
+   },
+   {
+    "knob": "attention gate",
+    "value": 0.85,
+    "shipped": false,
+    "captured": 19,
+    "detectable": 98,
+    "false_alarms": 9,
+    "fa_per_iy": 0.075,
+    "alerts": 38,
+    "pareto": false
+   },
+   {
+    "knob": "attention gate",
+    "value": 0.9,
+    "shipped": true,
+    "captured": 22,
+    "detectable": 98,
+    "false_alarms": 10,
+    "fa_per_iy": 0.08333333333333333,
+    "alerts": 42,
+    "pareto": true
+   },
+   {
+    "knob": "attention gate",
+    "value": 0.95,
+    "shipped": false,
+    "captured": 15,
+    "detectable": 98,
+    "false_alarms": 5,
+    "fa_per_iy": 0.041666666666666664,
+    "alerts": 28,
+    "pareto": true
+   },
+   {
+    "knob": "trigger x",
+    "value": 0.9,
+    "shipped": false,
+    "captured": 21,
+    "detectable": 98,
+    "false_alarms": 10,
+    "fa_per_iy": 0.08333333333333333,
+    "alerts": 41,
+    "pareto": false
+   },
+   {
+    "knob": "trigger x",
+    "value": 1.0,
+    "shipped": true,
+    "captured": 21,
+    "detectable": 98,
+    "false_alarms": 9,
+    "fa_per_iy": 0.075,
+    "alerts": 40,
+    "pareto": true
+   },
+   {
+    "knob": "trigger x",
+    "value": 1.1,
+    "shipped": false,
+    "captured": 18,
+    "detectable": 98,
+    "false_alarms": 9,
+    "fa_per_iy": 0.075,
+    "alerts": 37,
+    "pareto": false
+   }
+  ],
+  "get_in_trigger_scale": [
+   {
+    "trigger x": 0.9,
+    "captured": 46,
+    "detectable": 125,
+    "late": 35,
+    "false_alarms": 393,
+    "fa_per_iy": 0.809
+   },
+   {
+    "trigger x": 1.0,
+    "captured": 17,
+    "detectable": 125,
+    "late": 4,
+    "false_alarms": 95,
+    "fa_per_iy": 0.195
+   },
+   {
+    "trigger x": 1.1,
+    "captured": 1,
+    "detectable": 125,
+    "late": 0,
+    "false_alarms": 5,
+    "fa_per_iy": 0.01
+   }
+  ],
+  "shipped_on_frontier": true,
+  "n_variants_dominating_shipped": 0
+ },
+ "missed_episodes": {
+  "test_years": [
+   2021,
+   2022,
+   2023,
+   2026
+  ],
+  "missed": 145,
+  "buckets": {
+   "a crowd never measurable": 76,
+   "b gated away": 46,
+   "c sub-threshold score": 22,
+   "d captured-late": 1
+  },
+  "unrecoverable_share": 0.524,
+  "recoverable_share": 0.476
+ },
+ "improvements": [
+  {
+   "candidate": "loosen hype / boom / attention gates or triggers",
+   "benefit (measured)": "NONE - every \u00a73 variant ties or loses capture on shared years",
+   "cost": "up to 2.1x false alarms; budget breach on GET IN",
+   "recommendation": "REJECT - the shipped point is the frontier"
+  },
+  {
+   "candidate": "per-kind (theme vs single) thresholds",
+   "benefit (measured)": "captures 18 vs pooled 21; FA 7 vs 9",
+   "cost": "2 captures lost; singles lose their 2026 test year (too few train positives); one more fitted number",
+   "recommendation": "PARK - fewer FAs did not buy capture, and the pre-stated rule (max capture inside budget) keeps the pooled fit"
+  },
+  {
+   "candidate": "boom gate on proximity to the 252d high (the desk complaint's own metric)",
+   "benefit (measured)": "instead-of: 11 cap at 0.243 FA/iy (budget breach); and-also: 9 cap",
+   "cost": "capture collapses either way (11 or 7 vs 22)",
+   "recommendation": "REJECT LOUDLY - the 54d window already handles crash-rebounds; a near-high gate throws away most real manias (they peak off fast lows, not at year highs)"
+  },
+  {
+   "candidate": "cross-name breadth as a confirmation filter",
+   "benefit (measured)": "NULL - FA alerts and true alerts fire at indistinguishable breadth (medians 2 vs 1, distributions overlap; only 10 FAs to learn from)",
+   "cost": "n/a",
+   "recommendation": "REJECT for filtering; \u00a7NB07 uses breadth for the INDEX question, where it belongs"
+  },
+  {
+   "candidate": "theme-true anchors (AIQ for ai) when approved",
+   "benefit (measured)": "a 2026 AI episode exists under AIQ that IYW cannot award; ai's committee cleared the trigger on 17/32 days of its aim window",
+   "cost": "approval + price pull; per-theme anchor review; the crowd-2x gate would still need the crowd to double (it did not for ai - so pair with the review below)",
+   "recommendation": "ADOPT AS PROCESS - propose AIQ (and audit every theme whose anchor is a broad proxy) via config/approved_instruments.csv; FORWARD criterion: judged on post-adoption data only"
+  },
+  {
+   "candidate": "review the crowd-2x gate for chronically-hot themes (ai-class names where the 120d median is permanently elevated)",
+   "benefit (measured)": "bounded, not yet measured: would free the 45% of near-miss days the gate blocks - but ~90% of those are noise (\u00a72), and the universe-wide loosening LOSES capture (\u00a73)",
+   "cost": "any per-name exception is a new fitted mechanism",
+   "recommendation": "WATCH ITEM - only viable as a pre-registered variant (e.g. a longer hype baseline) tested on future data, not as a loosening of 2.0x"
+  }
+ ],
+ "per_kind": {
+  "theme": {
+   "captured": 4,
+   "detectable": 57,
+   "false_alarms": 2,
+   "test_years": [
+    2021,
+    2022,
+    2023,
+    2026
+   ]
+  },
+  "single": {
+   "captured": 14,
+   "detectable": 40,
+   "false_alarms": 5,
+   "test_years": [
+    2021,
+    2022,
+    2023
+   ]
+  }
+ },
+ "alt_boom_gate": {
+  "near_high_only": {
+   "captured": 11,
+   "detectable": 122,
+   "false_alarms": 51,
+   "fa_per_iy": 0.243
+  },
+  "boom_and_near_high": {
+   "captured": 9,
+   "detectable": 76,
+   "false_alarms": 3,
+   "fa_per_iy": 0.048
+  }
+ },
+ "breadth_confirmation": {
+  "n_alerts": 40,
+  "n_fa": 9,
+  "median_breadth_true": 1.0,
+  "median_breadth_fa": 2.0,
+  "verdict": "null - no separation"
+ }
+}

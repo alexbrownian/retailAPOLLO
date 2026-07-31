@@ -1004,30 +1004,61 @@ def end_stage_mask(df: pd.DataFrame) -> pd.Series:
             & df["hype_ok"].astype(bool))
 
 
-def _smooth_by_name(scores: pd.Series, names: pd.Series) -> pd.Series:
+def _smooth_by_name(scores: pd.Series, names: pd.Series,
+                    dates: pd.Series | None = None) -> pd.Series:
     """The desk trigger smoothing: a trailing ROLL-day (7d - the house
     one-week window, same as A1's mention-share window) mean over each
-    instrument's own candidate-day sequence. Trailing => no look-ahead."""
-    return scores.groupby(names.values).transform(
-        lambda g: g.rolling(ROLL, min_periods=1).mean())
+    instrument's own candidate days. Trailing => no look-ahead.
+
+    CALENDAR-AWARE SINCE 2026-07-31, and this is a DEFECT FIX, not a
+    tuning choice.  The old code rolled over each name's candidate-ROW
+    sequence (`rolling(ROLL)` = last 7 rows), so a multi-year candidacy
+    gap was silently bridged: the 2026-07-06 `biotech_pharma` GET OUT
+    fired at 0.658 (106% of trigger) whose 7-row window contained SIX
+    candidate days from May/Dec 2020 and one gate-zeroed day from 2026 -
+    the flag fired on evidence from a mania five and a half years
+    earlier (traced row-by-row from the stores; the desk caught it from
+    the hover: "why does this activate get out?").  With `dates`, the
+    window is the last ROLL CALENDAR days, closed on the right, so
+    evidence older than one week can never reach a trigger.  On a dense
+    daily candidate run the two windows contain identical rows, so
+    ordinary in-episode behaviour is unchanged; only gap-bridging dies.
+    Thresholds were re-frozen through the standard walk-forward after
+    this change (see euphoria_desk_report.json / notebook 04 SS1.1).
+    Without `dates` the row-based behaviour is kept (unit contract)."""
+    if dates is None:
+        return scores.groupby(names.values).transform(
+            lambda g: g.rolling(ROLL, min_periods=1).mean())
+    frame = pd.DataFrame({"s": scores.values,
+                          "d": pd.to_datetime(pd.Series(dates).values),
+                          "n": pd.Series(names).values},
+                         index=scores.index)
+    out = pd.Series(index=scores.index, dtype="float64")
+    for _, g in frame.groupby("n", sort=False):
+        g2 = g.sort_values("d")
+        s = pd.Series(g2["s"].values, index=pd.DatetimeIndex(g2["d"]))
+        sm = s.rolling(f"{ROLL}D", min_periods=1).mean()
+        out.loc[g2.index] = sm.values
+    return out
 
 
 def desk_end_fit(train, apply, feats):
     """The GET OUT score (rules family - fitting is a no-op): mean of
     the incumbent bank, zeroed where the A2/A3 gates fail (gates in
-    score space, so one threshold governs), then 7d-smoothed."""
+    score space, so one threshold governs), then 7-calendar-day
+    smoothed."""
     sc = apply[feats].mean(axis=1)
     sc = sc.where((apply["e1"] >= EUPHORIA_ATT_GATE) & (apply["e2"] > 0),
                   0.0)
-    return _smooth_by_name(sc, apply["name"]).values
+    return _smooth_by_name(sc, apply["name"], apply["date"]).values
 
 
 def desk_onset_fit(train, apply, feats):
     """The GET IN score: the tournament-winning onset rules (mean of the
-    locked bank), 7d-smoothed. Phase-awareness lives in CANDIDACY (the
-    frame passed in), not in the score."""
+    locked bank), 7-calendar-day smoothed. Phase-awareness lives in
+    CANDIDACY (the frame passed in), not in the score."""
     return _smooth_by_name(apply[feats].mean(axis=1),
-                           apply["name"]).values
+                           apply["name"], apply["date"]).values
 
 
 def desk_candidacy(frame_px: pd.DataFrame) -> tuple:

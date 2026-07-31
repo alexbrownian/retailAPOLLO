@@ -1,0 +1,1388 @@
+theme,ticker,source
+agriculture_food,ADM,curated
+agriculture_food,AGCO,MOO constituent
+agriculture_food,ALB,XLB constituent
+agriculture_food,AMCR,XLB constituent
+agriculture_food,APD,XLB constituent
+agriculture_food,AVY,XLB constituent
+agriculture_food,BALL,XLB constituent
+agriculture_food,BAYRY,MOO constituent
+agriculture_food,BG,curated
+agriculture_food,CALM,MOO constituent
+agriculture_food,CASY,XLP constituent
+agriculture_food,CF,curated
+agriculture_food,CHD,XLP constituent
+agriculture_food,CL,XLP constituent
+agriculture_food,CNH,MOO constituent
+agriculture_food,COST,XLP constituent
+agriculture_food,CRH,XLB constituent
+agriculture_food,CTVA,XLB constituent
+agriculture_food,DAR,MOO constituent
+agriculture_food,DBA,curated
+agriculture_food,DD,XLB constituent
+agriculture_food,DE,curated
+agriculture_food,DG,XLP constituent
+agriculture_food,DLTR,XLP constituent
+agriculture_food,DOW,XLB constituent
+agriculture_food,ECL,XLB constituent
+agriculture_food,EL,XLP constituent
+agriculture_food,ELAN,MOO constituent
+agriculture_food,FCX,XLB constituent
+agriculture_food,FMC,MOO constituent
+agriculture_food,GIS,XLP constituent
+agriculture_food,HSY,XLP constituent
+agriculture_food,ICL,MOO constituent
+agriculture_food,IFF,XLB constituent
+agriculture_food,IP,XLB constituent
+agriculture_food,KDP,XLP constituent
+agriculture_food,KHC,XLP constituent
+agriculture_food,KMB,XLP constituent
+agriculture_food,KO,XLP constituent
+agriculture_food,KR,XLP constituent
+agriculture_food,KVUE,XLP constituent
+agriculture_food,LIN,XLB constituent
+agriculture_food,LYB,XLB constituent
+agriculture_food,MDLZ,XLP constituent
+agriculture_food,MLM,XLB constituent
+agriculture_food,MNST,XLP constituent
+agriculture_food,MO,XLP constituent
+agriculture_food,MOO,curated
+agriculture_food,MOS,curated
+agriculture_food,NEM,XLB constituent
+agriculture_food,NEOG,MOO constituent
+agriculture_food,NTR,curated
+agriculture_food,NUE,XLB constituent
+agriculture_food,PEP,XLP constituent
+agriculture_food,PG,XLP constituent
+agriculture_food,PKG,XLB constituent
+agriculture_food,PM,XLP constituent
+agriculture_food,PPC,MOO constituent
+agriculture_food,PPG,XLB constituent
+agriculture_food,SHW,XLB constituent
+agriculture_food,STLD,XLB constituent
+agriculture_food,SW,XLB constituent
+agriculture_food,SYY,XLP constituent
+agriculture_food,TGT,XLP constituent
+agriculture_food,TSN,MOO constituent
+agriculture_food,TTC,MOO constituent
+agriculture_food,VMC,XLB constituent
+agriculture_food,WMT,XLP constituent
+agriculture_food,ZTS,MOO constituent
+ai,AI,curated
+ai,AIQ,curated
+ai,AMD,curated
+ai,BBAI,curated
+ai,GOOGL,curated
+ai,MSFT,curated
+ai,NVDA,curated
+ai,PLTR,curated
+ai,SMCI,curated
+ai,SOUN,curated
+ai_megacap,AAPL,curated
+ai_megacap,AMZN,curated
+ai_megacap,GOOG,curated
+ai_megacap,GOOGL,curated
+ai_megacap,MAGS,curated
+ai_megacap,META,curated
+ai_megacap,MSFT,curated
+ai_megacap,NVDA,curated
+ai_megacap,TSLA,curated
+biotech_pharma,ABBV,curated
+biotech_pharma,ALKS,XBI constituent
+biotech_pharma,ALNY,BBH constituent
+biotech_pharma,AMGN,curated
+biotech_pharma,APGE,XBI constituent
+biotech_pharma,ARGX,BBH constituent
+biotech_pharma,ARWR,XBI constituent
+biotech_pharma,AZN,curated
+biotech_pharma,BBIO,XBI constituent
+biotech_pharma,BIIB,BBH constituent
+biotech_pharma,BMRN,BBH constituent
+biotech_pharma,BMY,curated
+biotech_pharma,BNTX,curated
+biotech_pharma,CGON,XBI constituent
+biotech_pharma,COGT,XBI constituent
+biotech_pharma,CRL,BBH constituent
+biotech_pharma,CRSP,curated
+biotech_pharma,CYTK,XBI constituent
+biotech_pharma,DNTH,XBI constituent
+biotech_pharma,ERAS,XBI constituent
+biotech_pharma,GILD,curated
+biotech_pharma,IBB,curated
+biotech_pharma,ICLR,BBH constituent
+biotech_pharma,ILMN,BBH constituent
+biotech_pharma,INCY,BBH constituent
+biotech_pharma,INSM,BBH constituent
+biotech_pharma,IQV,BBH constituent
+biotech_pharma,JNJ,curated
+biotech_pharma,KYMR,XBI constituent
+biotech_pharma,LLY,curated
+biotech_pharma,MIRM,XBI constituent
+biotech_pharma,MRK,curated
+biotech_pharma,MRNA,curated
+biotech_pharma,NBIX,BBH constituent
+biotech_pharma,NTRA,XBI constituent
+biotech_pharma,NVAX,curated
+biotech_pharma,OCGN,curated
+biotech_pharma,ONC,BBH constituent
+biotech_pharma,ORKA,XBI constituent
+biotech_pharma,PCVX,XBI constituent
+biotech_pharma,PFE,curated
+biotech_pharma,PRAX,XBI constituent
+biotech_pharma,PTGX,XBI constituent
+biotech_pharma,QGEN,BBH constituent
+biotech_pharma,REGN,curated
+biotech_pharma,ROIV,XBI constituent
+biotech_pharma,RVMD,XBI constituent
+biotech_pharma,RYTM,XBI constituent
+biotech_pharma,SYRE,XBI constituent
+biotech_pharma,TECH,BBH constituent
+biotech_pharma,TEM,BBH constituent
+biotech_pharma,TGTX,XBI constituent
+biotech_pharma,TVTX,XBI constituent
+biotech_pharma,TWST,XBI constituent
+biotech_pharma,UTHR,BBH constituent
+biotech_pharma,VKTX,XBI constituent
+biotech_pharma,VRTX,curated
+biotech_pharma,XBI,curated
+cannabis,ACB,curated
+cannabis,CGC,curated
+cannabis,MSOS,curated
+cannabis,SNDL,curated
+cannabis,TLRY,curated
+china_geopolitics,ACGBY,FXI constituent
+china_geopolitics,ATHM,KWEB constituent
+china_geopolitics,BABA,curated
+china_geopolitics,BACHY,FXI constituent
+china_geopolitics,BEKE,KWEB constituent
+china_geopolitics,BIDU,curated
+china_geopolitics,BILI,KWEB constituent
+china_geopolitics,BYDDY,FXI constituent
+china_geopolitics,BZ,KWEB constituent
+china_geopolitics,CICHY,FXI constituent
+china_geopolitics,CIHKY,FXI constituent
+china_geopolitics,DIDI,curated
+china_geopolitics,FXI,curated
+china_geopolitics,GDS,CQQQ constituent
+china_geopolitics,IDCBY,FXI constituent
+china_geopolitics,JD,curated
+china_geopolitics,JOYY,KWEB constituent
+china_geopolitics,KWEB,curated
+china_geopolitics,LI,curated
+china_geopolitics,MPNGY,KWEB constituent
+china_geopolitics,NIO,curated
+china_geopolitics,NTES,KWEB constituent
+china_geopolitics,ONC,FXI constituent
+china_geopolitics,PDD,curated
+china_geopolitics,PNGAY,FXI constituent
+china_geopolitics,QFIN,KWEB constituent
+china_geopolitics,TAL,KWEB constituent
+china_geopolitics,TCEHY,curated
+china_geopolitics,TCOM,KWEB constituent
+china_geopolitics,TME,KWEB constituent
+china_geopolitics,VIPS,KWEB constituent
+china_geopolitics,WB,KWEB constituent
+china_geopolitics,XIACY,FXI constituent
+china_geopolitics,XPEV,curated
+china_geopolitics,YINN,curated
+china_geopolitics,YMM,KWEB constituent
+cloud_saas,ADBE,curated
+cloud_saas,ADSK,IGV constituent
+cloud_saas,APP,IGV constituent
+cloud_saas,CDNS,IGV constituent
+cloud_saas,CRM,curated
+cloud_saas,CRWD,curated
+cloud_saas,DDOG,curated
+cloud_saas,EA,IGV constituent
+cloud_saas,FICO,IGV constituent
+cloud_saas,FTNT,IGV constituent
+cloud_saas,IGV,curated
+cloud_saas,INTU,IGV constituent
+cloud_saas,MDB,curated
+cloud_saas,MSFT,IGV constituent
+cloud_saas,MSTR,IGV constituent
+cloud_saas,NET,curated
+cloud_saas,NOW,curated
+cloud_saas,NTNX,IGV constituent
+cloud_saas,OKTA,curated
+cloud_saas,ORCL,curated
+cloud_saas,PANW,IGV constituent
+cloud_saas,PLTR,curated
+cloud_saas,ROP,IGV constituent
+cloud_saas,SHOP,curated
+cloud_saas,SNOW,curated
+cloud_saas,SNPS,IGV constituent
+cloud_saas,TEAM,curated
+cloud_saas,TTWO,IGV constituent
+cloud_saas,TWLO,curated
+cloud_saas,WDAY,curated
+cloud_saas,ZM,curated
+cloud_saas,ZS,curated
+consumer_retail,ABG,XRT constituent
+consumer_retail,ABNB,XLY constituent
+consumer_retail,AMZN,curated
+consumer_retail,AN,XRT constituent
+consumer_retail,ANF,XRT constituent
+consumer_retail,AZO,XLY constituent
+consumer_retail,BBWI,XRT constituent
+consumer_retail,BBY,XRT constituent
+consumer_retail,BKNG,XLY constituent
+consumer_retail,CART,XRT constituent
+consumer_retail,CMG,XLY constituent
+consumer_retail,COST,curated
+consumer_retail,CPNG,XRT constituent
+consumer_retail,CVNA,XLY constituent
+consumer_retail,DASH,XLY constituent
+consumer_retail,DG,XRT constituent
+consumer_retail,DHI,XLY constituent
+consumer_retail,DLTR,XRT constituent
+consumer_retail,EBAY,XLY constituent
+consumer_retail,ETSY,XRT constituent
+consumer_retail,EYE,XRT constituent
+consumer_retail,F,XLY constituent
+consumer_retail,GM,XLY constituent
+consumer_retail,GRMN,XLY constituent
+consumer_retail,GRPN,XRT constituent
+consumer_retail,HD,curated
+consumer_retail,HLT,XLY constituent
+consumer_retail,KMX,XRT constituent
+consumer_retail,KSS,XRT constituent
+consumer_retail,LAD,XRT constituent
+consumer_retail,LOW,curated
+consumer_retail,LULU,curated
+consumer_retail,MAR,XLY constituent
+consumer_retail,MCD,curated
+consumer_retail,NKE,curated
+consumer_retail,ORLY,XLY constituent
+consumer_retail,PAG,XRT constituent
+consumer_retail,RCL,XLY constituent
+consumer_retail,REAL,XRT constituent
+consumer_retail,ROST,XLY constituent
+consumer_retail,RVLV,XRT constituent
+consumer_retail,SAH,XRT constituent
+consumer_retail,SBH,XRT constituent
+consumer_retail,SBUX,curated
+consumer_retail,SIG,XRT constituent
+consumer_retail,TGT,curated
+consumer_retail,TJX,XLY constituent
+consumer_retail,TSLA,XLY constituent
+consumer_retail,UPBD,XRT constituent
+consumer_retail,VSCO,XRT constituent
+consumer_retail,VVV,XRT constituent
+consumer_retail,WMT,curated
+consumer_retail,XLY,curated
+consumer_retail,YUM,XLY constituent
+crypto,BITF,curated
+crypto,BITO,curated
+crypto,CLSK,curated
+crypto,COIN,curated
+crypto,ETHE,curated
+crypto,GBTC,curated
+crypto,HUT,curated
+crypto,IBIT,curated
+crypto,MARA,curated
+crypto,MSTR,curated
+crypto,RIOT,curated
+crypto,SI,curated
+cybersecurity,ACN,CIBR constituent
+cybersecurity,AKAM,CIBR constituent
+cybersecurity,ANET,CIBR constituent
+cybersecurity,ATEN,CIBR constituent
+cybersecurity,AVGO,CIBR constituent
+cybersecurity,BAH,CIBR constituent
+cybersecurity,BB,CIBR constituent
+cybersecurity,CHKP,CIBR constituent
+cybersecurity,CIBR,curated
+cybersecurity,CRWD,curated
+cybersecurity,CSCO,CIBR constituent
+cybersecurity,CVLT,CIBR constituent
+cybersecurity,CYBR,curated
+cybersecurity,DDOG,CIBR constituent
+cybersecurity,DT,CIBR constituent
+cybersecurity,ESTC,CIBR constituent
+cybersecurity,FFIV,CIBR constituent
+cybersecurity,FROG,CIBR constituent
+cybersecurity,FSLY,CIBR constituent
+cybersecurity,FTNT,curated
+cybersecurity,GEN,CIBR constituent
+cybersecurity,GOOGL,CIBR constituent
+cybersecurity,HACK,curated
+cybersecurity,IBM,CIBR constituent
+cybersecurity,INFY,CIBR constituent
+cybersecurity,LDOS,CIBR constituent
+cybersecurity,MSFT,CIBR constituent
+cybersecurity,NET,CIBR constituent
+cybersecurity,NTAP,CIBR constituent
+cybersecurity,NTCT,CIBR constituent
+cybersecurity,OKTA,curated
+cybersecurity,OTEX,CIBR constituent
+cybersecurity,PANW,curated
+cybersecurity,QLYS,CIBR constituent
+cybersecurity,RBRK,CIBR constituent
+cybersecurity,RDWR,CIBR constituent
+cybersecurity,RPD,curated
+cybersecurity,S,CIBR constituent
+cybersecurity,SAIC,CIBR constituent
+cybersecurity,TENB,curated
+cybersecurity,THLLY,CIBR constituent
+cybersecurity,VRNS,CIBR constituent
+cybersecurity,ZD,CIBR constituent
+cybersecurity,ZS,curated
+datacenters,ANET,curated
+datacenters,DLR,curated
+datacenters,DTCR,curated
+datacenters,EQIX,curated
+datacenters,IRM,curated
+datacenters,SMCI,curated
+datacenters,VRT,curated
+defense_aerospace,ADP,XLI constituent
+defense_aerospace,ATI,ITA constituent
+defense_aerospace,AVAV,curated
+defense_aerospace,AXON,ITA constituent
+defense_aerospace,BA,ITA constituent
+defense_aerospace,BWXT,ITA constituent
+defense_aerospace,CAT,XLI constituent
+defense_aerospace,CMI,XLI constituent
+defense_aerospace,CRS,ITA constituent
+defense_aerospace,CSX,XLI constituent
+defense_aerospace,CW,ITA constituent
+defense_aerospace,DE,XLI constituent
+defense_aerospace,EMR,XLI constituent
+defense_aerospace,ETN,XLI constituent
+defense_aerospace,FTAI,ITA constituent
+defense_aerospace,GD,curated
+defense_aerospace,GE,ITA constituent
+defense_aerospace,GEV,XLI constituent
+defense_aerospace,HEI,ITA constituent
+defense_aerospace,HEI.A,ITA constituent
+defense_aerospace,HII,curated
+defense_aerospace,HWM,ITA constituent
+defense_aerospace,HXL,ITA constituent
+defense_aerospace,ITA,curated
+defense_aerospace,JCI,XLI constituent
+defense_aerospace,KTOS,curated
+defense_aerospace,LHX,curated
+defense_aerospace,LMT,curated
+defense_aerospace,MMM,XLI constituent
+defense_aerospace,MOG.A,ITA constituent
+defense_aerospace,NOC,curated
+defense_aerospace,NSC,XLI constituent
+defense_aerospace,PH,XLI constituent
+defense_aerospace,PPA,curated
+defense_aerospace,PWR,XLI constituent
+defense_aerospace,RKLB,ITA constituent
+defense_aerospace,RTX,curated
+defense_aerospace,SARO,ITA constituent
+defense_aerospace,TDG,ITA constituent
+defense_aerospace,TT,XLI constituent
+defense_aerospace,TXT,ITA constituent
+defense_aerospace,UBER,XLI constituent
+defense_aerospace,UNP,XLI constituent
+defense_aerospace,UPS,XLI constituent
+defense_aerospace,VRT,XLI constituent
+defense_aerospace,WM,XLI constituent
+defense_aerospace,WWD,ITA constituent
+defense_aerospace,XAR,curated
+energy,APA,XLE constituent
+energy,AR,XOP constituent
+energy,BKR,XLE constituent
+energy,BP,curated
+energy,CHRD,XOP constituent
+energy,CLB,OIH constituent
+energy,CNX,XOP constituent
+energy,COP,curated
+energy,CVX,curated
+energy,DINO,XOP constituent
+energy,DK,XOP constituent
+energy,DVN,curated
+energy,EOG,XLE constituent
+energy,EQT,XLE constituent
+energy,EXE,XLE constituent
+energy,FANG,curated
+energy,FTI,OIH constituent
+energy,HAL,curated
+energy,HLX,OIH constituent
+energy,HP,OIH constituent
+energy,INVX,OIH constituent
+energy,KMI,XLE constituent
+energy,LBRT,OIH constituent
+energy,MPC,curated
+energy,NBR,OIH constituent
+energy,NE,OIH constituent
+energy,NOV,OIH constituent
+energy,OII,OIH constituent
+energy,OKE,XLE constituent
+energy,OVV,XOP constituent
+energy,OXY,curated
+energy,PARR,XOP constituent
+energy,PBF,XOP constituent
+energy,PR,XOP constituent
+energy,PSX,curated
+energy,PTEN,OIH constituent
+energy,PUMP,OIH constituent
+energy,RES,OIH constituent
+energy,RIG,OIH constituent
+energy,RRC,XOP constituent
+energy,SEI,OIH constituent
+energy,SHEL,curated
+energy,SLB,curated
+energy,SM,XOP constituent
+energy,TDW,OIH constituent
+energy,TPL,XLE constituent
+energy,TRGP,XLE constituent
+energy,TS,OIH constituent
+energy,USO,curated
+energy,VAL,OIH constituent
+energy,VG,XOP constituent
+energy,VLO,curated
+energy,VNOM,XOP constituent
+energy,WFRD,OIH constituent
+energy,WHD,OIH constituent
+energy,WMB,XLE constituent
+energy,WTTR,OIH constituent
+energy,XLE,curated
+energy,XOM,curated
+energy,XPRO,OIH constituent
+europe_defense,ATI,ITA constituent
+europe_defense,AXON,ITA constituent
+europe_defense,BA,ITA constituent
+europe_defense,BAESY,EUAD constituent
+europe_defense,BCKIY,EUAD constituent
+europe_defense,BWXT,ITA constituent
+europe_defense,CRS,ITA constituent
+europe_defense,CW,ITA constituent
+europe_defense,EADSY,EUAD constituent
+europe_defense,EUAD,curated
+europe_defense,FINMY,EUAD constituent
+europe_defense,FTAI,ITA constituent
+europe_defense,GD,ITA constituent
+europe_defense,GE,ITA constituent
+europe_defense,HAGHY,EUAD constituent
+europe_defense,HEI,ITA constituent
+europe_defense,HEI.A,ITA constituent
+europe_defense,HII,ITA constituent
+europe_defense,HWM,ITA constituent
+europe_defense,HXL,ITA constituent
+europe_defense,KTOS,ITA constituent
+europe_defense,LHX,ITA constituent
+europe_defense,LMT,ITA constituent
+europe_defense,MOG.A,ITA constituent
+europe_defense,MTUAY,EUAD constituent
+europe_defense,NOC,ITA constituent
+europe_defense,QNTQY,EUAD constituent
+europe_defense,RKLB,ITA constituent
+europe_defense,RNMBY,EUAD constituent
+europe_defense,RTX,ITA constituent
+europe_defense,RYCEY,EUAD constituent
+europe_defense,SAABY,EUAD constituent
+europe_defense,SAFRY,EUAD constituent
+europe_defense,SARO,ITA constituent
+europe_defense,TDG,ITA constituent
+europe_defense,THLLY,EUAD constituent
+europe_defense,TXT,ITA constituent
+europe_defense,WWD,ITA constituent
+ev_clean_energy,ABNB,XLY constituent
+ev_clean_energy,ALB,curated
+ev_clean_energy,AMZN,XLY constituent
+ev_clean_energy,AZO,XLY constituent
+ev_clean_energy,BKNG,XLY constituent
+ev_clean_energy,BLNK,curated
+ev_clean_energy,BYDDY,LIT constituent
+ev_clean_energy,CHPT,curated
+ev_clean_energy,CMG,XLY constituent
+ev_clean_energy,CVNA,XLY constituent
+ev_clean_energy,DASH,XLY constituent
+ev_clean_energy,DHI,XLY constituent
+ev_clean_energy,EBAY,XLY constituent
+ev_clean_energy,ENPH,curated
+ev_clean_energy,ENS,LIT constituent
+ev_clean_energy,F,XLY constituent
+ev_clean_energy,FCEL,curated
+ev_clean_energy,FSLR,curated
+ev_clean_energy,GM,XLY constituent
+ev_clean_energy,GRMN,XLY constituent
+ev_clean_energy,HD,XLY constituent
+ev_clean_energy,HLT,XLY constituent
+ev_clean_energy,ICLN,curated
+ev_clean_energy,LCID,curated
+ev_clean_energy,LI,curated
+ev_clean_energy,LIT,curated
+ev_clean_energy,LOW,XLY constituent
+ev_clean_energy,MAR,XLY constituent
+ev_clean_energy,MCD,XLY constituent
+ev_clean_energy,NIO,curated
+ev_clean_energy,NKE,XLY constituent
+ev_clean_energy,ORLY,XLY constituent
+ev_clean_energy,PCRFY,LIT constituent
+ev_clean_energy,PLUG,curated
+ev_clean_energy,QS,curated
+ev_clean_energy,RCL,XLY constituent
+ev_clean_energy,RIO,LIT constituent
+ev_clean_energy,RIVN,curated
+ev_clean_energy,ROST,XLY constituent
+ev_clean_energy,RUN,curated
+ev_clean_energy,SBUX,XLY constituent
+ev_clean_energy,SEDG,curated
+ev_clean_energy,SQM,LIT constituent
+ev_clean_energy,TAN,curated
+ev_clean_energy,TJX,XLY constituent
+ev_clean_energy,TSLA,curated
+ev_clean_energy,TTDKY,LIT constituent
+ev_clean_energy,XPEV,curated
+ev_clean_energy,YUM,XLY constituent
+financials,AON,XLF constituent
+financials,ASB,KRE constituent
+financials,AUB,KRE constituent
+financials,AX,KBE constituent
+financials,AXP,curated
+financials,BAC,curated
+financials,BANC,KRE constituent
+financials,BLK,curated
+financials,BNY,XLF constituent
+financials,BOKF,KRE constituent
+financials,BPOP,KRE constituent
+financials,BRK.B,XLF constituent
+financials,BX,XLF constituent
+financials,C,curated
+financials,CB,XLF constituent
+financials,CBSH,KRE constituent
+financials,CFG,KRE constituent
+financials,CFR,KBE constituent
+financials,CME,XLF constituent
+financials,COF,XLF constituent
+financials,CRBG,KBE constituent
+financials,EBC,KBE constituent
+financials,EQH,KBE constituent
+financials,ESNT,KBE constituent
+financials,FBK,KBE constituent
+financials,FBP,KBE constituent
+financials,FIBK,KRE constituent
+financials,FNB,KRE constituent
+financials,FULT,KRE constituent
+financials,GBCI,KRE constituent
+financials,GS,curated
+financials,HOMB,KBE constituent
+financials,HOOD,curated
+financials,HWC,KRE constituent
+financials,ICE,XLF constituent
+financials,JPM,curated
+financials,JXN,KBE constituent
+financials,MA,curated
+financials,MMC,XLF constituent
+financials,MS,curated
+financials,MTB,KBE constituent
+financials,MTG,KBE constituent
+financials,NIC,KBE constituent
+financials,NMIH,KBE constituent
+financials,ONB,KRE constituent
+financials,PGR,XLF constituent
+financials,PNC,XLF constituent
+financials,PNFP,KBE constituent
+financials,PRK,KBE constituent
+financials,RDN,KBE constituent
+financials,RF,KRE constituent
+financials,SCHW,curated
+financials,SFBS,KBE constituent
+financials,SOFI,curated
+financials,SPGI,XLF constituent
+financials,SSB,KRE constituent
+financials,TBBK,KBE constituent
+financials,TFC,KRE constituent
+financials,TOWN,KBE constituent
+financials,TRV,XLF constituent
+financials,UBSI,KRE constituent
+financials,UMBF,KBE constituent
+financials,USB,XLF constituent
+financials,V,curated
+financials,VOYA,KBE constituent
+financials,WBS,KRE constituent
+financials,WFC,curated
+financials,WSBC,KBE constituent
+financials,XLF,curated
+financials,ZION,KRE constituent
+fintech_payments,ADBE,IGV constituent
+fintech_payments,ADSK,IGV constituent
+fintech_payments,AFRM,curated
+fintech_payments,AON,XLF constituent
+fintech_payments,APP,IGV constituent
+fintech_payments,AXP,curated
+fintech_payments,BAC,XLF constituent
+fintech_payments,BLK,XLF constituent
+fintech_payments,BNY,XLF constituent
+fintech_payments,BRK.B,XLF constituent
+fintech_payments,BX,XLF constituent
+fintech_payments,C,XLF constituent
+fintech_payments,CB,XLF constituent
+fintech_payments,CDNS,IGV constituent
+fintech_payments,CME,XLF constituent
+fintech_payments,COF,XLF constituent
+fintech_payments,CRM,IGV constituent
+fintech_payments,CRWD,IGV constituent
+fintech_payments,DDOG,IGV constituent
+fintech_payments,EA,IGV constituent
+fintech_payments,FICO,IGV constituent
+fintech_payments,FINX,curated
+fintech_payments,FTNT,IGV constituent
+fintech_payments,GS,XLF constituent
+fintech_payments,HOOD,curated
+fintech_payments,ICE,XLF constituent
+fintech_payments,INTU,IGV constituent
+fintech_payments,IPAY,curated
+fintech_payments,JPM,XLF constituent
+fintech_payments,MA,curated
+fintech_payments,MMC,XLF constituent
+fintech_payments,MS,XLF constituent
+fintech_payments,MSFT,IGV constituent
+fintech_payments,MSTR,IGV constituent
+fintech_payments,NOW,IGV constituent
+fintech_payments,NTNX,IGV constituent
+fintech_payments,ORCL,IGV constituent
+fintech_payments,PANW,IGV constituent
+fintech_payments,PGR,XLF constituent
+fintech_payments,PLTR,IGV constituent
+fintech_payments,PNC,XLF constituent
+fintech_payments,PYPL,curated
+fintech_payments,ROP,IGV constituent
+fintech_payments,SCHW,XLF constituent
+fintech_payments,SNPS,IGV constituent
+fintech_payments,SOFI,curated
+fintech_payments,SPGI,XLF constituent
+fintech_payments,SQ,curated
+fintech_payments,TEAM,IGV constituent
+fintech_payments,TOST,curated
+fintech_payments,TRV,XLF constituent
+fintech_payments,TTWO,IGV constituent
+fintech_payments,UPST,curated
+fintech_payments,USB,XLF constituent
+fintech_payments,V,curated
+fintech_payments,WDAY,IGV constituent
+fintech_payments,WFC,XLF constituent
+fintech_payments,XYZ,curated
+fintech_payments,ZM,IGV constituent
+fintech_payments,ZS,IGV constituent
+gaming_esports,BIDU,SOCL constituent
+gaming_esports,BILI,SOCL constituent
+gaming_esports,DJT,SOCL constituent
+gaming_esports,DKNG,curated
+gaming_esports,EA,curated
+gaming_esports,ESPO,curated
+gaming_esports,GOOGL,SOCL constituent
+gaming_esports,JOYY,SOCL constituent
+gaming_esports,LIF,SOCL constituent
+gaming_esports,META,SOCL constituent
+gaming_esports,MSFT,curated
+gaming_esports,MTCH,SOCL constituent
+gaming_esports,NTDOY,curated
+gaming_esports,NTES,SOCL constituent
+gaming_esports,PINS,SOCL constituent
+gaming_esports,RBLX,curated
+gaming_esports,RDDT,SOCL constituent
+gaming_esports,SNAP,SOCL constituent
+gaming_esports,SONY,curated
+gaming_esports,SPOT,SOCL constituent
+gaming_esports,TCEHY,SOCL constituent
+gaming_esports,TME,SOCL constituent
+gaming_esports,TTWO,curated
+gaming_esports,U,curated
+gaming_esports,YELP,SOCL constituent
+gold_metals,AEM,curated
+gold_metals,AG,GDX constituent
+gold_metals,AGI,GDX constituent
+gold_metals,ARMN,GDX constituent
+gold_metals,ASM,SIL constituent
+gold_metals,AU,GDX constituent
+gold_metals,AUGO,GDX constituent
+gold_metals,B,GDX constituent
+gold_metals,BHP,COPX constituent
+gold_metals,BTG,GDX constituent
+gold_metals,BVN,GDX constituent
+gold_metals,CDE,GDX constituent
+gold_metals,CGAU,GDX constituent
+gold_metals,EGO,GDX constituent
+gold_metals,EQX,GDX constituent
+gold_metals,ERO,COPX constituent
+gold_metals,EXK,GDX constituent
+gold_metals,FCX,curated
+gold_metals,FNV,curated
+gold_metals,FSM,GDX constituent
+gold_metals,GDX,curated
+gold_metals,GDXJ,curated
+gold_metals,GFI,GDX constituent
+gold_metals,GLD,curated
+gold_metals,GOLD,curated
+gold_metals,HBM,COPX constituent
+gold_metals,HL,GDX constituent
+gold_metals,HMY,GDX constituent
+gold_metals,HYMC,SIL constituent
+gold_metals,IAG,GDX constituent
+gold_metals,IAU,curated
+gold_metals,KGC,GDX constituent
+gold_metals,MUX,SIL constituent
+gold_metals,NEM,curated
+gold_metals,OR,GDX constituent
+gold_metals,ORLA,GDX constituent
+gold_metals,PAAS,GDX constituent
+gold_metals,RGLD,GDX constituent
+gold_metals,SA,GDX constituent
+gold_metals,SCCO,curated
+gold_metals,SKE,GDX constituent
+gold_metals,SLV,curated
+gold_metals,SSRM,GDX constituent
+gold_metals,SVM,GDX constituent
+gold_metals,TECK,COPX constituent
+gold_metals,TFPM,SIL constituent
+gold_metals,TGB,COPX constituent
+gold_metals,USAS,SIL constituent
+gold_metals,VZLA,SIL constituent
+gold_metals,WPM,curated
+housing_builders,ALB,XLB constituent
+housing_builders,AMCR,XLB constituent
+housing_builders,APD,XLB constituent
+housing_builders,AVY,XLB constituent
+housing_builders,BALL,XLB constituent
+housing_builders,BLDR,curated
+housing_builders,CF,XLB constituent
+housing_builders,CRH,XLB constituent
+housing_builders,CTVA,XLB constituent
+housing_builders,CVCO,ITB constituent
+housing_builders,DD,XLB constituent
+housing_builders,DHI,curated
+housing_builders,DOW,XLB constituent
+housing_builders,ECL,XLB constituent
+housing_builders,EXP,ITB constituent
+housing_builders,FBIN,ITB constituent
+housing_builders,FCX,XLB constituent
+housing_builders,FND,ITB constituent
+housing_builders,HD,ITB constituent
+housing_builders,IBP,ITB constituent
+housing_builders,IFF,XLB constituent
+housing_builders,IP,XLB constituent
+housing_builders,ITB,curated
+housing_builders,KBH,curated
+housing_builders,LEN,curated
+housing_builders,LII,ITB constituent
+housing_builders,LIN,XLB constituent
+housing_builders,LOW,ITB constituent
+housing_builders,LYB,XLB constituent
+housing_builders,MAS,ITB constituent
+housing_builders,MHK,ITB constituent
+housing_builders,MHO,ITB constituent
+housing_builders,MLM,XLB constituent
+housing_builders,MTH,ITB constituent
+housing_builders,NEM,XLB constituent
+housing_builders,NUE,XLB constituent
+housing_builders,NVR,curated
+housing_builders,OC,ITB constituent
+housing_builders,PHM,curated
+housing_builders,PKG,XLB constituent
+housing_builders,PPG,XLB constituent
+housing_builders,SHW,ITB constituent
+housing_builders,SKY,ITB constituent
+housing_builders,SSD,ITB constituent
+housing_builders,STLD,XLB constituent
+housing_builders,SW,XLB constituent
+housing_builders,TMHC,ITB constituent
+housing_builders,TOL,curated
+housing_builders,UFPI,ITB constituent
+housing_builders,VMC,XLB constituent
+housing_builders,XHB,curated
+infrastructure,ADP,XLI constituent
+infrastructure,ALB,XLB constituent
+infrastructure,AMCR,XLB constituent
+infrastructure,APD,XLB constituent
+infrastructure,AVY,XLB constituent
+infrastructure,BA,XLI constituent
+infrastructure,BALL,XLB constituent
+infrastructure,CAT,curated
+infrastructure,CF,XLB constituent
+infrastructure,CMI,XLI constituent
+infrastructure,CRH,XLB constituent
+infrastructure,CSX,XLI constituent
+infrastructure,CTVA,XLB constituent
+infrastructure,DD,XLB constituent
+infrastructure,DE,XLI constituent
+infrastructure,DOW,XLB constituent
+infrastructure,ECL,XLB constituent
+infrastructure,EMR,XLI constituent
+infrastructure,ETN,XLI constituent
+infrastructure,FCX,XLB constituent
+infrastructure,GD,XLI constituent
+infrastructure,GE,XLI constituent
+infrastructure,GEV,XLI constituent
+infrastructure,HWM,XLI constituent
+infrastructure,IFF,XLB constituent
+infrastructure,IP,XLB constituent
+infrastructure,JCI,XLI constituent
+infrastructure,LIN,XLB constituent
+infrastructure,LMT,XLI constituent
+infrastructure,LYB,XLB constituent
+infrastructure,MLM,curated
+infrastructure,MMM,XLI constituent
+infrastructure,NEM,XLB constituent
+infrastructure,NSC,XLI constituent
+infrastructure,NUE,XLB constituent
+infrastructure,PAVE,curated
+infrastructure,PH,XLI constituent
+infrastructure,PKG,XLB constituent
+infrastructure,PPG,XLB constituent
+infrastructure,PWR,curated
+infrastructure,RTX,XLI constituent
+infrastructure,SHW,XLB constituent
+infrastructure,STLD,XLB constituent
+infrastructure,SW,XLB constituent
+infrastructure,TT,XLI constituent
+infrastructure,UBER,XLI constituent
+infrastructure,UNP,XLI constituent
+infrastructure,UPS,XLI constituent
+infrastructure,URI,curated
+infrastructure,VMC,curated
+infrastructure,VRT,XLI constituent
+infrastructure,WM,XLI constituent
+japan,DXJ,curated
+japan,EWJ,curated
+media_streaming,BIDU,SOCL constituent
+media_streaming,BILI,SOCL constituent
+media_streaming,CHTR,XLC constituent
+media_streaming,CMCSA,XLC constituent
+media_streaming,DIS,curated
+media_streaming,DJT,SOCL constituent
+media_streaming,EA,XLC constituent
+media_streaming,ECHO,XLC constituent
+media_streaming,FOX,XLC constituent
+media_streaming,FOXA,XLC constituent
+media_streaming,GOOG,XLC constituent
+media_streaming,GOOGL,XLC constituent
+media_streaming,JOYY,SOCL constituent
+media_streaming,LIF,SOCL constituent
+media_streaming,LYV,XLC constituent
+media_streaming,META,XLC constituent
+media_streaming,MTCH,SOCL constituent
+media_streaming,NFLX,curated
+media_streaming,NTES,SOCL constituent
+media_streaming,NWS,XLC constituent
+media_streaming,NWSA,XLC constituent
+media_streaming,OMC,XLC constituent
+media_streaming,PARA,curated
+media_streaming,PINS,SOCL constituent
+media_streaming,PSKY,XLC constituent
+media_streaming,RDDT,SOCL constituent
+media_streaming,ROKU,curated
+media_streaming,SNAP,SOCL constituent
+media_streaming,SPOT,curated
+media_streaming,T,XLC constituent
+media_streaming,TCEHY,SOCL constituent
+media_streaming,TKO,XLC constituent
+media_streaming,TME,SOCL constituent
+media_streaming,TMUS,XLC constituent
+media_streaming,TTD,XLC constituent
+media_streaming,TTWO,XLC constituent
+media_streaming,VZ,XLC constituent
+media_streaming,WBD,curated
+media_streaming,XLC,curated
+media_streaming,YELP,SOCL constituent
+meme_stocks,ACHR,ARKK constituent
+meme_stocks,AMC,curated
+meme_stocks,AMD,ARKK constituent
+meme_stocks,AMZN,ARKK constituent
+meme_stocks,AVGO,ARKK constituent
+meme_stocks,BB,curated
+meme_stocks,BBBY,curated
+meme_stocks,BEAM,ARKK constituent
+meme_stocks,BLSH,ARKK constituent
+meme_stocks,BMNR,ARKK constituent
+meme_stocks,BWXT,ARKK constituent
+meme_stocks,CBRS,ARKK constituent
+meme_stocks,CERS,ARKK constituent
+meme_stocks,CLOV,curated
+meme_stocks,COIN,ARKK constituent
+meme_stocks,CRCL,ARKK constituent
+meme_stocks,CRSP,ARKK constituent
+meme_stocks,CRWV,ARKK constituent
+meme_stocks,DE,ARKK constituent
+meme_stocks,EXPR,curated
+meme_stocks,FIG,ARKK constituent
+meme_stocks,GME,curated
+meme_stocks,GOOG,ARKK constituent
+meme_stocks,GOOGL,ARKK constituent
+meme_stocks,HOOD,curated
+meme_stocks,ILMN,ARKK constituent
+meme_stocks,KOSS,curated
+meme_stocks,KTOS,ARKK constituent
+meme_stocks,LLY,ARKK constituent
+meme_stocks,META,ARKK constituent
+meme_stocks,NOK,curated
+meme_stocks,NTLA,ARKK constituent
+meme_stocks,NTRA,ARKK constituent
+meme_stocks,NVDA,ARKK constituent
+meme_stocks,PACB,ARKK constituent
+meme_stocks,PLTR,ARKK constituent
+meme_stocks,RBLX,ARKK constituent
+meme_stocks,RXRX,ARKK constituent
+meme_stocks,SHOP,ARKK constituent
+meme_stocks,SNDL,curated
+meme_stocks,SNOW,ARKK constituent
+meme_stocks,SOFI,ARKK constituent
+meme_stocks,TEM,ARKK constituent
+meme_stocks,TER,ARKK constituent
+meme_stocks,TLRY,curated
+meme_stocks,TSLA,ARKK constituent
+meme_stocks,TSM,ARKK constituent
+meme_stocks,TWST,ARKK constituent
+meme_stocks,TXG,ARKK constituent
+meme_stocks,VCYT,ARKK constituent
+meme_stocks,WGS,ARKK constituent
+meme_stocks,WISH,curated
+meme_stocks,XE,ARKK constituent
+meme_stocks,XYZ,ARKK constituent
+memory,ADI,SMH constituent
+memory,ALAB,SMH constituent
+memory,AMAT,SMH constituent
+memory,AMD,SMH constituent
+memory,ARM,SMH constituent
+memory,ASML,SMH constituent
+memory,ASX,SOXX constituent
+memory,AVGO,SMH constituent
+memory,CDNS,SMH constituent
+memory,CRDO,SOXX constituent
+memory,ENTG,SOXX constituent
+memory,INTC,SMH constituent
+memory,KLAC,SMH constituent
+memory,LRCX,SMH constituent
+memory,MCHP,SMH constituent
+memory,MPWR,SMH constituent
+memory,MRVL,SMH constituent
+memory,MTSI,SOXX constituent
+memory,MU,curated
+memory,NVDA,SMH constituent
+memory,NXPI,SMH constituent
+memory,ON,SMH constituent
+memory,QCOM,SMH constituent
+memory,SNPS,SMH constituent
+memory,STM,SMH constituent
+memory,STX,curated
+memory,SWKS,SMH constituent
+memory,TER,SMH constituent
+memory,TSM,SMH constituent
+memory,TXN,SMH constituent
+memory,UMC,SOXX constituent
+memory,WDC,curated
+quantum_computing,IBM,curated
+quantum_computing,IONQ,curated
+quantum_computing,QBTS,curated
+quantum_computing,QTUM,curated
+quantum_computing,QUBT,curated
+quantum_computing,RGTI,curated
+rates_bonds,HYG,curated
+rates_bonds,IEF,curated
+rates_bonds,LQD,curated
+rates_bonds,SHY,curated
+rates_bonds,TBT,curated
+rates_bonds,TLT,curated
+real_estate,AMT,curated
+real_estate,AVB,curated
+real_estate,BLDR,ITB constituent
+real_estate,CBRE,XLRE constituent
+real_estate,CCI,XLRE constituent
+real_estate,CVCO,ITB constituent
+real_estate,DHI,ITB constituent
+real_estate,DLR,XLRE constituent
+real_estate,DOC,XLRE constituent
+real_estate,EQIX,XLRE constituent
+real_estate,EQR,curated
+real_estate,ESS,XLRE constituent
+real_estate,EXP,ITB constituent
+real_estate,EXR,XLRE constituent
+real_estate,FBIN,ITB constituent
+real_estate,FND,ITB constituent
+real_estate,HD,ITB constituent
+real_estate,HST,XLRE constituent
+real_estate,IBP,ITB constituent
+real_estate,INVH,XLRE constituent
+real_estate,IRM,XLRE constituent
+real_estate,KBH,ITB constituent
+real_estate,KIM,XLRE constituent
+real_estate,LEN,ITB constituent
+real_estate,LII,ITB constituent
+real_estate,LOW,ITB constituent
+real_estate,MAA,XLRE constituent
+real_estate,MAS,ITB constituent
+real_estate,MHK,ITB constituent
+real_estate,MHO,ITB constituent
+real_estate,MTH,ITB constituent
+real_estate,NVR,ITB constituent
+real_estate,O,curated
+real_estate,OC,ITB constituent
+real_estate,PHM,ITB constituent
+real_estate,PLD,curated
+real_estate,PSA,XLRE constituent
+real_estate,REG,XLRE constituent
+real_estate,SBAC,XLRE constituent
+real_estate,SHW,ITB constituent
+real_estate,SKY,ITB constituent
+real_estate,SPG,curated
+real_estate,SSD,ITB constituent
+real_estate,TMHC,ITB constituent
+real_estate,TOL,ITB constituent
+real_estate,UFPI,ITB constituent
+real_estate,VICI,XLRE constituent
+real_estate,VNQ,curated
+real_estate,VTR,XLRE constituent
+real_estate,WELL,XLRE constituent
+real_estate,WY,XLRE constituent
+robotics_automation,ACHR,ARKK constituent
+robotics_automation,ADP,XLI constituent
+robotics_automation,AMD,ARKK constituent
+robotics_automation,AMZN,ARKK constituent
+robotics_automation,AVGO,ARKK constituent
+robotics_automation,BA,XLI constituent
+robotics_automation,BEAM,ARKK constituent
+robotics_automation,BLSH,ARKK constituent
+robotics_automation,BMNR,ARKK constituent
+robotics_automation,BOTZ,curated
+robotics_automation,BWXT,ARKK constituent
+robotics_automation,CAT,XLI constituent
+robotics_automation,CBRS,ARKK constituent
+robotics_automation,CERS,ARKK constituent
+robotics_automation,CMI,XLI constituent
+robotics_automation,COIN,ARKK constituent
+robotics_automation,CRCL,ARKK constituent
+robotics_automation,CRSP,ARKK constituent
+robotics_automation,CRWV,ARKK constituent
+robotics_automation,CSX,XLI constituent
+robotics_automation,DE,XLI constituent
+robotics_automation,EMR,XLI constituent
+robotics_automation,ETN,XLI constituent
+robotics_automation,FIG,ARKK constituent
+robotics_automation,GD,XLI constituent
+robotics_automation,GE,XLI constituent
+robotics_automation,GEV,XLI constituent
+robotics_automation,GOOG,ARKK constituent
+robotics_automation,GOOGL,ARKK constituent
+robotics_automation,HOOD,ARKK constituent
+robotics_automation,HWM,XLI constituent
+robotics_automation,ILMN,ARKK constituent
+robotics_automation,ISRG,curated
+robotics_automation,JCI,XLI constituent
+robotics_automation,KTOS,ARKK constituent
+robotics_automation,LLY,ARKK constituent
+robotics_automation,LMT,XLI constituent
+robotics_automation,META,ARKK constituent
+robotics_automation,MMM,XLI constituent
+robotics_automation,NSC,XLI constituent
+robotics_automation,NTLA,ARKK constituent
+robotics_automation,NTRA,ARKK constituent
+robotics_automation,NVDA,ARKK constituent
+robotics_automation,PACB,ARKK constituent
+robotics_automation,PATH,curated
+robotics_automation,PH,XLI constituent
+robotics_automation,PLTR,ARKK constituent
+robotics_automation,PWR,XLI constituent
+robotics_automation,RBC,curated
+robotics_automation,RBLX,ARKK constituent
+robotics_automation,ROBO,curated
+robotics_automation,ROK,curated
+robotics_automation,RR,curated
+robotics_automation,RRX,curated
+robotics_automation,RTX,XLI constituent
+robotics_automation,RXRX,ARKK constituent
+robotics_automation,SERV,curated
+robotics_automation,SHOP,ARKK constituent
+robotics_automation,SNOW,ARKK constituent
+robotics_automation,SOFI,ARKK constituent
+robotics_automation,SYM,curated
+robotics_automation,TEM,ARKK constituent
+robotics_automation,TER,curated
+robotics_automation,TKR,curated
+robotics_automation,TSLA,curated
+robotics_automation,TSM,ARKK constituent
+robotics_automation,TT,XLI constituent
+robotics_automation,TWST,ARKK constituent
+robotics_automation,TXG,ARKK constituent
+robotics_automation,UBER,XLI constituent
+robotics_automation,UNP,XLI constituent
+robotics_automation,UPS,XLI constituent
+robotics_automation,VCYT,ARKK constituent
+robotics_automation,VRT,XLI constituent
+robotics_automation,WGS,ARKK constituent
+robotics_automation,WM,XLI constituent
+robotics_automation,XE,ARKK constituent
+robotics_automation,XYZ,ARKK constituent
+semiconductors,ADI,SMH constituent
+semiconductors,ALAB,SMH constituent
+semiconductors,AMAT,curated
+semiconductors,AMD,curated
+semiconductors,ARM,SMH constituent
+semiconductors,ASML,curated
+semiconductors,ASX,SOXX constituent
+semiconductors,AVGO,curated
+semiconductors,CDNS,SMH constituent
+semiconductors,CRDO,SOXX constituent
+semiconductors,ENTG,SOXX constituent
+semiconductors,INTC,curated
+semiconductors,KLAC,curated
+semiconductors,LRCX,curated
+semiconductors,MCHP,curated
+semiconductors,MPWR,SMH constituent
+semiconductors,MRVL,curated
+semiconductors,MTSI,SOXX constituent
+semiconductors,MU,curated
+semiconductors,NVDA,curated
+semiconductors,NXPI,SMH constituent
+semiconductors,ON,SMH constituent
+semiconductors,QCOM,curated
+semiconductors,SMCI,curated
+semiconductors,SMH,curated
+semiconductors,SNPS,SMH constituent
+semiconductors,SOXL,curated
+semiconductors,SOXX,curated
+semiconductors,STM,SMH constituent
+semiconductors,SWKS,SMH constituent
+semiconductors,TER,SMH constituent
+semiconductors,TSM,curated
+semiconductors,TXN,curated
+semiconductors,UMC,SOXX constituent
+shipping_logistics,AAL,IYT constituent
+shipping_logistics,CHRW,IYT constituent
+shipping_logistics,CSX,curated
+shipping_logistics,DAL,IYT constituent
+shipping_logistics,EXPD,IYT constituent
+shipping_logistics,FDX,curated
+shipping_logistics,FDXF,IYT constituent
+shipping_logistics,GXO,curated
+shipping_logistics,IYT,curated
+shipping_logistics,JBHT,IYT constituent
+shipping_logistics,KEX,IYT constituent
+shipping_logistics,KNX,IYT constituent
+shipping_logistics,LSTR,IYT constituent
+shipping_logistics,LUV,IYT constituent
+shipping_logistics,LYFT,IYT constituent
+shipping_logistics,MATX,curated
+shipping_logistics,NSC,IYT constituent
+shipping_logistics,ODFL,curated
+shipping_logistics,R,IYT constituent
+shipping_logistics,SAIA,IYT constituent
+shipping_logistics,UAL,IYT constituent
+shipping_logistics,UBER,IYT constituent
+shipping_logistics,UHAL.B,IYT constituent
+shipping_logistics,UNP,curated
+shipping_logistics,UPS,curated
+shipping_logistics,XPO,IYT constituent
+shipping_logistics,ZIM,curated
+short_squeeze,ACHR,ARKK constituent
+short_squeeze,AMC,curated
+short_squeeze,AMD,ARKK constituent
+short_squeeze,AMZN,ARKK constituent
+short_squeeze,AVGO,ARKK constituent
+short_squeeze,BBBY,curated
+short_squeeze,BEAM,ARKK constituent
+short_squeeze,BLSH,ARKK constituent
+short_squeeze,BMNR,ARKK constituent
+short_squeeze,BWXT,ARKK constituent
+short_squeeze,CBRS,ARKK constituent
+short_squeeze,CERS,ARKK constituent
+short_squeeze,CLOV,curated
+short_squeeze,COIN,ARKK constituent
+short_squeeze,CRCL,ARKK constituent
+short_squeeze,CRSP,ARKK constituent
+short_squeeze,CRWV,ARKK constituent
+short_squeeze,DE,ARKK constituent
+short_squeeze,EXPR,curated
+short_squeeze,FIG,ARKK constituent
+short_squeeze,GME,curated
+short_squeeze,GOOG,ARKK constituent
+short_squeeze,GOOGL,ARKK constituent
+short_squeeze,HOOD,ARKK constituent
+short_squeeze,ILMN,ARKK constituent
+short_squeeze,KOSS,curated
+short_squeeze,KTOS,ARKK constituent
+short_squeeze,LLY,ARKK constituent
+short_squeeze,META,ARKK constituent
+short_squeeze,NAKD,curated
+short_squeeze,NTLA,ARKK constituent
+short_squeeze,NTRA,ARKK constituent
+short_squeeze,NVDA,ARKK constituent
+short_squeeze,PACB,ARKK constituent
+short_squeeze,PLTR,ARKK constituent
+short_squeeze,RBLX,ARKK constituent
+short_squeeze,RXRX,ARKK constituent
+short_squeeze,SHOP,ARKK constituent
+short_squeeze,SNOW,ARKK constituent
+short_squeeze,SOFI,ARKK constituent
+short_squeeze,SPCE,curated
+short_squeeze,TEM,ARKK constituent
+short_squeeze,TER,ARKK constituent
+short_squeeze,TSLA,ARKK constituent
+short_squeeze,TSM,ARKK constituent
+short_squeeze,TWST,ARKK constituent
+short_squeeze,TXG,ARKK constituent
+short_squeeze,VCYT,ARKK constituent
+short_squeeze,WGS,ARKK constituent
+short_squeeze,WISH,curated
+short_squeeze,WKHS,curated
+short_squeeze,XE,ARKK constituent
+short_squeeze,XYZ,ARKK constituent
+small_caps,IWM,curated
+solar,AEE,XLU constituent
+solar,AEP,XLU constituent
+solar,ALB,LIT constituent
+solar,ARRY,curated
+solar,ATO,XLU constituent
+solar,AWK,XLU constituent
+solar,BYDDY,LIT constituent
+solar,CEG,XLU constituent
+solar,CNP,XLU constituent
+solar,D,XLU constituent
+solar,DTE,XLU constituent
+solar,DUK,XLU constituent
+solar,ED,XLU constituent
+solar,EIX,XLU constituent
+solar,ENPH,curated
+solar,ENS,LIT constituent
+solar,ES,XLU constituent
+solar,ETR,XLU constituent
+solar,EXC,XLU constituent
+solar,FE,XLU constituent
+solar,FSLR,curated
+solar,NEE,XLU constituent
+solar,NRG,XLU constituent
+solar,NXT,curated
+solar,PCG,XLU constituent
+solar,PCRFY,LIT constituent
+solar,PEG,XLU constituent
+solar,PPL,XLU constituent
+solar,RIO,LIT constituent
+solar,RUN,curated
+solar,SEDG,curated
+solar,SO,XLU constituent
+solar,SQM,LIT constituent
+solar,SRE,XLU constituent
+solar,TAN,curated
+solar,TSLA,LIT constituent
+solar,TTDKY,LIT constituent
+solar,VST,XLU constituent
+solar,WEC,XLU constituent
+solar,XEL,XLU constituent
+space,ARKX,curated
+space,ASTS,curated
+space,ATI,ITA constituent
+space,AXON,ITA constituent
+space,BA,curated
+space,BWXT,ITA constituent
+space,CRS,ITA constituent
+space,CW,ITA constituent
+space,FTAI,ITA constituent
+space,GD,ITA constituent
+space,GE,ITA constituent
+space,HEI,ITA constituent
+space,HEI.A,ITA constituent
+space,HII,ITA constituent
+space,HWM,ITA constituent
+space,HXL,ITA constituent
+space,KTOS,ITA constituent
+space,LHX,ITA constituent
+space,LMT,ITA constituent
+space,LUNR,curated
+space,MOG.A,ITA constituent
+space,NOC,ITA constituent
+space,RDW,curated
+space,RKLB,curated
+space,RTX,ITA constituent
+space,SARO,ITA constituent
+space,SPCE,curated
+space,TDG,ITA constituent
+space,TXT,ITA constituent
+space,WWD,ITA constituent
+travel_airlines,AAL,curated
+travel_airlines,ABNB,curated
+travel_airlines,ALGT,JETS constituent
+travel_airlines,ALK,JETS constituent
+travel_airlines,BA,JETS constituent
+travel_airlines,BKNG,curated
+travel_airlines,CCL,curated
+travel_airlines,DAL,curated
+travel_airlines,EADSY,JETS constituent
+travel_airlines,EXPE,curated
+travel_airlines,GD,JETS constituent
+travel_airlines,HLT,curated
+travel_airlines,JBLU,JETS constituent
+travel_airlines,JETS,curated
+travel_airlines,LTM,JETS constituent
+travel_airlines,LUV,curated
+travel_airlines,MAR,curated
+travel_airlines,NCLH,curated
+travel_airlines,RCL,curated
+travel_airlines,SABR,JETS constituent
+travel_airlines,SKYW,JETS constituent
+travel_airlines,TRIP,JETS constituent
+travel_airlines,TXT,JETS constituent
+travel_airlines,UAL,curated
+travel_airlines,ULCC,JETS constituent
+uranium_nuclear,BHP,URA constituent
+uranium_nuclear,CCJ,curated
+uranium_nuclear,DNN,curated
+uranium_nuclear,LEU,curated
+uranium_nuclear,NNE,curated
+uranium_nuclear,NXE,URA constituent
+uranium_nuclear,OKLO,curated
+uranium_nuclear,SBSW,URA constituent
+uranium_nuclear,SMR,curated
+uranium_nuclear,UEC,curated
+uranium_nuclear,URA,curated
+uranium_nuclear,URNM,curated
+uranium_nuclear,UUUU,URA constituent
+utilities_power,AEE,XLU constituent
+utilities_power,AEP,XLU constituent
+utilities_power,ATO,XLU constituent
+utilities_power,AWK,XLU constituent
+utilities_power,CEG,curated
+utilities_power,CNP,XLU constituent
+utilities_power,D,curated
+utilities_power,DTE,XLU constituent
+utilities_power,DUK,XLU constituent
+utilities_power,ED,XLU constituent
+utilities_power,EIX,XLU constituent
+utilities_power,ES,XLU constituent
+utilities_power,ETR,XLU constituent
+utilities_power,EXC,XLU constituent
+utilities_power,FE,XLU constituent
+utilities_power,GEV,curated
+utilities_power,NEE,curated
+utilities_power,NRG,XLU constituent
+utilities_power,PCG,XLU constituent
+utilities_power,PEG,XLU constituent
+utilities_power,PPL,XLU constituent
+utilities_power,SO,curated
+utilities_power,SRE,XLU constituent
+utilities_power,VST,curated
+utilities_power,WEC,XLU constituent
+utilities_power,XEL,XLU constituent
+utilities_power,XLU,curated
+weight_loss_glp1,ALKS,XBI constituent
+weight_loss_glp1,AMGN,curated
+weight_loss_glp1,APGE,XBI constituent
+weight_loss_glp1,ARWR,XBI constituent
+weight_loss_glp1,BBIO,XBI constituent
+weight_loss_glp1,CGON,XBI constituent
+weight_loss_glp1,COGT,XBI constituent
+weight_loss_glp1,CYTK,XBI constituent
+weight_loss_glp1,DNTH,XBI constituent
+weight_loss_glp1,ERAS,XBI constituent
+weight_loss_glp1,HIMS,curated
+weight_loss_glp1,KYMR,XBI constituent
+weight_loss_glp1,LLY,curated
+weight_loss_glp1,MIRM,XBI constituent
+weight_loss_glp1,MRNA,XBI constituent
+weight_loss_glp1,NTRA,XBI constituent
+weight_loss_glp1,NVO,curated
+weight_loss_glp1,ORKA,XBI constituent
+weight_loss_glp1,PCVX,XBI constituent
+weight_loss_glp1,PRAX,XBI constituent
+weight_loss_glp1,PTGX,XBI constituent
+weight_loss_glp1,ROIV,XBI constituent
+weight_loss_glp1,RVMD,XBI constituent
+weight_loss_glp1,RYTM,XBI constituent
+weight_loss_glp1,SYRE,XBI constituent
+weight_loss_glp1,TGTX,XBI constituent
+weight_loss_glp1,TVTX,XBI constituent
+weight_loss_glp1,TWST,XBI constituent
+weight_loss_glp1,VKTX,curated

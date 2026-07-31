@@ -1582,7 +1582,15 @@ class TestThemeRollup:
         calls, board, asof = self._fixture()
         dig = ig.theme_digest(calls, board, days=30, asof=asof)
         assert "other" not in set(dig["theme"])
-        assert dig["n_calls"].sum() < len(calls) * 3   # ZZZZ contributed none
+        # ZZZZ contributed NOTHING - assert it exactly, not via a "themes
+        # per ticker" bound: the ticker->theme membership is config now
+        # (config/theme_tickers.csv, incl. ETF-constituent rows), so its
+        # size may legitimately grow.  Each mapped call lands once in each
+        # of its own themes; an unmapped call lands nowhere.
+        from src.themes import build_ticker_to_themes
+        _homes = build_ticker_to_themes()
+        _expected = sum(len(_homes.get(t, [])) for t in ("NVDA", "MSFT"))
+        assert dig["n_calls"].sum() == _expected   # ZZZZ contributed none
 
     def test_consensus_stays_bounded_and_keeps_the_ticker_views_sign(self):
         """Same arithmetic, different key: a theme whose only call is the

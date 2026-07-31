@@ -99,18 +99,23 @@ def shoot(port: int) -> list[Path]:
         # trusting networkidle alone.
         page.wait_for_timeout(6000)
 
-        # Streamlit renders each tab as a DIV carrying data-testid="stTab",
-        # not as a <button>.  Query the stable test id first and keep the
-        # ARIA role as the fallback, so a Streamlit upgrade that changes one
-        # of the two does not silently produce a zero-tab run.
-        tabs = page.locator('[data-testid="stTab"]')
+        # The tab bar is a PERSISTENT RADIO since 2026-07-31 (the st.tabs
+        # stuck-tab fix - see dashboard.py "PERSISTENT TAB BAR").  Its
+        # options are <label>s inside the first stRadio group on the page;
+        # the old stTab locator is kept as a fallback so this tool still
+        # works against an older build of the app.
+        tabs = page.locator('div[data-testid="stRadio"]').first.locator(
+            '[data-testid="stRadioOption"]')
+        if tabs.count() == 0:
+            tabs = page.locator('[data-testid="stTab"]')
         if tabs.count() == 0:
             tabs = page.locator('[role="tab"]')
         n = tabs.count()
         if n == 0:
             raise RuntimeError(
-                "no tabs found - the app rendered but st.tabs did not, which "
-                "usually means the page errored before reaching the tab strip")
+                "no tab controls found - the app rendered but the tab bar "
+                "did not, which usually means the page errored before "
+                "reaching it")
         names = [tabs.nth(i).inner_text().strip() for i in range(n)]
         print(f"found {n} tabs: {names}")
 

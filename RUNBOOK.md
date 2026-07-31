@@ -25,7 +25,7 @@ all: the dashboard's sidebar buttons run the same pipelines.
 | Catch up comments after a long gap, or backfill | `python update_comments.py` — the **unbudgeted** runner, for the crawls the 10-minute ceiling cannot afford. `--estimate` prints a computed (not hand-written) runtime from this machine's measured throughput and exits; `--backfill 2026-01-01 2026-07-01` for history. Watermarked, Ctrl-C-safe, resumable. Use this when the pipeline has been idle for weeks; for the ordinary refresh use `update_data.py` |
 | Dynamic subreddit panel | NOTHING TO RUN — a monthly, watermarked review rides every live pull (`ingestion/discover_subreddits.py --if-due`): it mines collected text for r/NAME referrals, and a candidate with ≥100 unique panel referrers/28d (the A0 floor, reused) that passes the finance screen auto-joins the EXPLORATION tier (max 1/review). Audit trail: `ingestion/subreddit_panel.json` + `docs/panel_review_latest.md`. Force a review: `python ingestion/discover_subreddits.py` (`--report-only` to rank without adding) |
 | Rebuild the ONSET detector + DESK signals (GET IN / GET OUT) | `python -m analytics.run_analytics --what phases` — LIVE mode: episode catalog + today's scores/alerts at the frozen thresholds (seconds), including `euphoria_desk.parquet` (the boom-gated smoothed GET OUT + phase-aware smoothed GET IN the dashboard shows); add `--research` for the full walk-forward scorecards + threshold re-freeze |
-| Re-run the phases research notebooks | `cd notebooks` then `python -m jupyter nbconvert --to notebook --execute --inplace 01_*.ipynb 02_*.ipynb 03_*.ipynb 04_*.ipynb 06_*.ipynb 07_*.ipynb` — every figure/number re-renders from current data (06 = the full signal-efficacy report; 07 = the literature-grounded performance battery + improvement-experiment record incl. the watch items that auto re-test after a `--research` pass) |
+| Re-run the research notebooks | `cd notebooks` then `python -m jupyter nbconvert --to notebook --execute --inplace 01_*.ipynb 02_*.ipynb 03_*.ipynb 04_*.ipynb 00_*.ipynb` — every figure/number re-renders from current data. The set (since 2026-07-31): **00** = the presentation-grade method walkthrough (raw post → features → thresholds → flag, one worked example, ~1 min); **01–03** = the research record (episode ground truth, feature battery, model tournament); **04** = the consolidated evaluation — every threshold justified with a sweep plot, the signal/feature justification, the walk-forward record with 5/20/84-trading-day outcome tables and median time-to-fall, plus a per-name sample section (`SAMPLE_NAME`) — it replaced the old 04/06/07 (retired to `notebooks/_to_delete_2026-07-31_merged_into_04/`) and writes `docs/research/nb04_evaluation.json`. Run 04 before 00 after a data refresh: 00 reads 04's saved sweep record |
 | Influential-users model (notebook 05) | `python -m jupyter nbconvert --to notebook --execute --inplace notebooks/05_influence_users_model.ipynb` (~2 min; needs `scikit-learn` + `jupyter`, which the live pipeline and the dashboard do NOT). **No jupyter installed, or only want the numbers?** `python notebooks/05_influence_users_model.py` runs the identical analysis as a plain script in ~107 s and writes the same `nb05_influence.json` (verified byte-identical 2026-07-27) — it just does not save the figures back into the `.ipynb`. Set `MPLBACKEND=Agg` first (PowerShell: `$env:MPLBACKEND="Agg"`) so matplotlib does not try to open 17 plot windows. Runs the full Chan (2026) replication on the current store and rewrites `docs/research/nb05_influence.json`, which the dashboard quotes. **Concluded 2026-07-27**: `logit` ships, every graph layer rejected, and the model does NOT generalise to unseen authors — so the dashboard ranks by the measured record. Re-run after any big comment pull to refresh the numbers; the adoption ladder re-tests itself and the notebook asserts that what it ships equals `influence_ml.BEST_MODEL` |
 | Run the tests | `python -m pytest tests/ -v` |
 | Rebuild the presentation evidence pack | `python helper/research_charts.py` — every validation chart + correlation/calibration test regenerated from CURRENT data into `docs/research/` (figures, `research_stats.json`, README) |
@@ -247,7 +247,8 @@ git push
 
   **No performance numbers appear on this page** (desk decision
   2026-07-28) — hit rate, lead time and false alarms live in notebook
-  07, which prints the full scorecard with confidence intervals.
+  04 (§3, the consolidated evaluation), which prints the full scorecard
+  with confidence intervals.
   An AMBER band on the price panel marks the DANGER STATE (crowd ≥2×
   its normal AND price ≥25/50% above its 60d low): sharp drops (≥10%
   in a week) begin within 30d on ~62% of these days vs ~19% of ordinary
@@ -265,11 +266,13 @@ git push
   that the level alone at 85+ is only ~1.3x the all-days rate while the
   level *plus* the amber danger band is ~3.1x. GET IN and GET OUT still come
   from the detector and can fire with the needle anywhere. If the dial is
-  missing, notebook 06 has not been run on this machine — it writes
-  `docs/research/gauge_zones.json`, and the dashboard refuses to invent
-  bands without it. A single caption states the validated record; the walk-forward
-  tables, ablation, ML challenger and tournament live in
-  `notebooks/01-04` + `docs/DECISIONS.xlsx`, not on the terminal
+  missing, `docs/research/gauge_zones.json` is absent on this machine —
+  it was derived by the retired signal-efficacy notebook (kept, with its
+  derivation, in `notebooks/_to_delete_2026-07-31_merged_into_04/`), and
+  the dashboard refuses to invent bands without it. A single caption
+  states the validated record; the walk-forward tables, sweeps, ablation,
+  ML challenger and tournament live in `notebooks/01-04` (04 = the
+  consolidated evaluation) + `docs/DECISIONS.xlsx`, not on the terminal
 - **Trade desk** — the live ledger, scorecard, certainty ranking, signal
   charts with per-trade reasons; INSTRUMENT LOOKUP expander above the
   tabs shows every suggestion + reason for one tradeable instrument

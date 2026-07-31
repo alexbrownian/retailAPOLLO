@@ -1,0 +1,236 @@
+{
+ "as_of": "2026-07-31T07:29:38",
+ "universe": {
+  "themes": 31,
+  "singles": 23
+ },
+ "coverage_floor": {
+  "floor": 10,
+  "sensitivity": [
+   {
+    "floor (names)": 5,
+    "days kept": 2258,
+    "share of days kept": 0.69
+   },
+   {
+    "floor (names)": 10,
+    "days kept": 2256,
+    "share of days kept": 0.69
+   },
+   {
+    "floor (names)": 15,
+    "days kept": 2255,
+    "share of days kept": 0.69
+   }
+  ],
+  "days_kept_by_year": {
+   "2017": 1.0,
+   "2018": 1.0,
+   "2019": 1.0,
+   "2020": 1.0,
+   "2021": 1.0,
+   "2022": 1.0,
+   "2023": 0.26,
+   "2024": 0.0,
+   "2025": 0.0,
+   "2026": 0.99
+  }
+ },
+ "composite": {
+  "exit_ready_max": 0.16014105260644698,
+  "exit_ready_argmax": "2021-01-19",
+  "out_flags_21d_max": 7,
+  "out_flags_21d_argmax": "2021-01-27"
+ },
+ "spy_exam": {
+  "episodes": 0,
+  "max_120d_runup": 0.4546759363085895,
+  "n_days_10pct_7d_fall": 15,
+  "verdict": "walk-forward threshold CANNOT be frozen (0 episodes) - descriptive only; confirmatory test pre-specified"
+ },
+ "descriptive_flags": {
+  "out": [
+   "2018-05-06",
+   "2018-07-17",
+   "2018-08-19",
+   "2018-10-01",
+   "2019-02-28",
+   "2019-04-14",
+   "2019-05-21",
+   "2019-07-22",
+   "2019-10-24",
+   "2019-11-16",
+   "2019-12-10",
+   "2020-01-02",
+   "2020-01-23",
+   "2020-04-16",
+   "2020-05-22",
+   "2020-07-12",
+   "2021-01-16",
+   "2021-02-06",
+   "2021-06-06",
+   "2022-08-11"
+  ],
+  "in": [
+   "2018-03-01",
+   "2018-03-22",
+   "2018-04-22",
+   "2019-11-30",
+   "2019-12-21",
+   "2020-01-13",
+   "2020-07-23",
+   "2021-07-05",
+   "2021-09-24",
+   "2021-10-15",
+   "2022-02-12",
+   "2022-04-03",
+   "2022-04-25",
+   "2022-07-12",
+   "2022-08-03",
+   "2022-10-11",
+   "2023-01-04",
+   "2023-01-29",
+   "2026-07-08"
+  ],
+  "rule": "smoothed readiness >= own trailing 365d q0.90 AND breadth pct-rank >= 0.90 AND 21d cooldown (all reused conventions, no fitted numbers)"
+ },
+ "event_study_spy": {
+  "get_out": [
+   {
+    "horizon (td)": 5,
+    "n flags": 20,
+    "hit rate": 0.25,
+    "hit 90% CI": "[0.10, 0.40]",
+    "baseline hit": 0.39,
+    "median move": 0.0086,
+    "baseline median": 0.0053
+   },
+   {
+    "horizon (td)": 20,
+    "n flags": 20,
+    "hit rate": 0.3,
+    "hit 90% CI": "[0.15, 0.45]",
+    "baseline hit": 0.34,
+    "median move": 0.0197,
+    "baseline median": 0.0172
+   },
+   {
+    "horizon (td)": 84,
+    "n flags": 20,
+    "hit rate": 0.45,
+    "hit 90% CI": "[0.25, 0.65]",
+    "baseline hit": 0.31,
+    "median move": 0.0314,
+    "baseline median": 0.0519
+   }
+  ],
+  "get_in": [
+   {
+    "horizon (td)": 5,
+    "n flags": 19,
+    "hit rate": 0.68,
+    "hit 90% CI": "[0.53, 0.84]",
+    "baseline hit": 0.61,
+    "median move": 0.0072,
+    "baseline median": 0.0053
+   },
+   {
+    "horizon (td)": 20,
+    "n flags": 18,
+    "hit rate": 0.67,
+    "hit 90% CI": "[0.50, 0.83]",
+    "baseline hit": 0.66,
+    "median move": 0.0215,
+    "baseline median": 0.0172
+   },
+   {
+    "horizon (td)": 84,
+    "n flags": 18,
+    "hit rate": 0.56,
+    "hit 90% CI": "[0.33, 0.72]",
+    "baseline hit": 0.69,
+    "median move": 0.0018,
+    "baseline median": 0.0519
+   }
+  ],
+  "cliff": {
+   "flags_with_10in7_fall_90d": 3,
+   "n_flags": 20,
+   "baseline_share": 0.09106984969053934,
+   "median_days_when_it_came": 49.0
+  }
+ },
+ "event_study_qqq_proxy": {
+  "note": "QQQ stands in for MTUM until priced (stated in bold in the notebook)",
+  "episodes": 0,
+  "get_out": [
+   {
+    "horizon (td)": 5,
+    "n flags": 20,
+    "hit rate": 0.25,
+    "hit 90% CI": "[0.10, 0.40]",
+    "baseline hit": 0.4,
+    "median move": 0.0142,
+    "baseline median": 0.0066
+   },
+   {
+    "horizon (td)": 20,
+    "n flags": 20,
+    "hit rate": 0.25,
+    "hit 90% CI": "[0.10, 0.40]",
+    "baseline hit": 0.37,
+    "median move": 0.0293,
+    "baseline median": 0.0205
+   },
+   {
+    "horizon (td)": 84,
+    "n flags": 20,
+    "hit rate": 0.4,
+    "hit 90% CI": "[0.25, 0.60]",
+    "baseline hit": 0.26,
+    "median move": 0.0211,
+    "baseline median": 0.0756
+   }
+  ],
+  "get_in": [
+   {
+    "horizon (td)": 5,
+    "n flags": 19,
+    "hit rate": 0.68,
+    "hit 90% CI": "[0.47, 0.84]",
+    "baseline hit": 0.6,
+    "median move": 0.0089,
+    "baseline median": 0.0066
+   },
+   {
+    "horizon (td)": 20,
+    "n flags": 18,
+    "hit rate": 0.67,
+    "hit 90% CI": "[0.44, 0.83]",
+    "baseline hit": 0.63,
+    "median move": 0.0221,
+    "baseline median": 0.0205
+   },
+   {
+    "horizon (td)": 84,
+    "n flags": 18,
+    "hit rate": 0.5,
+    "hit 90% CI": "[0.28, 0.67]",
+    "baseline hit": 0.74,
+    "median move": 0.0011,
+    "baseline median": 0.0756
+   }
+  ]
+ },
+ "mtum": {
+  "priced": false,
+  "status": "PENDING - auto-judges at next price pull"
+ },
+ "ships": [
+  "breadth composite as dashboard context",
+  "MTUM auto-judge hook"
+ ],
+ "does_not_ship": [
+  "index-level GET OUT/GET IN flags (no exam episodes; descriptive record null at short horizons)"
+ ]
+}

@@ -149,17 +149,47 @@ tradeable themes, each anchored to a liquid instrument), `sentiment.py`
 | `analytics/euphoria_phases.py` | *(new, July 2026)* | the **phases study**: episode ground truth (trough→peak→bust), the onset feature bank, the walk-forward tournament machinery, and the LIVE onset detector (winner: rules) feeding the dashboard's Start/End radar |
 | `analytics/influence_ml.py` | *(new, July 2026)* | the influential-users MODEL (thesis ch. 6 port): can HIGH-tier authors be identified from behaviour + graph position alone? MLP / LabelProp / GraphSAGE-lite vs random, run by notebook 05 on the live store |
 
-**Research notebooks (`notebooks/01–05`)** are the phases study's methods
-+ findings record — episode ground truth, the feature battery, the model
-tournament (criterion pre-stated), final evaluation, and the
-influential-users model. They import the SAME modules the pipeline runs
-(a drift-guard assert enforces it) and re-execute end-to-end from current
-data: `jupyter nbconvert --to notebook --execute --inplace notebooks/*.ipynb`.
-Headline (walk-forward): ~23% of coverage-detectable episode STARTS
-flagged, median entry 17d after the trough with ~66d of rally still
-ahead, 0.35 FA/instrument-year (above the desk's accepted 0.23 — the
-stated cost of onset detection); trading translation tested and REJECTED
-under a pre-stated criterion (evidence retained, like the legacy engine).
+**Research notebooks (`notebooks/00–08`)** are the study's methods +
+findings record (set reorganised 2026-07-31): **00** the
+presentation-grade method walkthrough (raw post → clean → features →
+thresholds → GET IN/GET OUT flag, one worked example); **01–03** the
+research record (episode ground truth, the feature battery, the model
+tournament with its criterion pre-stated); **04** the consolidated
+evaluation — every threshold justified with a sweep plot, the
+feature/signal justification, the walk-forward record with trading-day
+outcome tables and a per-name sample section — replacing the old 04/06/07
+(retired to `notebooks/_to_delete_2026-07-31_merged_into_04/`); **05**
+the influential-users model; **06** the strictness study — the desk's
+"are our thresholds too strict / why didn't `ai` (IYW) trigger?" brief:
+a whole-universe near-miss census plus every gate/trigger loosening
+swept through the production walk-forward (verdict: the shipped
+operating point dominates every loosened variant; `ai`'s silence was the
+crowd-2× gate plus a broad-tech judge with no AI episode — the
+recommended fix is a theme-true anchor, AIQ, not a looser dial); **07**
+the index composite — the per-name signals aggregated into breadth
+series over the tracked universe and run through the same process
+against the S&P 500 (SPY has ZERO qualifying exam episodes, so no index
+threshold can be frozen honestly — descriptive event study only, said
+loudly) and MTUM (signal side runs today; judging auto-activates once
+the next Bloomberg pull prices MTUM, with QQQ as the stated interim
+proxy); **08** the single-state study — the desk's "how can it be both
+GET IN and GET OUT at once / why does it flip so fast?" brief: a phase
+clock (crowd extremity × arrival momentum) and a level-weighted net
+score, both judged against the incumbent through the same walk-forward
+(verdict: neither beats the frozen flags, the phase clock wins as the
+DISPLAYED state — co-firing 28 days → 0, fast flips 69 → 0 — and the
+dashboard hover now leads with its QUIET / BUILDING / BLOW-OFF /
+TOPPING / COOLING reading). They import the SAME modules the pipeline
+runs (a drift-guard assert enforces it) and re-execute end-to-end from
+current data:
+`jupyter nbconvert --to notebook --execute --inplace notebooks/*.ipynb`
+(run 04 before 00 — the walkthrough reads 04's saved sweep record).
+Headline (walk-forward, desk configuration): ~22% of detectable euphoria
+TOPS called ~9–10d before the peak at 0.08 FA/instrument-year, and ~14%
+of detectable STARTS flagged ~2 weeks after the trough with ~2 months of
+rally still ahead, inside the accepted 0.23 FA budget; trading
+translation tested and REJECTED under a pre-stated criterion (evidence
+retained, like the legacy engine).
 
 The dashboard renders all overlay analytics **on demand** from the saved
 outputs — "refresh the overlays" is now just moving the window slider.

@@ -56,372 +56,126 @@ CLI (signal 2 only - signal 1 is called from notebook 04 directly):
 """
 
 import argparse
+import csv
 import re
+from pathlib import Path
 
 import pandas as pd
 
 
 # ---------------------------------------------------------------------------
-# SIGNAL 1 — keyword themes
+# EDITABLE CONFIG (2026-07-31): the theme definitions live in config/*.csv,
+# NOT in this file.  Desk instruction: "make an easy to edit file with each
+# theme ... i want the word mapping to a theme and the etf list to be both
+# easy to edit."  Edit the CSVs (Excel is fine), rerun the pipeline, done.
+#
+#   config/theme_keywords.csv       theme,keyword        (Signal 1 wording)
+#   config/theme_etfs.csv           theme,etf,fallbacks,note
+#                                   fallbacks are pipe-separated, anchor
+#                                   first;  an EMPTY etf cell = tracked but
+#                                   NOT tradeable (crypto, cannabis...)
+#   config/theme_tickers.csv        theme,ticker,source  (Signal 2 mapping;
+#                                   source records WHY - "curated" or the
+#                                   ETF whose constituent list it came from)
+#   config/approved_instruments.csv symbol,bloomberg,name,note - the firm-
+#                                   approved tradeable list.  Every anchor
+#                                   and fallback must appear here, so a typo
+#                                   fails LOUDLY at import, not silently at
+#                                   the Bloomberg pull.
+#
+# The keyword rules are unchanged: WORDS AND PHRASES ONLY, no bare ticker
+# symbols (matching is case-insensitive - a symbol like C or O would match
+# every ordinary "c"/"o" in prose).  Ticker exposure is Signal 2's job.
 # ---------------------------------------------------------------------------
-# Words and phrases only — NO bare ticker symbols (see module docstring).
-# Company names written as words (Nvidia, Micron, Exxon) are fine and useful:
-# they catch posts that never use the symbol. Jargon acronyms that are not
-# tradeable US symbols (HBM, DRAM, LLM, EUV, FDA, CPI...) are also fine.
-# ---------------------------------------------------------------------------
-THEME_KEYWORDS: dict[str, list[str]] = {
-    "semiconductors": [
-        "semiconductor", "semis", "chipmaker", "chips", "chip",
-        "fab", "wafer", "foundry", "lithography", "EUV",
-        "TSMC", "Intel", "Broadcom", "Qualcomm", "Texas Instruments",
-        "Marvell", "ON Semiconductor", "Microchip", "ASML",
-        "silicon", "process node", "3nm", "5nm", "7nm", "2nm",
-        "advanced packaging", "CoWoS", "chiplet", "chiplets",
-        "Tokyo Electron", "Advantest", "Lasertec", "Disco Corp",
-        "SUMCO", "photoresist", "wafer fab equipment", "tape out",
-    ],
-    "memory": [
-        "memory", "DRAM", "HBM", "HBM2", "HBM3", "HBM4",
-        "NAND", "flash storage", "DDR4", "DDR5",
-        "Micron", "Samsung", "SK Hynix", "Hynix",
-        "bandwidth memory", "high bandwidth", "memory chip",
-        "storage chip", "solid state", "SSD",
-    ],
-    "ai": [
-        "AI", "artificial intelligence", "machine learning", "deep learning",
-        "LLM", "large language model", "GPT", "ChatGPT", "generative AI",
-        "neural network", "AI training", "AI chip",
-        "data center AI", "Nvidia AI", "CUDA", "transformer",
-        "foundation model", "AGI", "OpenAI", "Anthropic",
-        "inference", "AI agent", "AI agents", "agentic", "copilot",
-        "Gemini", "Claude", "DeepSeek", "Mistral", "xAI", "Grok",
-        "AI capex", "AI bubble", "AI spending", "GPU", "GPUs",
-    ],
-    "datacenters": [
-        "data center", "datacenter", "data centre", "datacenters",
-        "colocation", "server farm", "hyperscale", "GPU cluster",
-        "server rack", "compute capacity", "cloud infrastructure",
-        "liquid cooling", "immersion cooling", "power density",
-        "data center power", "gigawatt", "transformers shortage",
-        "Stargate", "CoreWeave", "neocloud",
-    ],
-    "ai_megacap": [
-        "Nvidia", "Microsoft", "Google", "Alphabet",
-        "Facebook", "Meta Platforms", "Apple", "Amazon", "Tesla",
-        "mag7", "magnificent seven", "big tech",
-        "hyperscaler", "hyperscalers",
-    ],
-    "crypto": [
-        "bitcoin", "BTC", "ethereum", "ETH", "crypto", "cryptocurrency",
-        "defi", "blockchain", "altcoin", "NFT", "web3",
-        "Coinbase", "MicroStrategy", "stablecoin",
-        "halving", "mining rig", "hash rate",
-        "XRP", "Ripple", "Solana", "dogecoin", "memecoin", "memecoins",
-        "Tether", "USDC", "spot ETF", "onchain", "on-chain",
-        "staking", "airdrop", "tokenized", "tokenization",
-    ],
-    "gold_metals": [
-        "gold", "silver", "precious metal", "metals",
-        "Newmont", "Barrick", "Agnico", "Freeport",
-        "copper", "platinum", "palladium",
-        "commodity", "commodities", "inflation hedge",
-        "rare earth", "rare earths", "neodymium", "lithium miner",
-        "gold miner", "gold miners", "bullion", "central bank buying",
-        "cobalt", "nickel", "antimony", "gallium", "germanium",
-    ],
-    "energy": [
-        "oil", "crude", "WTI", "Brent", "natural gas", "LNG",
-        "energy stock", "oil stock", "Exxon", "Chevron",
-        "shell oil", "ConocoPhillips", "refinery", "pipeline",
-        "OPEC", "oilfield", "shale", "fracking",
-    ],
-    "ev_clean_energy": [
-        "electric vehicle", "EV", "Tesla", "Rivian",
-        "Lucid", "NIO", "Xpeng", "Li Auto",
-        "battery", "lithium", "lithium ion", "charging station",
-        "solar", "wind energy", "renewable", "clean energy",
-        "Enphase", "First Solar",
-        "BYD", "CATL", "solid state battery", "solid-state battery",
-        "battery maker", "gigafactory", "cathode", "anode", "LFP",
-        "Panasonic battery", "EV sales", "EV demand",
-    ],
-    "uranium_nuclear": [
-        "uranium", "nuclear", "nuclear power", "nuclear energy",
-        "reactor", "reactors", "SMR", "small modular reactor",
-        "enrichment", "Cameco", "Kazatomprom", "fission",
-        "nuclear renaissance", "yellowcake",
-    ],
-    "defense_aerospace": [
-        "defense stock", "defence stock", "defense budget", "military spending",
-        "Lockheed", "Raytheon", "Northrop", "General Dynamics",
-        "Pentagon", "missile", "missiles", "artillery", "munitions",
-        "air defense", "military contract", "defense contractor",
-        "drone", "drones", "counter-drone", "drone warfare", "UAV",
-        "Anduril", "Palantir defense", "hypersonic", "golden dome",
-    ],
-    "europe_defense": [
-        "Rheinmetall", "BAE Systems", "Thales", "Saab",
-        "European defense", "European defence", "EU defense",
-        "rearmament", "rearm", "German defense",
-        "NATO spending", "NATO target", "defense procurement",
-        "Leonardo", "Hensoldt", "Kongsberg", "Renk", "Dassault",
-        "Airbus defence", "MBDA", "Eurofighter", "Gripen",
-    ],
-    "short_squeeze": [
-        "short squeeze", "gamma squeeze", "squeeze", "short interest",
-        "days to cover", "float", "low float", "heavily shorted",
-        "short seller", "short position", "naked short", "MOASS",
-        "mother of all short squeezes", "cover shorts", "covering",
-        "borrow rate",
-    ],
-    "meme_stocks": [
-        "meme stock", "meme stocks", "GameStop", "BlackBerry", "Bed Bath",
-        "reddit rally", "WSB", "wallstreetbets",
-        "retail investor", "apes", "yolo", "diamond hands",
-        "paper hands", "tendies", "to the moon",
-    ],
-    "biotech_pharma": [
-        "biotech", "pharma", "pharmaceutical", "FDA", "FDA approval",
-        "clinical trial", "phase 1", "phase 2", "phase 3",
-        "drug approval", "cancer drug", "oncology",
-        "Moderna", "Pfizer", "Merck",
-        "AstraZeneca", "Eli Lilly",
-        "weight loss drug", "GLP-1", "ozempic", "semaglutide",
-        "gene therapy", "CRISPR", "antibody",
-    ],
-    "rates_bonds": [
-        "interest rate", "federal reserve", "Fed", "FOMC",
-        "rate hike", "rate cut", "inflation", "CPI", "PPI",
-        "recession", "soft landing", "hard landing",
-        "yield curve", "bond yield", "treasury", "10-year",
-        "stagflation", "tightening", "pivot",
-    ],
-    "real_estate": [
-        "real estate", "REIT", "housing market", "home price",
-        "mortgage rate", "30-year mortgage", "refinancing",
-        "commercial real estate", "office space", "multifamily",
-        "Simon Property", "Realty Income",
-        "landlord", "rent", "eviction",
-    ],
-    "cloud_saas": [
-        "cloud", "SaaS", "software as a service", "AWS", "Azure",
-        "Google Cloud", "GCP", "cloud computing", "subscription revenue",
-        "ARR", "annual recurring revenue", "churn",
-        "Salesforce", "Snowflake", "Palantir",
-        "Datadog", "MongoDB", "Cloudflare",
-    ],
-    "china_geopolitics": [
-        "China", "Chinese", "tariff", "trade war", "sanctions",
-        "Taiwan", "geopolitical", "decoupling", "supply chain",
-        "export control", "Alibaba", "JD.com",
-        "Tencent", "Baidu", "Huawei",
-    ],
-    "financials": [
-        "bank", "banking", "JPMorgan", "Goldman Sachs",
-        "Morgan Stanley", "Bank of America",
-        "Wells Fargo", "Citigroup",
-        "credit card", "regional bank", "Silicon Valley Bank",
-        "credit default swap",
-    ],
-    "consumer_retail": [
-        "consumer", "retail", "spending", "Walmart",
-        "Amazon", "Target", "Costco",
-        "consumer sentiment", "discretionary", "e-commerce",
-        "holiday sales", "Black Friday", "back to school",
-    ],
-    "cybersecurity": [
-        "cybersecurity", "cyber attack", "cyberattack", "ransomware",
-        "data breach", "hacked", "hackers", "phishing", "zero-day",
-        "CrowdStrike", "Palo Alto", "Fortinet", "Zscaler",
-    ],
-    "fintech_payments": [
-        "fintech", "payments", "digital wallet", "buy now pay later",
-        "PayPal", "Visa", "Mastercard", "Stripe", "neobank",
-        "payment processing", "interchange",
-    ],
-    "gaming_esports": [
-        "gaming", "video game", "video games", "esports", "console",
-        "playstation", "xbox", "nintendo", "game pass", "steam deck",
-        "gamer", "gamers",
-    ],
-    "travel_airlines": [
-        "airline", "airlines", "travel demand", "bookings", "cruise",
-        "cruise line", "hotel occupancy", "revenge travel", "air travel",
-        "airfare",
-    ],
-    "housing_builders": [
-        "homebuilder", "homebuilders", "housing starts", "new homes",
-        "home construction", "housing supply", "mortgage applications",
-        "housing shortage",
-    ],
-    "robotics_automation": [
-        "robotics", "robots", "humanoid", "humanoids", "automation",
-        "industrial automation", "robotaxi", "self-driving", "autonomous vehicle",
-        # the physical supply chain - where the humanoid trade actually trades
-        "bearings", "ball bearing", "ball bearings", "actuator", "actuators",
-        "servo", "servos", "harmonic drive", "strain wave", "gearbox",
-        "reducer", "reducers", "planetary gear", "linear guide", "ball screw",
-        "motion control", "end effector", "gripper", "grippers",
-        "torque sensor", "force sensor", "lidar", "machine vision",
-        # robot makers and integrators (names, not tickers)
-        "Fanuc", "Yaskawa", "Keyence", "Kuka", "ABB robotics",
-        "Universal Robots", "cobot", "cobots", "Optimus", "Figure AI",
-        "Unitree", "Agility Robotics", "Boston Dynamics", "teleoperation",
-        # bearings & motion names (Japan/Europe - keyword is how we see them)
-        "THK", "Nabtesco", "Harmonic Drive Systems", "SKF", "Schaeffler",
-        "NSK", "Timken", "RBC Bearings", "Regal Rexnord", "Rexnord",
-    ],
-    "space": [
-        "space launch", "rocket launch", "satellite", "satellites",
-        "SpaceX", "Starlink", "orbital", "space station", "moon landing",
-        "space economy",
-        "Starship", "Kuiper", "launch cadence", "reusable rocket",
-        # NOT bare "constellation" - it would catch Constellation Energy/Brands
-        "smallsat", "space force", "lunar lander", "satellite constellation",
-    ],
-    "quantum_computing": [
-        "quantum computing", "quantum computer", "qubit", "qubits",
-        "quantum chip", "quantum supremacy", "error correction",
-        "Willow chip", "Majorana", "quantum advantage", "post-quantum",
-        "quantum annealing", "trapped ion", "superconducting qubit",
-    ],
-    "weight_loss_glp1": [
-        "GLP-1", "ozempic", "wegovy", "mounjaro", "zepbound",
-        "semaglutide", "tirzepatide", "weight loss drug", "obesity drug",
-    ],
-    "cannabis": [
-        "cannabis", "marijuana", "weed stock", "weed stocks",
-        "dispensary", "rescheduling", "legalization",
-    ],
-    "solar": [
-        "solar", "solar panel", "solar panels", "rooftop solar",
-        "photovoltaic", "net metering", "solar farm",
-    ],
-    "agriculture_food": [
-        "agriculture", "farmland", "fertilizer", "crop", "crops",
-        "grain", "wheat", "corn prices", "food prices", "harvest",
-    ],
-    "shipping_logistics": [
-        "shipping", "freight", "container rates", "supply chain",
-        "trucking", "railroad", "railroads", "logistics", "port congestion",
-        "red sea",
-    ],
-    "small_caps": [
-        "small caps", "small cap", "russell 2000", "microcap", "microcaps",
-        "small-cap rotation",
-    ],
-    "japan": [
-        "nikkei", "yen", "bank of japan", "carry trade",
-        "japanese stocks", "japan stocks",
-        "topix", "BOJ", "JGB", "yen intervention", "Japan Inc",
-        "Softbank", "Sony", "Toyota", "Mitsubishi Heavy",
-        "trading houses", "sogo shosha", "Berkshire Japan",
-    ],
-    "utilities_power": [
-        "utilities", "power grid", "electricity demand", "power plant",
-        "grid buildout", "electricity prices", "power purchase agreement",
-    ],
-    "media_streaming": [
-        "streaming", "subscribers", "box office", "netflix", "disney",
-        "ad tier", "streaming wars", "cord cutting",
-    ],
-    "infrastructure": [
-        "infrastructure", "construction spending", "roads and bridges",
-        "grid upgrade", "data center construction", "megaproject",
-        "infrastructure bill",
-    ],
-}
+_CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 
-# ---------------------------------------------------------------------------
-# TRADEABLE ANCHORS - the instrument each theme is judged against.
-# One liquid primary per theme (mostly ETFs). short_squeeze / meme_stocks
-# have no clean ETF; GME is the honest single-stock proxy.
-# ---------------------------------------------------------------------------
-# RESTRICTED TO THE FIRM-APPROVED TRADEABLE LIST (see the Tickers sheet):
-# every anchor below is an instrument the desk can actually trade. Themes
-# with no approved instrument (crypto, cannabis, small_caps, japan) are
-# still TRACKED - keywords, counts, sentiment, conviction all work - but
-# carry no anchor, so they are excluded from trade signals automatically.
-THEME_ETFS: dict[str, str] = {
-    "semiconductors": "SMH",
-    "memory": "SMH",            # no pure memory ETF on the approved list
-    "ai": "IYW",                # US tech; AIQ is not tradeable here
-    "datacenters": "VPN",       # Global X data center REITs - on the list
-    "ai_megacap": "QQQ",
-    "gold_metals": "GLD",       # miners GDX / silver SLV,SIL / copper COPX in fallbacks
-    "energy": "XLE",
-    "ev_clean_energy": "LIT",   # lithium & battery - on the list
-    "uranium_nuclear": "URA",
-    "defense_aerospace": "ITA",
-    "europe_defense": "ITA",    # no European defense line approved; US proxy
-    "short_squeeze": "ARKK",    # speculative-growth basket; GME not tradeable
-    "meme_stocks": "ARKK",      # same proxy - the retail-favourite basket
-    "biotech_pharma": "XBI",
-    "rates_bonds": "TLT",
-    "real_estate": "XLRE",      # VNQ not approved; sector SPDR is
-    "cloud_saas": "IGV",
-    "china_geopolitics": "KWEB",
-    "financials": "XLF",
-    "consumer_retail": "XLY",
-    "cybersecurity": "CIBR",
-    "fintech_payments": "XLF",  # IPAY not approved; financials proxy
-    "gaming_esports": "SOCL",   # ESPO not approved; social/interactive proxy
-    "travel_airlines": "JETS",
-    "housing_builders": "ITB",
-    "robotics_automation": "XLI",  # BOTZ/ROBO not approved; industrials proxy
-    "space": "ITA",             # ARKX not approved; aerospace & defense proxy
-    "quantum_computing": "IYW",
-    "weight_loss_glp1": "XLV",  # LLY single stock not tradeable; healthcare
-    "solar": "LIT",             # TAN not approved; closest clean-energy line
-    "agriculture_food": "XLP",  # MOO not approved; staples/food proxy
-    "shipping_logistics": "IYT",
-    "utilities_power": "XLU",
-    "media_streaming": "XLC",
-    "infrastructure": "XLI",    # PAVE not approved; industrials proxy
-    "japan": "1622 JT",         # NF Topix-17 Auto & Transport Equip - the
-                                # approved Japan line (narrow: autos/machinery,
-                                # not the broad Nikkei - read charts accordingly)
-    # NO approved instrument -> tracked but untradeable, no anchor:
-    #   crypto, cannabis, small_caps
-}
 
-# Some primary anchors only started trading recently (IBIT Jan-2024,
-# MAGS Apr-2023, EUAD 2024, DTCR renamed 2024...). For a window BEFORE the
-# anchor existed, the overlay notebooks fall back down this list until a
-# symbol with price data in the window is found - so a thematic chart is
-# never empty just because the modern ETF is younger than the window.
-# The price puller requests ALL of these too, so the fallback always has data.
-# Fallback chains - RESTRICTED to the firm-approved list too. Order: primary
-# anchor first, then approved alternates (nb 17 can also pick any directly).
-THEME_ETF_FALLBACKS: dict[str, list[str]] = {
-    "semiconductors": ["SMH", "SOXX"],
-    "memory": ["SMH", "SOXX"],
-    "ai": ["IYW", "QQQ", "XLK"],
-    "datacenters": ["VPN", "IYW"],
-    "ai_megacap": ["QQQ", "XLK"],
-    "gold_metals": ["GLD", "GDX", "SLV", "SIL", "COPX"],
-    "energy": ["XLE", "XOP", "OIH", "USO", "UNG"],
-    "ev_clean_energy": ["LIT", "XLY"],
-    "defense_aerospace": ["ITA", "XLI"],
-    "europe_defense": ["ITA"],
-    "biotech_pharma": ["XBI", "XLV"],
-    "rates_bonds": ["TLT", "LQD", "HYG", "TIP"],
-    "real_estate": ["XLRE", "ITB"],
-    "cloud_saas": ["IGV", "IYW"],
-    "china_geopolitics": ["KWEB", "FXI", "ASHR", "CQQQ"],
-    "financials": ["XLF", "KBE"],
-    "fintech_payments": ["XLF", "IGV"],
-    "gaming_esports": ["SOCL", "IYW"],
-    "housing_builders": ["ITB", "XLB"],
-    "robotics_automation": ["XLI", "IYW", "ARKK"],
-    "space": ["ITA"],
-    "quantum_computing": ["IYW", "QQQ"],
-    "weight_loss_glp1": ["XLV", "XBI"],
-    "solar": ["LIT", "XLU"],
-    "agriculture_food": ["XLP", "XLB"],
-    "media_streaming": ["XLC", "SOCL"],
-    "infrastructure": ["XLI", "XLB"],
-}
+def _config_rows(fname: str, required: tuple) -> list:
+    """Read one config CSV, strip whitespace, fail loudly on a bad header.
+    utf-8-sig so a file saved from Excel (BOM) still parses."""
+    path = _CONFIG_DIR / fname
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} is missing. The theme definitions live in config/*.csv "
+            "(see src/themes.py header). Restore the file from git.")
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        rdr = csv.DictReader(f)
+        missing = [c for c in required if c not in (rdr.fieldnames or [])]
+        if missing:
+            raise ValueError(f"{path}: missing column(s) {missing}; "
+                             f"expected header {list(required)}")
+        return [{k: (row.get(k) or "").strip() for k in rdr.fieldnames}
+                for row in rdr]
+
+
+def _load_theme_keywords() -> dict:
+    out: dict = {}
+    for row in _config_rows("theme_keywords.csv", ("theme", "keyword")):
+        if row["theme"] and row["keyword"]:
+            out.setdefault(row["theme"], []).append(row["keyword"])
+    if not out:
+        raise ValueError("config/theme_keywords.csv has no keyword rows")
+    return out
+
+
+def _load_approved_instruments() -> dict:
+    out = {}
+    for row in _config_rows("approved_instruments.csv",
+                            ("symbol", "bloomberg", "name")):
+        if row["symbol"]:
+            out[row["symbol"]] = row
+    return out
+
+
+def _load_theme_etfs() -> tuple:
+    """(THEME_ETFS, THEME_ETF_FALLBACKS) from config/theme_etfs.csv.
+    A row with an empty etf cell is a TRACKED-ONLY theme (no approved
+    instrument) and is deliberately absent from THEME_ETFS - that is what
+    keeps it out of every tradeable list on the dashboard.  Every symbol
+    used must be on the approved list; the anchor always leads its own
+    fallback chain so the two files cannot disagree about it."""
+    approved = _load_approved_instruments()
+    etfs: dict = {}
+    fallbacks: dict = {}
+    for row in _config_rows("theme_etfs.csv", ("theme", "etf", "fallbacks")):
+        theme = row["theme"]
+        if not theme or not row["etf"]:
+            continue                      # tracked-only theme - no anchor
+        anchor = row["etf"]
+        chain = [s.strip() for s in row["fallbacks"].split("|") if s.strip()]
+        if anchor not in chain:
+            chain.insert(0, anchor)
+        for sym in chain:
+            if sym not in approved:
+                raise ValueError(
+                    f"config/theme_etfs.csv: '{sym}' (theme {theme}) is not "
+                    "in config/approved_instruments.csv - add it there "
+                    "first (symbol + exact Bloomberg code), or fix the typo.")
+        etfs[theme] = anchor
+        fallbacks[theme] = chain
+    if not etfs:
+        raise ValueError("config/theme_etfs.csv has no tradeable theme rows")
+    return etfs, fallbacks
+
+
+def _load_theme_tickers() -> dict:
+    out: dict = {}
+    for row in _config_rows("theme_tickers.csv", ("theme", "ticker")):
+        if row["theme"] and row["ticker"]:
+            out.setdefault(row["theme"], set()).add(row["ticker"].upper())
+    if not out:
+        raise ValueError("config/theme_tickers.csv has no rows")
+    return out
+
+
+# Loaded ONCE at import.  Same public names, same types as the old in-file
+# literals, so every existing importer (dashboard, analytics, notebooks,
+# tests) works unchanged.
+THEME_KEYWORDS = _load_theme_keywords()
+THEME_ETFS, THEME_ETF_FALLBACKS = _load_theme_etfs()
+THEME_TICKERS = _load_theme_tickers()
+APPROVED_INSTRUMENTS = _load_approved_instruments()
+
 
 # ---------------------------------------------------------------------------
 # INTERNATIONAL COVERAGE (Europe / Japan) - retail posts refer to foreign
@@ -539,145 +293,6 @@ def build_daily_theme_counts(posts_df: pd.DataFrame) -> pd.DataFrame:
     )
     daily["keyword_weighted"] = 0   # deprecated, see docstring
     return daily
-
-
-# ---------------------------------------------------------------------------
-# SIGNAL 2 — inferred themes (ticker -> theme)
-# ---------------------------------------------------------------------------
-# Curated: liquid, well-known names per theme. A ticker may sit in several
-# themes (NVDA is a semiconductor, an AI trade and a megacap). Extend freely -
-# precision comes from notebook 02's extraction, not from this mapping.
-# ---------------------------------------------------------------------------
-THEME_TICKERS: dict[str, set[str]] = {
-    "semiconductors": {
-        "NVDA", "AMD", "INTC", "TSM", "ASML", "AVGO", "QCOM", "TXN",
-        "MRVL", "MCHP", "MU", "LRCX", "AMAT", "KLAC", "SMCI",
-        "SMH", "SOXX", "SOXL",
-    },
-    "memory": {"MU", "WDC", "STX"},
-    "ai": {"NVDA", "AMD", "PLTR", "AI", "SMCI", "MSFT", "GOOGL", "BBAI", "SOUN", "AIQ"},
-    "datacenters": {"EQIX", "DLR", "SMCI", "VRT", "IRM", "ANET", "DTCR"},
-    "ai_megacap": {
-        "NVDA", "MSFT", "GOOGL", "GOOG", "META", "AAPL", "AMZN", "TSLA", "MAGS",
-    },
-    "crypto": {
-        "COIN", "MSTR", "MARA", "RIOT", "HUT", "BITF", "CLSK",
-        "GBTC", "BITO", "ETHE", "SI", "IBIT",
-    },
-    "gold_metals": {
-        "GLD", "SLV", "IAU", "GDX", "GDXJ", "NEM", "GOLD", "AEM",
-        "FCX", "WPM", "FNV", "SCCO",
-    },
-    "energy": {
-        "XOM", "CVX", "COP", "OXY", "SLB", "HAL", "BP", "SHEL",
-        "PSX", "VLO", "MPC", "DVN", "FANG", "XLE", "USO",
-    },
-    "ev_clean_energy": {
-        "TSLA", "RIVN", "LCID", "NIO", "XPEV", "LI", "PLUG", "FCEL",
-        "ENPH", "FSLR", "RUN", "SEDG", "CHPT", "QS", "BLNK",
-        "ALB", "LIT", "ICLN", "TAN",
-    },
-    "uranium_nuclear": {
-        "CCJ", "URA", "URNM", "UEC", "DNN", "LEU", "SMR", "OKLO", "NNE",
-    },
-    "defense_aerospace": {
-        "LMT", "RTX", "NOC", "GD", "LHX", "HII", "KTOS", "AVAV",
-        "ITA", "PPA", "XAR",
-    },
-    "europe_defense": {"EUAD"},
-    "short_squeeze": {
-        "GME", "AMC", "BBBY", "KOSS", "EXPR", "NAKD", "WISH",
-        "WKHS", "SPCE", "CLOV",
-    },
-    "meme_stocks": {
-        "GME", "AMC", "BB", "BBBY", "CLOV", "SNDL", "KOSS", "NOK",
-        "EXPR", "WISH", "HOOD", "TLRY",
-    },
-    "biotech_pharma": {
-        "MRNA", "PFE", "MRK", "AZN", "LLY", "JNJ", "ABBV", "BMY",
-        "GILD", "AMGN", "REGN", "VRTX", "NVAX", "BNTX", "CRSP",
-        "OCGN", "XBI", "IBB",
-    },
-    "rates_bonds": {"TLT", "IEF", "SHY", "TBT", "HYG", "LQD"},
-    "real_estate": {"SPG", "O", "VNQ", "AMT", "PLD", "EQR", "AVB"},
-    "cloud_saas": {
-        "CRM", "SNOW", "PLTR", "DDOG", "MDB", "NET", "ORCL", "ADBE",
-        "NOW", "TEAM", "ZM", "WDAY", "OKTA", "ZS", "CRWD", "TWLO", "SHOP",
-        "IGV",
-    },
-    "china_geopolitics": {
-        "BABA", "JD", "PDD", "BIDU", "NIO", "XPEV", "LI",
-        "FXI", "KWEB", "YINN", "DIDI", "TCEHY",
-    },
-    "financials": {
-        "JPM", "GS", "MS", "BAC", "WFC", "C", "SCHW", "BLK",
-        "V", "MA", "AXP", "XLF", "SOFI", "HOOD",
-    },
-    "consumer_retail": {
-        "WMT", "AMZN", "TGT", "COST", "HD", "LOW", "NKE", "SBUX",
-        "MCD", "LULU", "XLY",
-    },
-    "cybersecurity": {
-        "CRWD", "PANW", "ZS", "OKTA", "FTNT", "CYBR", "TENB", "RPD",
-        "CIBR", "HACK",
-    },
-    "fintech_payments": {
-        "PYPL", "SQ", "XYZ", "V", "MA", "AXP", "AFRM", "SOFI", "HOOD",
-        "TOST", "UPST", "IPAY", "FINX",
-    },
-    "gaming_esports": {
-        "RBLX", "EA", "TTWO", "U", "SONY", "NTDOY", "MSFT", "DKNG",
-        "ESPO",
-    },
-    "travel_airlines": {
-        "DAL", "UAL", "AAL", "LUV", "ABNB", "BKNG", "EXPE", "CCL",
-        "RCL", "NCLH", "MAR", "HLT", "JETS",
-    },
-    "housing_builders": {
-        "DHI", "LEN", "PHM", "NVR", "TOL", "KBH", "BLDR", "ITB", "XHB",
-    },
-    "robotics_automation": {
-        "ISRG", "TER", "ROK", "SYM", "PATH", "TSLA", "BOTZ", "ROBO",
-        # bearings / motion-control supply chain (US-listed)
-        "TKR", "RRX", "RBC", "SERV", "RR",
-    },
-    "space": {
-        "RKLB", "LUNR", "ASTS", "SPCE", "BA", "RDW", "ARKX",
-    },
-    "quantum_computing": {
-        "IONQ", "RGTI", "QBTS", "QUBT", "IBM", "QTUM",
-    },
-    "weight_loss_glp1": {
-        "LLY", "NVO", "HIMS", "VKTX", "AMGN",
-    },
-    "cannabis": {
-        "TLRY", "CGC", "ACB", "SNDL", "MSOS",
-    },
-    "solar": {
-        "ENPH", "SEDG", "FSLR", "RUN", "NXT", "ARRY", "TAN",
-    },
-    "agriculture_food": {
-        "ADM", "BG", "DE", "MOS", "NTR", "CF", "MOO", "DBA",
-    },
-    "shipping_logistics": {
-        "FDX", "UPS", "ZIM", "MATX", "UNP", "CSX", "ODFL", "GXO", "IYT",
-    },
-    "small_caps": {
-        "IWM",
-    },
-    "japan": {
-        "EWJ", "DXJ",
-    },
-    "utilities_power": {
-        "XLU", "NEE", "VST", "CEG", "D", "SO", "GEV",
-    },
-    "media_streaming": {
-        "NFLX", "DIS", "WBD", "PARA", "ROKU", "SPOT", "XLC",
-    },
-    "infrastructure": {
-        "CAT", "VMC", "MLM", "URI", "PWR", "PAVE",
-    },
-}
 
 
 def build_ticker_to_themes(theme_tickers=THEME_TICKERS):

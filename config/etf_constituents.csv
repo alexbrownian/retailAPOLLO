@@ -1,0 +1,827 @@
+etf,ticker,company,rank,verified
+SMH,NVDA,NVIDIA,1,yes
+SMH,TSM,Taiwan Semiconductor ADR,2,yes
+SMH,MU,Micron Technology,3,yes
+SMH,AMAT,Applied Materials,4,yes
+SMH,AVGO,Broadcom,5,yes
+SMH,AMD,Advanced Micro Devices,6,yes
+SMH,LRCX,Lam Research,7,yes
+SMH,INTC,Intel,8,yes
+SMH,KLAC,KLA Corp,9,yes
+SMH,ASML,ASML Holding ADR,10,yes
+SMH,MRVL,Marvell Technology,11,yes
+SMH,TXN,Texas Instruments,12,yes
+SMH,ADI,Analog Devices,13,yes
+SMH,QCOM,Qualcomm,14,yes
+SMH,CDNS,Cadence Design Systems,15,yes
+SMH,SNPS,Synopsys,16,yes
+SMH,TER,Teradyne,17,yes
+SMH,MPWR,Monolithic Power Systems,18,yes
+SMH,STM,STMicroelectronics ADR,19,yes
+SMH,NXPI,NXP Semiconductors,20,yes
+SMH,ARM,Arm Holdings ADR,21,yes
+SMH,ALAB,Astera Labs,22,yes
+SMH,MCHP,Microchip Technology,23,yes
+SMH,ON,ON Semiconductor,24,yes
+SMH,SWKS,Skyworks Solutions,25,yes
+SOXX,AMD,Advanced Micro Devices,1,yes
+SOXX,NVDA,NVIDIA,2,yes
+SOXX,MU,Micron Technology,3,yes
+SOXX,AVGO,Broadcom,4,yes
+SOXX,AMAT,Applied Materials,5,yes
+SOXX,INTC,Intel,6,yes
+SOXX,KLAC,KLA Corp,7,yes
+SOXX,TSM,Taiwan Semiconductor ADR,8,yes
+SOXX,LRCX,Lam Research,9,yes
+SOXX,MRVL,Marvell Technology,10,yes
+SOXX,TXN,Texas Instruments,11,yes
+SOXX,ADI,Analog Devices,12,yes
+SOXX,NXPI,NXP Semiconductors,13,yes
+SOXX,MPWR,Monolithic Power Systems,14,yes
+SOXX,TER,Teradyne,15,yes
+SOXX,QCOM,Qualcomm,16,yes
+SOXX,ASML,ASML Holding ADR,17,yes
+SOXX,MCHP,Microchip Technology,18,yes
+SOXX,ALAB,Astera Labs,19,yes
+SOXX,CRDO,Credo Technology,20,yes
+SOXX,ON,ON Semiconductor,21,yes
+SOXX,ASX,ASE Technology ADR,22,yes
+SOXX,ENTG,Entegris,23,yes
+SOXX,MTSI,MACOM Technology,24,yes
+SOXX,UMC,United Microelectronics ADR,25,yes
+XLE,XOM,Exxon Mobil,1,yes
+XLE,CVX,Chevron,2,yes
+XLE,COP,ConocoPhillips,3,yes
+XLE,MPC,Marathon Petroleum,4,yes
+XLE,PSX,Phillips 66,5,yes
+XLE,VLO,Valero Energy,6,yes
+XLE,SLB,SLB,7,yes
+XLE,EOG,EOG Resources,8,yes
+XLE,WMB,Williams Companies,9,yes
+XLE,KMI,Kinder Morgan,10,yes
+XLE,TRGP,Targa Resources,11,yes
+XLE,OKE,ONEOK,12,yes
+XLE,BKR,Baker Hughes,13,yes
+XLE,DVN,Devon Energy,14,yes
+XLE,OXY,Occidental Petroleum,15,yes
+XLE,FANG,Diamondback Energy,16,yes
+XLE,EQT,EQT Corp,17,yes
+XLE,HAL,Halliburton,18,yes
+XLE,TPL,Texas Pacific Land,19,yes
+XLE,EXE,Expand Energy,20,yes
+XLE,APA,APA Corp,21,yes
+XOP,PBF,PBF Energy,1,yes
+XOP,PARR,Par Pacific Holdings,2,yes
+XOP,DK,Delek US Holdings,3,yes
+XOP,DINO,HF Sinclair,4,yes
+XOP,MPC,Marathon Petroleum,5,yes
+XOP,VLO,Valero Energy,6,yes
+XOP,PSX,Phillips 66,7,yes
+XOP,TPL,Texas Pacific Land,8,yes
+XOP,OVV,Ovintiv,9,yes
+XOP,PR,Permian Resources,10,yes
+XOP,VG,Venture Global,11,yes
+XOP,EOG,EOG Resources,12,yes
+XOP,XOM,Exxon Mobil,13,yes
+XOP,FANG,Diamondback Energy,14,yes
+XOP,EXE,Expand Energy,15,yes
+XOP,CNX,CNX Resources,16,yes
+XOP,CVX,Chevron,17,yes
+XOP,SM,SM Energy,18,yes
+XOP,EQT,EQT Corp,19,yes
+XOP,VNOM,Viper Energy,20,yes
+XOP,OXY,Occidental Petroleum,21,yes
+XOP,COP,ConocoPhillips,22,yes
+XOP,CHRD,Chord Energy,23,yes
+XOP,RRC,Range Resources,24,yes
+XOP,AR,Antero Resources,25,yes
+OIH,SLB,SLB,1,yes
+OIH,BKR,Baker Hughes,2,yes
+OIH,FTI,TechnipFMC,3,yes
+OIH,HAL,Halliburton,4,yes
+OIH,TS,Tenaris ADR,5,yes
+OIH,NE,Noble Corp,6,yes
+OIH,WFRD,Weatherford International,7,yes
+OIH,RIG,Transocean,8,yes
+OIH,OII,Oceaneering International,9,yes
+OIH,NOV,NOV Inc,10,yes
+OIH,VAL,Valaris,11,yes
+OIH,PTEN,Patterson-UTI Energy,12,yes
+OIH,WHD,Cactus,13,yes
+OIH,SEI,Solaris Energy Infrastructure,14,yes
+OIH,HP,Helmerich and Payne,15,yes
+OIH,TDW,Tidewater,16,yes
+OIH,LBRT,Liberty Energy,17,yes
+OIH,WTTR,Select Energy Services,18,yes
+OIH,NBR,Nabors Industries,19,yes
+OIH,PUMP,ProPetro Holding,20,yes
+OIH,HLX,Helix Energy Solutions,21,yes
+OIH,INVX,Innovex International,22,yes
+OIH,XPRO,Expro Group,23,yes
+OIH,RES,RPC Inc,24,yes
+OIH,CLB,Core Laboratories,25,yes
+GDX,NEM,Newmont,1,yes
+GDX,AEM,Agnico Eagle Mines,2,yes
+GDX,B,Barrick Mining,3,yes
+GDX,AU,AngloGold Ashanti,4,yes
+GDX,FNV,Franco-Nevada,5,yes
+GDX,WPM,Wheaton Precious Metals,6,yes
+GDX,KGC,Kinross Gold,7,yes
+GDX,GFI,Gold Fields ADR,8,yes
+GDX,PAAS,Pan American Silver,9,yes
+GDX,CDE,Coeur Mining,10,yes
+GDX,AGI,Alamos Gold,11,yes
+GDX,RGLD,Royal Gold,12,yes
+GDX,AG,First Majestic Silver,13,yes
+GDX,EQX,Equinox Gold,14,yes
+GDX,IAG,IAMGOLD,15,yes
+GDX,HMY,Harmony Gold ADR,16,yes
+GDX,EGO,Eldorado Gold,17,yes
+GDX,HL,Hecla Mining,18,yes
+GDX,BVN,Buenaventura ADR,19,yes
+GDX,SSRM,SSR Mining,20,yes
+GDX,BTG,B2Gold,21,yes
+GDX,OR,OR Royalties,22,yes
+GDX,ARMN,Aris Mining,23,yes
+GDX,CGAU,Centerra Gold,24,yes
+GDX,ORLA,Orla Mining,25,yes
+GDX,EXK,Endeavour Silver,26,yes
+GDX,SA,Seabridge Gold,27,yes
+GDX,FSM,Fortuna Mining,28,yes
+GDX,SKE,Skeena Resources,29,yes
+GDX,SVM,Silvercorp Metals,30,yes
+GDX,AUGO,Aura Minerals,31,yes
+SIL,WPM,Wheaton Precious Metals,1,yes
+SIL,PAAS,Pan American Silver,2,yes
+SIL,CDE,Coeur Mining,3,yes
+SIL,HL,Hecla Mining,4,yes
+SIL,AG,First Majestic Silver,5,yes
+SIL,BVN,Buenaventura ADR,6,yes
+SIL,SSRM,SSR Mining,7,yes
+SIL,OR,OR Royalties,8,yes
+SIL,FSM,Fortuna Mining,9,yes
+SIL,EXK,Endeavour Silver,10,yes
+SIL,SVM,Silvercorp Metals,11,yes
+SIL,TFPM,Triple Flag Precious Metals,12,yes
+SIL,VZLA,Vizsla Silver,13,yes
+SIL,HYMC,Hycroft Mining,14,yes
+SIL,MUX,McEwen,15,yes
+SIL,ASM,Avino Silver and Gold,16,yes
+SIL,USAS,Americas Gold and Silver,17,yes
+COPX,BHP,BHP Group ADR,1,yes
+COPX,TECK,Teck Resources,2,yes
+COPX,HBM,Hudbay Minerals,3,yes
+COPX,SCCO,Southern Copper,4,yes
+COPX,FCX,Freeport-McMoRan,5,yes
+COPX,TGB,Taseko Mines,6,yes
+COPX,ERO,Ero Copper,7,yes
+URA,CCJ,Cameco,1,yes
+URA,NXE,NexGen Energy,2,yes
+URA,OKLO,Oklo,3,yes
+URA,UEC,Uranium Energy Corp,4,yes
+URA,LEU,Centrus Energy,5,yes
+URA,BHP,BHP Group ADR,6,yes
+URA,UUUU,Energy Fuels,7,yes
+URA,DNN,Denison Mines,8,yes
+URA,SMR,NuScale Power,9,yes
+URA,SBSW,Sibanye Stillwater ADR,10,yes
+ITA,GE,GE Aerospace,1,yes
+ITA,RTX,RTX Corp,2,yes
+ITA,BA,Boeing,3,yes
+ITA,GD,General Dynamics,4,yes
+ITA,HWM,Howmet Aerospace,5,yes
+ITA,LMT,Lockheed Martin,6,yes
+ITA,TDG,TransDigm Group,7,yes
+ITA,NOC,Northrop Grumman,8,yes
+ITA,LHX,L3Harris Technologies,9,yes
+ITA,AXON,Axon Enterprise,10,yes
+ITA,RKLB,Rocket Lab,11,yes
+ITA,CRS,Carpenter Technology,12,yes
+ITA,CW,Curtiss-Wright,13,yes
+ITA,ATI,ATI Inc,14,yes
+ITA,WWD,Woodward,15,yes
+ITA,FTAI,FTAI Aviation,16,yes
+ITA,HEI.A,HEICO Class A,17,yes
+ITA,TXT,Textron,18,yes
+ITA,BWXT,BWX Technologies,19,yes
+ITA,HEI,HEICO,20,yes
+ITA,MOG.A,Moog Class A,21,yes
+ITA,HII,Huntington Ingalls,22,yes
+ITA,KTOS,Kratos Defense,23,yes
+ITA,HXL,Hexcel,24,yes
+ITA,SARO,StandardAero,25,yes
+EUAD,RYCEY,Rolls-Royce ADR,1,yes
+EUAD,SAFRY,Safran ADR,2,yes
+EUAD,EADSY,Airbus ADR,3,yes
+EUAD,BAESY,BAE Systems ADR,4,yes
+EUAD,RNMBY,Rheinmetall ADR,5,yes
+EUAD,MTUAY,MTU Aero Engines ADR,6,yes
+EUAD,FINMY,Leonardo ADR,7,yes
+EUAD,THLLY,Thales ADR,8,yes
+EUAD,SAABY,Saab ADR,9,yes
+EUAD,HAGHY,Hensoldt ADR,10,yes
+EUAD,BCKIY,Babcock International ADR,11,yes
+EUAD,QNTQY,QinetiQ ADR,12,yes
+XBI,APGE,Apogee Therapeutics,1,yes
+XBI,ERAS,Erasca,2,yes
+XBI,ORKA,Oruka Therapeutics,3,yes
+XBI,KYMR,Kymera Therapeutics,4,yes
+XBI,DNTH,Dianthus Therapeutics,5,yes
+XBI,CGON,CG Oncology,6,yes
+XBI,SYRE,Spyre Therapeutics,7,yes
+XBI,PRAX,Praxis Precision Medicines,8,yes
+XBI,RVMD,Revolution Medicines,9,yes
+XBI,COGT,Cogent Biosciences,10,yes
+XBI,PTGX,Protagonist Therapeutics,11,yes
+XBI,TWST,Twist Bioscience,12,yes
+XBI,VKTX,Viking Therapeutics,13,yes
+XBI,BBIO,BridgeBio Pharma,14,yes
+XBI,RYTM,Rhythm Pharmaceuticals,15,yes
+XBI,ROIV,Roivant Sciences,16,yes
+XBI,PCVX,Vaxcyte,17,yes
+XBI,MIRM,Mirum Pharmaceuticals,18,yes
+XBI,TVTX,Travere Therapeutics,19,yes
+XBI,MRNA,Moderna,20,yes
+XBI,ARWR,Arrowhead Pharmaceuticals,21,yes
+XBI,ALKS,Alkermes,22,yes
+XBI,CYTK,Cytokinetics,23,yes
+XBI,TGTX,TG Therapeutics,24,yes
+XBI,NTRA,Natera,25,yes
+BBH,AMGN,Amgen,1,yes
+BBH,GILD,Gilead Sciences,2,yes
+BBH,VRTX,Vertex Pharmaceuticals,3,yes
+BBH,REGN,Regeneron Pharmaceuticals,4,yes
+BBH,IQV,IQVIA Holdings,5,yes
+BBH,RVMD,Revolution Medicines,6,yes
+BBH,ARGX,argenx ADR,7,yes
+BBH,NTRA,Natera,8,yes
+BBH,ALNY,Alnylam Pharmaceuticals,9,yes
+BBH,ILMN,Illumina,10,yes
+BBH,BIIB,Biogen,11,yes
+BBH,ONC,BeOne Medicines,12,yes
+BBH,INCY,Incyte,13,yes
+BBH,UTHR,United Therapeutics,14,yes
+BBH,MRNA,Moderna,15,yes
+BBH,INSM,Insmed,16,yes
+BBH,NBIX,Neurocrine Biosciences,17,yes
+BBH,ICLR,ICON plc,18,yes
+BBH,BNTX,BioNTech ADR,19,yes
+BBH,TECH,Bio-Techne,20,yes
+BBH,CRL,Charles River Laboratories,21,yes
+BBH,BMRN,BioMarin Pharmaceutical,22,yes
+BBH,QGEN,Qiagen,23,yes
+BBH,TEM,Tempus AI,24,yes
+XLRE,WELL,Welltower,1,yes
+XLRE,PLD,Prologis,2,yes
+XLRE,EQIX,Equinix,3,yes
+XLRE,AMT,American Tower,4,yes
+XLRE,SPG,Simon Property Group,5,yes
+XLRE,DLR,Digital Realty Trust,6,yes
+XLRE,VTR,Ventas,7,yes
+XLRE,PSA,Public Storage,8,yes
+XLRE,O,Realty Income,9,yes
+XLRE,CBRE,CBRE Group,10,yes
+XLRE,IRM,Iron Mountain,11,yes
+XLRE,CCI,Crown Castle,12,yes
+XLRE,EXR,Extra Space Storage,13,yes
+XLRE,VICI,VICI Properties,14,yes
+XLRE,AVB,AvalonBay Communities,15,yes
+XLRE,EQR,Equity Residential,16,yes
+XLRE,ESS,Essex Property Trust,17,yes
+XLRE,SBAC,SBA Communications,18,yes
+XLRE,WY,Weyerhaeuser,19,yes
+XLRE,KIM,Kimco Realty,20,yes
+XLRE,INVH,Invitation Homes,21,yes
+XLRE,HST,Host Hotels and Resorts,22,yes
+XLRE,MAA,Mid-America Apartment,23,yes
+XLRE,DOC,Healthpeak Properties,24,yes
+XLRE,REG,Regency Centers,25,yes
+IGV,PANW,Palo Alto Networks,1,yes
+IGV,MSFT,Microsoft,2,yes
+IGV,PLTR,Palantir Technologies,3,yes
+IGV,CRWD,CrowdStrike,4,yes
+IGV,CRM,Salesforce,5,yes
+IGV,ORCL,Oracle,6,yes
+IGV,NOW,ServiceNow,7,yes
+IGV,ADBE,Adobe,8,yes
+IGV,APP,AppLovin,9,yes
+IGV,FTNT,Fortinet,10,yes
+IGV,INTU,Intuit,11,yes
+IGV,CDNS,Cadence Design Systems,12,yes
+IGV,DDOG,Datadog,13,yes
+IGV,SNPS,Synopsys,14,yes
+IGV,ADSK,Autodesk,15,yes
+IGV,EA,Electronic Arts,16,yes
+IGV,TTWO,Take-Two Interactive,17,yes
+IGV,ROP,Roper Technologies,18,yes
+IGV,WDAY,Workday,19,yes
+IGV,FICO,Fair Isaac,20,yes
+IGV,MSTR,Strategy,21,yes
+IGV,ZM,Zoom Communications,22,yes
+IGV,TEAM,Atlassian,23,yes
+IGV,ZS,Zscaler,24,yes
+IGV,NTNX,Nutanix,25,yes
+KWEB,TCEHY,Tencent Holdings ADR,1,yes
+KWEB,BABA,Alibaba Group ADR,2,yes
+KWEB,MPNGY,Meituan ADR,3,yes
+KWEB,PDD,PDD Holdings ADR,4,yes
+KWEB,NTES,NetEase ADR,5,yes
+KWEB,JD,JD.com ADR,6,yes
+KWEB,YMM,Full Truck Alliance ADR,7,yes
+KWEB,BEKE,KE Holdings ADR,8,yes
+KWEB,TCOM,Trip.com Group ADR,9,yes
+KWEB,BZ,Kanzhun ADR,10,yes
+KWEB,BILI,Bilibili ADR,11,yes
+KWEB,BIDU,Baidu ADR,12,yes
+KWEB,TME,Tencent Music ADR,13,yes
+KWEB,TAL,TAL Education ADR,14,yes
+KWEB,VIPS,Vipshop Holdings ADR,15,yes
+KWEB,JOYY,JOYY ADR,16,yes
+KWEB,ATHM,Autohome ADR,17,yes
+KWEB,QFIN,Qfin Holdings ADR,18,yes
+KWEB,WB,Weibo ADR,19,yes
+FXI,BABA,Alibaba Group ADR,1,yes
+FXI,TCEHY,Tencent Holdings ADR,2,yes
+FXI,CICHY,China Construction Bank ADR,3,yes
+FXI,IDCBY,ICBC ADR,4,yes
+FXI,MPNGY,Meituan ADR,5,yes
+FXI,XIACY,Xiaomi ADR,6,yes
+FXI,NTES,NetEase ADR,7,yes
+FXI,PNGAY,Ping An Insurance ADR,8,yes
+FXI,BACHY,Bank of China ADR,9,yes
+FXI,BYDDY,BYD ADR,10,yes
+FXI,JD,JD.com ADR,11,yes
+FXI,BIDU,Baidu ADR,12,yes
+FXI,TCOM,Trip.com Group ADR,13,yes
+FXI,CIHKY,China Merchants Bank ADR,14,yes
+FXI,ACGBY,Agricultural Bank of China ADR,15,yes
+FXI,ONC,BeOne Medicines,16,yes
+CQQQ,MPNGY,Meituan ADR,1,yes
+CQQQ,PDD,PDD Holdings ADR,2,yes
+CQQQ,TCEHY,Tencent Holdings ADR,3,yes
+CQQQ,BIDU,Baidu ADR,4,yes
+CQQQ,BILI,Bilibili ADR,5,yes
+CQQQ,TME,Tencent Music ADR,6,yes
+CQQQ,GDS,GDS Holdings ADR,7,yes
+XLF,JPM,JPMorgan Chase,1,yes
+XLF,BRK.B,Berkshire Hathaway,2,yes
+XLF,V,Visa,3,yes
+XLF,MA,Mastercard,4,yes
+XLF,BAC,Bank of America,5,yes
+XLF,GS,Goldman Sachs,6,yes
+XLF,WFC,Wells Fargo,7,yes
+XLF,MS,Morgan Stanley,8,yes
+XLF,C,Citigroup,9,yes
+XLF,AXP,American Express,10,yes
+XLF,SCHW,Charles Schwab,11,yes
+XLF,BLK,BlackRock,12,yes
+XLF,COF,Capital One Financial,13,yes
+XLF,CB,Chubb,14,yes
+XLF,SPGI,S&P Global,15,yes
+XLF,PGR,Progressive,16,yes
+XLF,BNY,Bank of New York Mellon,17,yes
+XLF,PNC,PNC Financial Services,18,yes
+XLF,USB,US Bancorp,19,yes
+XLF,BX,Blackstone,20,yes
+XLF,CME,CME Group,21,yes
+XLF,MMC,Marsh McLennan,22,yes
+XLF,ICE,Intercontinental Exchange,23,yes
+XLF,TRV,Travelers,24,yes
+XLF,AON,Aon,25,yes
+KBE,TBBK,The Bancorp,1,yes
+KBE,PRK,Park National,2,yes
+KBE,NMIH,NMI Holdings,3,yes
+KBE,MTG,MGIC Investment,4,yes
+KBE,NIC,Nicolet Bankshares,5,yes
+KBE,WSBC,WesBanco,6,yes
+KBE,CRBG,Corebridge Financial,7,yes
+KBE,FBP,First BanCorp,8,yes
+KBE,ESNT,Essent Group,9,yes
+KBE,CFR,Cullen Frost Bankers,10,yes
+KBE,EQH,Equitable Holdings,11,yes
+KBE,RDN,Radian Group,12,yes
+KBE,HOMB,Home BancShares,13,yes
+KBE,JXN,Jackson Financial,14,yes
+KBE,EBC,Eastern Bankshares,15,yes
+KBE,PNFP,Pinnacle Financial Partners,16,yes
+KBE,UMBF,UMB Financial,17,yes
+KBE,BAC,Bank of America,18,yes
+KBE,SFBS,ServisFirst Bancshares,19,yes
+KBE,MTB,M&T Bank,20,yes
+KBE,JPM,JPMorgan Chase,21,yes
+KBE,AX,Axos Financial,22,yes
+KBE,VOYA,Voya Financial,23,yes
+KBE,TOWN,TowneBank,24,yes
+KBE,FBK,FB Financial,25,yes
+KRE,CFR,Cullen Frost Bankers,1,yes
+KRE,HOMB,Home BancShares,2,yes
+KRE,MTB,M&T Bank,3,yes
+KRE,CFG,Citizens Financial Group,4,yes
+KRE,PNFP,Pinnacle Financial Partners,5,yes
+KRE,BPOP,Popular,6,yes
+KRE,SSB,SouthState,7,yes
+KRE,ONB,Old National Bancorp,8,yes
+KRE,CBSH,Commerce Bancshares,9,yes
+KRE,BANC,Banc of California,10,yes
+KRE,FULT,Fulton Financial,11,yes
+KRE,BOKF,BOK Financial,12,yes
+KRE,RF,Regions Financial,13,yes
+KRE,AUB,Atlantic Union Bankshares,14,yes
+KRE,ASB,Associated Banc-Corp,15,yes
+KRE,HWC,Hancock Whitney,16,yes
+KRE,UMBF,UMB Financial,17,yes
+KRE,UBSI,United Bankshares,18,yes
+KRE,WBS,Webster Financial,19,yes
+KRE,EBC,Eastern Bankshares,20,yes
+KRE,ZION,Zions Bancorporation,21,yes
+KRE,FIBK,First Interstate BancSystem,22,yes
+KRE,FNB,FNB Corp,23,yes
+KRE,GBCI,Glacier Bancorp,24,yes
+KRE,TFC,Truist Financial,25,yes
+XLY,AMZN,Amazon.com,1,yes
+XLY,TSLA,Tesla,2,yes
+XLY,HD,Home Depot,3,yes
+XLY,MCD,McDonalds,4,yes
+XLY,TJX,TJX Companies,5,yes
+XLY,BKNG,Booking Holdings,6,yes
+XLY,SBUX,Starbucks,7,yes
+XLY,LOW,Lowes Companies,8,yes
+XLY,MAR,Marriott International,9,yes
+XLY,ROST,Ross Stores,10,yes
+XLY,GM,General Motors,11,yes
+XLY,HLT,Hilton Worldwide,12,yes
+XLY,RCL,Royal Caribbean,13,yes
+XLY,ORLY,OReilly Automotive,14,yes
+XLY,DASH,DoorDash,15,yes
+XLY,ABNB,Airbnb,16,yes
+XLY,F,Ford Motor,17,yes
+XLY,NKE,Nike,18,yes
+XLY,AZO,AutoZone,19,yes
+XLY,EBAY,eBay,20,yes
+XLY,CVNA,Carvana,21,yes
+XLY,YUM,Yum Brands,22,yes
+XLY,CMG,Chipotle Mexican Grill,23,yes
+XLY,GRMN,Garmin,24,yes
+XLY,DHI,DR Horton,25,yes
+XRT,GRPN,Groupon,1,yes
+XRT,REAL,The RealReal,2,yes
+XRT,UPBD,Upbound Group,3,yes
+XRT,ETSY,Etsy,4,yes
+XRT,RVLV,Revolve Group,5,yes
+XRT,SAH,Sonic Automotive,6,yes
+XRT,KMX,CarMax,7,yes
+XRT,EYE,National Vision Holdings,8,yes
+XRT,BBWI,Bath and Body Works,9,yes
+XRT,DG,Dollar General,10,yes
+XRT,DLTR,Dollar Tree,11,yes
+XRT,SBH,Sally Beauty Holdings,12,yes
+XRT,PAG,Penske Automotive Group,13,yes
+XRT,BBY,Best Buy,14,yes
+XRT,ANF,Abercrombie and Fitch,15,yes
+XRT,ABG,Asbury Automotive Group,16,yes
+XRT,CART,Maplebear (Instacart),17,yes
+XRT,VVV,Valvoline,18,yes
+XRT,LAD,Lithia Motors,19,yes
+XRT,CPNG,Coupang,20,yes
+XRT,VSCO,Victorias Secret,21,yes
+XRT,TGT,Target,22,yes
+XRT,KSS,Kohls,23,yes
+XRT,SIG,Signet Jewelers,24,yes
+XRT,AN,AutoNation,25,yes
+CIBR,PANW,Palo Alto Networks,1,yes
+CIBR,FTNT,Fortinet,2,yes
+CIBR,CRWD,CrowdStrike,3,yes
+CIBR,CSCO,Cisco Systems,4,yes
+CIBR,AVGO,Broadcom,5,yes
+CIBR,NET,Cloudflare,6,yes
+CIBR,OKTA,Okta,7,yes
+CIBR,ZS,Zscaler,8,yes
+CIBR,FFIV,F5,9,yes
+CIBR,AKAM,Akamai Technologies,10,yes
+CIBR,RBRK,Rubrik,11,yes
+CIBR,GEN,Gen Digital,12,yes
+CIBR,CHKP,Check Point Software,13,yes
+CIBR,DDOG,Datadog,14,yes
+CIBR,DT,Dynatrace,15,yes
+CIBR,THLLY,Thales ADR,16,yes
+CIBR,INFY,Infosys ADR,17,yes
+CIBR,NTAP,NetApp,18,yes
+CIBR,ANET,Arista Networks,19,yes
+CIBR,ACN,Accenture,20,yes
+CIBR,LDOS,Leidos Holdings,21,yes
+CIBR,GOOGL,Alphabet Class A,22,yes
+CIBR,FROG,JFrog,23,yes
+CIBR,MSFT,Microsoft,24,yes
+CIBR,IBM,IBM,25,yes
+CIBR,BAH,Booz Allen Hamilton,26,yes
+CIBR,S,SentinelOne,27,yes
+CIBR,ESTC,Elastic,28,yes
+CIBR,BB,BlackBerry,29,yes
+CIBR,OTEX,Open Text,30,yes
+CIBR,SAIC,Science Applications International,31,yes
+CIBR,VRNS,Varonis Systems,32,yes
+CIBR,CVLT,Commvault Systems,33,yes
+CIBR,QLYS,Qualys,34,yes
+CIBR,TENB,Tenable Holdings,35,yes
+CIBR,FSLY,Fastly,36,yes
+CIBR,NTCT,NetScout Systems,37,yes
+CIBR,ATEN,A10 Networks,38,yes
+CIBR,ZD,Ziff Davis,39,yes
+CIBR,RDWR,Radware,40,yes
+JETS,UAL,United Airlines,1,yes
+JETS,LUV,Southwest Airlines,2,yes
+JETS,DAL,Delta Air Lines,3,yes
+JETS,AAL,American Airlines,4,yes
+JETS,ALGT,Allegiant Travel,5,yes
+JETS,SKYW,SkyWest,6,yes
+JETS,JBLU,JetBlue Airways,7,yes
+JETS,ALK,Alaska Air Group,8,yes
+JETS,ULCC,Frontier Group,9,yes
+JETS,EXPE,Expedia Group,10,yes
+JETS,TRIP,Tripadvisor,11,yes
+JETS,GD,General Dynamics,12,yes
+JETS,BKNG,Booking Holdings,13,yes
+JETS,SABR,Sabre,14,yes
+JETS,TXT,Textron,15,yes
+JETS,BA,Boeing,16,yes
+JETS,EADSY,Airbus ADR,17,yes
+JETS,LTM,LATAM Airlines,18,yes
+ITB,DHI,DR Horton,1,yes
+ITB,PHM,PulteGroup,2,yes
+ITB,LEN,Lennar,3,yes
+ITB,NVR,NVR Inc,4,yes
+ITB,TOL,Toll Brothers,5,yes
+ITB,SHW,Sherwin-Williams,6,yes
+ITB,HD,Home Depot,7,yes
+ITB,LOW,Lowes Companies,8,yes
+ITB,LII,Lennox International,9,yes
+ITB,MAS,Masco,10,yes
+ITB,TMHC,Taylor Morrison Home,11,yes
+ITB,OC,Owens Corning,12,yes
+ITB,IBP,Installed Building Products,13,yes
+ITB,MTH,Meritage Homes,14,yes
+ITB,SKY,Champion Homes,15,yes
+ITB,CVCO,Cavco Industries,16,yes
+ITB,MHO,MI Homes,17,yes
+ITB,SSD,Simpson Manufacturing,18,yes
+ITB,BLDR,Builders FirstSource,19,yes
+ITB,KBH,KB Home,20,yes
+ITB,EXP,Eagle Materials,21,yes
+ITB,FBIN,Fortune Brands Innovations,22,yes
+ITB,FND,Floor and Decor,23,yes
+ITB,MHK,Mohawk Industries,24,yes
+ITB,UFPI,UFP Industries,25,yes
+IYT,UNP,Union Pacific,1,yes
+IYT,UBER,Uber Technologies,2,yes
+IYT,CSX,CSX Corp,3,yes
+IYT,UPS,United Parcel Service,4,yes
+IYT,NSC,Norfolk Southern,5,yes
+IYT,UAL,United Airlines,6,yes
+IYT,DAL,Delta Air Lines,7,yes
+IYT,FDX,FedEx,8,yes
+IYT,ODFL,Old Dominion Freight Line,9,yes
+IYT,XPO,XPO Inc,10,yes
+IYT,CHRW,CH Robinson Worldwide,11,yes
+IYT,EXPD,Expeditors International,12,yes
+IYT,LUV,Southwest Airlines,13,yes
+IYT,JBHT,JB Hunt Transport,14,yes
+IYT,FDXF,FedEx Freight Holding,15,yes
+IYT,KNX,Knight-Swift Transportation,16,yes
+IYT,SAIA,Saia,17,yes
+IYT,R,Ryder System,18,yes
+IYT,AAL,American Airlines,19,yes
+IYT,KEX,Kirby,20,yes
+IYT,LSTR,Landstar System,21,yes
+IYT,MATX,Matson,22,yes
+IYT,UHAL.B,U-Haul Holding Class B,23,yes
+IYT,GXO,GXO Logistics,24,yes
+IYT,LYFT,Lyft,25,yes
+XLU,NEE,NextEra Energy,1,yes
+XLU,SO,Southern Company,2,yes
+XLU,DUK,Duke Energy,3,yes
+XLU,CEG,Constellation Energy,4,yes
+XLU,AEP,American Electric Power,5,yes
+XLU,D,Dominion Energy,6,yes
+XLU,SRE,Sempra,7,yes
+XLU,VST,Vistra,8,yes
+XLU,ETR,Entergy,9,yes
+XLU,XEL,Xcel Energy,10,yes
+XLU,EXC,Exelon,11,yes
+XLU,ED,Consolidated Edison,12,yes
+XLU,PEG,Public Service Enterprise,13,yes
+XLU,PCG,PG&E,14,yes
+XLU,WEC,WEC Energy Group,15,yes
+XLU,AEE,Ameren,16,yes
+XLU,DTE,DTE Energy,17,yes
+XLU,EIX,Edison International,18,yes
+XLU,NRG,NRG Energy,19,yes
+XLU,ATO,Atmos Energy,20,yes
+XLU,CNP,CenterPoint Energy,21,yes
+XLU,ES,Eversource Energy,22,yes
+XLU,PPL,PPL Corp,23,yes
+XLU,AWK,American Water Works,24,yes
+XLU,FE,FirstEnergy,25,yes
+XLC,META,Meta Platforms,1,yes
+XLC,GOOGL,Alphabet Class A,2,yes
+XLC,GOOG,Alphabet Class C,3,yes
+XLC,T,AT&T,4,yes
+XLC,VZ,Verizon Communications,5,yes
+XLC,TMUS,T-Mobile US,6,yes
+XLC,EA,Electronic Arts,7,yes
+XLC,LYV,Live Nation Entertainment,8,yes
+XLC,DIS,Walt Disney,9,yes
+XLC,NFLX,Netflix,10,yes
+XLC,WBD,Warner Bros Discovery,11,yes
+XLC,TTWO,Take-Two Interactive,12,yes
+XLC,OMC,Omnicom Group,13,yes
+XLC,CMCSA,Comcast,14,yes
+XLC,ECHO,EchoStar,15,yes
+XLC,TKO,TKO Group Holdings,16,yes
+XLC,FOXA,Fox Class A,17,yes
+XLC,CHTR,Charter Communications,18,yes
+XLC,NWSA,News Corp Class A,19,yes
+XLC,TTD,The Trade Desk,20,yes
+XLC,FOX,Fox Class B,21,yes
+XLC,NWS,News Corp Class B,22,yes
+XLC,PSKY,Paramount Skydance,23,yes
+XLP,WMT,Walmart,1,yes
+XLP,COST,Costco Wholesale,2,yes
+XLP,PG,Procter and Gamble,3,yes
+XLP,KO,Coca-Cola,4,yes
+XLP,PM,Philip Morris International,5,yes
+XLP,CL,Colgate-Palmolive,6,yes
+XLP,MO,Altria Group,7,yes
+XLP,PEP,PepsiCo,8,yes
+XLP,MDLZ,Mondelez International,9,yes
+XLP,MNST,Monster Beverage,10,yes
+XLP,TGT,Target,11,yes
+XLP,ADM,Archer-Daniels-Midland,12,yes
+XLP,KDP,Keurig Dr Pepper,13,yes
+XLP,SYY,Sysco,14,yes
+XLP,KVUE,Kenvue,15,yes
+XLP,KMB,Kimberly-Clark,16,yes
+XLP,KR,Kroger,17,yes
+XLP,CASY,Caseys General Stores,18,yes
+XLP,HSY,Hershey,19,yes
+XLP,DG,Dollar General,20,yes
+XLP,CHD,Church and Dwight,21,yes
+XLP,KHC,Kraft Heinz,22,yes
+XLP,DLTR,Dollar Tree,23,yes
+XLP,EL,Estee Lauder,24,yes
+XLP,GIS,General Mills,25,yes
+XLB,LIN,Linde,1,yes
+XLB,NEM,Newmont,2,yes
+XLB,FCX,Freeport-McMoRan,3,yes
+XLB,CTVA,Corteva,4,yes
+XLB,APD,Air Products and Chemicals,5,yes
+XLB,ECL,Ecolab,6,yes
+XLB,SHW,Sherwin-Williams,7,yes
+XLB,VMC,Vulcan Materials,8,yes
+XLB,MLM,Martin Marietta Materials,9,yes
+XLB,CRH,CRH plc,10,yes
+XLB,NUE,Nucor,11,yes
+XLB,STLD,Steel Dynamics,12,yes
+XLB,PPG,PPG Industries,13,yes
+XLB,SW,Smurfit Westrock,14,yes
+XLB,DOW,Dow Inc,15,yes
+XLB,PKG,Packaging Corp of America,16,yes
+XLB,IP,International Paper,17,yes
+XLB,AMCR,Amcor,18,yes
+XLB,CF,CF Industries,19,yes
+XLB,IFF,International Flavors and Fragrances,20,yes
+XLB,DD,DuPont de Nemours,21,yes
+XLB,BALL,Ball Corp,22,yes
+XLB,LYB,LyondellBasell,23,yes
+XLB,ALB,Albemarle,24,yes
+XLB,AVY,Avery Dennison,25,yes
+XLI,CAT,Caterpillar,1,yes
+XLI,GE,GE Aerospace,2,yes
+XLI,RTX,RTX Corp,3,yes
+XLI,GEV,GE Vernova,4,yes
+XLI,UNP,Union Pacific,5,yes
+XLI,BA,Boeing,6,yes
+XLI,ETN,Eaton,7,yes
+XLI,DE,Deere,8,yes
+XLI,UBER,Uber Technologies,9,yes
+XLI,PH,Parker-Hannifin,10,yes
+XLI,VRT,Vertiv Holdings,11,yes
+XLI,LMT,Lockheed Martin,12,yes
+XLI,HWM,Howmet Aerospace,13,yes
+XLI,TT,Trane Technologies,14,yes
+XLI,CSX,CSX Corp,15,yes
+XLI,PWR,Quanta Services,16,yes
+XLI,ADP,Automatic Data Processing,17,yes
+XLI,GD,General Dynamics,18,yes
+XLI,CMI,Cummins,19,yes
+XLI,MMM,3M,20,yes
+XLI,WM,Waste Management,21,yes
+XLI,JCI,Johnson Controls,22,yes
+XLI,UPS,United Parcel Service,23,yes
+XLI,EMR,Emerson Electric,24,yes
+XLI,NSC,Norfolk Southern,25,yes
+LIT,RIO,Rio Tinto ADR,1,yes
+LIT,PCRFY,Panasonic Holdings ADR,2,yes
+LIT,TTDKY,TDK ADR,3,yes
+LIT,ALB,Albemarle,4,yes
+LIT,TSLA,Tesla,5,yes
+LIT,BYDDY,BYD ADR,6,yes
+LIT,SQM,SQM ADR,7,yes
+LIT,ENS,EnerSys,8,yes
+MOO,DE,Deere,1,yes
+MOO,BAYRY,Bayer ADR,2,yes
+MOO,CTVA,Corteva,3,yes
+MOO,ADM,Archer-Daniels-Midland,4,yes
+MOO,NTR,Nutrien,5,yes
+MOO,ZTS,Zoetis,6,yes
+MOO,TSN,Tyson Foods,7,yes
+MOO,CF,CF Industries,8,yes
+MOO,BG,Bunge Global,9,yes
+MOO,DAR,Darling Ingredients,10,yes
+MOO,TTC,Toro,11,yes
+MOO,CNH,CNH Industrial,12,yes
+MOO,MOS,Mosaic,13,yes
+MOO,AGCO,AGCO Corp,14,yes
+MOO,ELAN,Elanco Animal Health,15,yes
+MOO,CALM,Cal-Maine Foods,16,yes
+MOO,ICL,ICL Group,17,yes
+MOO,NEOG,Neogen,18,yes
+MOO,PPC,Pilgrims Pride,19,yes
+MOO,FMC,FMC Corp,20,yes
+VPN,EQIX,Equinix,1,yes
+VPN,DLR,Digital Realty Trust,2,yes
+VPN,AMT,American Tower,3,yes
+VPN,CCI,Crown Castle,4,yes
+VPN,MU,Micron Technology,5,yes
+VPN,SBAC,SBA Communications,6,yes
+VPN,MRVL,Marvell Technology,7,yes
+VPN,UNIT,Uniti Group,8,yes
+VPN,AMD,Advanced Micro Devices,9,yes
+VPN,INTC,Intel,10,yes
+VPN,GDS,GDS Holdings ADR,11,yes
+VPN,APLD,Applied Digital,12,yes
+VPN,TSM,Taiwan Semiconductor ADR,13,yes
+VPN,VNET,VNET Group ADR,14,yes
+VPN,AVGO,Broadcom,15,yes
+VPN,NVDA,NVIDIA,16,yes
+VPN,MCHP,Microchip Technology,17,yes
+VPN,SMCI,Super Micro Computer,18,yes
+VPN,WYFI,WhiteFiber,19,yes
+SOCL,RDDT,Reddit,1,yes
+SOCL,META,Meta Platforms,2,yes
+SOCL,TCEHY,Tencent Holdings ADR,3,yes
+SOCL,PINS,Pinterest,4,yes
+SOCL,NTES,NetEase ADR,5,yes
+SOCL,GOOGL,Alphabet Class A,6,yes
+SOCL,SPOT,Spotify Technology,7,yes
+SOCL,BIDU,Baidu ADR,8,yes
+SOCL,MTCH,Match Group,9,yes
+SOCL,BILI,Bilibili ADR,10,yes
+SOCL,TME,Tencent Music ADR,11,yes
+SOCL,SNAP,Snap,12,yes
+SOCL,LIF,Life360,13,yes
+SOCL,JOYY,JOYY ADR,14,yes
+SOCL,YELP,Yelp,15,yes
+SOCL,DJT,Trump Media and Technology,16,yes
+ARKK,TSLA,Tesla,1,yes
+ARKK,SHOP,Shopify,2,yes
+ARKK,CRSP,CRISPR Therapeutics,3,yes
+ARKK,TEM,Tempus AI,4,yes
+ARKK,COIN,Coinbase Global,5,yes
+ARKK,HOOD,Robinhood Markets,6,yes
+ARKK,CRCL,Circle Internet Group,7,yes
+ARKK,AMD,Advanced Micro Devices,8,yes
+ARKK,RBLX,Roblox,9,yes
+ARKK,TXG,10x Genomics,10,yes
+ARKK,PLTR,Palantir Technologies,11,yes
+ARKK,TWST,Twist Bioscience,12,yes
+ARKK,BEAM,Beam Therapeutics,13,yes
+ARKK,AMZN,Amazon.com,14,yes
+ARKK,XYZ,Block,15,yes
+ARKK,GOOG,Alphabet Class C,16,yes
+ARKK,NTLA,Intellia Therapeutics,17,yes
+ARKK,NVDA,NVIDIA,18,yes
+ARKK,CRWV,CoreWeave,19,yes
+ARKK,BLSH,Bullish,20,yes
+ARKK,BMNR,Bitmine Immersion Technologies,21,yes
+ARKK,CBRS,Cerebras Systems,22,yes
+ARKK,META,Meta Platforms,23,yes
+ARKK,ILMN,Illumina,24,yes
+ARKK,XE,X-Energy,25,yes
+ARKK,AVGO,Broadcom,26,yes
+ARKK,NTRA,Natera,27,yes
+ARKK,ACHR,Archer Aviation,28,yes
+ARKK,KTOS,Kratos Defense,29,yes
+ARKK,RXRX,Recursion Pharmaceuticals,30,yes
+ARKK,TSM,Taiwan Semiconductor ADR,31,yes
+ARKK,VCYT,Veracyte,32,yes
+ARKK,DE,Deere,33,yes
+ARKK,WGS,GeneDx Holdings,34,yes
+ARKK,TER,Teradyne,35,yes
+ARKK,BWXT,BWX Technologies,36,yes
+ARKK,SNOW,Snowflake,37,yes
+ARKK,LLY,Eli Lilly,38,yes
+ARKK,SOFI,SoFi Technologies,39,yes
+ARKK,GOOGL,Alphabet Class A,40,yes
+ARKK,CERS,Cerus,41,yes
+ARKK,PACB,Pacific Biosciences,42,yes
+ARKK,FIG,Figma,43,yes

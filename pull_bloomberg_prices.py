@@ -124,18 +124,25 @@ def build_symbol_universe():
     return sorted(symbols)
 
 
-# Non-US lines from the firm-approved list. Keys are how the symbol is
-# stored in prices.parquet / THEME_ETFS; values are the exact Bloomberg
-# security strings (exchange code included). Extend as more foreign lines
-# get approved.
+# Non-US / non-default lines resolve through config/approved_instruments.csv
+# (the firm-approved list): any instrument whose stored Bloomberg code is not
+# the plain "<symbol> US Equity" - foreign ETFs (1622 JT, 159915 CS,
+# 588000 CH), index lines (CSIN0852), or a different US exchange code
+# (BBH UQ, MOO UP, MTUM TF). Adding a foreign line = one CSV row; nothing
+# to edit here.
+from src.themes import APPROVED_INSTRUMENTS
+
 FOREIGN_SECURITIES = {
-    "1622 JT": "1622 JT Equity",       # NF Topix-17 Auto & Transport Equip
+    sym: row["bloomberg"]
+    for sym, row in APPROVED_INSTRUMENTS.items()
+    if row.get("bloomberg") and row["bloomberg"] != f"{sym} US Equity"
 }
 
 
 def to_bloomberg(symbol):
     """Plain ticker/ETF -> Bloomberg security string. US-listed by default;
-    approved non-US lines resolve through FOREIGN_SECURITIES."""
+    approved non-default lines resolve through the approved-instruments
+    config (see FOREIGN_SECURITIES above)."""
     if symbol in FOREIGN_SECURITIES:
         return FOREIGN_SECURITIES[symbol]
     return f"{symbol} US Equity"
