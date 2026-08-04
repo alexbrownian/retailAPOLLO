@@ -1685,3 +1685,227 @@ class TestDashboardModuleHygiene:
         for name in ("_unit", "_dig", "_theme", "_thin_labels", "_facts"):
             assert callable(getattr(D, name)), (
                 f"dashboard.{name} was rebound by a tab-local variable")
+
+
+class TestRallyDetector:
+    """src/rally_watch.py - the mobilisation measurement.
+
+    The detector is the numeric half of the AI page's rally section, so
+    it has to be right without a gateway and without the model: these
+    check the regex bank compiles, the categories mean what the config
+    says they mean, the counter-category never counts as rallying, and
+    the share it reports is a share of a denominator drawn from the SAME
+    posts (the first calibration run produced 250% "shares" by borrowing
+    the submissions-based store, which is the bug this pins)."""
+
+    def test_every_pattern_in_the_config_compiles_and_is_categorised(self):
+        from src.rally_watch import load_patterns
+        pats = load_patterns()
+        assert "_any" in pats, "the hot-loop pre-filter must exist"
+        for cat in ("recruit", "squeeze", "hold_the_line",
+                    "save_the_company", "coordinate", "moonshot",
+                    "pump_callout"):
+            assert cat in pats, f"config/rally_terms.csv lost {cat}"
+
+    def test_the_categories_catch_what_the_desk_named(self):
+        """The desk's own examples (2026-08-04): 'lets save this company'
+        and 'lets short squeeze', Wendy's and GME style."""
+        from src.rally_watch import load_patterns
+        p = load_patterns()
+        cases = [
+            ("we need to save this company, buy their burgers",
+             "save_the_company"),
+            ("this is going to short squeeze, days to cover is 5",
+             "squeeze"),
+            ("diamond hands, never selling", "hold_the_line"),
+            ("get in before the institutions find out", "recruit"),
+            ("everyone buy at market open on monday", "coordinate"),
+            ("this is a 100x, generational wealth", "moonshot"),
+            ("classic pump and dump, you are exit liquidity",
+             "pump_callout"),
+        ]
+        for text, cat in cases:
+            assert p[cat].search(text), f"{cat!r} missed: {text!r}"
+            assert p["_any"].search(text)
+
+    def test_ordinary_market_talk_is_not_mobilisation(self):
+        from src.rally_watch import load_patterns
+        p = load_patterns()
+        for text in ("I sold my position today after earnings",
+                     "the P/E looks stretched versus the sector",
+                     "dollar cost averaging into an index fund"):
+            assert not p["_any"].search(text), f"false positive: {text!r}"
+
+    def test_pushback_is_measured_but_never_scored_as_rallying(self):
+        """pump_callout is the crowd calling it a pump. Counting it as
+        rallying would invert the signal on exactly the names where the
+        crowd is policing itself."""
+        import src.rally_watch as R
+        assert R.COUNTER_CATEGORY == "pump_callout"
+        f = R.rally_frame("theme")
+        if f is None or not len(f):
+            pytest.skip("no rally store on this machine yet")
+        assert "counter" in f.columns
+
+    def test_share_is_a_true_share_and_the_gates_all_bind(self):
+        import src.rally_watch as R
+        from src.config import (RALLY_MIN_HITS, RALLY_MIN_SHARE,
+                                RALLY_MIN_Z)
+        f = R.rally_frame("ticker")
+        if f is None or not len(f):
+            pytest.skip("no rally store on this machine yet")
+        sh = f["share"].dropna()
+        assert (sh <= 1.0).all(), (
+            "a share above 1 means the denominator came from a different "
+            "population than the hits - see the module docstring")
+        for r in f[f["rallying"]].itertuples():
+            assert r.hits >= RALLY_MIN_HITS
+            assert r.share >= RALLY_MIN_SHARE
+            assert r.z >= RALLY_MIN_Z
+
+
+class TestPulseNoFillerRule:
+    """The desk's standing rule (2026-08-04): "if something is like
+    'there is minimum discussion' then we shouldnt include it, whatever
+    is included should be the most interesting / most mentioned / most
+    recent (never useless information)".  The prompt asks for that; this
+    is the half that does not depend on the model complying."""
+
+    def test_empty_calorie_items_are_dropped(self):
+        from analytics.ai_pulse import _drop_filler
+        doc = _drop_filler({
+            "theme_briefs": [
+                {"theme": "a", "brief": "Minimal discussion this week."},
+                {"theme": "b", "brief": "There is no meaningful chatter."},
+                {"theme": "c", "brief": "Nothing notable."},
+                {"theme": "d", "brief": "The bulls and bears are arguing "
+                                        "about whether the capex cycle "
+                                        "has topped, and the bears are "
+                                        "winning on engagement."},
+            ],
+            "rally_watch": [{"theme": "x", "why": "not much to say"}],
+            "market_vibe": {"bullets": ["Little activity.",
+                                        "Everyone is tired of being "
+                                        "wrong and says so loudly."]},
+        })
+        assert [b["theme"] for b in doc["theme_briefs"]] == ["d"]
+        assert doc["rally_watch"] == []
+        assert len(doc["market_vibe"]["bullets"]) == 1
+
+    def test_a_long_brief_that_merely_mentions_quiet_is_kept(self):
+        """A 200-word brief noting a surprising silence is doing real
+        work; only items whose WHOLE content is 'nothing here' go."""
+        from analytics.ai_pulse import _is_filler
+        long_one = ("Rate chatter is quiet, and that is the point: after "
+                    "two years in which every thread bent back to the "
+                    "Fed, the boards have stopped arguing about it "
+                    "entirely, which historically has marked the end of "
+                    "a macro regime rather than a lull inside one. "
+                    "The bulls now argue capex, not discount rates.")
+        assert not _is_filler(long_one)
+        assert _is_filler("minimal discussion")
+
+
+class TestPollPromptPanel:
+    """The poll's value IS its continuity: a reworded prompt silently
+    breaks that prompt_id's history (module docstring, handover §4)."""
+
+    def test_the_original_twelve_prompts_are_untouched(self):
+        from analytics.ai_poll import _prompts
+        frozen = {
+            "p01": "What should I invest in right now?",
+            "p04": "What is the next NVDA?",
+            "p09": "What meme stocks are about to squeeze?",
+            "p12": "Give me an aggressive portfolio of 5 stocks for "
+                   "the next 3 months.",
+        }
+        got = {p["prompt_id"]: p["prompt"] for p in _prompts()}
+        for pid, text in frozen.items():
+            assert got.get(pid) == text, (
+                f"{pid} was reworded - that breaks its time series; add "
+                "a new prompt_id instead")
+
+    def test_every_prompt_has_a_unique_id_and_a_family(self):
+        from analytics.ai_poll import _prompts
+        ps = _prompts()
+        ids = [p["prompt_id"] for p in ps]
+        assert len(ids) == len(set(ids))
+        assert len(ps) >= 30
+        for p in ps:
+            assert (p.get("family") or "").strip(), (
+                f"{p['prompt_id']} has no family tag")
+
+
+class TestSingleNameUniverse:
+    """The EUPHORIA: Singles tab picks its own names. Three things went
+    wrong at once and each is pinned here (fixed 2026-08-04):
+
+      * it ranked on ALL HISTORY, and 2021 is 39% of every mention ever
+        recorded, so it tracked BBBY (bankrupt), SNDL, CLOV, WKHS;
+      * it had no idea what an ETF was, so SPY and SCHD were "single
+        names";
+      * finance acronyms that have since been issued to real ETFs -
+        HYSA, DRAM, BTC - were counted as tickers. HYSA was the single
+        most-mentioned symbol in the entire store."""
+
+    def _prices(self):
+        import pandas as pd
+        from src.config import PRICES_PATH
+        if not os.path.exists(PRICES_PATH):
+            pytest.skip("no price store on this machine")
+        return pd.read_parquet(PRICES_PATH)
+
+    def test_no_etfs_in_a_tab_called_single_names(self):
+        from pathlib import Path
+        from analytics.euphoria import single_name_universe
+        from src.config import REFERENCE_DIR
+        from src.ticker_universe import load_etf_symbols
+        etfs = load_etf_symbols(Path(REFERENCE_DIR))
+        if not etfs:
+            pytest.skip("Nasdaq symbol directories not cached here")
+        uni = single_name_universe(self._prices())
+        assert uni, "the universe came back empty"
+        bad = [t for t in uni if t in etfs]
+        assert not bad, f"ETFs in the single-name universe: {bad}"
+
+    def test_jargon_symbols_never_reach_the_universe(self):
+        from analytics.euphoria import single_name_universe
+        uni = set(single_name_universe(self._prices()))
+        for junk in ("HYSA", "DYOR", "DRAM", "BTC", "REIT"):
+            assert junk not in uni, (
+                f"{junk} is jargon, not a tracked single name")
+
+    def test_the_universe_tracks_names_discussed_NOW(self):
+        """The function's own docstring promises 'today's NVDA is
+        tomorrow's something else'. A universe ranked over all history
+        cannot keep that promise."""
+        import pandas as pd
+        from analytics.euphoria import single_name_universe
+        from src.config import PROCESSED_DIR, EUPHORIA_SINGLE_WINDOW_D
+        p = os.path.join(PROCESSED_DIR, "daily_ticker_counts.parquet")
+        if not os.path.exists(p):
+            pytest.skip("no ticker counts on this machine")
+        c = pd.read_parquet(p)
+        c["date"] = pd.to_datetime(c["date"])
+        hi = c["date"].max()
+        recent = c[c["date"] > hi - pd.Timedelta(
+            days=EUPHORIA_SINGLE_WINDOW_D)]
+        live = set(recent.groupby("ticker")["mention_count"].sum()
+                   .nlargest(120).index)
+        uni = single_name_universe(self._prices())
+        stale = [t for t in uni if t not in live]
+        assert not stale, (
+            "names in the universe that are not in the last year's top "
+            f"120 by mentions: {stale}")
+
+    def test_the_stoplist_is_config_driven_and_fails_loudly(self):
+        import tempfile
+        from pathlib import Path
+        from src.extract_tickers import load_stop_tickers, STOP_TICKERS
+        assert "HYSA" in STOP_TICKERS and "CEO" in STOP_TICKERS
+        with tempfile.TemporaryDirectory() as d:
+            bad = Path(d) / "bad.csv"
+            bad.write_text("nonsense\n1\n", encoding="utf-8")
+            with pytest.raises(ValueError):
+                load_stop_tickers(bad)      # a silent empty stoplist would
+                                            # let CEO back into the counts

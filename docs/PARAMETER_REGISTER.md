@@ -594,3 +594,242 @@ docstrings, `analytics/influence_graph.py` and `analytics/influence_ml.py`
 docstrings, `src/pipeline_budget.py` docstrings, `src/config.py` inline
 comments, `docs/DECISIONS.xlsx`, notebooks 01–06 and notebook 05 for the
 influence tracker.*
+
+## Class 9 — THE MOBILISATION (RALLY/PUMP) DETECTOR, added 2026-08-04
+
+*Desk request, verbatim: "can we add a pump / rally detector? e.g. if the
+tone of the posts are quite rallying or like lets save this company or
+lets short squeeze! (e.g wendys or GME etc) we flag that out." These
+numbers are DISPLAY AND RESEARCH ONLY — they do not enter the euphoria
+score and cannot create or suppress a GET IN / GET OUT flag. The forward
+test that would earn them that right is pre-registered in notebook 09 §3;
+until it passes, handover rule 1 applies.*
+
+| Number | Value | Class | How it is obtained |
+|---|---|---|---|
+| The pattern bank | 52 regexes in 7 categories | **DESK-EDITABLE CONFIG** | `config/rally_terms.csv`, one regex per row, same pattern as `theme_keywords.csv` and `agentic_terms.csv`. A bad pattern raises at load rather than silently matching nothing. Categories: recruit, squeeze, hold_the_line, save_the_company, coordinate, moonshot, and `pump_callout` — the crowd calling it a pump |
+| `pump_callout` weight in the score | **zero, by construction** | DESK DECISION 2026-08-04 | it is the contrarian side of the same conversation. Counting "you are exit liquidity" as rallying would invert the reading on exactly the names where the crowd is policing itself. It is measured and displayed as `pushback`, never scored |
+| `rally_share` | hits ÷ mentions of that name, both over 7d | **DERIVED — with one correction on the record** | the denominator is counted IN THE SAME SCAN over the SAME posts with the SAME extractors. The first calibration run borrowed `daily_ticker_counts` instead and produced "shares" of 250%: that store is built from posts.parquet (submissions), while the scanner reads the raw comment archives. Different populations, so the ratio was not a share of anything. Recorded because the failure was silent in every respect except its magnitude |
+| `rally_z` | EWM trailing z of the daily hit series | **DERIVED — no new statistic** | literally `analytics.conviction.ewm_z`, the construction already used for every conviction number in this project (7d roll, EWM baseline, strictly trailing). Nothing was invented for this module |
+| `RALLY_WINDOW_D` | 7 | **DERIVED** | `ROLL`. Mobilisation is a week-scale phenomenon and this keeps the number comparable with every other 7d figure on the page |
+| `RALLY_MIN_HITS` | 10 | **CONVENTION, measured** | below ~10 matched posts a share is arithmetic noise — 2 hits on 12 mentions reads 17% and means nothing |
+| `RALLY_MIN_SHARE` | 0.10 | **CALIBRATED 2026-08-04** | on a scan of all 764,920 archived posts the median theme-week sits at 2% and the 95th percentile at 10%, while the June-2021 squeeze cohort the detector surfaces unprompted (CLOV 15%, WKHS 20%, TLRY 13%) sits well above it. 10% separates a mobilisation from a merely loud week |
+| `RALLY_MIN_Z` | 1.5 | **DERIVED** | `CROSS_AT`, the crossing the conviction charts already mark — one notion of "abnormal" on the desk. It is the gate that does the real work: `meme_stocks` and `short_squeeze` sit at a permanently high share (12% and 20% on 2026-07-29) and are correctly NOT called rallying, at z 0.78 and 1.14 |
+
+**The regime check that justifies the construction** (re-run in notebook 09
+§3). Mobilising language runs at **3.41% of posts** across the June-2021
+meme-summer archive versus **1.01%** in the week to 2026-07-29 — a 3.4×
+separation the detector was never tuned to produce. More telling than the
+ratio: the names it surfaces in 2021, ranked by share of their own chatter,
+are CLOV (15%), WKHS (20%), CLNE, SPCE and TLRY — that squeeze cohort
+exactly, with no ticker list anywhere in the configuration. The 2021 archive
+holds only two days, so the `z` gate cannot be evaluated there; the era
+comparison is a share comparison and is reported as such.
+
+## Class 10 — THE AI POLL PANEL, expanded 2026-08-04
+
+| Number | Value | Class | How it is obtained |
+|---|---|---|---|
+| Panel size | 30 prompts (was 12) | **DESK DECISION 2026-08-04** | "look at what people have currently set up as AI trading agents and see what prompts or systems they use and we copy that". p13–p30 reproduce the scaffolds retail actually runs: the hedge-fund-PM and Warren-Buffett personas shipped as system prompts by the most-starred open-source AI-investing repos, the bull-vs-bear-then-PM debate pipeline, the JSON-decision agent loop people schedule against a broker API, and the screening / portfolio-rating / swing-setup / options-flow asks that circulate as copy-paste prompts |
+| p01–p12 | **frozen text** | CONVENTION, enforced by test | the poll's value is the time series; rewording a prompt breaks that id's history silently. `TestPollPromptPanel` fails the build if one is edited. Additions are always safe |
+| `family` column | plain / theme / persona / agent / screen / portfolio / momentum / risk / thesis | **DERIVED** | lets the series be read by TYPE of asker. Whether the persona and agent scaffolds recommend different names from the plain questions is itself the finding — the dashboard prints that difference |
+| `POLL_TEMPERATURE` | 0.8 | DESK DECISION (unchanged) | consumer products answer at a high temperature; a temperature-0 reading would measure a machine retail never talks to |
+| `AI_MAX_CALLS` default | 80 (was 40) | **DERIVED** | one full update now spends about 36 calls — 30 poll prompts, 5 pulse calls, the weekly keyword audit — and retries count against the budget, so 40 left no headroom |
+
+## Class 11 — THE CONSTANT AUDIT, 2026-08-04
+
+*Desk instruction, looking at the oldest block in `src/config.py`: "where
+did these numbers come from too? we need to make everything have reason
+and testing. please check if everything has reason." This class is the
+answer, including the parts that were not flattering.*
+
+**The audit.** `src/config.py` holds **63 model constants. 18 appeared in
+this register; 45 did not.** Many of the 45 carry real evidence in their
+inline comment (the conviction study, the euphoria cooldown, the onset
+floor were all swept and recorded), so "absent from the register" is not
+the same as "unjustified" — but the gap was real and rule 4 says
+otherwise.
+
+**The instrument.** `tools/sweep_config.py` re-runs the FULL walk-forward
+research pass with one constant changed and scores it under the project's
+own pre-stated rule (`captures − FA_PENALTY × false alarms`, both
+directions). Each point runs in a fresh subprocess that rewrites
+`src.config` before any project module imports it — several of these
+constants are bound as DEFAULT ARGUMENTS at import time, so patching a
+module attribute afterwards would have silently measured the same value
+five times. The tool asserts that a sweep produces at least two distinct
+scorecards, so "this number is inert" and "the patch is not working" can
+never be confused. Results: `docs/research/config_sweep.json`.
+
+### 11a — Constants that DO NOT reach the GET IN / GET OUT flags
+
+*The most useful finding, and the reason four of the five numbers the
+desk pointed at had never been tested: there was nothing for a
+walk-forward to say about them.*
+
+| Number | Value | Where it actually lives | Evidence |
+|---|---|---|---|
+| `BASELINE` | 84 | `trailing_z` → the legacy 5-check signals engine, and the NON-DEFAULT conviction branch (`CONV_BASELINE` ships as `"ewm"`). Live euphoria features are percentile ranks, not z-scores | swept 42→180: **identical scorecard at every value** |
+| `MIN_DAYS` | 28 | same code path as `BASELINE` | swept 14→56: identical |
+| `MIN_TOTAL` | 30 | `analytics/overlays.py` chart masking + one dashboard caption — DISPLAY | swept 10→100: identical. The detector's own coverage gate is `EUPHORIA_MIN_COVERAGE`, which *is* a live signal number |
+| `DERIV_SMOOTH` | 5 | `analytics/overlays.py` chart derivative — DISPLAY | not swept: it reaches no signal, so a sweep would be theatre |
+| `EUPHORIA_FADE_DISCOUNT` | 10 | `euphoria.py::detect_alerts`, the LEGACY top-alert path. The desk detectors carry `fade` as a FEATURE in the GET OUT bank instead and never call the discount | swept 0→20 **including zero**: identical. This number currently moves nothing the desk looks at, and must not be described as part of the live flags |
+
+### 11b — Constants that DO reach the flags, and what the sweep said
+
+*All rows below hold `detectable` constant, so the comparison is fair;
+where a constant also changes the detectable set it is flagged.*
+
+| Number | Value | Swept | Result |
+|---|---|---|---|
+| `ROLL` | 7 | 3/5/7/10/14 | GET OUT utility **5/3/4/4/5** — FLAT across the whole range. 7 is not the argmax; the point is that no value is, so nothing is a knife-edge fit on 7. GET IN mildly prefers longer (−94/−96/−78/−72/−71) |
+| `EUPHORIA_PCT_WINDOW` | 365 | 180→730 | utility 2/3/4/5/5 — a plateau from 365 up. The two longer windows differ by ONE capture on a 79-event sample, i.e. inside the noise. Kept, and now known not to be a spike |
+| `EUPHORIA_HYPE_MULT` | 2.0 | 1.5→3.0 | the two loosest rows are NOT comparable (a looser gate enlarges the detectable set to 106 and 98). Among the three sharing 79 detectable, tightening helps monotonically: utility **4 / 6 / 6**, false alarms **5 / 3 / 1**, lead **16 / 18 / 19** days, GET IN −78 / −71 / −64. **2.5 holds captures at 9 while halving false alarms** |
+| `EUPHORIA_ATT_GATE` | 0.90 | 0.80→0.98 | utility 4/6/4/5/**9**. 0.98 is strictly better on the raw rule (10 captures at ONE false alarm) and on GET IN — but it **halves the warning**, median lead 7 days against 16. The utility rule cannot see that; a desk can |
+| `EUPHORIA_MIN_HISTORY` | 180 | 90→365 | utility **6**/5/4/4/2 — 90 beats the frozen 180 on both directions (11 captures vs 9 at the same 5 false alarms) |
+| `EUPHORIA_MIN_COVERAGE` | 100 | 50→250 | NOT comparable across rows: this gate decides which instrument-days are scoreable at all, so it moves the detectable set (130 → 79 → 52). It changes the exam as well as the answer, like the ground-truth numbers in Class 9 |
+
+**Three candidates, none adopted, and the reason matters.** `HYPE_MULT`
+2.5, `ATT_GATE` 0.98 and `MIN_HISTORY` 90 each beat the incumbent on both
+directions. They are recorded as CANDIDATES and left unchanged, because
+ten constants were swept on the same day over the same full record:
+picking each one's argmax is a multiple-comparisons trap, and the
+differences are 1–5 events on a base of 79. Adoption requires the nested
+walk-forward the thresholds themselves already use — select on strictly
+prior years, apply forward — which is the discipline rule 1 exists to
+enforce. A sweep is evidence that a number is *defensible*; it is not, on
+its own, a licence to move it.
+
+### 11c — BOOM_MIN: the exam and the answer, separated
+
+*Desk question: "can we try and do a more scientific method for the
+boom_min? e.g. we can try and vary the % to see if we can improve the
+model performance." `tools/sweep_boom_min.py` runs it as two different
+experiments, because `EUPHORIA_BOOM_MIN_ETF/SINGLE` are used in two
+places that look alike and are not: the GROUND TRUTH (G2, 120d window —
+what counts as a top) and the LIVE GATE (`boom_state_frame`, 54d window —
+who may be a candidate today). The two WINDOWS were separated on
+2026-07-29; the two MAGNITUDES still share a constant. Tuning the ground
+truth to improve measured performance is circular by construction.*
+
+**Study A — the gate (legitimate selection).** Ground truth held at the
+frozen 0.25/0.50; only the gate multiplier moves.
+
+| gate × | GET OUT captured/detectable | FA | lead | utility |
+|---|---|---|---|---|
+| 0.60 | 13/98 | 37 | 9 | −24 |
+| 0.80 | 11/98 | 14 | 8 | −3 |
+| **1.00 (frozen)** | 9/79 | 5 | 16 | **+4** |
+| 1.20 | 9/79 | 5 | 11 | +4 |
+| 1.40 | 5/74 | 3 | 8 | +2 |
+
+The frozen 0.25/0.50 is **on the frontier** — tied with 1.20× and beating
+everything else. Loosening the gate buys captures and pays for them
+several times over in false alarms. GET IN is untouched at every value
+(the boom gate applies only to the GET OUT candidacy), which is also a
+correctness check on the harness. **No improvement is available here.**
+
+**Study B — the exam (sensitivity, NOT selection).** Gate held frozen;
+the ground-truth multiplier moves, i.e. ETF 15%–35% and single 30%–70%.
+
+| truth × | GET OUT captured/detectable | rate | FA | lead |
+|---|---|---|---|---|
+| 0.60 | **9**/138 | 0.065 | **5** | 16 |
+| 0.80 | **9**/107 | 0.084 | **5** | 16 |
+| 1.00 | **9**/79 | 0.114 | **5** | 16 |
+| 1.20 | **9**/62 | 0.145 | **5** | 16 |
+| 1.40 | **9**/57 | 0.158 | **5** | 16 |
+
+**The detector is completely invariant to the definition of a top.**
+Captures, false alarms and lead time are identical at every definition;
+only `detectable` moves, so the capture RATE swings from 6.5% to 15.8%
+without a single alert changing. Two consequences worth stating plainly:
+the GET OUT scorecard is not an artefact of the 25%/50% choice, and any
+capture rate quoted from this project is meaningless unless the boom
+definition is quoted beside it. GET IN does vary (20/18/14/9/7 captures),
+because a looser boom definition creates more episodes with troughs to
+find.
+
+## Class 12 — WHY THE SINGLE-NAME UNIVERSE IS SMALL (2026-08-04)
+
+*Desk question: "why are there so little single name tickers? can we add
+much more?" followed by "maybe we need to change it from 100 posts to a
+different number?" The honest answer is that `EUPHORIA_MIN_COVERAGE` is
+the wrong lever, and the reason is worth more than the tuning.*
+
+### 12a — The funnel, measured
+
+| stage | count |
+|---|---|
+| tickers ever seen in the store | 7,995 |
+| mentioned at all in the last 365d | 4,896 |
+| …that are single names (not ETF, not jargon) | 3,423 |
+| …that are priced | 261 |
+| …**measurable now** (≥100 scored posts in 28d) | **27** |
+| …top 25 by mentions → TRACKED | 25 |
+
+Pricing is **not** the constraint: all 27 measurable names are already
+priced, and `EUPHORIA_SINGLE_TOP_N = 25` excludes exactly two (SLS, TSM).
+The binding gate is coverage, and a name needs 100 scored posts out of
+the 31,070 recorded in the whole 28-day window — 0.32% of all recent
+chatter — which almost nothing clears.
+
+### 12b — Loosening the gate is inadmissible, not merely worse
+
+Names gained against signal lost, size-normalised (the only fair
+comparison, because this gate also decides how many instrument-days are
+scoreable at all):
+
+| bar | single names | GET OUT rate | GET OUT FA/iy | GET IN rate | GET IN FA/iy |
+|---|---|---|---|---|---|
+| 50 | 39 | 0.131 | 0.150 | 0.156 | **0.283** |
+| 75 | 34 | 0.115 | 0.149 | 0.144 | **0.256** |
+| **100 (frozen)** | 27 | 0.114 | 0.057 | 0.141 | 0.222 |
+| 125 | 24 | 0.127 | 0.071 | 0.157 | 0.174 |
+| 150 | 21 | **0.156** | **0.053** | 0.157 | **0.152** |
+| 175 | 20 | 0.119 | 0.028 | 0.162 | 0.182 |
+| 200 | 19 | 0.121 | 0.028 | 0.171 | 0.264 |
+
+At 75 and 50 the GET IN false-alarm rate reaches 0.256 and 0.283 against
+the desk's stated **0.23 per instrument-year budget** — a breach, not a
+trade-off. That is precisely the thin-coverage FA storm this gate was
+created to stop. **No setting of this constant adds names without
+breaking something**, because every direction that adds names is a
+direction that admits names too thin to measure.
+
+150 is a genuine local peak in the other direction — the best GET OUT
+capture rate and the best GET IN false-alarm rate at once — at a cost of
+median lead 12 days versus 16, and six fewer tracked names. Recorded as a
+CANDIDATE under the Class 11 discipline: one full-record sweep, a
+one-capture difference, no nested walk-forward yet.
+
+### 12c — Where the missing names actually are
+
+The universe is small because the detector is fed a small fraction of the
+conversation. `ingestion/build_aggregates.py` builds `posts.parquet` and
+every mention/sentiment aggregate from **Reddit SUBMISSIONS** (title +
+selftext). The Reddit COMMENT archives — 765,000 comments already fetched
+and on disk — are read by the influence board, the AI pulse, the agentic
+scan and the new rally detector, but **nothing folds them into
+`daily_ticker_counts` or `daily_ticker_sentiment`**, which is what the
+euphoria detector and this coverage gate run on.
+
+Measured over the same seven days (2026-07-23 → 07-29):
+
+| source of the count | ticker-mentions | distinct symbols |
+|---|---|---|
+| the pipeline's `reddit` rows | 1,111 | 360 |
+| the raw comment archives | **9,629** | **923** |
+
+**8.7× more of the crowd's chatter exists on disk than the signal is
+counting**, and 2.6× as many distinct names. TSLA reads 23 in the
+pipeline against 702 in comments; NVDA 36 against 369.
+
+Folding comments into the mention/sentiment build would raise coverage by
+roughly an order of magnitude and multiply the number of names clearing
+any coverage bar — without loosening a single gate. It is also the
+LARGEST re-validation event this project could undertake: every count,
+every z, every euphoria level and every frozen threshold would move, and
+the ground-truth episode set would not, so the whole walk-forward record
+would have to be rebuilt and compared. It is recorded here as the
+identified cause and an explicit desk decision, not actioned.

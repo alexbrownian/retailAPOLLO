@@ -54,6 +54,22 @@ so a long rate-limited fetch never looks frozen), folds them into small
 post text kept), recomputes conviction + signals, snapshots them and pulls
 prices. The dashboard then renders every view for whatever window you pick.
 
+## Where everything is documented
+
+*One fact, one home. This table says where a thing goes — and if two
+documents ever start saying the same thing, one of them is wrong.*
+
+| Document | Answers | Does NOT hold |
+|---|---|---|
+| `README.md` (this file) | what the project is, what it detects, how to set it up, and where everything is | operating procedure, parameter reasoning |
+| `RUNBOOK.md` | what to run, when, on which machine, and what to do when it breaks | why the system is shaped this way |
+| `docs/ARCHITECTURE.md` | the shape of a run, the two machines, the AI layer, the text-free boundary, the five invariants | individual parameter values |
+| `docs/PARAMETER_REGISTER.md` | every number, its class, and the evidence behind it | how to operate anything |
+| `POST_INTERN_HANDOVER.md` | which files a maintainer edits, when, and what to run afterwards | architecture, rationale, open work |
+| `OPEN_ITEMS.md` | what is outstanding right now — the only document expected to go out of date | anything permanent |
+| `notebooks/00`–`10` | the research record: every claim with its evidence and its confidence intervals | operating instructions |
+| `docs/NOTEBOOK_STYLE.md`, `docs/ETF_RESEARCH.md` | how the notebooks are written; the ETF constituent research behind `theme_tickers.csv` | — |
+
 ## Architecture
 
 ```
@@ -120,7 +136,7 @@ retailAPOLLO/
 ├── pull_bloomberg_prices.py  # PX_LAST via blpapi (incremental, append-only)
 ├── check_live_ingestion.py   # freshness check, layer by layer
 ├── RUNBOOK.md                # scenario cheat-sheet
-├── docs/                     # ARCHITECTURE.md + LIVE_INGESTION.md
+├── docs/                     # ARCHITECTURE, PARAMETER_REGISTER, DECISIONS.xlsx
 ├── ABSTRACTED_DATA/          # the ONLY committed data: 6 text-free aggregates
 ├── src/                      # shared logic (config, extraction, themes, sentiment)
 ├── ingestion/                # live fetchers + fold/merge/rebuild scripts
@@ -290,8 +306,10 @@ tree. Notable chart behaviours, all documented in the code:
 pip install -r requirements.txt --user
 ```
 
-Create `.env` in the project root with `FETCHLAYER_KEY=...` (see
-`docs/LIVE_INGESTION.md` for all keys; the single `.env` at the project root holds them all - it is git-ignored, so keep a copy of it somewhere safe: POST_INTERN_HANDOVER.md lists every key it must contain).
+Create `.env` in the project root with `FETCHLAYER_KEY=...` — the single
+`.env` holds every credential, including the Apollo LLM auth.
+`POST_INTERN_HANDOVER.md` §1 is the authoritative key list. It is
+git-ignored and has no template, so keep a private copy somewhere safe.
 For prices, install blpapi once per machine (Terminal running):
 
 ```powershell

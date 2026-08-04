@@ -1,0 +1,141 @@
+{
+ "base": {
+  "etf": 0.25,
+  "single": 0.5
+ },
+ "mults": [
+  0.6,
+  0.8,
+  1.0,
+  1.2,
+  1.4
+ ],
+ "gate": [],
+ "truth": [
+  {
+   "gate_mult": 1.0,
+   "truth_mult": 0.6,
+   "secs": 70.1,
+   "get_out": {
+    "captured": 9,
+    "detectable": 138,
+    "capture_rate": 0.065,
+    "false_alarms": 5,
+    "fa_per_iy": 0.057,
+    "median_lead_days": 16,
+    "threshold": 0.6451369863013698,
+    "utility": 4
+   },
+   "get_in": {
+    "captured": 20,
+    "detectable": 185,
+    "capture_rate": 0.108,
+    "false_alarms": 82,
+    "fa_per_iy": 0.198,
+    "median_lead_days": 24,
+    "threshold": 0.8769075342465752,
+    "utility": -62
+   }
+  },
+  {
+   "gate_mult": 1.0,
+   "truth_mult": 0.8,
+   "secs": 68.3,
+   "get_out": {
+    "captured": 9,
+    "detectable": 107,
+    "capture_rate": 0.084,
+    "false_alarms": 5,
+    "fa_per_iy": 0.057,
+    "median_lead_days": 16,
+    "threshold": 0.6451369863013698,
+    "utility": 4
+   },
+   "get_in": {
+    "captured": 18,
+    "detectable": 136,
+    "capture_rate": 0.132,
+    "false_alarms": 87,
+    "fa_per_iy": 0.21,
+    "median_lead_days": 24,
+    "threshold": 0.8769075342465752,
+    "utility": -69
+   }
+  },
+  {
+   "gate_mult": 1.0,
+   "truth_mult": 1.0,
+   "secs": 67.4,
+   "get_out": {
+    "captured": 9,
+    "detectable": 79,
+    "capture_rate": 0.114,
+    "false_alarms": 5,
+    "fa_per_iy": 0.057,
+    "median_lead_days": 16,
+    "threshold": 0.6451369863013698,
+    "utility": 4
+   },
+   "get_in": {
+    "captured": 14,
+    "detectable": 99,
+    "capture_rate": 0.141,
+    "false_alarms": 92,
+    "fa_per_iy": 0.222,
+    "median_lead_days": 25,
+    "threshold": 0.8769075342465752,
+    "utility": -78
+   }
+  },
+  {
+   "gate_mult": 1.0,
+   "truth_mult": 1.2,
+   "secs": 66.8,
+   "get_out": {
+    "captured": 9,
+    "detectable": 62,
+    "capture_rate": 0.145,
+    "false_alarms": 5,
+    "fa_per_iy": 0.057,
+    "median_lead_days": 16,
+    "threshold": 0.6451369863013698,
+    "utility": 4
+   },
+   "get_in": {
+    "captured": 9,
+    "detectable": 76,
+    "capture_rate": 0.118,
+    "false_alarms": 100,
+    "fa_per_iy": 0.242,
+    "median_lead_days": 30,
+    "threshold": 0.8769075342465752,
+    "utility": -91
+   }
+  },
+  {
+   "gate_mult": 1.0,
+   "truth_mult": 1.4,
+   "secs": 65.7,
+   "get_out": {
+    "captured": 9,
+    "detectable": 57,
+    "capture_rate": 0.158,
+    "false_alarms": 5,
+    "fa_per_iy": 0.057,
+    "median_lead_days": 16,
+    "threshold": 0.6451369863013698,
+    "utility": 4
+   },
+   "get_in": {
+    "captured": 7,
+    "detectable": 64,
+    "capture_rate": 0.109,
+    "false_alarms": 89,
+    "fa_per_iy": 0.242,
+    "median_lead_days": 22,
+    "threshold": 0.8769075342465752,
+    "utility": -82
+   }
+  }
+ ]
+}

@@ -14,8 +14,8 @@
 #   - a 429 response means STOP for the rest of the hour (the script does).
 #
 # The author's own Bullish/Bearish label is preserved in the raw lines -
-# that is the ground truth for calibrating our VADER sentiment (see
-# docs/LIVE_INGESTION.md).
+# that is the ground truth for calibrating our VADER sentiment (the
+# calibration itself is notebook 10).
 #
 # Run:  python ingestion/fetch_stocktwits.py
 #       (--symbols GME,NVDA,GLD  to override the default list)

@@ -1343,6 +1343,55 @@ def _ai_poll_load():
     return _ai_poll_load_cached(
         _mtime(os.path.join(PROCESSED_DIR, "ai_poll.parquet")))
 
+
+@st.cache_data(show_spinner=False)
+def _rally_load_cached(mtime, kind):
+    """The rally leaderboard. Deliberately independent of the LLM: these
+    numbers come from a regex scan of every post, so the mobilisation
+    section of the AI page works with no gateway at all."""
+    from src.rally_watch import top_rallies
+    try:
+        return top_rallies(kind, n=10)
+    except Exception:                                    # noqa: BLE001
+        return []
+
+
+def _rally_load(kind="theme"):
+    return _rally_load_cached(
+        _mtime(os.path.join(PROCESSED_DIR,
+                            "daily_rally_counts.parquet")), kind)
+
+
+@st.cache_data(show_spinner=False)
+def _rally_market_cached(mtime):
+    """Market-wide mobilisation rate + category mix for the last 7d."""
+    from src.rally_watch import load_series, COUNTER_CATEGORY
+    df = load_series()
+    if df is None or not len(df):
+        return None
+    hi = df["date"].max()
+    w = df[df["date"] > hi - pd.Timedelta(days=7)]
+    tot = float(w[w["category"] == "_total_posts"]["mention_count"].sum())
+    if not tot:
+        return None
+    sig = w[(w["kind"] == "_all") & (~w["category"].str.startswith("_"))
+            & (w["category"] != COUNTER_CATEGORY)]
+    return {
+        "pct": float(sig["mention_count"].sum()) / tot * 100,
+        "posts": int(tot),
+        "by_cat": (sig.groupby("category")["mention_count"].sum()
+                   / tot * 1000).sort_values(ascending=False).to_dict(),
+        "counter": int(w[(w["kind"] == "_all")
+                         & (w["category"] == COUNTER_CATEGORY)]
+                       ["mention_count"].sum()),
+    }
+
+
+def _rally_market():
+    return _rally_market_cached(
+        _mtime(os.path.join(PROCESSED_DIR,
+                            "daily_rally_counts.parquet")))
+
 prices = _read(PRICES_PATH, _mtime(PRICES_PATH)) if os.path.exists(PRICES_PATH) else None
 priced = set(prices["symbol"]) if prices is not None else set()
 
@@ -1467,9 +1516,10 @@ STAGES = {
                  ["COMMENT PULL", "new comments", "fetch finished"]),
     "influence": ("Updating the influence board (calls, graph, tiers)",
                   ["influence board update", "influence update finished"]),
-    "pulse":    ("AI: agentic scan, the retail-prompt poll and the LLM "
-                 "market pulse (skips politely without the gateway)",
-                 ["agentic scan", "AI POLL:", "AI PULSE:"]),
+    "pulse":    ("AI: rally + agentic scans, the retail-prompt poll and "
+                 "the LLM market pulse (skips politely without the gateway)",
+                 ["agentic scan", "rally scan", "rally store",
+                  "AI POLL:", "AI PULSE:"]),
 }
 # which stages each pipeline actually goes through (in order)
 # "analytics" and "full" plans removed with their buttons (2026-07-31):
@@ -5243,32 +5293,97 @@ PULSE_SEGMENTS_SAMPLE = {
         "crosses the conviction threshold.",
 }
 
-PULSE_RALLY_SAMPLE = [
-    {"target": "bearings / robot components",
-     "verdict": "clear rallying detected",
-     "why": "SAMPLE - A cluster of high-engagement posts is actively "
-            "recruiting: repeated 'get in before the institutions' framing, "
-            "posts listing the same four component makers in the same "
-            "order, and comment sections coordinating around 'the next "
-            "NVDA'. The language is evangelical rather than analytical - "
-            "posters answer objections with slogans, not numbers.",
-     "example": "SAMPLE paraphrase - 'Everyone is watching the robot "
-                "makers, nobody is watching who supplies the joints. Load "
-                "the suppliers before the street catches on.'"},
-    {"target": "a small-cap uranium name",
-     "verdict": "early signs, watch",
-     "why": "SAMPLE - A handful of near-identical bullish posts appeared "
-            "within hours of each other from young accounts, all citing "
-            "the same unsourced supply rumour. Engagement is still low - "
-            "either an organic story starting or a seeding attempt.",
-     "example": "SAMPLE paraphrase - 'Not many people know about this one "
-                "yet. The contract news drops next week. You were warned.'"},
-    {"target": "meme stocks (GME and friends)",
-     "verdict": "no rallying detected",
-     "why": "SAMPLE - Mentions exist but the tone is nostalgic, not "
-            "mobilising - jokes about past squeezes rather than calls to "
-            "action. No coordinated timing, no recruiting language."},
-]
+# (PULSE_RALLY_SAMPLE retired 2026-08-04: the rallying section is no
+#  longer LLM-only, so it has real numbers to show before the first
+#  gateway run and never needs a hand-written stand-in.)
+
+_RALLY_CAT_LABEL = {
+    "recruit": "recruiting others in",
+    "squeeze": "squeeze mechanics",
+    "hold_the_line": "refusing to sell",
+    "save_the_company": "save-the-company framing",
+    "coordinate": "coordinated timing",
+    "moonshot": "extreme-outcome claims",
+}
+_RALLY_VERDICT_ICON = {"organised push": "[!]", "building": "[~]",
+                       "ambient hype": "[ ]", "pushback winning": "[x]"}
+
+
+def _render_rally(entries):
+    """Section 4 - MOBILISATION.
+
+    The numbers come from src/rally_watch.py, which regex-scans EVERY
+    post in every archive, so this section renders with or without the
+    gateway; the LLM entries, when a pulse exists, only explain what the
+    numbers are pointing at.  Nothing is printed when a name has nothing
+    to show - the desk's standing rule is no empty-calorie sections."""
+    mkt = _rally_market()
+    board = _rally_load("theme")
+    names = _rally_load("ticker")
+    if not mkt and not board and not entries:
+        return
+    st.markdown("### 4 - Is the crowd being MOBILISED?")
+    st.caption("A lexical detector reads every post for the language of "
+               "organised buying - recruiting, squeeze mechanics, "
+               "refusal-to-sell pledges, save-the-company framing, "
+               "coordinated timing, extreme-outcome claims. Measured on "
+               "100% of posts; the model below only explains what it "
+               "found. Research and display only - this does not move a "
+               "GET IN or GET OUT flag.")
+    if mkt:
+        _r1, _r2 = st.columns([1, 2.2])
+        with _r1:
+            st.metric("posts using mobilising language (7d)",
+                      f"{mkt['pct']:.2f}%",
+                      help="Reference points from the archive: June "
+                           "2021's meme summer ran 3.41%; a quiet 2026 "
+                           "week runs about 1.0%.")
+            st.caption(f"across {mkt['posts']:,} posts &middot; "
+                       f"{mkt['counter']:,} posts calling it a pump",
+                       unsafe_allow_html=True)
+        with _r2:
+            _mix = ", ".join(
+                f"{_RALLY_CAT_LABEL.get(k, k)} {v:.1f}"
+                for k, v in list(mkt["by_cat"].items())[:6])
+            st.caption(f"per 1,000 posts &mdash; {_mix}",
+                       unsafe_allow_html=True)
+    _hot = [b for b in (board or []) if b.get("share")]
+    if _hot:
+        _rows = []
+        for b in _hot[:8]:
+            _rows.append({
+                "theme": (theme_label(b["name"])
+                          if b["name"] in THEME_ETFS
+                          else str(b["name"]).replace("_", " ").capitalize()),
+                "mobilising posts": b["hits"],
+                "share of its chatter": (f"{b['share']:.1%}"
+                                         if b["share"] is not None else "-"),
+                "vs its own normal (z)": (f"{b['z']:+.1f}"
+                                          if b["z"] is not None else "-"),
+                "loudest register": _RALLY_CAT_LABEL.get(
+                    b.get("top_category"), b.get("top_category") or "-"),
+                "pushback": b["counter"],
+                "": "RALLYING" if b.get("rallying") else "",
+            })
+        st.dataframe(pd.DataFrame(_rows), width="stretch",
+                     hide_index=True)
+    _nm = [b for b in (names or [])
+           if b.get("rallying") or (b.get("hits") or 0) >= 8]
+    if _nm:
+        st.caption("single names carrying it: " + ", ".join(
+            f"**{b['name']}** ({b['hits']} posts"
+            + (f", {b['share']:.0%} of its chatter"
+               if b.get("share") else "") + ")" for b in _nm[:8]))
+    for r in entries or []:
+        _v = str(r.get("verdict", ""))
+        _icon = _RALLY_VERDICT_ICON.get(_v, "[ ]")
+        _t = r.get("theme") or r.get("target") or "?"
+        _lbl = theme_label(_t) if _t in THEME_ETFS else _t
+        with st.expander(f"{_icon}  {_lbl} - {_v}"):
+            st.markdown(str(r.get("why", "")))
+            if r.get("example"):
+                st.markdown(f"> {r['example']}")
+
 
 PULSE_IDEAS = """**Other things the LLM layer can extract from the live posts**
 (each is a planned segment - the same API call can return all of them):
@@ -5332,95 +5447,133 @@ if active_tab == "AI Pulse":
 
     if _pulse_real:
         _mg = _pulse.get("mood_gauge") or {}
-        _mc1, _mc2 = st.columns([1, 3])
+        _vibe = _pulse.get("market_vibe") or {}
+        st.markdown("### 1 - The vibe: how the market feels right now")
+        st.caption("The whole market's mood, not its top trends - "
+                   "sentiment across every forum in the panel.")
+        _mc1, _mc2 = st.columns([1, 2.4])
         with _mc1:
             st.metric("retail mood gauge",
                       f"{_mg.get('score', '-')}/100")
+            st.caption("0 = fear, 100 = greed. "
+                       + str(_mg.get("why", "")))
         with _mc2:
-            st.caption("0 = fear, 100 = greed. " + str(_mg.get("why", "")))
+            for _b in (_vibe.get("bullets") or []):
+                st.markdown(f"- {_b}")
+            if not (_vibe.get("bullets") or []):
+                st.info(_pulse.get("talk_of_the_town") or "")
+        _ol = str(_vibe.get("one_liner") or "").strip()
+        if _ol:
+            st.markdown(
+                f"<div style='border-left:4px solid {ACCENT};"
+                "padding:14px 18px;margin:6px 0 2px 0;"
+                "background:rgba(127,127,127,.06);font-size:1.15rem;"
+                f"font-style:italic'>&ldquo;{_ol}&rdquo;</div>",
+                unsafe_allow_html=True)
+            st.caption("The line that sums up the week's mood - a "
+                       "PARAPHRASE the model composes to capture the "
+                       "register, never a real post reproduced. "
+                       + str(_vibe.get("one_liner_why", "")))
 
-        st.markdown("### 1 - What the forums are talking about")
-        st.info(_pulse.get("talk_of_the_town") or "(empty)")
-        st.markdown("### 2 - The market in one paragraph")
+        st.markdown("### 2 - What all the forums are saying")
         st.info(_pulse.get("market_pulse") or "(empty)")
+        _tott = str(_pulse.get("talk_of_the_town") or "").strip()
+        if _tott and (_vibe.get("bullets") or []):
+            with st.expander("what the crowd keeps coming back to "
+                             "(the recurring threads and arguments)"):
+                st.markdown(_tott)
 
-        _tb = _pulse.get("theme_briefs") or []
+        # ---- 3. per-theme read, on a DROPDOWN (desk 2026-08-04) ----
+        _tb = [b for b in (_pulse.get("theme_briefs") or [])
+               if isinstance(b, dict) and str(b.get("brief", "")).strip()]
         if _tb:
-            st.markdown("### 3 - What retail thinks, theme by theme")
-            cols = st.columns(2)
-            for i, b in enumerate(_tb):
-                with cols[i % 2]:
-                    _th = b.get("theme", "?")
-                    _lbl = (f"{theme_label(_th)}  "
-                            f"({THEME_ETFS.get(_th, '')})"
-                            if _th in THEME_ETFS else _th)
-                    st.markdown(f"**{_lbl}**")
-                    st.info(b.get("brief", ""))
+            st.markdown("### 3 - What retail thinks about a theme")
+            _share = ((_pulse.get("evidence") or {})
+                      .get("theme_mention_share_7d") or {})
+            _conv = ((_pulse.get("evidence") or {})
+                     .get("conviction_z") or {})
+            _order = sorted(
+                _tb, key=lambda b: -float(
+                    (_share.get(b.get("theme"), {}) or {}).get("share", 0)))
+            _labs = {}
+            for b in _order:
+                _th = b.get("theme", "?")
+                _s = (_share.get(_th, {}) or {}).get("share")
+                _labs[(f"{theme_label(_th) if _th in THEME_ETFS else _th}"
+                       + (f"  -  {_s:.0%} of mentions" if _s else "")
+                       + (f"  ({THEME_ETFS[_th]})"
+                          if _th in THEME_ETFS and THEME_ETFS[_th] else ""))
+                      ] = b
+            _pick = st.selectbox("theme", list(_labs), key="pulse_theme",
+                                 help="Every theme with a material share "
+                                      "of this week's chatter. The model "
+                                      "wrote each brief from that theme's "
+                                      "own posts.")
+            _b = _labs[_pick]
+            _th = _b.get("theme", "?")
+            _m1, _m2, _m3 = st.columns(3)
+            _sh = (_share.get(_th, {}) or {})
+            _m1.metric("share of mentions (7d)",
+                       f"{_sh.get('share', 0):.1%}" if _sh.get("share")
+                       else "-")
+            _m2.metric("vs its own 4-week pace",
+                       f"{_sh.get('vs_4w_avg')}x"
+                       if _sh.get("vs_4w_avg") else "-")
+            _m3.metric("conviction z",
+                       f"{_conv.get(_th):+.2f}" if _th in _conv else "-",
+                       help="Blank when the theme is not in the day's "
+                            "top-5 / bottom-3 conviction set - the "
+                            "Conviction tab has every theme.")
+            st.info(_b.get("brief", ""))
 
-        _rw = _pulse.get("rally_watch") or []
-        st.markdown("### 4 - Rallying watch")
-        st.caption("Mobilising language - recruiting, coordinated "
-                   "timing, evangelical tone. Verdicts are words, not "
-                   "scores; examples are PARAPHRASES, never quotes.")
-        if not _rw:
-            st.info("no rallying detected in the current sample")
-        for r in _rw:
-            _v = str(r.get("verdict", ""))
-            icon = ("[!]" if "clear" in _v
-                    else "[~]" if "early" in _v else "[ ]")
-            with st.expander(f"{icon}  {r.get('target', '?')} - {_v}"):
-                st.markdown(str(r.get("why", "")))
-                if r.get("example"):
-                    st.markdown(f"> {r['example']}")
+        # ---- 4. MOBILISATION: numbers first, model second ----
+        _rw = [r for r in (_pulse.get("rally_watch") or [])
+               if isinstance(r, dict) and str(r.get("why", "")).strip()]
+        _render_rally(_rw)
 
         _cw = _pulse.get("catalyst_watch") or []
         _dv = _pulse.get("divergences") or []
         if _cw or _dv:
             _k1, _k2 = st.columns(2)
             with _k1:
-                st.markdown("### 5 - Catalyst watch")
-                for c in _cw:
-                    st.markdown(f"- **{c.get('event', '?')}** "
-                                f"({', '.join(c.get('themes', []))}) - "
-                                f"{c.get('chatter', '')}")
-                if not _cw:
-                    st.caption("none surfaced")
+                if _cw:
+                    st.markdown("### 5 - Catalyst watch")
+                    for c in _cw:
+                        st.markdown(f"- **{c.get('event', '?')}** "
+                                    f"({', '.join(c.get('themes', []))}) - "
+                                    f"{c.get('chatter', '')}")
             with _k2:
-                st.markdown("### 6 - Story vs numbers (divergences)")
-                for d in _dv:
-                    st.markdown(f"- **{d.get('name', '?')}** - "
-                                f"{d.get('story', '')}")
-                if not _dv:
-                    st.caption("none surfaced")
+                if _dv:
+                    st.markdown("### 6 - Story vs numbers (divergences)")
+                    for d in _dv:
+                        st.markdown(f"- **{d.get('name', '?')}** - "
+                                    f"{d.get('story', '')}")
 
         with st.expander("the evidence pack this pulse was written from "
                          "(audit any sentence against these numbers)"):
             st.json(_pulse.get("evidence") or {})
     else:
-        # SAMPLES, clearly labelled - the pre-LLM preview, unchanged
-        st.markdown("### 1 - What the forums are talking about")
+        # No pulse yet: the LLM-written sections fall back to labelled
+        # SAMPLES, but section 4 is REAL - the rally detector needs no
+        # gateway, so its numbers are the same ones the desk will see
+        # after the first live run.
+        st.markdown("### 1 - The vibe: how the market feels right now")
         st.info(PULSE_TALK_SAMPLE)
-        st.markdown("### 2 - The market in one paragraph")
+        st.markdown("### 2 - What all the forums are saying")
         st.info(PULSE_MARKET_SAMPLE)
-        st.markdown("### 3 - What retail thinks, segment by segment")
-        cols = st.columns(2)
-        for i, (seg, txt) in enumerate(PULSE_SEGMENTS_SAMPLE.items()):
-            with cols[i % 2]:
-                st.markdown(f"**{seg}**")
-                st.info(txt)
-        st.markdown("### 4 - Rallying watch")
-        for r in PULSE_RALLY_SAMPLE:
-            icon = ("[!]" if "clear" in r["verdict"]
-                    else "[~]" if "early" in r["verdict"] else "[ ]")
-            with st.expander(f"{icon}  {r['target']} - {r['verdict']}"):
-                st.markdown(r["why"])
-                if r.get("example"):
-                    st.markdown(f"> {r['example']}")
+        st.markdown("### 3 - What retail thinks about a theme")
+        st.caption("With a live pulse this is a dropdown covering every "
+                   "theme with a material share of the week's chatter.")
+        _seg = list(PULSE_SEGMENTS_SAMPLE.items())
+        _lab = st.selectbox("theme", [s for s, _ in _seg],
+                            key="pulse_theme_sample")
+        st.info(dict(_seg)[_lab])
+        _render_rally([])
 
     st.divider()
     # ---- 1. THE POLL: what the AI recommends when asked like retail --
     st.markdown("## B - What the AI is recommending to retail")
-    st.caption("The POLL: at every data refresh the pipeline itself asks the model the questions a retail trader asks (config/ai_poll_prompts.csv - editable) and records every name and theme it recommends - a direct reading of the advice flowing from AI into the crowd. No backfill is possible; the series starts the day you start polling, and its forward test against the flags is pre-registered in notebook 09 \u00a72b.")
+    st.caption("The POLL: at every data refresh the pipeline itself asks the model the questions a retail trader asks (config/ai_poll_prompts.csv - editable) and records every name and theme it recommends - a direct reading of the advice flowing from AI into the crowd. The panel is 30 prompts: the plain questions retail types, plus the personas and agent scaffolds retail actually runs - the hedge-fund-PM and Warren-Buffett system prompts the popular open-source AI-investing repos ship, the bull-vs-bear-then-PM debate pipeline, the JSON-decision agent loop, and the screening, portfolio-rating, swing-setup and options-flow asks that circulate as copy-paste prompts. No backfill is possible; the series starts the day you start polling, and its forward test against the flags is pre-registered in notebook 09 \u00a72b.")
     _pl = _ai_poll_load()
     _pl = (_pl[~_pl["mock"].astype(bool)]
            if _pl is not None and "mock" in _pl.columns else _pl)
@@ -5474,6 +5627,20 @@ if active_tab == "AI Pulse":
             for n, c in (_th2.groupby("name").size()
                          .sort_values(ascending=False).head(8).items()):
                 st.markdown(f"- {n} ({c})")
+            # DOES THE SCAFFOLD CHANGE THE ANSWER? p13-p30 copy the
+            # personas and agent loops retail actually runs; if those
+            # return different names from the plain questions, the
+            # advice reaching a retail "AI agent" user is not the advice
+            # reaching a chatbot user - which is worth knowing.
+            if "family" in _today.columns:
+                _sc = _tk[_tk["family"].isin(["persona", "agent"])]
+                _pl2 = _tk[_tk["family"] == "plain"]
+                if len(_sc) and len(_pl2):
+                    _only = (set(_sc["name"]) - set(_pl2["name"]))
+                    st.markdown(
+                        "**the agent/persona scaffolds add:** "
+                        + (", ".join(sorted(_only)[:8]) if _only
+                           else "nothing the plain questions missed"))
             if _prev is not None:
                 _dropped = (set(_prev[_prev['kind'] == 'ticker']['name'])
                             - set(_tk['name']))

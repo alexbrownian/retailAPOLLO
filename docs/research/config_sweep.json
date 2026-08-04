@@ -1,0 +1,1181 @@
+{
+ "BASELINE": {
+  "note": "trailing z baseline (days)",
+  "current": 84,
+  "points": [
+   {
+    "value": 42,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 63,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 84,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 120,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 180,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   }
+  ]
+ },
+ "MIN_DAYS": {
+  "note": "warm-up before a z exists",
+  "current": 28,
+  "points": [
+   {
+    "value": 14,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 21,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 28,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 42,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 56,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   }
+  ]
+ },
+ "MIN_TOTAL": {
+  "note": "mask days with fewer total posts than this",
+  "current": 30,
+  "points": [
+   {
+    "value": 10,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 20,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 30,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 50,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 100,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   }
+  ]
+ },
+ "EUPHORIA_PCT_WINDOW": {
+  "note": "'extreme' = versus this name's own last N days",
+  "current": 365,
+  "points": [
+   {
+    "value": 180,
+    "scorecard": {
+     "get_out": {
+      "captured": 8,
+      "detectable": 79,
+      "capture_rate": 0.101,
+      "false_alarms": 6,
+      "fa_per_iy": 0.075,
+      "median_lead_days": 9,
+      "threshold": 0.6533333333333333,
+      "utility": 2
+     },
+     "get_in": {
+      "captured": 10,
+      "detectable": 99,
+      "capture_rate": 0.101,
+      "false_alarms": 87,
+      "fa_per_iy": 0.23,
+      "median_lead_days": 25,
+      "threshold": 0.8826296296296297,
+      "utility": -77
+     }
+    }
+   },
+   {
+    "value": 270,
+    "scorecard": {
+     "get_out": {
+      "captured": 11,
+      "detectable": 79,
+      "capture_rate": 0.139,
+      "false_alarms": 8,
+      "fa_per_iy": 0.091,
+      "median_lead_days": 24,
+      "threshold": 0.6604495584272536,
+      "utility": 3
+     },
+     "get_in": {
+      "captured": 12,
+      "detectable": 99,
+      "capture_rate": 0.121,
+      "false_alarms": 91,
+      "fa_per_iy": 0.225,
+      "median_lead_days": 22,
+      "threshold": 0.8788888888888889,
+      "utility": -79
+     }
+    }
+   },
+   {
+    "value": 365,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 540,
+    "scorecard": {
+     "get_out": {
+      "captured": 10,
+      "detectable": 79,
+      "capture_rate": 0.127,
+      "false_alarms": 5,
+      "fa_per_iy": 0.052,
+      "median_lead_days": 14,
+      "threshold": 0.7364774876258746,
+      "utility": 5
+     },
+     "get_in": {
+      "captured": 13,
+      "detectable": 99,
+      "capture_rate": 0.131,
+      "false_alarms": 92,
+      "fa_per_iy": 0.217,
+      "median_lead_days": 24,
+      "threshold": 0.8748148148148148,
+      "utility": -79
+     }
+    }
+   },
+   {
+    "value": 730,
+    "scorecard": {
+     "get_out": {
+      "captured": 11,
+      "detectable": 79,
+      "capture_rate": 0.139,
+      "false_alarms": 6,
+      "fa_per_iy": 0.062,
+      "median_lead_days": 24,
+      "threshold": 0.7651905870086454,
+      "utility": 5
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 95,
+      "fa_per_iy": 0.22,
+      "median_lead_days": 26,
+      "threshold": 0.8745205479452054,
+      "utility": -81
+     }
+    }
+   }
+  ]
+ },
+ "EUPHORIA_HYPE_MULT": {
+  "note": "A1: crowd must be this many x its 120d median",
+  "current": 2.0,
+  "points": [
+   {
+    "value": 1.5,
+    "scorecard": {
+     "get_out": {
+      "captured": 19,
+      "detectable": 106,
+      "capture_rate": 0.179,
+      "false_alarms": 37,
+      "fa_per_iy": 0.247,
+      "median_lead_days": 11,
+      "threshold": 0.6078301369863014,
+      "utility": -18
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 88,
+      "fa_per_iy": 0.213,
+      "median_lead_days": 18,
+      "threshold": 0.8673972602739727,
+      "utility": -74
+     }
+    }
+   },
+   {
+    "value": 1.75,
+    "scorecard": {
+     "get_out": {
+      "captured": 12,
+      "detectable": 98,
+      "capture_rate": 0.122,
+      "false_alarms": 27,
+      "fa_per_iy": 0.225,
+      "median_lead_days": 15,
+      "threshold": 0.6383953033268102,
+      "utility": -15
+     },
+     "get_in": {
+      "captured": 12,
+      "detectable": 99,
+      "capture_rate": 0.121,
+      "false_alarms": 89,
+      "fa_per_iy": 0.215,
+      "median_lead_days": 21,
+      "threshold": 0.8720939334637965,
+      "utility": -77
+     }
+    }
+   },
+   {
+    "value": 2.0,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 2.5,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 3,
+      "fa_per_iy": 0.047,
+      "median_lead_days": 18,
+      "threshold": 0.6734041095890412,
+      "utility": 6
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 85,
+      "fa_per_iy": 0.205,
+      "median_lead_days": 29,
+      "threshold": 0.8808972602739726,
+      "utility": -71
+     }
+    }
+   },
+   {
+    "value": 3.0,
+    "scorecard": {
+     "get_out": {
+      "captured": 7,
+      "detectable": 79,
+      "capture_rate": 0.089,
+      "false_alarms": 1,
+      "fa_per_iy": 0.018,
+      "median_lead_days": 19,
+      "threshold": 0.6518036529680364,
+      "utility": 6
+     },
+     "get_in": {
+      "captured": 16,
+      "detectable": 99,
+      "capture_rate": 0.162,
+      "false_alarms": 80,
+      "fa_per_iy": 0.193,
+      "median_lead_days": 22,
+      "threshold": 0.8832407045009782,
+      "utility": -64
+     }
+    }
+   }
+  ]
+ },
+ "EUPHORIA_FADE_DISCOUNT": {
+  "note": "A3: level points the fade flag buys",
+  "current": 10,
+  "points": [
+   {
+    "value": 0,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 5,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 10,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 15,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 20,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   }
+  ]
+ },
+ "EUPHORIA_MIN_HISTORY": {
+  "note": "days of history before percentiles exist",
+  "current": 180,
+  "points": [
+   {
+    "value": 90,
+    "scorecard": {
+     "get_out": {
+      "captured": 11,
+      "detectable": 79,
+      "capture_rate": 0.139,
+      "false_alarms": 5,
+      "fa_per_iy": 0.052,
+      "median_lead_days": 13,
+      "threshold": 0.6447879001553289,
+      "utility": 6
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 86,
+      "fa_per_iy": 0.191,
+      "median_lead_days": 25,
+      "threshold": 0.8775628180039132,
+      "utility": -72
+     }
+    }
+   },
+   {
+    "value": 135,
+    "scorecard": {
+     "get_out": {
+      "captured": 10,
+      "detectable": 79,
+      "capture_rate": 0.127,
+      "false_alarms": 5,
+      "fa_per_iy": 0.054,
+      "median_lead_days": 14,
+      "threshold": 0.6451369863013698,
+      "utility": 5
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 100,
+      "fa_per_iy": 0.227,
+      "median_lead_days": 25,
+      "threshold": 0.8765205479452053,
+      "utility": -86
+     }
+    }
+   },
+   {
+    "value": 180,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 270,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6556733677281622,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 12,
+      "detectable": 99,
+      "capture_rate": 0.121,
+      "false_alarms": 120,
+      "fa_per_iy": 0.296,
+      "median_lead_days": 29,
+      "threshold": 0.8763590998043045,
+      "utility": -108
+     }
+    }
+   },
+   {
+    "value": 365,
+    "scorecard": {
+     "get_out": {
+      "captured": 7,
+      "detectable": 79,
+      "capture_rate": 0.089,
+      "false_alarms": 5,
+      "fa_per_iy": 0.062,
+      "median_lead_days": 8,
+      "threshold": 0.6736594911937378,
+      "utility": 2
+     },
+     "get_in": {
+      "captured": 12,
+      "detectable": 95,
+      "capture_rate": 0.126,
+      "false_alarms": 74,
+      "fa_per_iy": 0.22,
+      "median_lead_days": 29,
+      "threshold": 0.8779497716894977,
+      "utility": -62
+     }
+    }
+   }
+  ]
+ },
+ "EUPHORIA_ATT_GATE": {
+  "note": "A2: attention percentile gate",
+  "current": 0.9,
+  "points": [
+   {
+    "value": 0.8,
+    "scorecard": {
+     "get_out": {
+      "captured": 11,
+      "detectable": 79,
+      "capture_rate": 0.139,
+      "false_alarms": 7,
+      "fa_per_iy": 0.08,
+      "median_lead_days": 14,
+      "threshold": 0.7444748858447489,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 13,
+      "detectable": 99,
+      "capture_rate": 0.131,
+      "false_alarms": 90,
+      "fa_per_iy": 0.217,
+      "median_lead_days": 22,
+      "threshold": 0.8770205479452055,
+      "utility": -77
+     }
+    }
+   },
+   {
+    "value": 0.85,
+    "scorecard": {
+     "get_out": {
+      "captured": 11,
+      "detectable": 79,
+      "capture_rate": 0.139,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 14,
+      "threshold": 0.7405714285714287,
+      "utility": 6
+     },
+     "get_in": {
+      "captured": 13,
+      "detectable": 99,
+      "capture_rate": 0.131,
+      "false_alarms": 91,
+      "fa_per_iy": 0.22,
+      "median_lead_days": 22,
+      "threshold": 0.8769623287671233,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 0.9,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 0.95,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 4,
+      "fa_per_iy": 0.045,
+      "median_lead_days": 16,
+      "threshold": 0.6410000513057308,
+      "utility": 5
+     },
+     "get_in": {
+      "captured": 17,
+      "detectable": 99,
+      "capture_rate": 0.172,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 22,
+      "threshold": 0.876859589041096,
+      "utility": -75
+     }
+    }
+   },
+   {
+    "value": 0.98,
+    "scorecard": {
+     "get_out": {
+      "captured": 10,
+      "detectable": 79,
+      "capture_rate": 0.127,
+      "false_alarms": 1,
+      "fa_per_iy": 0.011,
+      "median_lead_days": 7,
+      "threshold": 0.43237164405549816,
+      "utility": 9
+     },
+     "get_in": {
+      "captured": 18,
+      "detectable": 99,
+      "capture_rate": 0.182,
+      "false_alarms": 89,
+      "fa_per_iy": 0.215,
+      "median_lead_days": 22,
+      "threshold": 0.8783561643835617,
+      "utility": -71
+     }
+    }
+   }
+  ]
+ },
+ "EUPHORIA_MIN_COVERAGE": {
+  "note": "A0: scored posts needed in the last 28d",
+  "current": 100,
+  "points": [
+   {
+    "value": 50,
+    "scorecard": {
+     "get_out": {
+      "captured": 17,
+      "detectable": 130,
+      "capture_rate": 0.131,
+      "false_alarms": 30,
+      "fa_per_iy": 0.15,
+      "median_lead_days": 14,
+      "threshold": 0.6531037181996084,
+      "utility": -13
+     },
+     "get_in": {
+      "captured": 19,
+      "detectable": 122,
+      "capture_rate": 0.156,
+      "false_alarms": 130,
+      "fa_per_iy": 0.283,
+      "median_lead_days": 22,
+      "threshold": 0.875371819960861,
+      "utility": -111
+     }
+    }
+   },
+   {
+    "value": 75,
+    "scorecard": {
+     "get_out": {
+      "captured": 14,
+      "detectable": 122,
+      "capture_rate": 0.115,
+      "false_alarms": 25,
+      "fa_per_iy": 0.149,
+      "median_lead_days": 14,
+      "threshold": 0.6534090019569473,
+      "utility": -11
+     },
+     "get_in": {
+      "captured": 16,
+      "detectable": 111,
+      "capture_rate": 0.144,
+      "false_alarms": 113,
+      "fa_per_iy": 0.256,
+      "median_lead_days": 22,
+      "threshold": 0.876472602739726,
+      "utility": -97
+     }
+    }
+   },
+   {
+    "value": 100,
+    "scorecard": {
+     "get_out": {
+      "captured": 9,
+      "detectable": 79,
+      "capture_rate": 0.114,
+      "false_alarms": 5,
+      "fa_per_iy": 0.057,
+      "median_lead_days": 16,
+      "threshold": 0.6451369863013698,
+      "utility": 4
+     },
+     "get_in": {
+      "captured": 14,
+      "detectable": 99,
+      "capture_rate": 0.141,
+      "false_alarms": 92,
+      "fa_per_iy": 0.222,
+      "median_lead_days": 25,
+      "threshold": 0.8769075342465752,
+      "utility": -78
+     }
+    }
+   },
+   {
+    "value": 150,
+    "scorecard": {
+     "get_out": {
+      "captured": 10,
+      "detectable": 64,
+      "capture_rate": 0.156,
+      "false_alarms": 4,
+      "fa_per_iy": 0.053,
+      "median_lead_days": 12,
+      "threshold": 0.6719697705725145,
+      "utility": 6
+     },
+     "get_in": {
+      "captured": 13,
+      "detectable": 83,
+      "capture_rate": 0.157,
+      "false_alarms": 59,
+      "fa_per_iy": 0.152,
+      "median_lead_days": 28,
+      "threshold": 0.8732583170254403,
+      "utility": -46
+     }
+    }
+   },
+   {
+    "value": 250,
+    "scorecard": {
+     "get_out": {
+      "captured": 7,
+      "detectable": 52,
+      "capture_rate": 0.135,
+      "false_alarms": 2,
+      "fa_per_iy": 0.029,
+      "median_lead_days": 16,
+      "threshold": 0.668675799086758,
+      "utility": 5
+     },
+     "get_in": {
+      "captured": 11,
+      "detectable": 60,
+      "capture_rate": 0.183,
+      "false_alarms": 41,
+      "fa_per_iy": 0.18,
+      "median_lead_days": 21,
+      "threshold": 0.8727514677103719,
+      "utility": -30
+     }
+    }
+   }
+  ]
+ }
+}

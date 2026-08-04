@@ -31,47 +31,57 @@ from .ticker_universe import load_us_ticker_universe
 
 logger = logging.getLogger(__name__)
 
-# WSB / finance jargon that is not a tradeable ticker in this context.
-STOP_TICKERS: frozenset[str] = frozenset(
+# ---------------------------------------------------------------------------
+# JARGON, NOT TICKERS.  Symbols the crowd uses as words.
+#
+# Moved out of this file and into config/ticker_stoplist.csv on 2026-08-04
+# (desk instruction) so it can be maintained without touching code - the
+# same treatment every other mapping in this project already had.  The
+# frozenset below is the FALLBACK seed: it keeps a fresh clone working if
+# the CSV is missing, and it is the list as it stood before the move.
+#
+# HOW A SYMBOL EARNS A PLACE HERE.  The 2026-08-04 additions used a
+# falsifiable test rather than taste: many finance abbreviations have since
+# been issued to a real ETF (HYSA, DRAM, BTC, REIT, NASA, DJIA, HVAC, EBIT,
+# ROPE), so "is it a listed symbol?" cannot separate them from real
+# instruments.  What can: A FUND CANNOT BE DISCUSSED BEFORE IT IS LISTED.
+# HYSA carries 792 mentions in 2019 and 1,141 in 2020 against a fund
+# launched in 2023; DRAM carries 116 in 2018 against a fund launched in
+# 2025.  Those mentions are the words.  Symbols that pass the test - IBIT
+# (0 before 2024, its launch year), QQQI, SNDK, SPCX - are left alone, and
+# so are old, genuinely-traded ETFs like SPY, ARKK and GLD.  The reason
+# column in the CSV records the evidence per row.
+# ---------------------------------------------------------------------------
+_STOP_TICKERS_SEED: frozenset[str] = frozenset(
     {
-        "DD",
-        "YOLO",
-        "USA",
-        "CEO",
-        "CFO",
-        "IPO",
-        "ATH",
-        "ITM",
-        "OTM",
-        "FOMO",
-        "FUD",
-        "ER",
-        "EOD",
-        "IMO",
-        "IRL",
-        "AI",
-        "IT",
-        "OK",
-        "ALL",
-        "NEW",
-        "NOW",
-        "BIG",
-        "LOL",
-        "WSB",
-        "IV",
-        "EOY",
-        "ETF",
-        "ROI",
-        "FBI",
-        "NYSE",
-        "NASDAQ",
-        "SEC",
-        "EV",
-        "USD",
-        "GDP",
-        "CPI",
+        "DD", "YOLO", "USA", "CEO", "CFO", "IPO", "ATH", "ITM", "OTM",
+        "FOMO", "FUD", "ER", "EOD", "IMO", "IRL", "AI", "IT", "OK", "ALL",
+        "NEW", "NOW", "BIG", "LOL", "WSB", "IV", "EOY", "ETF", "ROI",
+        "FBI", "NYSE", "NASDAQ", "SEC", "EV", "USD", "GDP", "CPI",
     }
 )
+
+STOPLIST_CSV = (
+    Path(__file__).resolve().parent.parent / "config" / "ticker_stoplist.csv"
+)
+
+
+def load_stop_tickers(path: Path = STOPLIST_CSV) -> frozenset[str]:
+    """The desk-editable jargon list. Falls back to the built-in seed when
+    the CSV is absent; raises on a malformed one, because a stoplist that
+    silently loads empty would let 'CEO' back into the mention counts."""
+    if not Path(path).is_file():
+        return _STOP_TICKERS_SEED
+    df = pd.read_csv(path)
+    if "symbol" not in df.columns:
+        raise ValueError(f"{path} needs a 'symbol' column")
+    syms = {str(s).strip().upper() for s in df["symbol"] if str(s).strip()}
+    if not syms:
+        raise ValueError(f"{path} has no usable rows")
+    return frozenset(syms)
+
+
+STOP_TICKERS: frozenset[str] = load_stop_tickers()
 
 # Bare-word-only: common Reddit / finance prose that is also a valid 4–5 letter symbol.
 # Cashtags for these symbols still count. Extend as you see false positives in your slice.

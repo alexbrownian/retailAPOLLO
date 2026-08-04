@@ -36,8 +36,13 @@ CONFIG (all optional, all read from .env / the environment):
                              default 'RESTRICTED' (posts are public text;
                              RESTRICTED is the conservative default)
     AI_USER_ID               passed to apollo.client() if set
-    AI_MAX_CALLS             hard per-process budget, default 40 — a
-                             runaway loop hits this, never the gateway
+    AI_MAX_CALLS             hard per-process budget, default 80 — a
+                             runaway loop hits this, never the gateway.
+                             One full update spends about 36: the poll's
+                             30 prompts, the pulse's 5 calls and the
+                             weekly keyword audit. Raised from 40 on
+                             2026-08-04 when the poll panel grew, so a
+                             couple of retries cannot exhaust it
     AI_MOCK                  '1' = return deterministic canned output
                              without any network (tests, cloud dev)
 
@@ -73,7 +78,7 @@ def _load_env() -> None:
 _load_env()
 
 MODEL = os.environ.get("AI_MODEL", "gpt-4o")
-MAX_CALLS = int(os.environ.get("AI_MAX_CALLS", "40"))
+MAX_CALLS = int(os.environ.get("AI_MAX_CALLS", "80"))
 MOCK = os.environ.get("AI_MOCK", "") == "1"
 
 _client = None
@@ -191,21 +196,35 @@ def _mock_answer(prompt: str, want_json: bool):
             return _mock_poll_answer()
         return ("[MOCK - no gateway] A deterministic placeholder "
                 "answer for offline testing.")
-    # shape-matching mocks for the known JSON consumers
-    if "rally_watch" in prompt and "market_pulse" not in prompt:
-        return {"rally_watch": [], "catalyst_watch": [],
-                "divergences": []}
-    if '"market_pulse"' in prompt or "market_pulse" in prompt:
+    # Shape-matching mocks for the known JSON consumers. ORDER MATTERS:
+    # the pulse makes four separate JSON calls and each is recognised by
+    # a key that only IT asks for, most specific first.
+    if "market_vibe" in prompt:
         return {
+            "market_vibe": {
+                "bullets": ["[MOCK] Offline placeholder vibe line."],
+                "one_liner": "[MOCK] placeholder line - no gateway.",
+                "one_liner_why": "[MOCK] Placeholder.",
+            },
+            "mood_gauge": {"score": 50, "why": "[MOCK] Placeholder."},
             "market_pulse": "[MOCK] Offline placeholder pulse - run on "
                             "the desk machine (VPN + dimsum_lite) for "
                             "the real one.",
             "talk_of_the_town": "[MOCK] Placeholder.",
+        }
+    if "theme_briefs" in prompt:
+        return {"theme_briefs": []}
+    if "rally_watch" in prompt:
+        return {"rally_watch": []}
+    if "catalyst_watch" in prompt or "divergences" in prompt:
+        return {"catalyst_watch": [], "divergences": []}
+    if "market_pulse" in prompt:               # any other caller
+        return {
+            "market_pulse": "[MOCK] Offline placeholder pulse.",
+            "talk_of_the_town": "[MOCK] Placeholder.",
             "mood_gauge": {"score": 50, "why": "[MOCK] Placeholder."},
-            "theme_briefs": [],
-            "rally_watch": [],
-            "catalyst_watch": [],
-            "divergences": [],
+            "theme_briefs": [], "rally_watch": [],
+            "catalyst_watch": [], "divergences": [],
         }
     if "agentic" in prompt.lower():
         return {"digest": "[MOCK] Placeholder agentic digest.",

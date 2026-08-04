@@ -151,7 +151,8 @@ from src.config import (PROCESSED_DIR, EUPHORIA_MIN_COVERAGE,
                         EUPHORIA_FADE_DISCOUNT, EUPHORIA_FA_PENALTY,
                         EUPHORIA_PCT_WINDOW, EUPHORIA_MIN_HISTORY,
                         EUPHORIA_EXCLUDED_THEMES, EUPHORIA_SINGLE_TOP_N,
-                        EUPHORIA_MIN_NAME_POSTS, EUPHORIA_HYPE_MULT)
+                        EUPHORIA_HYPE_MULT,
+                        EUPHORIA_SINGLE_WINDOW_D)
 from src.themes import THEME_ETFS, THEME_ETF_FALLBACKS
 from analytics.loaders import (load, to_wide, THEME_COUNTS, THEME_SENT,
                                TICKER_COUNTS, TICKER_SENT)
@@ -211,22 +212,69 @@ def euphoria_themes() -> dict:
 
 
 def single_name_universe(prices: pd.DataFrame,
-                         top_n: int = EUPHORIA_SINGLE_TOP_N) -> list:
-    """The hottest single names: top-N most-mentioned tickers that are
-    priced and carry enough scored posts for sentiment to mean anything.
-    Chosen from the data, not a hand list - today's NVDA is tomorrow's
-    something else, and the whole point is catching the next one."""
+                         top_n: int = EUPHORIA_SINGLE_TOP_N,
+                         window_d: int = EUPHORIA_SINGLE_WINDOW_D) -> list:
+    """The hottest single names: the most-mentioned tickers OF THE LAST
+    `window_d` DAYS that are priced, are actually single names, and carry
+    enough scored posts for sentiment to mean anything.
+
+    THE WINDOW (added 2026-08-04).  This function always promised to be
+    "chosen from the data, not a hand list - today's NVDA is tomorrow's
+    something else, and the whole point is catching the next one", but it
+    ranked on ALL HISTORY, and 2021 alone is 39% of every mention ever
+    recorded.  So it delivered a 2021 list: BBBY (bankrupt), SNDL, CLOV,
+    WKHS, NOK, MVIS - while MU missed the cut by 185 posts six weeks after
+    the memory theme fired a GET OUT.  Ranking over a trailing year is what
+    the docstring already claimed the function did.
+
+    TWO EXCLUSIONS, for the same reason - the tab says SINGLE NAMES:
+      * ETFs (SPY, QQQ, VXUS, SCHD ...), identified from the Nasdaq
+        directories' own ETF flag. Their mentions remain in every count
+        and every theme; they simply are not single names.
+      * jargon symbols (config/ticker_stoplist.csv). Belt and braces: the
+        stoplist applies at ingestion, so it only reaches history after a
+        FULL rebuild, and this tab should be right before that happens.
+
+    THE COVERAGE FLOOR is now the project's OWN measurability rule -
+    EUPHORIA_MIN_COVERAGE scored posts in the last 28 days, the same test
+    the detector already applies before it will read a euphoria level at
+    all.  It replaces a cumulative 3,000-post floor that had the same
+    lookback flaw as the ranking: a 2021 relic with 8,000 posts from five
+    years ago always cleared it, while the names actually being traded now
+    - MU (2,815), SNDK (721), MSTR (1,884), SMCI (924) - never could.
+    Membership of this tab now means exactly "the detector can measure
+    this name today", which is the only membership rule that cannot
+    contradict what the tab then shows.  NO NEW CONSTANT was introduced.
+    """
     counts = load(TICKER_COUNTS)
     sent = load(TICKER_SENT)
     if counts is None or sent is None:
         return []
+    from pathlib import Path                              # noqa: PLC0415
+    from src.extract_tickers import STOP_TICKERS          # noqa: PLC0415
+    from src.ticker_universe import load_etf_symbols      # noqa: PLC0415
+    from src.config import REFERENCE_DIR                  # noqa: PLC0415
+    etfs = load_etf_symbols(Path(REFERENCE_DIR))
+
     priced = set(prices["symbol"].unique())
-    posts_per = sent.groupby("ticker")["n_posts"].sum()
-    ranked = (counts.groupby("ticker")["mention_count"].sum()
+    counts = counts.copy()
+    counts["date"] = pd.to_datetime(counts["date"])
+    hi = counts["date"].max()
+    recent = counts[counts["date"] > hi - pd.Timedelta(days=window_d)]
+    if not len(recent):                    # a very short store: use it all
+        recent = counts
+    sent = sent.copy()
+    sent["date"] = pd.to_datetime(sent["date"])
+    covered = (sent[sent["date"] > hi - pd.Timedelta(days=28)]
+               .groupby("ticker")["n_posts"].sum())
+    ranked = (recent.groupby("ticker")["mention_count"].sum()
               .sort_values(ascending=False))
     out = []
     for tick in ranked.index:
-        if tick in priced and posts_per.get(tick, 0) >= EUPHORIA_MIN_NAME_POSTS:
+        if tick in etfs or tick in STOP_TICKERS:
+            continue
+        if (tick in priced
+                and covered.get(tick, 0) >= EUPHORIA_MIN_COVERAGE):
             out.append(tick)
         if len(out) >= top_n:
             break

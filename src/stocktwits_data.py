@@ -10,7 +10,8 @@ reworked for our pipeline). Two reasons it earns a place:
    agree with the author's own label?) - no other source offers that.
 2. The public JSON API needs NO key for read-only symbol streams.
 
-API surface used (see docs/LIVE_INGESTION.md for rate limits):
+API surface used (the rate limits and the 429 rule are documented at the
+top of ingestion/fetch_stocktwits.py, this module's only caller):
     https://api.stocktwits.com/api/2/streams/symbol/{SYM}.json
         -> ~30 most recent messages for one ticker, JSON
 Message shape (the fields we keep):

@@ -141,3 +141,42 @@ def load_us_ticker_universe(
         len(DELISTED_TICKERS),
     )
     return merged
+
+
+# ---------------------------------------------------------------------------
+# ETF vs single name.  Both Nasdaq files carry an ETF column ('Y'/'N'), so
+# the distinction is available for free from files this project already
+# caches - no new dependency, no hand list to maintain.
+#
+# Added 2026-08-04.  The euphoria SINGLE-NAME detector was ranking on
+# mentions alone, which put SPY, QQQ, VXUS and SCHD into a tab whose whole
+# premise is single names; their mentions are real signal and stay in the
+# counts, they simply are not single names.
+# ---------------------------------------------------------------------------
+def load_etf_symbols(cache_dir: Path) -> set[str]:
+    """Symbols flagged as ETFs by the Nasdaq symbol directories. Returns an
+    empty set if the cached files are missing, so every caller degrades to
+    "we cannot tell" rather than to a wrong answer."""
+    out: set[str] = set()
+    for fname, sym_col in (("nasdaqlisted.txt", "Symbol"),
+                           ("otherlisted.txt", "ACT Symbol")):
+        path = Path(cache_dir) / fname
+        if not path.is_file():
+            continue
+        lines = path.read_text(encoding="utf-8").splitlines()
+        if not lines:
+            continue
+        head = lines[0].split("|")
+        try:
+            sym_i, etf_i = head.index(sym_col), head.index("ETF")
+        except ValueError:
+            continue                     # unexpected layout - skip, never guess
+        for line in lines[1:]:
+            parts = line.split("|")
+            if len(parts) <= max(sym_i, etf_i):
+                continue                 # the trailing "File Creation Time" row
+            if parts[etf_i].strip().upper() == "Y":
+                sym = parts[sym_i].strip().upper()
+                if sym:
+                    out.add(sym)
+    return out

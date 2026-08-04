@@ -13,7 +13,22 @@ into the crowd.  This module runs that poll at the end of every
 update_data pass:
 
   * the PROMPT PANEL lives in config/ai_poll_prompts.csv (editable, one
-    retail-style question per row);
+    retail-style question per row).  Expanded 2026-08-04 from 12 to 30
+    on the desk's instruction to "look at what people have currently set
+    up as AI trading agents and see what prompts or systems they use and
+    we copy that": p13-p30 are lifted from the scaffolds retail actually
+    runs - the hedge-fund-PM and Warren-Buffett personas that the
+    most-starred open-source AI-investing repos ship as system prompts,
+    the bull-vs-bear-then-PM debate pipeline, the JSON-decision agent
+    loop people schedule against a broker API, plus the screening,
+    portfolio-rating, swing-setup and options-flow asks that circulate
+    as copy-paste prompts.  The `family` column tags each one (plain,
+    theme, persona, agent, screen, portfolio, momentum, risk, thesis) so
+    the series can be read by TYPE of asker as well as in aggregate -
+    whether the persona scaffolds recommend something different from the
+    plain questions is itself a finding.
+    ADDING is safe; REWORDING an existing prompt is not - it silently
+    breaks that prompt_id's history. Add a new id instead;
   * each prompt is asked ONCE per run at temperature 0.8 — consumer
     products answer at a high temperature, so a single low-temperature
     reading would measure a machine retail never talks to; run-to-run
@@ -117,6 +132,7 @@ def run(log=print) -> tuple[bool, str]:
             if not sym or len(sym) > 10:
                 continue
             rows.append({"run_date": today, "prompt_id": p["prompt_id"],
+                         "family": str(p.get("family") or ""),
                          "kind": "ticker", "name": sym,
                          "direction": str(t.get("direction", "buy")),
                          "conviction": str(t.get("conviction", "")),
@@ -124,6 +140,7 @@ def run(log=print) -> tuple[bool, str]:
                          "mock": ai.MOCK})
         for rank, th in enumerate(parsed.get("themes", []) or [], 1):
             rows.append({"run_date": today, "prompt_id": p["prompt_id"],
+                         "family": str(p.get("family") or ""),
                          "kind": "theme",
                          "name": str(th).strip().lower()[:40],
                          "direction": "buy", "conviction": "",

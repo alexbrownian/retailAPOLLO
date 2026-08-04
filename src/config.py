@@ -92,16 +92,51 @@ FETCH_TIMEOUT_S = 600        # hard wall-clock budget per fetcher subprocess,
 # 4. ANALYTICS KNOBS - shared by analytics/ and the dashboard.
 #    These numbers ARE the model; change them consciously.
 # ---------------------------------------------------------------------------
+# THE FIVE INHERITED KNOBS. Carried over from RetailFlow1, and until
+# 2026-08-04 they carried a sentence of reasoning and no measurement -
+# which the desk called out ("we need to make everything have reason and
+# testing"). Each was then put through `tools/sweep_config.py`, which
+# re-runs the FULL walk-forward with one number changed. The results are
+# quoted below and stored in docs/research/config_sweep.json.
+#
+# The headline finding was not what anyone expected: FOUR OF THE FIVE DO
+# NOT REACH THE GET IN / GET OUT FLAGS AT ALL. They are display and
+# legacy-engine numbers. That is why they were never swept, and saying so
+# here is a better answer than inventing a justification for them.
 ROLL = 7             # rolling window (days) for mention / bull-pressure sums.
                      # One loud afternoon is not a trend; a sustained week is.
+                     # SWEPT 2026-08-04 (3/5/7/10/14): GET OUT utility
+                     # 5/3/4/4/5 on a constant 79 detectable peaks - the
+                     # detector is FLAT across the whole range. 7 is not the
+                     # argmax; the point is that no value is, so nothing here
+                     # is a knife-edge fit on 7. GET IN mildly prefers longer
+                     # (-94/-96/-78/-72/-71), which is a reason to revisit
+                     # this under a proper nested walk-forward, not a reason
+                     # to move it on a full-record sweep.
 BASELINE = 84        # trailing z-score baseline (days). Every z compares
                      # today against the SAME name's PRECEDING 84 days only -
                      # no future information ever leaks into a backtest.
+                     # SWEPT 2026-08-04 (42..180): IDENTICAL scorecard at
+                     # every value, because it does not reach the desk
+                     # detector. It feeds `trailing_z`, used by the legacy
+                     # 5-check signals engine and by the NON-DEFAULT
+                     # conviction branch (CONV_BASELINE is "ewm"). Live
+                     # euphoria features are percentile ranks, not z-scores.
 MIN_DAYS = 28        # warm-up: days of history required before a z exists.
+                     # SWEPT 2026-08-04 (14..56): identical scorecard, same
+                     # reason as BASELINE above - same code path.
 DERIV_SMOOTH = 5     # moving average over the day-to-day change (kills the
                      # sawtooth while still reacting within a week).
+                     # DISPLAY ONLY - used exclusively by analytics/overlays.py
+                     # for the chart derivative. Touches no signal, so there
+                     # is nothing for a walk-forward to say about it.
 MIN_TOTAL = 30       # mask days with fewer total posts than this - a 1-post
                      # day would otherwise read as a fake 100% mention share.
+                     # DISPLAY ONLY (overlays.py chart masking + a dashboard
+                     # caption). SWEPT 2026-08-04 (10..100) to confirm:
+                     # identical scorecard at every value. The euphoria
+                     # detector has its own coverage gate for this job -
+                     # EUPHORIA_MIN_COVERAGE, which IS a live signal number.
 
 # --- signal engine (the 5-check BUY/SELL scorer) ---
 SIG_K = float(os.environ.get("SIG_K", 2.5))
@@ -139,13 +174,37 @@ DESK_EXIT_Z = 1.0         # trade desk hint: an OPEN BUY whose theme conviction
 #     detect retail euphoria -> call price TOPS). Full rule definitions
 #     + research grounding: analytics/euphoria.py docstring. ---
 EUPHORIA_ATT_GATE = 0.90        # A2: attention must be >= this trailing
-                                # percentile - you cannot be euphoric quietly
+                                # percentile - you cannot be euphoric quietly.
+                                # SWEPT 2026-08-04 (0.80..0.98) at a constant
+                                # 79 detectable: GET OUT utility 4/6/4/5/9,
+                                # and 0.98 is strictly better on the raw rule
+                                # (10 captures at ONE false alarm, vs 9 at 5)
+                                # and on GET IN (-71 vs -78). It also HALVES
+                                # the warning: median lead 7 days vs 16. The
+                                # utility rule cannot see that cost, a desk
+                                # can, and a top called 7 days out is a
+                                # different product. CANDIDATE - not adopted
+                                # on a full-record sweep; see nb04.
 EUPHORIA_HYPE_MULT = 2.0        # A1 (Reddit-only): the 7d mention share must
                                 # be >= this multiple of its own trailing 120d
                                 # median - the crowd must have genuinely
                                 # SWOLLEN before an alert is even possible
                                 # ("something has to go euphoric first",
                                 # measured in the crowd, never the chart)
+                                # SWEPT 2026-08-04 (1.5/1.75/2.0/2.5/3.0).
+                                # The first two rows are NOT comparable - a
+                                # looser gate also enlarges the detectable
+                                # set (106 and 98 peaks vs 79), so it moves
+                                # the exam as well as the answer. Among the
+                                # three that share 79 detectable, tightening
+                                # helps monotonically: utility 4 / 6 / 6 at
+                                # 2.0 / 2.5 / 3.0, with false alarms 5 / 3 / 1
+                                # and lead 16 / 18 / 19 days; GET IN improves
+                                # too (-78 / -71 / -64). 2.5 holds captures at
+                                # 9 while halving the false alarms. CANDIDATE
+                                # - not adopted here, for the multiple-
+                                # comparisons reason recorded at
+                                # EUPHORIA_MIN_HISTORY.
 EUPHORIA_BOOM_MIN_ETF = 0.25    # G2: an ETF/theme peak must sit >= 25%
                                 # above its trailing low. Used in TWO places
                                 # with DIFFERENT windows - see the two
@@ -293,24 +352,135 @@ EUPHORIA_COOLDOWN_DAYS = 21     # A4: one alert per episode per name.
 EUPHORIA_FADE_DISCOUNT = 10     # A3: the fade flag (crowd maximal, mood
                                 # rolling over) lowers the trigger by this
                                 # many level-points - the fade is the LAST
-                                # stage, so it may fire the alert earlier
+                                # stage, so it may fire the alert earlier.
+                                # SWEPT 2026-08-04 (0/5/10/15/20): IDENTICAL
+                                # scorecard at every value, INCLUDING ZERO.
+                                # The discount lives in euphoria.py's
+                                # detect_alerts - the legacy TOP-alert path -
+                                # and the desk GET IN / GET OUT detectors do
+                                # not call it: they carry `fade` as a FEATURE
+                                # inside the GET OUT bank instead. So this
+                                # number currently moves nothing the desk
+                                # looks at. Left in place because the legacy
+                                # detector still uses it and notebook 03
+                                # scores it, but it must not be described as
+                                # part of the live flags.
 EUPHORIA_FA_PENALTY = 0.5       # walk-forward threshold selection: a false
                                 # alarm costs half a captured peak
-EUPHORIA_PCT_WINDOW = 365       # "extreme" = vs this name's own last year
-EUPHORIA_MIN_HISTORY = 180      # days of history before percentiles exist
+EUPHORIA_PCT_WINDOW = 365       # "extreme" = vs this name's own last year.
+                                # SWEPT 2026-08-04 (180/270/365/540/730) at a
+                                # constant 79 detectable: GET OUT utility
+                                # 2/3/4/5/5. A plateau from 365 up; the two
+                                # longer windows differ by ONE capture, which
+                                # is inside the noise of a 79-event sample.
+                                # Kept - and now known not to be a spike.
+EUPHORIA_MIN_HISTORY = 180      # days of history before percentiles exist.
+                                # SWEPT 2026-08-04 (90..365) at a constant 79
+                                # detectable: utility 6/5/4/4/2, i.e. 90 beats
+                                # the frozen 180 on BOTH directions (11 vs 9
+                                # captures at the same 5 false alarms; GET IN
+                                # -72 vs -78). A CANDIDATE, deliberately NOT
+                                # adopted here: this is a full-record sweep and
+                                # ten constants were swept the same day, so
+                                # picking each one's argmax is a multiple-
+                                # comparisons trap. Adoption requires the
+                                # nested walk-forward described in nb04.
 EUPHORIA_SINGLE_TOP_N = 25      # how many single names the detector tracks
-EUPHORIA_MIN_NAME_POSTS = 3000  # min scored posts for a single name's
-                                # sentiment to be trusted at all
+EUPHORIA_SINGLE_WINDOW_D = 365  # ...ranked over the TRAILING YEAR, not over
+                                # all history. FIXED 2026-08-04: the ranking
+                                # was cumulative, and 2021 alone is 39% of
+                                # every mention ever recorded, so the tab
+                                # tracked a 2021 list (BBBY - bankrupt - SNDL,
+                                # CLOV, WKHS, NOK, MVIS) while MU missed the
+                                # cut by 185 posts six weeks after the memory
+                                # theme fired a GET OUT. 365d matches
+                                # EUPHORIA_PCT_WINDOW, the project's existing
+                                # "versus its own last year" convention, and
+                                # is long enough that the universe does not
+                                # churn week to week.
+# (EUPHORIA_MIN_NAME_POSTS retired 2026-08-04. It was a CUMULATIVE floor -
+#  3,000 scored posts over all history - used to decide which single names
+#  the detector tracks, and it had the same lookback flaw as the ranking
+#  beside it: a 2021 relic with 8,000 posts from five years ago always
+#  cleared it, while MU, SNDK, MSTR and SMCI never could. Its job is now
+#  done by EUPHORIA_MIN_COVERAGE below, applied over the trailing 28 days -
+#  the detector's own measurability rule, so the tab's membership test and
+#  its contents can no longer disagree. No replacement constant.)
 EUPHORIA_MIN_COVERAGE = 100     # A0: scored posts needed in the last 28d
                                 # before euphoria is measurable - percentile
                                 # extremes on a handful of posts are noise
                                 # (kills the thin-coverage 2023-25 FA storm)
+                                # SWEPT 2026-08-04, twice (50/75/100/150/250
+                                # then 100/125/150/175/200). Size-normalised,
+                                # which is the only fair comparison here
+                                # because this gate also decides how many
+                                # instrument-days are scoreable at all:
+                                #   bar  GETOUT rate  FA/iy   GETIN rate  FA/iy
+                                #    50      0.131    0.150     0.156     0.283
+                                #    75      0.115    0.149     0.144     0.256
+                                #   100      0.114    0.057     0.141     0.222
+                                #   125      0.127    0.071     0.157     0.174
+                                #   150      0.156    0.053     0.157     0.152
+                                #   175      0.119    0.028     0.162     0.182
+                                #   200      0.121    0.028     0.171     0.264
+                                # TWO CONCLUSIONS. (1) 150 is a genuine local
+                                # peak - best GET OUT capture rate and best
+                                # GET IN false-alarm rate at once - at the
+                                # cost of median lead 12d vs 16d. CANDIDATE,
+                                # not adopted: one full-record sweep, a
+                                # one-capture difference, and the nested
+                                # walk-forward has not been run.
+                                # (2) LOOSENING IS INADMISSIBLE, not merely
+                                # worse: at 75 and 50 the GET IN false-alarm
+                                # rate reaches 0.256 and 0.283 against the
+                                # desk's stated 0.23/instrument-year budget.
+                                # This is the thin-coverage FA storm the gate
+                                # was created to stop, and it is why "lower
+                                # the bar to track more names" is not an
+                                # option - see the note in POST_INTERN_HANDOVER
+                                # about where the missing names actually are.
 EUPHORIA_FA_PENALTY = 1.0       # (overrides above) a false alarm costs a
                                 # FULL captured peak in threshold selection
 # themes OUTSIDE the euphoria universe - the desk trades equities and
 # retail commodities only (gold/silver via GLD+fallbacks, oil via XLE,
 # uranium via URA all remain through their theme anchors)
 EUPHORIA_EXCLUDED_THEMES = {"rates_bonds", "real_estate"}
+
+# --- RALLY / PUMP DETECTOR (src/rally_watch.py) -----------------------------
+# Desk request 2026-08-04: flag names whose chatter has turned MOBILISING
+# ("let's save this company", "short squeeze", "diamond hands") rather than
+# merely loud.  DISPLAY AND RESEARCH ONLY - these numbers do not enter the
+# euphoria score and cannot create or suppress a flag (handover rule 1); the
+# forward test that would earn them that right is pre-registered in nb09.
+RALLY_WINDOW_D = 7      # the reading window. Matches ROLL: mobilisation is a
+                        # week-scale phenomenon, and using the project's own
+                        # rolling width keeps this comparable to every other
+                        # 7d number on the page.
+RALLY_MIN_HITS = 10     # absolute floor. Below ~10 matched posts in a week a
+                        # "share" is arithmetic noise: 2 hits on 12 mentions
+                        # is a 17% share that means nothing.
+RALLY_MIN_SHARE = 0.10  # ...AND at least this fraction of the name's OWN
+                        # chatter must be mobilising, so a big theme cannot
+                        # qualify just by being big. Set from the 765k-post
+                        # calibration scan: the median theme-week sits at 2%
+                        # and the 95th percentile at 10%, while the June-2021
+                        # squeeze cohort the detector correctly surfaces
+                        # (CLOV 15%, WKHS 20%, TLRY 13%) sits well above it.
+                        # 10% therefore separates a real mobilisation from a
+                        # loud week without being a once-a-decade event.
+RALLY_MIN_Z = 1.5       # ...AND it must be unusual for THIS name's own
+                        # history. meme_stocks and short_squeeze sit at a
+                        # permanently high share (12% and 20% today); only the
+                        # z can say the organising is happening NOW - and it
+                        # says no, at 0.78 and 1.14. Same 1.5 crossing the
+                        # conviction charts already mark (CROSS_AT), for one
+                        # notion of "abnormal" on the desk.
+# All three calibrated 2026-08-04 against a full scan of every archive
+# (764,920 posts). The regime separation that justifies the construction:
+# June 2021's meme summer runs 3.41% of posts mobilising vs 1.01% in the week
+# to 2026-07-29 - and the names it surfaces in 2021 are CLOV, WKHS, CLNE,
+# SPCE and TLRY, i.e. that squeeze cohort exactly. Recorded in
+# docs/PARAMETER_REGISTER.md and re-checked in notebook 09.
 
 # --- trade bookkeeping (dashboard + report card) ---
 HOLD_DAYS = 20       # every suggestion is a 20-day hold (the edge peaks and
