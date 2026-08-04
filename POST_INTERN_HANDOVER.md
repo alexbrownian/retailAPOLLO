@@ -24,12 +24,13 @@ immediately, never silently.
 
 | File | What it controls | When to edit | Run afterwards |
 |---|---|---|---|
-| `theme_etfs.csv` | theme → anchor ETF + fallback chain. An EMPTY etf cell = tracked but untradeable | when the approved instrument list changes, or a proxy gets a proper line (the notes column flags the known proxies: solar→LIT wants TAN, gaming→SOCL wants ESPO, ai/quantum→IYW want AIQ/QTUM) | QUICK UPDATE |
+| `theme_etfs.csv` | theme → anchor ETF + fallback chain. An EMPTY etf cell = tracked but untradeable | when the approved instrument list changes, or a proxy gets a proper line (the `note` column flags the known proxies: solar→LIT wants TAN, gaming→SOCL wants ESPO, ai/quantum→IYW want AIQ/QTUM) | QUICK UPDATE. The dashboard re-reads this file on its mtime, so a **rerun is enough — no restart** (fixed 2026-08-04; it used to need one and nothing on screen said so). The live map, its fallback chains and every `note` are shown under "the theme → instrument map" on the EUPHORIA: Themes tab, stamped with the file's last-edited time — look there first if an edit seems not to have landed |
 | `approved_instruments.csv` | the firm-approved tradeable list: symbol + EXACT Bloomberg code. Every anchor and fallback must appear here | whenever an instrument is approved or removed. The Bloomberg puller derives its non-US securities from this file — a foreign line is one row here and nothing in code | QUICK UPDATE, Terminal open |
 | `theme_keywords.csv` | the word/phrase → theme map (Signal 1). RULE: words and phrases only, **never bare ticker symbols** | via the keyword auditor (§2) or by hand any time | FULL rebuild — keywords apply at ingestion, so history only re-counts after one |
 | `theme_tickers.csv` | ticker → theme map (Signal 2), including ETF-constituent rows (the source column says which ETF each came from) | when constituents drift (annually is fine) or a new name matters. `config/etf_constituents.csv` holds the researched holdings behind it | FULL rebuild |
 | `agentic_terms.csv` | the regex bank detecting "trading with an AI" posts (four categories) | when new AI products or phrasings appear | `python -m src.agentic_watch --rebuild` |
-| `rally_terms.csv` | the regex bank detecting MOBILISING language — recruiting, squeeze mechanics, hold-the-line pledges, save-the-company framing, coordinated timing, extreme-outcome claims, plus `pump_callout` (the crowd calling it a pump) | when the crowd invents new chants. **This is the most language-dependent file in the project and its slang rots fastest** — read it once a quarter | `python -m src.rally_watch --rebuild` |
+| `ticker_stoplist.csv` | symbols the crowd uses as WORDS, never counted as tickers (HYSA, DYOR, DRAM, BTC, CEO, YOLO …) | when a new finance abbreviation gets issued to a real ETF, or new slang appears. The test that earns a row: **a fund cannot be discussed before it is listed** — if mentions predate the listing, it is the word | FULL rebuild |
+| `ticker_allowlist.csv` | real tickers the bare-word pass would otherwise miss: 1–3 letter symbols (MU, AMD, IBM, QQQ) that are too short for the `[A-Z]{4,5}` bare matcher, and English-word collisions (META, SOFI, HOOD, COIN, UBER) that the word-frequency screen suppressed | when a newly-prominent name is being under-counted. Allowlisted symbols match **only in CAPITALS**, so "coin" stays a word and "COIN" becomes Coinbase. Do NOT add single letters or names where the English word dominates — measure first | FULL rebuild |
 | `ai_poll_prompts.csv` | the 30 retail questions the pipeline asks the LLM at every refresh: the plain questions retail types, plus the personas and agent scaffolds retail actually runs (the `family` column tags which) | when retail's typical questions drift, or a new AI-agent product changes how people prompt. **ADDING a prompt is always safe. REWORDING one is not** — the value is the time series, and an edit silently breaks that prompt_id's history, so add a new id instead. A unit test fails the build if p01–p12 are altered | nothing — it takes effect on the next update |
 | `.env` (project root) | ALL credentials: `FETCHLAYER_KEY` plus the Apollo LLM auth (`ENVIRONMENT`, `APOLLO_AUTH_USERNAME`, `APOLLO_AUTH_PASSWORD`, `AI_MODEL`, `AI_DATA_CLASSIFICATION`, `AI_MAX_CALLS`; optional `AI_MOCK=1`). This row is the authoritative key list | on credential rotation | `python -m src.ai --selftest` (expect Paris) |
 
@@ -80,12 +81,12 @@ the only writer, and it only writes approved rows.
 | QUICK UPDATE (prices + signals) | sidebar button, Terminal open | as needed |
 | FULL UPDATE (live pull) | sidebar button | ~2×/week — the comment budget is sized for this, and the sidebar prints the measured cadence |
 | Comment catch-up | sidebar EXTRA button | only after a long idle spell |
-| Rally + agentic scans | automatic at the end of every update; pure python, no gateway, always run | automatic |
+| Agentic scan | automatic at the end of every update; pure python, no gateway, always runs | automatic |
 | AI pulse + AI poll | automatic at the end of every update; need the VPN and skip politely without it | automatic |
 | Keyword audit (§2) | automatic weekly proposal; applying is manual | weekly propose, human apply |
 | Bloomberg pull for NEW instruments | first QUICK UPDATE after editing the instrument list | on change |
 | Notebook re-execution after a signal-code change | `python -m jupytext --to ipynb notebooks/<n>.py` then `python -m jupyter nbconvert --to notebook --execute --inplace notebooks/<n>.ipynb` | on change |
-| Test suite | `python -m pytest tests/ -q` — expect **115 passed, 2 skipped** | before any commit |
+| Test suite | `python -m pytest tests/ -q` — expect **133 passed, 2 skipped** | before any commit |
 
 ## 4. Before you change anything that scores
 

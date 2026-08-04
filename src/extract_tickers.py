@@ -83,6 +83,66 @@ def load_stop_tickers(path: Path = STOPLIST_CSV) -> frozenset[str]:
 
 STOP_TICKERS: frozenset[str] = load_stop_tickers()
 
+
+# ---------------------------------------------------------------------------
+# THE ALLOWLIST - real tickers the bare-word pass would otherwise never see.
+#
+# Added 2026-08-04 after the desk asked why names like MU were not being
+# counted. Two separate gaps, one mechanism:
+#
+#   1. TOO SHORT. `WORD_BARE` is [A-Z]{4,5}, so every 1-3 letter ticker was
+#      invisible in bare form and counted ONLY when someone typed a $ sign.
+#      Measured over six days of comments: MU appears 265 times in bare CAPS
+#      against SIX $MU cashtags - a ~44x undercount on the very name behind
+#      the June-2026 memory GET OUT. AMD 58 vs 0, IBM 48 vs 0, QQQ 109 vs 2.
+#      Reddit barely uses cashtags at all, so "cashtag only" means "almost
+#      never counted".
+#   2. ENGLISH-WORD COLLISION. META, SOFI, HOOD, COIN, UBER, SHOP and friends
+#      were classified `cashtag_only` by the word-frequency screen because
+#      their lower-case forms are common English. That is right for "meta"
+#      and wrong for "META".
+#
+# The safety property both rely on: THE BARE PASS IS ALREADY CASE-SENSITIVE
+# (it scans the original text, never the uppercased copy), so an allowlisted
+# symbol only matches when the poster actually typed it in capitals. "coin"
+# stays a word; "COIN" becomes Coinbase.
+#
+# WHAT IS DELIBERATELY NOT HERE, and why - the exclusions are the evidence
+# that this list is judged rather than stuffed: AI (1,468 CAPS hits, the
+# technology), PE (125, price/earnings), EV, IT - all finance or tech
+# abbreviations already in the jargon stoplist; the single letters X, T, C, V
+# and F, which collide with everything; and CAT, KO, GOLD, COST, LOW, NOW and
+# TEAM, where the measured CAPS share showed the English word winning.
+#
+# CHANGING THIS FILE CHANGES EVERY MENTION COUNT, so it takes effect at
+# INGESTION: run a FULL rebuild for history to re-count under it.
+# ---------------------------------------------------------------------------
+ALLOWLIST_CSV = (
+    Path(__file__).resolve().parent.parent / "config" / "ticker_allowlist.csv"
+)
+
+
+def load_allow_tickers(path: Path = ALLOWLIST_CSV) -> frozenset[str]:
+    """Desk-editable. An empty/missing file simply means no allowlist, which
+    is the behaviour this project had before 2026-08-04."""
+    if not Path(path).is_file():
+        return frozenset()
+    df = pd.read_csv(path)
+    if "symbol" not in df.columns:
+        raise ValueError(f"{path} needs a 'symbol' column")
+    return frozenset(str(x).strip().upper() for x in df["symbol"]
+                     if str(x).strip())
+
+
+ALLOW_TICKERS: frozenset[str] = load_allow_tickers()
+# the ones WORD_BARE cannot reach on its own (1-3 letters) get their own
+# case-sensitive alternation; the 4-5 letter ones are already matched and
+# only needed the stoplist override below
+_SHORT_ALLOW = sorted((t for t in ALLOW_TICKERS if len(t) < 4), key=len,
+                      reverse=True)
+WORD_ALLOW_SHORT = (re.compile(r"\b(" + "|".join(_SHORT_ALLOW) + r")\b")
+                    if _SHORT_ALLOW else None)
+
 # Bare-word-only: common Reddit / finance prose that is also a valid 4–5 letter symbol.
 # Cashtags for these symbols still count. Extend as you see false positives in your slice.
 BARE_PROSE_STOP: frozenset[str] = frozenset(
@@ -346,10 +406,23 @@ def extract_tickers_from_text(
     stripped = _strip_cashtags_for_word_pass(text)
     for m in WORD_BARE.finditer(stripped):
         sym = m.group(1)
-        if sym in STOP_TICKERS or sym in BARE_PROSE_STOP or sym in SCREENED_STOP:
-            continue
+        if sym in STOP_TICKERS:
+            continue                      # jargon is never a ticker
+        if sym not in ALLOW_TICKERS and (sym in BARE_PROSE_STOP
+                                         or sym in SCREENED_STOP):
+            continue                      # an English word in disguise
         if sym in universe:
             out.append(sym)
+
+    # the 1-3 letter allowlist (MU, AMD, IBM ...), which WORD_BARE's
+    # [A-Z]{4,5} cannot reach. Same case-sensitive text, same universe check.
+    if WORD_ALLOW_SHORT is not None:
+        for m in WORD_ALLOW_SHORT.finditer(stripped):
+            sym = m.group(1)
+            if sym in STOP_TICKERS:
+                continue
+            if sym in universe:
+                out.append(sym)
 
     return out
 

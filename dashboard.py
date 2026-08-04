@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -56,7 +57,125 @@ from src.config import (ROLL, DERIV_SMOOTH, MIN_TOTAL, CROSS_AT,   # noqa: E402
                         EUPHORIA_ATT_GATE,
                         CONV_EXIT_LEVEL, CONV_EWM_HALFLIFE,
                         EUPHORIA_EXCLUDED_THEMES)
-from src.themes import THEME_ETFS, THEME_ETF_FALLBACKS             # noqa: E402
+import src.themes as _themes                                       # noqa: E402
+
+
+def _theme_etf_maps():
+    """(THEME_ETFS, THEME_ETF_FALLBACKS), RE-READ when the CSV changes.
+
+    `src/themes.py` builds these once at import, which is right for the
+    pipeline (one process, one run) and wrong for a dashboard that stays
+    up for days.  Streamlit's "Rerun" re-executes this script but does
+    NOT re-import an already-imported module, so an edit to
+    `config/theme_etfs.csv` was invisible until somebody killed and
+    restarted the server - and nothing on screen said so.  That cost a
+    real correction: the china_geopolitics anchor was moved KWEB -> FXI
+    in the CSV and the running app kept showing KWEB, which reads as the
+    fix having failed rather than as a stale process.
+
+    So the anchor map is now re-derived from the file whenever its mtime
+    moves.  `_load_theme_etfs` is reused rather than reimplemented, so
+    the validation (every symbol must be on the approved list) and the
+    tracked-only rule still apply exactly once, in one place."""
+    return _cached_theme_etf_maps(
+        os.path.getmtime(os.path.join(ROOT, "config", "theme_etfs.csv")))
+
+
+@st.cache_data(show_spinner=False)
+def _cached_theme_etf_maps(mtime):
+    return _themes._load_theme_etfs()
+
+
+@st.cache_data(show_spinner=False)
+def _cached_theme_etf_notes(mtime):
+    """theme -> the `note` cell, the one column no code reads.
+
+    It carries the reasoning a maintainer needs and the dashboard now
+    shows it, so the caveat travels with the mapping instead of living
+    only in a file nobody opens."""
+    import csv as _csv_mod
+    out = {}
+    p = os.path.join(ROOT, "config", "theme_etfs.csv")
+    with open(p, newline="", encoding="utf-8-sig") as f:
+        for row in _csv_mod.DictReader(f):
+            t = str(row.get("theme", "")).strip()
+            if t:
+                out[t] = str(row.get("note", "") or "").strip()
+    return out
+
+
+def _theme_etf_notes():
+    return _cached_theme_etf_notes(
+        os.path.getmtime(os.path.join(ROOT, "config", "theme_etfs.csv")))
+
+
+THEME_ETFS, THEME_ETF_FALLBACKS = _theme_etf_maps()
+
+
+@st.cache_data(show_spinner=False)
+def _security_names():
+    """symbol -> company name, from the Nasdaq symbol directories this
+    project already caches for the ticker universe. Used to label the
+    single-name dropdown the way the theme dropdown is labelled with its
+    anchor ETF (desk request 2026-08-04: "it should be like the theme
+    dashboard") - a bare list of tickers makes you remember what NBIS or
+    SNDK are; a labelled one does not."""
+    out = {}
+    for fname, col in (("nasdaqlisted.txt", "Symbol"),
+                       ("otherlisted.txt", "ACT Symbol")):
+        path = os.path.join(ROOT, "data", "reference", fname)
+        if not os.path.exists(path):
+            continue
+        try:
+            lines = open(path, encoding="utf-8").read().splitlines()
+            head = lines[0].split("|")
+            si, ni = head.index(col), head.index("Security Name")
+        except (ValueError, OSError):
+            continue
+        for line in lines[1:]:
+            parts = line.split("|")
+            if len(parts) <= max(si, ni):
+                continue
+            sym = parts[si].strip().upper()
+            if sym and sym not in out:
+                out[sym] = _clean_security_name(parts[ni])
+    return out
+
+
+# The directories spell the instrument, not the company: "NVIDIA
+# Corporation - Common Stock", "AMC Entertainment Holdings, Inc. Class A
+# Common Stock".  The share class is noise in a label whose whole job is
+# recognition, and truncating a raw string at 38 characters produced
+# "AMC Entertainment Holdings, Inc. Class" - a cut mid-phrase reads as a
+# bug in the data rather than as a shortened name.  So the boilerplate
+# comes off FIRST and the truncation, if it is still needed, is marked.
+_NAME_TAIL = re.compile(
+    r"\s*[-–]?\s*(Class\s+[A-Z]\s+)?"
+    r"(Common Stock|Ordinary Shares?|Common Shares?|American Depositary"
+    r"\s+Shares?|Depositary Shares?|Class\s+[A-Z])"
+    r".*$", re.IGNORECASE)
+
+
+def _clean_security_name(raw: str, width: int = 38) -> str:
+    name = str(raw).split(" - ")[0]
+    name = _NAME_TAIL.sub("", name).strip().rstrip(",")
+    return name if len(name) <= width else name[:width - 1].rstrip(" ,") + "…"
+
+
+@st.cache_data(show_spinner=False)
+def _approved_symbols():
+    """Every symbol on config/approved_instruments.csv. Read here rather
+    than through src.themes because that module only exposes the ones a
+    theme happens to point at - and the whole point of the caller is the
+    ones no theme points at."""
+    import csv as _csv
+    p = os.path.join(ROOT, "config", "approved_instruments.csv")
+    if not os.path.exists(p):
+        return []
+    with open(p, newline="", encoding="utf-8-sig") as f:
+        return [str(r.get("symbol", "")).strip()
+                for r in _csv.DictReader(f)
+                if str(r.get("symbol", "")).strip()]
 from analytics import overlays                                     # noqa: E402
 from analytics import influence_graph as ig                        # noqa: E402
 from analytics.plain_english import (PLAIN, censor,                # noqa: E402,F401,E501
@@ -70,6 +189,30 @@ from analytics.overlays import (mention_share_series,              # noqa: E402
 
 st.set_page_config(page_title="RetailRadar", layout="wide",
                    initial_sidebar_state="expanded")
+
+
+def flag_label(name, kind):
+    """The ONE way this app spells an instrument on screen.
+
+    Desk request 2026-08-04: "copy the thematic dashboard side on the
+    format i like".  The theme side already read `China geopolitics
+    (FXI)` - a name a human recognises, followed by the thing you would
+    actually trade.  The single-name side read `IREN`, which is neither:
+    a bare four-letter ticker in a GET IN banner makes the reader stop
+    and remember what IREN, NBIS or SNDK are, and the whole point of the
+    banner is that it needs no interpretation.
+
+    So both sides now use this function, and so does the lookup
+    dropdown.  Themes get their anchor ETF from `THEME_ETFS` (fixing a
+    mapping in config/theme_etfs.csv therefore fixes every label on the
+    page at once); single names get their company name from the Nasdaq
+    directories this project already caches.  Anything unresolvable
+    falls back to the bare symbol rather than to a blank paren."""
+    if kind == "theme":
+        etf = THEME_ETFS.get(name)
+        return f"{theme_label(name)}  ({etf})" if etf else theme_label(name)
+    who = _security_names().get(name)
+    return f"{name}  ({who})" if who else str(name)
 
 # ---------------------------------------------------------------------------
 # DESIGN TOKENS - institutional light theme (GIC design language, adopted
@@ -1248,9 +1391,55 @@ try:
     _bs = os.stat(__file__)
     _bt = (pd.Timestamp(_bs.st_mtime, unit="s", tz="UTC")
            .tz_convert(None).strftime("%d %b %H:%M"))
-    st.sidebar.caption(f"build: {_bt} UTC · {_bs.st_size // 1024} KB")
+    st.sidebar.caption(f"build: {_bt} UTC · {_bs.st_size // 1024} KB · "
+                       f"port {st.get_option('server.port')}")
 except OSError:
-    pass
+    _bs = None
+
+
+# ---- ... AND IS IT THE BUILD ON DISK?  (2026-08-04)
+#
+# The caption above was not enough, and the incident that proved it is worth
+# writing down.  A corrected anchor (china_geopolitics KWEB -> FXI) was
+# edited into config/theme_etfs.csv and a corrected dashboard.py was saved
+# beside it.  Neither appeared.  Three separate mechanisms were involved and
+# each one alone is invisible:
+#
+#   1. the watcher is OFF (see .streamlit/config.toml), so an edited
+#      dashboard.py is never picked up by a running server;
+#   2. `src/themes.py` builds the anchor map at IMPORT, and a Streamlit
+#      rerun does not re-import a module that is already in sys.modules
+#      (fixed separately - see `_theme_etf_maps`);
+#   3. a second `streamlit run` against a busy port quietly takes the next
+#      one, so the pinned tab keeps serving the ORIGINAL process forever.
+#
+# The user-visible symptom of all three is identical and misleading: "the
+# fix did not work".  Hours go into re-checking correct code.
+#
+# `st.cache_resource` is per-PROCESS and survives reruns, so the mtime it
+# returns is the one this process saw when it started.  Comparing that to
+# the file on disk right now detects every case above, including the pinned
+# stale tab - the old process still answers, and now it says so.
+@st.cache_resource(show_spinner=False)
+def _mtime_at_process_start(path):
+    return _mtime(path)
+
+
+if _bs is not None:
+    _started_with = _mtime_at_process_start(__file__)
+    if _mtime(__file__) > _started_with + 1:      # 1s: mtime granularity
+        _edited = (pd.Timestamp(_mtime(__file__), unit="s", tz="UTC")
+                   .tz_convert(None).strftime("%d %b %H:%M"))
+        st.sidebar.error(f"**Stale tab.** This server started on the "
+                         f"{_bt} UTC build; dashboard.py on disk was "
+                         f"edited at {_edited} UTC. The file watcher is "
+                         f"off by design, so **restart the server** - "
+                         f"stop every running `streamlit` first, or the "
+                         f"new one takes the next port and this tab keeps "
+                         f"serving the old build.")
+        st.error(f"You are looking at the {_bt} UTC build of dashboard.py. "
+                 f"A newer one ({_edited} UTC) is on disk and is NOT "
+                 f"loaded. Restart the server - see the sidebar.")
 
 theme_counts = load(THEME_COUNTS)
 # ticker mentions, for the euphoria tabs' attention sort (singles side)
@@ -1344,54 +1533,6 @@ def _ai_poll_load():
         _mtime(os.path.join(PROCESSED_DIR, "ai_poll.parquet")))
 
 
-@st.cache_data(show_spinner=False)
-def _rally_load_cached(mtime, kind):
-    """The rally leaderboard. Deliberately independent of the LLM: these
-    numbers come from a regex scan of every post, so the mobilisation
-    section of the AI page works with no gateway at all."""
-    from src.rally_watch import top_rallies
-    try:
-        return top_rallies(kind, n=10)
-    except Exception:                                    # noqa: BLE001
-        return []
-
-
-def _rally_load(kind="theme"):
-    return _rally_load_cached(
-        _mtime(os.path.join(PROCESSED_DIR,
-                            "daily_rally_counts.parquet")), kind)
-
-
-@st.cache_data(show_spinner=False)
-def _rally_market_cached(mtime):
-    """Market-wide mobilisation rate + category mix for the last 7d."""
-    from src.rally_watch import load_series, COUNTER_CATEGORY
-    df = load_series()
-    if df is None or not len(df):
-        return None
-    hi = df["date"].max()
-    w = df[df["date"] > hi - pd.Timedelta(days=7)]
-    tot = float(w[w["category"] == "_total_posts"]["mention_count"].sum())
-    if not tot:
-        return None
-    sig = w[(w["kind"] == "_all") & (~w["category"].str.startswith("_"))
-            & (w["category"] != COUNTER_CATEGORY)]
-    return {
-        "pct": float(sig["mention_count"].sum()) / tot * 100,
-        "posts": int(tot),
-        "by_cat": (sig.groupby("category")["mention_count"].sum()
-                   / tot * 1000).sort_values(ascending=False).to_dict(),
-        "counter": int(w[(w["kind"] == "_all")
-                         & (w["category"] == COUNTER_CATEGORY)]
-                       ["mention_count"].sum()),
-    }
-
-
-def _rally_market():
-    return _rally_market_cached(
-        _mtime(os.path.join(PROCESSED_DIR,
-                            "daily_rally_counts.parquet")))
-
 prices = _read(PRICES_PATH, _mtime(PRICES_PATH)) if os.path.exists(PRICES_PATH) else None
 priced = set(prices["symbol"]) if prices is not None else set()
 
@@ -1430,7 +1571,7 @@ hi = None if live_mode else pd.Timestamp(
 # theme plus every single that has ever alerted, with slack), so the slider can
 # always be opened far enough to see everything, and the line printed above the
 # charts states how many qualified versus how many are drawn.
-how_many = st.sidebar.slider("items per section", 3, 60, 6)
+how_many = st.sidebar.slider("items per section", 3, 60, 15)
 
 st.sidebar.divider()
 st.sidebar.subheader("Run the pipeline")
@@ -1516,10 +1657,9 @@ STAGES = {
                  ["COMMENT PULL", "new comments", "fetch finished"]),
     "influence": ("Updating the influence board (calls, graph, tiers)",
                   ["influence board update", "influence update finished"]),
-    "pulse":    ("AI: rally + agentic scans, the retail-prompt poll and "
-                 "the LLM market pulse (skips politely without the gateway)",
-                 ["agentic scan", "rally scan", "rally store",
-                  "AI POLL:", "AI PULSE:"]),
+    "pulse":    ("AI: agentic scan, the retail-prompt poll and the LLM "
+                 "market pulse (skips politely without the gateway)",
+                 ["agentic scan", "AI POLL:", "AI PULSE:"]),
 }
 # which stages each pipeline actually goes through (in order)
 # "analytics" and "full" plans removed with their buttons (2026-07-31):
@@ -2002,9 +2142,24 @@ def _state_of(name, starting, ending):
 
 
 def render_euphoria_tab(kind, kind_label, key_prefix):
-    st.subheader(f"EUPHORIA - {kind_label}  |  blue = GET IN (euphoria "
-                 "starting), red = GET OUT (euphoria ending; expect the "
-                 "top within ~a month)")
+    # HEADING AND LEGEND ARE SEPARATE (desk bug report 2026-08-04, with a
+    # screenshot).  The legend used to be glued onto the subheader, so on a
+    # normal-width screen the h2 wrapped and its second line read
+    #
+    #     GET OUT (euphoria ending; expect the top within ~a month)
+    #
+    # as a heading in its own right - sitting directly above the GREEN
+    # GET IN banner.  A section header contradicting the box underneath it
+    # is worse than no header at all.  The legend also said "blue" while
+    # the banner it described has been green since the alert boxes went in.
+    #
+    # So: the heading says what the panel is, in one line that cannot wrap
+    # into a false claim, and the legend is a caption under it naming the
+    # colours that are actually on screen.
+    st.subheader(f"EUPHORIA - {kind_label}")
+    st.caption("**Green = GET IN** (euphoria starting - the crowd is "
+               "arriving).  **Red = GET OUT** (euphoria ending - expect "
+               "the top within ~a month of the signal).")
     # ONE explainer, and its label is not to be touched (desk instruction
     # 2026-07-28: "dont change the current what is euphoria? (start here -
     # plain English) just remove the rest").  The wording below is therefore
@@ -2020,6 +2175,46 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     with st.expander("what is euphoria?  (start here - plain English)",
                      expanded=False):
         st.markdown(euphoria_simple())
+
+    # ---- THE THEME -> INSTRUMENT MAP, ON SCREEN ------------------------
+    # Desk 2026-08-04: "the etf list is still broken".  It was not - the
+    # CSV had already been corrected - but the running app had imported
+    # the old map at start-up and there was no way to tell from the
+    # screen which version you were looking at.  Two fixes: the map now
+    # reloads on mtime (see `_theme_etf_maps`), and it is printed here
+    # WITH the file's last-modified date, so "did my edit land?" is a
+    # question the page answers instead of one you have to guess at.
+    #
+    # The `note` column is shown verbatim because it is where the honest
+    # caveats live: which anchors are exact (URA, ITB, JETS, CIBR) and
+    # which are proxies standing in for an instrument the firm has not
+    # approved (solar wants TAN, gaming wants ESPO, quantum wants QTUM).
+    # A proxy that says so is a judgement; a proxy that stays quiet is a
+    # trap.
+    if kind == "theme":
+        with st.expander(f"the theme → instrument map  "
+                         f"({len(THEME_ETFS)} tradeable themes)"):
+            _notes = _theme_etf_notes()
+            _map_rows = []
+            for _t in sorted(THEME_ETFS):
+                _chain = [s for s in THEME_ETF_FALLBACKS.get(_t, [])
+                          if s != THEME_ETFS[_t]]
+                _map_rows.append({
+                    "theme": _t,
+                    "anchor": THEME_ETFS[_t],
+                    "fallbacks": " → ".join(_chain) or "-",
+                    "note": _notes.get(_t, ""),
+                })
+            st.dataframe(pd.DataFrame(_map_rows), width="stretch",
+                         hide_index=True)
+            _p = os.path.join(ROOT, "config", "theme_etfs.csv")
+            st.caption(
+                f"Read live from config/theme_etfs.csv (last edited "
+                f"{pd.Timestamp(_mtime(_p), unit='s'):%Y-%m-%d %H:%M}). "
+                "Edit that file and rerun - no restart needed. Themes "
+                "with an EMPTY anchor are tracked but untradeable and "
+                "never appear above.")
+
     if euph is None or not len(euph):
         st.info("no euphoria data yet - run QUICK UPDATE in the sidebar")
         return
@@ -2300,15 +2495,17 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     key=starting.get, reverse=True)
     if out_now:
         st.error("**GET OUT — euphoria is ENDING:** "
-                 + ",  ".join(f"{n} (signal {ending[n].date()}, "
-                              f"{int((latest_day - ending[n]).days)}d ago)"
+                 + ";  ".join(f"{flag_label(n, kind)} — signal "
+                              f"{ending[n].date()}, "
+                              f"{int((latest_day - ending[n]).days)}d ago"
                               for n in out_now)
                  + ". Expect the top within ~a month of the signal.")
     if in_now:
         st.success("**GET IN — euphoria is STARTING:** "
-                   + ",  ".join(f"{n} (signal {starting[n].date()}, "
+                   + ";  ".join(f"{flag_label(n, kind)} — signal "
+                                f"{starting[n].date()}, "
                                 f"{int((latest_day - starting[n]).days)}"
-                                "d ago)" for n in in_now)
+                                "d ago" for n in in_now)
                    + ". The crowd is arriving; the rally window is open.")
     if not out_now and not in_now:
         st.info(f"**No live signal among {kind_label.lower()} right "
@@ -2321,11 +2518,11 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     # reasons").  One expander per live flag, right under its banner, built
     # by the same helper as the hover - the two cannot disagree.
     for n in out_now:
-        with st.expander(f"why GET OUT on {theme_label(n)}?  "
+        with st.expander(f"why GET OUT on {flag_label(n, kind)}?  "
                          f"(signal {ending[n].date()})"):
             st.markdown(_explain_alert(n, ending[n], "out"))
     for n in in_now:
-        with st.expander(f"why GET IN on {theme_label(n)}?  "
+        with st.expander(f"why GET IN on {flag_label(n, kind)}?  "
                          f"(signal {starting[n].date()})"):
             st.markdown(_explain_alert(n, starting[n], "in"))
 
@@ -3375,13 +3572,11 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     # 2026-07-31) - the instrument comes straight from config/theme_etfs.csv
     # via THEME_ETFS, so fixing a mapping there fixes every dropdown at once.
     all_names = sorted(ek["name"].unique())
-    _opt_lbl = ((lambda n: f"{n}  ({THEME_ETFS[n]})" if n in THEME_ETFS
-                 else n) if kind == "theme" else (lambda n: n))
     pick = st.selectbox(
         f"look up any {kind_label.lower()} (type to search - shows its "
         "euphoria whether or not it ever alerted)",
         ["(none)"] + all_names, key=f"{key_prefix}_lookup",
-        format_func=lambda n: n if n == "(none)" else _opt_lbl(n))
+        format_func=lambda n: n if n == "(none)" else flag_label(n, kind))
     if pick and pick != "(none)":
         draw_chart(pick, "LOOKUP: ", f"{key_prefix}_lookup_chart")
 
@@ -5293,98 +5488,6 @@ PULSE_SEGMENTS_SAMPLE = {
         "crosses the conviction threshold.",
 }
 
-# (PULSE_RALLY_SAMPLE retired 2026-08-04: the rallying section is no
-#  longer LLM-only, so it has real numbers to show before the first
-#  gateway run and never needs a hand-written stand-in.)
-
-_RALLY_CAT_LABEL = {
-    "recruit": "recruiting others in",
-    "squeeze": "squeeze mechanics",
-    "hold_the_line": "refusing to sell",
-    "save_the_company": "save-the-company framing",
-    "coordinate": "coordinated timing",
-    "moonshot": "extreme-outcome claims",
-}
-_RALLY_VERDICT_ICON = {"organised push": "[!]", "building": "[~]",
-                       "ambient hype": "[ ]", "pushback winning": "[x]"}
-
-
-def _render_rally(entries):
-    """Section 4 - MOBILISATION.
-
-    The numbers come from src/rally_watch.py, which regex-scans EVERY
-    post in every archive, so this section renders with or without the
-    gateway; the LLM entries, when a pulse exists, only explain what the
-    numbers are pointing at.  Nothing is printed when a name has nothing
-    to show - the desk's standing rule is no empty-calorie sections."""
-    mkt = _rally_market()
-    board = _rally_load("theme")
-    names = _rally_load("ticker")
-    if not mkt and not board and not entries:
-        return
-    st.markdown("### 4 - Is the crowd being MOBILISED?")
-    st.caption("A lexical detector reads every post for the language of "
-               "organised buying - recruiting, squeeze mechanics, "
-               "refusal-to-sell pledges, save-the-company framing, "
-               "coordinated timing, extreme-outcome claims. Measured on "
-               "100% of posts; the model below only explains what it "
-               "found. Research and display only - this does not move a "
-               "GET IN or GET OUT flag.")
-    if mkt:
-        _r1, _r2 = st.columns([1, 2.2])
-        with _r1:
-            st.metric("posts using mobilising language (7d)",
-                      f"{mkt['pct']:.2f}%",
-                      help="Reference points from the archive: June "
-                           "2021's meme summer ran 3.41%; a quiet 2026 "
-                           "week runs about 1.0%.")
-            st.caption(f"across {mkt['posts']:,} posts &middot; "
-                       f"{mkt['counter']:,} posts calling it a pump",
-                       unsafe_allow_html=True)
-        with _r2:
-            _mix = ", ".join(
-                f"{_RALLY_CAT_LABEL.get(k, k)} {v:.1f}"
-                for k, v in list(mkt["by_cat"].items())[:6])
-            st.caption(f"per 1,000 posts &mdash; {_mix}",
-                       unsafe_allow_html=True)
-    _hot = [b for b in (board or []) if b.get("share")]
-    if _hot:
-        _rows = []
-        for b in _hot[:8]:
-            _rows.append({
-                "theme": (theme_label(b["name"])
-                          if b["name"] in THEME_ETFS
-                          else str(b["name"]).replace("_", " ").capitalize()),
-                "mobilising posts": b["hits"],
-                "share of its chatter": (f"{b['share']:.1%}"
-                                         if b["share"] is not None else "-"),
-                "vs its own normal (z)": (f"{b['z']:+.1f}"
-                                          if b["z"] is not None else "-"),
-                "loudest register": _RALLY_CAT_LABEL.get(
-                    b.get("top_category"), b.get("top_category") or "-"),
-                "pushback": b["counter"],
-                "": "RALLYING" if b.get("rallying") else "",
-            })
-        st.dataframe(pd.DataFrame(_rows), width="stretch",
-                     hide_index=True)
-    _nm = [b for b in (names or [])
-           if b.get("rallying") or (b.get("hits") or 0) >= 8]
-    if _nm:
-        st.caption("single names carrying it: " + ", ".join(
-            f"**{b['name']}** ({b['hits']} posts"
-            + (f", {b['share']:.0%} of its chatter"
-               if b.get("share") else "") + ")" for b in _nm[:8]))
-    for r in entries or []:
-        _v = str(r.get("verdict", ""))
-        _icon = _RALLY_VERDICT_ICON.get(_v, "[ ]")
-        _t = r.get("theme") or r.get("target") or "?"
-        _lbl = theme_label(_t) if _t in THEME_ETFS else _t
-        with st.expander(f"{_icon}  {_lbl} - {_v}"):
-            st.markdown(str(r.get("why", "")))
-            if r.get("example"):
-                st.markdown(f"> {r['example']}")
-
-
 PULSE_IDEAS = """**Other things the LLM layer can extract from the live posts**
 (each is a planned segment - the same API call can return all of them):
 
@@ -5526,25 +5629,20 @@ if active_tab == "AI Pulse":
                             "Conviction tab has every theme.")
             st.info(_b.get("brief", ""))
 
-        # ---- 4. MOBILISATION: numbers first, model second ----
-        _rw = [r for r in (_pulse.get("rally_watch") or [])
-               if isinstance(r, dict) and str(r.get("why", "")).strip()]
-        _render_rally(_rw)
-
         _cw = _pulse.get("catalyst_watch") or []
         _dv = _pulse.get("divergences") or []
         if _cw or _dv:
             _k1, _k2 = st.columns(2)
             with _k1:
                 if _cw:
-                    st.markdown("### 5 - Catalyst watch")
+                    st.markdown("### 4 - Catalyst watch")
                     for c in _cw:
                         st.markdown(f"- **{c.get('event', '?')}** "
                                     f"({', '.join(c.get('themes', []))}) - "
                                     f"{c.get('chatter', '')}")
             with _k2:
                 if _dv:
-                    st.markdown("### 6 - Story vs numbers (divergences)")
+                    st.markdown("### 5 - Story vs numbers (divergences)")
                     for d in _dv:
                         st.markdown(f"- **{d.get('name', '?')}** - "
                                     f"{d.get('story', '')}")
@@ -5562,13 +5660,15 @@ if active_tab == "AI Pulse":
         st.markdown("### 2 - What all the forums are saying")
         st.info(PULSE_MARKET_SAMPLE)
         st.markdown("### 3 - What retail thinks about a theme")
-        st.caption("With a live pulse this is a dropdown covering every "
-                   "theme with a material share of the week's chatter.")
+        st.caption("These four are HAND-WRITTEN SAMPLES. With a live "
+                   "pulse this dropdown covers EVERY theme the crowd is "
+                   "discussing - 33 of the 34 tradeable themes on the "
+                   "current data - each written from that theme's own "
+                   "posts.")
         _seg = list(PULSE_SEGMENTS_SAMPLE.items())
         _lab = st.selectbox("theme", [s for s, _ in _seg],
                             key="pulse_theme_sample")
         st.info(dict(_seg)[_lab])
-        _render_rally([])
 
     st.divider()
     # ---- 1. THE POLL: what the AI recommends when asked like retail --
@@ -5699,6 +5799,60 @@ if active_tab == "Historical checker":
         st.stop()
     h_lab = st.selectbox("theme (anchor ETF)", list(labels))
     h_theme = labels[h_lab]
+
+    # EVERY APPROVED INSTRUMENT IS REACHABLE HERE (desk 2026-08-04: "make
+    # sure the dashboard includes all the available ETFs").  The theme
+    # picker above only ever offers the 34 THEME ANCHORS, so a dozen
+    # approved lines - the factor and style ETFs (MTUM, RSP, IVE, IVW,
+    # VTV, VUG), the credit lines (HYG, LQD, TIP, TLT), XLRE and the
+    # CSI 1000 index - had no way onto a screen at all. They are not
+    # themes and should not be forced to become themes; they are
+    # benchmarks. So they get a price panel instead of a signal panel:
+    # everything the crowd-side charts cannot say about them, the chart
+    # still can.
+    with st.expander("chart any other approved instrument "
+                     "(factor, style, credit and index lines that are "
+                     "not theme anchors)"):
+        _anchor_syms = set(THEME_ETFS.values())
+        for _f in THEME_ETF_FALLBACKS.values():
+            _anchor_syms.update(_f)
+        _others = sorted(s for s in _approved_symbols()
+                         if s not in _anchor_syms and s in priced)
+        _unpriced = sorted(s for s in _approved_symbols()
+                           if s not in _anchor_syms and s not in priced)
+        if not _others:
+            st.caption("every approved instrument is already a theme "
+                       "anchor or fallback.")
+        else:
+            _pick2 = st.multiselect(
+                "approved instruments", _others,
+                default=_others[:3], key="hist_other",
+                help="These carry no theme signal - no crowd anchors to "
+                     "them - so this is price only. They are here so "
+                     "nothing on the approved list is invisible.")
+            if _pick2 and prices is not None:
+                _fig2 = go.Figure()
+                for _sym in _pick2:
+                    _px2 = price_series(prices, _sym, h_lo, h_hi)
+                    if _px2 is None or not len(_px2):
+                        continue
+                    _fig2.add_trace(go.Scatter(
+                        x=_px2.index, y=_px2 / _px2.iloc[0] * 100.0,
+                        mode="lines", name=_sym))
+                _fig2.update_layout(height=320, margin=dict(l=10, r=10,
+                                                            t=28, b=10),
+                                    yaxis_title="rebased to 100",
+                                    legend=dict(orientation="h",
+                                                yanchor="bottom", y=1.0,
+                                                x=0))
+                _axes_fidelity(_theme(_fig2))
+                st.plotly_chart(_fig2, width="stretch", key="hist_other_px")
+                st.caption("Rebased to 100 at the window start so the "
+                           "lines are comparable.")
+        if _unpriced:
+            st.caption("approved but NOT priced on this machine yet - run "
+                       "a QUICK UPDATE with the Terminal open: "
+                       + ", ".join(_unpriced))
     symbol = resolve_anchor(h_theme, priced)
     px = (price_series(prices, symbol, h_lo, h_hi)
           if prices is not None and symbol else None)

@@ -73,6 +73,4 @@ data/reference/reddit_comments_cost.json
 # same text-free boundary as data/raw)
 data/reference/agentic_samples.jsonl
 data/reference/agentic_scan_ledger.json
-data/reference/rally_samples.jsonl
-data/reference/rally_scan_ledger.json
 data/reference/nb10_sample_texts.jsonl

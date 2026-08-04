@@ -214,8 +214,6 @@ def _mock_answer(prompt: str, want_json: bool):
         }
     if "theme_briefs" in prompt:
         return {"theme_briefs": []}
-    if "rally_watch" in prompt:
-        return {"rally_watch": []}
     if "catalyst_watch" in prompt or "divergences" in prompt:
         return {"catalyst_watch": [], "divergences": []}
     if "market_pulse" in prompt:               # any other caller
@@ -223,7 +221,7 @@ def _mock_answer(prompt: str, want_json: bool):
             "market_pulse": "[MOCK] Offline placeholder pulse.",
             "talk_of_the_town": "[MOCK] Placeholder.",
             "mood_gauge": {"score": 50, "why": "[MOCK] Placeholder."},
-            "theme_briefs": [], "rally_watch": [],
+            "theme_briefs": [],
             "catalyst_watch": [], "divergences": [],
         }
     if "agentic" in prompt.lower():

@@ -595,37 +595,6 @@ docstrings, `src/pipeline_budget.py` docstrings, `src/config.py` inline
 comments, `docs/DECISIONS.xlsx`, notebooks 01–06 and notebook 05 for the
 influence tracker.*
 
-## Class 9 — THE MOBILISATION (RALLY/PUMP) DETECTOR, added 2026-08-04
-
-*Desk request, verbatim: "can we add a pump / rally detector? e.g. if the
-tone of the posts are quite rallying or like lets save this company or
-lets short squeeze! (e.g wendys or GME etc) we flag that out." These
-numbers are DISPLAY AND RESEARCH ONLY — they do not enter the euphoria
-score and cannot create or suppress a GET IN / GET OUT flag. The forward
-test that would earn them that right is pre-registered in notebook 09 §3;
-until it passes, handover rule 1 applies.*
-
-| Number | Value | Class | How it is obtained |
-|---|---|---|---|
-| The pattern bank | 52 regexes in 7 categories | **DESK-EDITABLE CONFIG** | `config/rally_terms.csv`, one regex per row, same pattern as `theme_keywords.csv` and `agentic_terms.csv`. A bad pattern raises at load rather than silently matching nothing. Categories: recruit, squeeze, hold_the_line, save_the_company, coordinate, moonshot, and `pump_callout` — the crowd calling it a pump |
-| `pump_callout` weight in the score | **zero, by construction** | DESK DECISION 2026-08-04 | it is the contrarian side of the same conversation. Counting "you are exit liquidity" as rallying would invert the reading on exactly the names where the crowd is policing itself. It is measured and displayed as `pushback`, never scored |
-| `rally_share` | hits ÷ mentions of that name, both over 7d | **DERIVED — with one correction on the record** | the denominator is counted IN THE SAME SCAN over the SAME posts with the SAME extractors. The first calibration run borrowed `daily_ticker_counts` instead and produced "shares" of 250%: that store is built from posts.parquet (submissions), while the scanner reads the raw comment archives. Different populations, so the ratio was not a share of anything. Recorded because the failure was silent in every respect except its magnitude |
-| `rally_z` | EWM trailing z of the daily hit series | **DERIVED — no new statistic** | literally `analytics.conviction.ewm_z`, the construction already used for every conviction number in this project (7d roll, EWM baseline, strictly trailing). Nothing was invented for this module |
-| `RALLY_WINDOW_D` | 7 | **DERIVED** | `ROLL`. Mobilisation is a week-scale phenomenon and this keeps the number comparable with every other 7d figure on the page |
-| `RALLY_MIN_HITS` | 10 | **CONVENTION, measured** | below ~10 matched posts a share is arithmetic noise — 2 hits on 12 mentions reads 17% and means nothing |
-| `RALLY_MIN_SHARE` | 0.10 | **CALIBRATED 2026-08-04** | on a scan of all 764,920 archived posts the median theme-week sits at 2% and the 95th percentile at 10%, while the June-2021 squeeze cohort the detector surfaces unprompted (CLOV 15%, WKHS 20%, TLRY 13%) sits well above it. 10% separates a mobilisation from a merely loud week |
-| `RALLY_MIN_Z` | 1.5 | **DERIVED** | `CROSS_AT`, the crossing the conviction charts already mark — one notion of "abnormal" on the desk. It is the gate that does the real work: `meme_stocks` and `short_squeeze` sit at a permanently high share (12% and 20% on 2026-07-29) and are correctly NOT called rallying, at z 0.78 and 1.14 |
-
-**The regime check that justifies the construction** (re-run in notebook 09
-§3). Mobilising language runs at **3.41% of posts** across the June-2021
-meme-summer archive versus **1.01%** in the week to 2026-07-29 — a 3.4×
-separation the detector was never tuned to produce. More telling than the
-ratio: the names it surfaces in 2021, ranked by share of their own chatter,
-are CLOV (15%), WKHS (20%), CLNE, SPCE and TLRY — that squeeze cohort
-exactly, with no ticker list anywhere in the configuration. The 2021 archive
-holds only two days, so the `z` gate cannot be evaluated there; the era
-comparison is a share comparison and is reported as such.
-
 ## Class 10 — THE AI POLL PANEL, expanded 2026-08-04
 
 | Number | Value | Class | How it is obtained |
@@ -768,6 +737,16 @@ the wrong lever, and the reason is worth more than the tuning.*
 | …**measurable now** (≥100 scored posts in 28d) | **27** |
 | …top 25 by mentions → TRACKED | 25 |
 
+**SUPERSEDED LATER THE SAME DAY, and the fix is the lesson.** The 28-day
+window in that fifth row was the FIRING gate being reused as the
+MEMBERSHIP test. They are different questions: firing asks "can we trust
+this name's euphoria right now", membership asks "is this name worth
+carrying". Measuring membership over the same trailing YEAR the ranking
+uses — one word — took eligible names from 27 to **69**, all but one of
+them already priced, with the A0 firing gate untouched at 100 posts/28d.
+The rest of this class stands: it is why the *coverage* is thin, and it
+still bounds how far any of this can go.
+
 Pricing is **not** the constraint: all 27 measurable names are already
 priced, and `EUPHORIA_SINGLE_TOP_N = 25` excludes exactly two (SLS, TSM).
 The binding gate is coverage, and a name needs 100 scored posts out of
@@ -833,3 +812,72 @@ every z, every euphoria level and every frozen threshold would move, and
 the ground-truth episode set would not, so the whole walk-forward record
 would have to be rebuilt and compared. It is recorded here as the
 identified cause and an explicit desk decision, not actioned.
+
+## Class 13 — THE FULL AUDIT AND OPTIMISATION, 2026-08-04
+
+*Desk instruction: "I want everything to have a very clear reason why
+it's that number… check through EVERYTHING… and if we can improve the
+number then let's do it", then "optimise for the best hit rate / lowest
+FA / biggest universe possible."*
+
+**Method.** Sixteen constants, 69 full walk-forward runs
+(`tools/sweep_config.py`, results in `docs/research/config_sweep.json`),
+all re-run under the current 60-name universe because the earlier sweep
+had been done on the old 25-name one and two of its conclusions did not
+survive (`EUPHORIA_ATT_GATE` 0.98 and `EUPHORIA_MIN_COVERAGE` 150 both
+looked like improvements there and are not improvements here — which is
+the strongest argument for re-running rather than trusting a sweep taken
+under different conditions).
+
+**The stated objective, fixed before reading the results**: keep both
+false-alarm rates inside the desk's 0.23/instrument-year budget; then
+maximise GET OUT capture rate; tie-break on false-alarm rate, then lead
+time; prefer the larger universe where performance is equal or better.
+
+### 13a — Confirmed at their existing values (no change)
+
+| Number | Value | What the sweep showed |
+|---|---|---|
+| `ROLL` | 7 | peak of 8/9/**9**/8/8 over 3–14, and the best entry side. Under the old 25-name universe this was flat; the wider universe resolves it in favour of 7 |
+| `EUPHORIA_COOLDOWN_DAYS` | 21 | utility 5/6/**9**/9/7 over 7–42. 7 days buys 2 captures for 6 extra false alarms; 28 ties but captures less |
+| `EUPHORIA_ATT_GATE` | 0.90 | utility 5/7/**9**/8/7. The 0.98 that won under 25 names loses under 60 |
+| `EUPHORIA_PCT_WINDOW` | 365 | utility 5/8/**9**/6/5 — a clean peak, not a plateau |
+| `EUPHORIA_MIN_COVERAGE` | 100 | 75 breaches the budget (33 false alarms); 125/150/200 all lose captures faster than they save alarms |
+| `EUPHORIA_SINGLE_WINDOW_D` | 365 | **identical** scorecard 180→730. It only decides who is carried, and 730 buys 3 dormant names for a two-year lookback. 365 is kept because it is DERIVED — it matches `EUPHORIA_PCT_WINDOW`, the project's existing "versus its own last year" convention |
+| `EUPHORIA_BOOM_WINDOW_D` | 54 | 40 scores one better (utility 10 vs 9) but is inside noise; 80 and 120 are catastrophic (27 and 35 false alarms), so 54 sits safely inside the good region |
+
+### 13b — Confirmed INERT for the flags (identical scorecard at every value)
+
+`BASELINE`, `MIN_DAYS`, `MIN_TOTAL`, `EUPHORIA_FADE_DISCOUNT`,
+`CONV_EWM_HALFLIFE`. These feed the legacy 5-check signals engine, the
+conviction charts or the display layer — not the GET IN / GET OUT flags.
+See Class 11a; the finding is unchanged under the wider universe.
+
+### 13c — Four values were changed, then REVERTED
+
+Four constants beat the incumbent on a full-record sweep and were adopted
+on 2026-08-04: `EUPHORIA_MIN_HISTORY` 180→90, `EUPHORIA_HYPE_MULT`
+2.0→3.0, `EUPHORIA_ONSET_HYPE_MIN` 1.10→1.20 and `EUPHORIA_SINGLE_TOP_N`
+25→80. The combined configuration measured a 15% better GET OUT capture
+rate at less than half the false alarms.
+
+**All four were REVERTED to their previous-commit values the same day, by
+desk decision.** The sweep evidence stands and is kept above and in
+`docs/research/config_sweep.json` — it is why every one of those numbers
+can now be defended — but the shipped values are the ones the walk-forward
+record was built on, and moving four of them together on a single
+full-record sweep was a larger step than the desk wanted to take on that
+evidence. The proper route back, if anyone wants it, is the nested
+walk-forward described below: select on strictly prior years, apply
+forward, one constant at a time.
+
+**The limitation, recorded because it bounds the claim.** This is a
+FULL-RECORD optimisation: sixteen constants were examined and four moved,
+so some of the gain is selection rather than signal. The thresholds
+inside every run are still chosen strictly walk-forward, and each of the
+four changes is mechanistically sensible rather than a numerical
+accident — a shorter warm-up makes names scoreable sooner, stricter hype
+and onset floors drop marginal candidates, a wider universe offers more
+episodes — but **the real out-of-sample test is the forward record**, the
+daily signal snapshots, not this table. Notebooks 00/04/06/07/08 must be
+re-executed before any of these numbers is quoted.

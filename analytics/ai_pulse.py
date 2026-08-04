@@ -12,7 +12,7 @@ saves one JSON the dashboard renders verbatim:
     data/processed/ai_pulse.json
         as_of, generated_at, model, evidence (the numbers used),
         market_pulse, talk_of_the_town, mood_gauge{score,why},
-        theme_briefs[], rally_watch[], catalyst_watch[], divergences[],
+        theme_briefs[], catalyst_watch[], divergences[],
         agentic{digest, asks[], actions[], risk_note}
 
 DESIGN RULES
@@ -20,10 +20,11 @@ DESIGN RULES
     never invents a statistic: every figure it may cite is handed to it
     in the evidence pack, and the pack itself is saved alongside the
     prose so any sentence can be audited against the inputs.
-  * THREE CALLS PER RUN (desk request 2026-08-04: "longer and much
-    more detailed"): (1) the market read - a proper multi-paragraph
-    brief plus deep per-theme sections, (2) the watchlists - rallying,
-    catalysts, divergences at forensic length, (3) the agentic digest.
+  * FOUR STAGES PER RUN (desk request 2026-08-04: "longer and much
+    more detailed"): (1) the whole-market read, (2) one brief per theme
+    - BATCHED, so every theme the crowd discusses gets one and the
+    dropdown is never truncated by a token ceiling, (3) catalysts and
+    divergences, (4) the agentic digest.
     Splitting keeps each response inside the deployment's output
     ceiling; budget-capped by AI_MAX_CALLS regardless.
   * PARAPHRASE, NEVER QUOTE.  Raw post text goes TO the model; only
@@ -61,14 +62,27 @@ POST_SAMPLE_N = 320         # posts handed to the model for the market read
 POST_CLIP = 360             # chars per post - mood, not essays
 HARVEST_MAX = 60_000        # recent posts held in memory for sampling
 POSTS_PER_THEME = 18        # posts behind each per-theme brief
-RALLY_POSTS = 40            # mobilising posts read for the rally section
-THEME_BRIEF_MIN_SHARE = 0.004   # a theme needs at least this share of the
-                            # week's mentions to earn a brief. Below ~0.4%
-                            # there is nothing to say that is not padding,
-                            # and the desk's standing rule (2026-08-04) is
-                            # that a section with nothing to say is omitted,
-                            # never filled.
-MAX_THEME_BRIEFS = 18       # ceiling on the dropdown, loudest first
+THEME_BRIEF_MIN_SHARE = 0.001   # a theme needs at least this share of the
+                            # week's mentions to earn a brief - it must have
+                            # enough posts for the brief to be written FROM
+                            # something. LOWERED from 0.004 on 2026-08-04:
+                            # the old floor silently dropped 8 tradeable
+                            # themes, including europe_defense (0.27% of
+                            # mentions but the highest-conviction theme on
+                            # the board, euphoria 90) - a share floor alone
+                            # cannot see that. 0.1% keeps 33 of the 34
+                            # tradeable themes; the one it drops has 0.02%
+                            # and genuinely has nothing to read.
+MAX_THEME_BRIEFS = 40       # i.e. no practical cap - every tradeable theme
+                            # gets a brief. It used to be 18, which quietly
+                            # truncated the dropdown even when more themes
+                            # qualified. The briefs are BATCHED below so the
+                            # count is no longer limited by one response's
+                            # token ceiling.
+THEMES_PER_CALL = 12        # briefs per gateway call. 12 x ~110 words sits
+                            # comfortably inside the 4k-token response
+                            # ceiling with room for the model to run long;
+                            # more themes simply means more calls.
 
 
 def _read(name: str) -> pd.DataFrame | None:
@@ -143,40 +157,6 @@ def _evidence() -> dict:
             ev["forums_7d"] = {
                 str(k): {"share": round(float(v) / float(vol.sum()), 3)}
                 for k, v in vol.nlargest(10).items()}
-    # MOBILISATION: measured over every post by src/rally_watch.py, not
-    # judged by the model. The model reads the matched posts and explains
-    # what these numbers are pointing at.
-    try:
-        from src.rally_watch import (load_series as _rl, top_rallies,
-                                     COUNTER_CATEGORY)
-        rs = _rl()
-        if rs is not None and len(rs):
-            hi = rs["date"].max()
-            w = rs[rs["date"] > hi - pd.Timedelta(days=7)]
-            tot = w[w["category"] == "_total_posts"]["mention_count"].sum()
-            sig = w[(w["kind"] == "_all")
-                    & (~w["category"].str.startswith("_"))
-                    & (w["category"] != COUNTER_CATEGORY)]
-            ev["rally"] = {
-                "pct_of_posts_mobilising": (
-                    round(float(sig["mention_count"].sum())
-                          / float(tot) * 100, 2) if tot else None),
-                "reference_points": {"June 2021 meme summer": 3.41,
-                                     "quiet 2026 week": 1.0},
-                "by_category_per_1k_posts": {
-                    k: round(float(v) / float(tot) * 1000, 1)
-                    for k, v in sig.groupby("category")["mention_count"]
-                    .sum().sort_values(ascending=False).items()} if tot
-                else {},
-                "pushback_hits": int(
-                    w[(w["kind"] == "_all")
-                      & (w["category"] == COUNTER_CATEGORY)]
-                    ["mention_count"].sum()),
-                "most_mobilised_themes": top_rallies("theme", n=8),
-                "most_mobilised_tickers": top_rallies("ticker", n=8),
-            }
-    except Exception:                                    # noqa: BLE001
-        pass                       # detector not scanned yet - not fatal
     ag = _read("daily_agentic_counts.parquet")
     if ag is not None and len(ag):
         hi = ag["date"].max()
@@ -348,7 +328,7 @@ def _market_prompt(ev: dict, posts: list[dict]) -> str:
                       "why: 40-60 words - the two or three observations "
                       "that set the score, with the strongest "
                       "counter-signal acknowledged}",
-        "market_pulse": "5-6 substantial paragraphs (500-650 words): "
+        "market_pulse": "4-5 substantial paragraphs (450-550 words): "
                         "what ALL the forums are saying, taken as a "
                         "whole. Paragraph 1 - the state of the market "
                         "conversation overall and how it changed this "
@@ -364,12 +344,8 @@ def _market_prompt(ev: dict, posts: list[dict]) -> str:
                         "Paragraph 4 - positioning and conviction: what "
                         "the crowd is DOING vs merely discussing, and "
                         "where bulls and bears actually argue. "
-                        "Paragraph 5 - the mobilisation reading: what "
-                        "the `rally` numbers say about whether this "
-                        "crowd is being organised or merely talking, "
-                        "against the reference points given. Paragraph "
-                        "6 - what is surprisingly ABSENT given the "
-                        "numbers, and why that matters",
+                        "Paragraph 5 - what is surprisingly ABSENT "
+                        "given the numbers, and why that matters",
         "talk_of_the_town": "2 paragraphs (150-220 words): the specific "
                             "topics, threads, arguments and running "
                             "jokes the crowd keeps returning to - "
@@ -407,47 +383,6 @@ def _themes_prompt(ev: dict, by_theme: dict) -> str:
             f"theme):\n{json.dumps(by_theme, indent=0)}\n\n"
             f"Return ONE JSON object with exactly this key:\n"
             f"{json.dumps(seg, indent=1)}")
-
-
-def _rally_prompt(ev: dict, hits: list[dict]) -> str:
-    """Call 3 - the rally watch, ORGANISED BY THEME and anchored to the
-    detector.  The model no longer decides WHETHER something is being
-    rallied - src/rally_watch.py measured that over every post - it
-    explains WHAT the mobilising posts are actually doing."""
-    seg = {"rally_watch":
-           "list of objects {theme: the theme or name this entry is "
-           "about (use the names given in rally.most_mobilised_themes / "
-           "most_mobilised_tickers), verdict: one of 'organised push' | "
-           "'building' | 'ambient hype' | 'pushback winning', why: "
-           "90-140 words - forensic: WHAT KIND of mobilising language "
-           "these posts contain (recruiting, squeeze mechanics, "
-           "refusal-to-sell pledges, rescue-the-company framing, "
-           "coordinated timing, extreme-outcome claims), whether it "
-           "reads organic or organised, who it is aimed at, how "
-           "objections get handled, and whether the pushback counts "
-           "(`counter`) say the crowd is policing itself, example: ONE "
-           "paraphrase prefixed 'paraphrase - ' that captures the "
-           "register}. Order by how interesting the entry is to a desk. "
-           "Only include a theme or name where the posts actually show "
-           "you something; omit the rest. If nothing in the sample is "
-           "genuinely mobilised, return an empty list - the numbers "
-           "already say so and the page will show them."}
-    return (
-        "The desk runs a lexical detector over EVERY post - recruiting, "
-        "squeeze mechanics, hold-the-line pledges, save-the-company "
-        "framing, coordinated timing, extreme-outcome claims - and the "
-        "counts are in EVIDENCE under `rally` (`share` = the fraction "
-        "of that name's own chatter that is mobilising, `z` = how "
-        "unusual that is against its own history, `counter` = posts "
-        "calling it a pump). YOUR JOB IS NOT TO RE-JUDGE WHETHER "
-        "MOBILISATION EXISTS - it is to read the matched posts and "
-        "explain what is actually going on.\n\n"
-        f"EVIDENCE:\n{json.dumps(ev, indent=1)}\n\n"
-        f"THE MATCHED POSTS (what the detector caught, most-engaged "
-        f"first; `category` is which pattern matched):\n"
-        f"{json.dumps(hits, indent=0)}\n\n"
-        f"Return ONE JSON object with exactly this key:\n"
-        f"{json.dumps(seg, indent=1)}")
 
 
 def _watch_prompt(ev: dict, posts: list[dict]) -> str:
@@ -524,7 +459,7 @@ def _is_filler(text: str) -> bool:
 
 def _drop_filler(doc: dict) -> dict:
     """Strip empty-calorie entries from a finished pulse."""
-    for key, field in (("theme_briefs", "brief"), ("rally_watch", "why"),
+    for key, field in (("theme_briefs", "brief"),
                        ("catalyst_watch", "chatter"),
                        ("divergences", "story")):
         items = doc.get(key)
@@ -550,40 +485,43 @@ def generate(log=print) -> tuple[bool, str]:
     posts = _fresh_posts()
     theme_list = list((ev.get("theme_mention_share_7d") or {}).keys())
     by_theme = _posts_by_theme(theme_list)
-    try:
-        from src.rally_watch import recent_samples as _rally_samples
-        hits = [{"category": h.get("category"),
-                 "themes": h.get("themes"), "tickers": h.get("tickers"),
-                 "text": str(h.get("text", ""))[:POST_CLIP]}
-                for h in _rally_samples(per_cat=RALLY_POSTS // 6)]
-    except Exception:                                    # noqa: BLE001
-        hits = []
     log(f"AI PULSE: {len(posts)} posts across "
         f"{len({p['sub'] for p in posts})} forums, "
-        f"{len(by_theme)} themes, {len(hits)} mobilising posts; "
-        f"model {ai.MODEL}, generating (5 calls)")
+        f"{len(by_theme)} themes; "
+        f"model {ai.MODEL}, generating (4 calls)")
     try:
-        log("AI PULSE: call 1/5 - the whole-market read (vibe, mood, "
+        log("AI PULSE: call 1 - the whole-market read (vibe, mood, "
             "forums)")
         pulse = ai.chat(_market_prompt(ev, posts), system=_PULSE_SYSTEM,
                         want_json=True, max_tokens=4000)
-        log("AI PULSE: call 2/5 - theme briefs "
-            f"({len(by_theme)} themes)")
-        themes = ai.chat(_themes_prompt(ev, by_theme),
-                         system=_PULSE_SYSTEM,
-                         want_json=True, max_tokens=4000)
-        log("AI PULSE: call 3/5 - the rally watch")
-        rally = ai.chat(_rally_prompt(ev, hits), system=_PULSE_SYSTEM,
-                        want_json=True, max_tokens=2600)
-        log("AI PULSE: call 4/5 - catalysts and divergences")
+        # THEME BRIEFS, BATCHED. One call per THEMES_PER_CALL themes, so
+        # the number of themes on the dropdown is set by how many themes
+        # the crowd is actually discussing - never by how much text fits
+        # in a single response.
+        _keys = list(by_theme)
+        _batches = [_keys[i:i + THEMES_PER_CALL]
+                    for i in range(0, len(_keys), THEMES_PER_CALL)] or [[]]
+        briefs = []
+        for _bi, _batch in enumerate(_batches, 1):
+            if not _batch:
+                continue
+            log(f"AI PULSE: call 2.{_bi}/{len(_batches)} - theme briefs "
+                f"({len(_batch)} themes)")
+            _part = ai.chat(
+                _themes_prompt(ev, {k: by_theme[k] for k in _batch}),
+                system=_PULSE_SYSTEM, want_json=True, max_tokens=4000)
+            if isinstance(_part, dict):
+                briefs += list(_part.get("theme_briefs") or [])
+        themes = {"theme_briefs": briefs}
+        log("AI PULSE: call 3 - catalysts and divergences")
         watch = ai.chat(_watch_prompt(ev, posts), system=_PULSE_SYSTEM,
                         want_json=True, max_tokens=2000)
         from src.agentic_watch import recent_samples
-        log("AI PULSE: call 5/5 - the agentic digest")
+        log("AI PULSE: call 4 - the agentic digest")
         agentic = ai.chat(
             _agentic_prompt(ev, recent_samples(per_cat=8)),
             system=_AGENTIC_SYSTEM, want_json=True, max_tokens=900)
-        log("AI PULSE: 5/5 calls done")
+        log(f"AI PULSE: done ({2 + len(_batches)} calls)")
     except (RuntimeError, ValueError) as e:
         return False, f"generation failed: {e}"
     doc = {
@@ -594,14 +532,13 @@ def generate(log=print) -> tuple[bool, str]:
         "mock": ai.MOCK,
         "evidence": ev,
     }
-    for part in (pulse, themes, rally, watch):
+    for part in (pulse, themes, watch):
         doc.update(part if isinstance(part, dict) else {})
     doc["agentic"] = agentic if isinstance(agentic, dict) else {}
     doc = _drop_filler(doc)
     json.dump(doc, open(OUT_PATH, "w", encoding="utf-8"), indent=1)
     log(f"AI PULSE: saved -> {os.path.relpath(OUT_PATH, ROOT)} "
-        f"({len(doc.get('theme_briefs') or [])} theme briefs, "
-        f"{len(doc.get('rally_watch') or [])} rally entries)")
+        f"({len(doc.get('theme_briefs') or [])} theme briefs)")
     return True, "ok"
 
 

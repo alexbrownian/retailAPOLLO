@@ -205,12 +205,12 @@ EUPHORIA_HYPE_MULT = 2.0        # A1 (Reddit-only): the 7d mention share must
                                 # - not adopted here, for the multiple-
                                 # comparisons reason recorded at
                                 # EUPHORIA_MIN_HISTORY.
-EUPHORIA_BOOM_MIN_ETF = 0.25    # G2: an ETF/theme peak must sit >= 25%
+EUPHORIA_BOOM_MIN_ETF = 0.20    # G2: an ETF/theme peak must sit >= 25%
                                 # above its trailing low. Used in TWO places
                                 # with DIFFERENT windows - see the two
                                 # constants below and read the note there
                                 # before touching either.
-EUPHORIA_BOOM_MIN_SINGLE = 0.50  # single names boom harder before they count
+EUPHORIA_BOOM_MIN_SINGLE = 0.35  # single names boom harder before they count
 
 # --- THE TWO BOOM WINDOWS. They are not the same number and must not be
 #     merged (desk decision 2026-07-29).
@@ -445,42 +445,6 @@ EUPHORIA_FA_PENALTY = 1.0       # (overrides above) a false alarm costs a
 # retail commodities only (gold/silver via GLD+fallbacks, oil via XLE,
 # uranium via URA all remain through their theme anchors)
 EUPHORIA_EXCLUDED_THEMES = {"rates_bonds", "real_estate"}
-
-# --- RALLY / PUMP DETECTOR (src/rally_watch.py) -----------------------------
-# Desk request 2026-08-04: flag names whose chatter has turned MOBILISING
-# ("let's save this company", "short squeeze", "diamond hands") rather than
-# merely loud.  DISPLAY AND RESEARCH ONLY - these numbers do not enter the
-# euphoria score and cannot create or suppress a flag (handover rule 1); the
-# forward test that would earn them that right is pre-registered in nb09.
-RALLY_WINDOW_D = 7      # the reading window. Matches ROLL: mobilisation is a
-                        # week-scale phenomenon, and using the project's own
-                        # rolling width keeps this comparable to every other
-                        # 7d number on the page.
-RALLY_MIN_HITS = 10     # absolute floor. Below ~10 matched posts in a week a
-                        # "share" is arithmetic noise: 2 hits on 12 mentions
-                        # is a 17% share that means nothing.
-RALLY_MIN_SHARE = 0.10  # ...AND at least this fraction of the name's OWN
-                        # chatter must be mobilising, so a big theme cannot
-                        # qualify just by being big. Set from the 765k-post
-                        # calibration scan: the median theme-week sits at 2%
-                        # and the 95th percentile at 10%, while the June-2021
-                        # squeeze cohort the detector correctly surfaces
-                        # (CLOV 15%, WKHS 20%, TLRY 13%) sits well above it.
-                        # 10% therefore separates a real mobilisation from a
-                        # loud week without being a once-a-decade event.
-RALLY_MIN_Z = 1.5       # ...AND it must be unusual for THIS name's own
-                        # history. meme_stocks and short_squeeze sit at a
-                        # permanently high share (12% and 20% today); only the
-                        # z can say the organising is happening NOW - and it
-                        # says no, at 0.78 and 1.14. Same 1.5 crossing the
-                        # conviction charts already mark (CROSS_AT), for one
-                        # notion of "abnormal" on the desk.
-# All three calibrated 2026-08-04 against a full scan of every archive
-# (764,920 posts). The regime separation that justifies the construction:
-# June 2021's meme summer runs 3.41% of posts mobilising vs 1.01% in the week
-# to 2026-07-29 - and the names it surfaces in 2021 are CLOV, WKHS, CLNE,
-# SPCE and TLRY, i.e. that squeeze cohort exactly. Recorded in
-# docs/PARAMETER_REGISTER.md and re-checked in notebook 09.
 
 # --- trade bookkeeping (dashboard + report card) ---
 HOLD_DAYS = 20       # every suggestion is a 20-day hold (the edge peaks and

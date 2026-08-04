@@ -1687,83 +1687,6 @@ class TestDashboardModuleHygiene:
                 f"dashboard.{name} was rebound by a tab-local variable")
 
 
-class TestRallyDetector:
-    """src/rally_watch.py - the mobilisation measurement.
-
-    The detector is the numeric half of the AI page's rally section, so
-    it has to be right without a gateway and without the model: these
-    check the regex bank compiles, the categories mean what the config
-    says they mean, the counter-category never counts as rallying, and
-    the share it reports is a share of a denominator drawn from the SAME
-    posts (the first calibration run produced 250% "shares" by borrowing
-    the submissions-based store, which is the bug this pins)."""
-
-    def test_every_pattern_in_the_config_compiles_and_is_categorised(self):
-        from src.rally_watch import load_patterns
-        pats = load_patterns()
-        assert "_any" in pats, "the hot-loop pre-filter must exist"
-        for cat in ("recruit", "squeeze", "hold_the_line",
-                    "save_the_company", "coordinate", "moonshot",
-                    "pump_callout"):
-            assert cat in pats, f"config/rally_terms.csv lost {cat}"
-
-    def test_the_categories_catch_what_the_desk_named(self):
-        """The desk's own examples (2026-08-04): 'lets save this company'
-        and 'lets short squeeze', Wendy's and GME style."""
-        from src.rally_watch import load_patterns
-        p = load_patterns()
-        cases = [
-            ("we need to save this company, buy their burgers",
-             "save_the_company"),
-            ("this is going to short squeeze, days to cover is 5",
-             "squeeze"),
-            ("diamond hands, never selling", "hold_the_line"),
-            ("get in before the institutions find out", "recruit"),
-            ("everyone buy at market open on monday", "coordinate"),
-            ("this is a 100x, generational wealth", "moonshot"),
-            ("classic pump and dump, you are exit liquidity",
-             "pump_callout"),
-        ]
-        for text, cat in cases:
-            assert p[cat].search(text), f"{cat!r} missed: {text!r}"
-            assert p["_any"].search(text)
-
-    def test_ordinary_market_talk_is_not_mobilisation(self):
-        from src.rally_watch import load_patterns
-        p = load_patterns()
-        for text in ("I sold my position today after earnings",
-                     "the P/E looks stretched versus the sector",
-                     "dollar cost averaging into an index fund"):
-            assert not p["_any"].search(text), f"false positive: {text!r}"
-
-    def test_pushback_is_measured_but_never_scored_as_rallying(self):
-        """pump_callout is the crowd calling it a pump. Counting it as
-        rallying would invert the signal on exactly the names where the
-        crowd is policing itself."""
-        import src.rally_watch as R
-        assert R.COUNTER_CATEGORY == "pump_callout"
-        f = R.rally_frame("theme")
-        if f is None or not len(f):
-            pytest.skip("no rally store on this machine yet")
-        assert "counter" in f.columns
-
-    def test_share_is_a_true_share_and_the_gates_all_bind(self):
-        import src.rally_watch as R
-        from src.config import (RALLY_MIN_HITS, RALLY_MIN_SHARE,
-                                RALLY_MIN_Z)
-        f = R.rally_frame("ticker")
-        if f is None or not len(f):
-            pytest.skip("no rally store on this machine yet")
-        sh = f["share"].dropna()
-        assert (sh <= 1.0).all(), (
-            "a share above 1 means the denominator came from a different "
-            "population than the hits - see the module docstring")
-        for r in f[f["rallying"]].itertuples():
-            assert r.hits >= RALLY_MIN_HITS
-            assert r.share >= RALLY_MIN_SHARE
-            assert r.z >= RALLY_MIN_Z
-
-
 class TestPulseNoFillerRule:
     """The desk's standing rule (2026-08-04): "if something is like
     'there is minimum discussion' then we shouldnt include it, whatever
@@ -1783,13 +1706,11 @@ class TestPulseNoFillerRule:
                                         "has topped, and the bears are "
                                         "winning on engagement."},
             ],
-            "rally_watch": [{"theme": "x", "why": "not much to say"}],
             "market_vibe": {"bullets": ["Little activity.",
                                         "Everyone is tired of being "
                                         "wrong and says so loudly."]},
         })
         assert [b["theme"] for b in doc["theme_briefs"]] == ["d"]
-        assert doc["rally_watch"] == []
         assert len(doc["market_vibe"]["bullets"]) == 1
 
     def test_a_long_brief_that_merely_mentions_quiet_is_kept(self):
@@ -1875,28 +1796,36 @@ class TestSingleNameUniverse:
             assert junk not in uni, (
                 f"{junk} is jargon, not a tracked single name")
 
-    def test_the_universe_tracks_names_discussed_NOW(self):
-        """The function's own docstring promises 'today's NVDA is
-        tomorrow's something else'. A universe ranked over all history
-        cannot keep that promise."""
+    def test_the_universe_tracks_names_that_are_ALIVE(self):
+        """The function's own docstring promises "today's NVDA is
+        tomorrow's something else". A universe ranked over all history
+        cannot keep that promise - it tracked BBBY for years after the
+        bankruptcy. Membership must mean "this name has enough recent
+        chatter to measure", which is what the coverage floor encodes.
+
+        NOTE the test asserts COVERAGE, not mention rank. Since
+        2026-08-04 EUPHORIA_SINGLE_TOP_N (80) sits above the number of
+        eligible names, so the cap is deliberately non-binding and a
+        name can be tracked without being in the mention top-N - AMAT is
+        the live example. That is the intended behaviour: the real gate
+        is measurability."""
         import pandas as pd
         from analytics.euphoria import single_name_universe
-        from src.config import PROCESSED_DIR, EUPHORIA_SINGLE_WINDOW_D
-        p = os.path.join(PROCESSED_DIR, "daily_ticker_counts.parquet")
+        from src.config import (PROCESSED_DIR, EUPHORIA_SINGLE_WINDOW_D,
+                                EUPHORIA_MIN_COVERAGE)
+        p = os.path.join(PROCESSED_DIR, "daily_ticker_sentiment.parquet")
         if not os.path.exists(p):
-            pytest.skip("no ticker counts on this machine")
-        c = pd.read_parquet(p)
-        c["date"] = pd.to_datetime(c["date"])
-        hi = c["date"].max()
-        recent = c[c["date"] > hi - pd.Timedelta(
-            days=EUPHORIA_SINGLE_WINDOW_D)]
-        live = set(recent.groupby("ticker")["mention_count"].sum()
-                   .nlargest(120).index)
+            pytest.skip("no sentiment store on this machine")
+        s = pd.read_parquet(p)
+        s["date"] = pd.to_datetime(s["date"])
+        hi = s["date"].max()
+        cov = (s[s["date"] > hi - pd.Timedelta(days=EUPHORIA_SINGLE_WINDOW_D)]
+               .groupby("ticker")["n_posts"].sum())
         uni = single_name_universe(self._prices())
-        stale = [t for t in uni if t not in live]
-        assert not stale, (
-            "names in the universe that are not in the last year's top "
-            f"120 by mentions: {stale}")
+        dead = [t for t in uni if cov.get(t, 0) < EUPHORIA_MIN_COVERAGE]
+        assert not dead, (
+            "tracked names without enough recent chatter to measure: "
+            f"{dead}")
 
     def test_the_stoplist_is_config_driven_and_fails_loudly(self):
         import tempfile
@@ -1909,3 +1838,270 @@ class TestSingleNameUniverse:
             with pytest.raises(ValueError):
                 load_stop_tickers(bad)      # a silent empty stoplist would
                                             # let CEO back into the counts
+
+
+class TestEverythingIsIncremental:
+    """Desk rule (2026-08-04): "on the dashboard it should only be doing
+    incremental when i do LIVE. update_data should be for the full redo
+    but for the final end-user (the dashboard refresh live) it should
+    always be incremental."
+
+    The slow work in this pipeline is re-reading raw archives. Every
+    scanner therefore keeps a ledger and skips what it has already seen,
+    and the dashboard must never launch the full-history rebuild. Both
+    properties are cheap to break by accident and expensive to notice,
+    so they are pinned here."""
+
+    def test_every_scanner_keeps_a_ledger(self):
+        import src.agentic_watch as A
+        path = getattr(A, "LEDGER", None)
+        assert path, "agentic_watch has no LEDGER - it would rescan"
+        assert "reference" in str(path), (
+            "the ledger must live in data/reference/")
+
+    def test_a_second_scan_does_no_work(self):
+        """The ledger is keyed on (size, mtime) per archive, so a rerun
+        with nothing new on disk must be a no-op, not a rescan."""
+        import time
+        import src.agentic_watch as A
+        if not os.path.exists(A.LEDGER):
+            pytest.skip("no agentic ledger on this machine yet")
+        t0 = time.time()
+        A.scan(log=lambda *_: None)
+        assert time.time() - t0 < 20, (
+            "a no-change rescan took longer than 20s - the ledger is not "
+            "being honoured")
+
+    def test_the_dashboard_never_launches_a_full_rebuild(self):
+        """`--full` rebuilds nine years of aggregates from posts.parquet.
+        It only works on the machine that holds that file, and it is a
+        RE-VALIDATION EVENT. No dashboard button may reach it."""
+        src = open(os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "dashboard.py"),
+            encoding="utf-8").read()
+        import re
+        for call in re.findall(r"start_pipeline\((.*?)\)\s*$", src,
+                               re.S | re.M):
+            assert "--full" not in call, (
+                "a dashboard button passes --full: " + call[:200])
+
+
+class TestTickerAllowlist:
+    """Desk instruction 2026-08-04: "stuff like MU should be considered
+    as tickers". Two gaps fed one fix - see the block comment in
+    src/extract_tickers.py."""
+
+    def _universe(self):
+        from src.abstracted_data import load_universe
+        u = load_universe()
+        if not u:
+            pytest.skip("no ticker universe cached on this machine")
+        return u
+
+    def test_short_tickers_are_counted_without_a_dollar_sign(self):
+        """WORD_BARE is [A-Z]{4,5}, so MU and AMD were invisible in bare
+        form: MU had 265 bare-CAPS mentions against SIX $MU cashtags in
+        six days of comments."""
+        from src.extract_tickers import extract_tickers_from_text
+        u = self._universe()
+        got = extract_tickers_from_text(
+            "loaded up on MU and AMD before earnings", u,
+            cashtags_only=False)
+        assert "MU" in got and "AMD" in got
+
+    def test_case_is_what_separates_the_company_from_the_word(self):
+        """The bare pass reads the ORIGINAL text, so an allowlisted
+        symbol only matches in capitals. This is the whole safety
+        property: 'coin' stays a word, 'COIN' becomes Coinbase."""
+        from src.extract_tickers import extract_tickers_from_text
+        u = self._universe()
+        for caps, lower, sym in (("COIN reports tomorrow",
+                                  "i found a coin", "COIN"),
+                                 ("META is up again",
+                                  "this is very meta", "META"),
+                                 ("bought SOFI today",
+                                  "sofi sounds like sofa", "SOFI")):
+            assert sym in extract_tickers_from_text(caps, u,
+                                                    cashtags_only=False)
+            assert sym not in extract_tickers_from_text(lower, u,
+                                                        cashtags_only=False)
+
+    def test_jargon_still_wins_over_the_allowlist(self):
+        """STOP_TICKERS outranks the allowlist. If a symbol ever appears
+        in both, the jargon reading must win - otherwise adding a row to
+        the allowlist could quietly resurrect 'AI' as a ticker."""
+        from src.extract_tickers import (ALLOW_TICKERS, STOP_TICKERS,
+                                         extract_tickers_from_text)
+        overlap = ALLOW_TICKERS & STOP_TICKERS
+        u = self._universe()
+        for sym in overlap:
+            assert sym not in extract_tickers_from_text(
+                f"buying {sym} now", u, cashtags_only=False), (
+                f"{sym} is in both lists and the allowlist won")
+        assert "AI" not in extract_tickers_from_text(
+            "AI is the future", u, cashtags_only=False)
+
+    def test_the_ambiguous_ones_were_deliberately_left_out(self):
+        """The exclusions are the evidence the list is judged, not
+        stuffed. Each of these measured as the English word winning."""
+        from src.extract_tickers import ALLOW_TICKERS
+        for sym in ("GOLD", "COST", "LOW", "NOW", "TEAM", "CAT", "PE"):
+            assert sym not in ALLOW_TICKERS, (
+                f"{sym} was allowlisted despite the word dominating - "
+                "re-measure before adding it")
+
+
+class TestFlagLabelsAndConfigReload:
+    """The dashboard must SAY which instrument a flag refers to, and it
+    must notice when config/theme_etfs.csv changes.
+
+    Both come from the same incident (2026-08-04): the china_geopolitics
+    anchor was corrected KWEB -> FXI in the CSV, the long-running
+    Streamlit process kept serving the map it imported at start-up, and
+    from the screen that was indistinguishable from the fix having
+    failed. Meanwhile the single-name banners read `IREN`, `NBIS`,
+    `SNDK` with nothing to say what those are."""
+
+    @staticmethod
+    def _src():
+        from pathlib import Path
+        return Path(__file__).resolve().parents[1] / "dashboard.py"
+
+    def test_theme_etf_map_is_keyed_on_the_files_mtime(self):
+        """A module-level `from src.themes import THEME_ETFS` is exactly
+        the bug: Streamlit reruns the script but does not re-import an
+        imported module. The map must be re-derived on mtime instead."""
+        src = self._src().read_text(encoding="utf-8")
+        assert "from src.themes import THEME_ETFS" not in src, (
+            "THEME_ETFS is imported once at start-up again - a config "
+            "edit will be invisible until the server is restarted")
+        assert "_theme_etf_maps" in src and "getmtime" in src
+
+    def test_the_map_still_validates_against_the_approved_list(self):
+        """Re-reading must reuse `_load_theme_etfs`, not reimplement it,
+        so the 'every symbol must be approved' check cannot be lost."""
+        import src.themes as themes
+        etfs, chains = themes._load_theme_etfs()
+        approved = set(themes.APPROVED_INSTRUMENTS)
+        for theme, anchor in etfs.items():
+            assert anchor in approved, f"{theme} -> {anchor} not approved"
+            assert chains[theme][0] == anchor, (
+                f"{theme}: the anchor must lead its own fallback chain")
+
+    def test_china_geopolitics_is_broad_china_not_the_internet_basket(self):
+        """The correction that started all of this. KWEB is the China
+        INTERNET basket; geopolitics moves broad China beta."""
+        import src.themes as themes
+        etfs, chains = themes._load_theme_etfs()
+        assert etfs["china_geopolitics"] == "FXI"
+        assert "KWEB" in chains["china_geopolitics"], (
+            "KWEB should stay in the chain as a fallback, just not lead it")
+
+    def test_every_theme_note_that_claims_a_proxy_names_the_real_line(self):
+        """The `note` column is now shown on screen, so a caveat that
+        says 'PROXY' without naming what it stands in for is a caveat
+        that helps nobody."""
+        import csv
+        from pathlib import Path
+        p = Path(__file__).resolve().parents[1] / "config" / "theme_etfs.csv"
+        with open(p, newline="", encoding="utf-8-sig") as f:
+            for row in csv.DictReader(f):
+                note = (row.get("note") or "")
+                if "PROXY" in note or "natural ETF" in note:
+                    assert "not approved" in note or "approved" in note, (
+                        f"{row['theme']}: the note flags a proxy but does "
+                        "not say what the right instrument is")
+
+    def test_the_colour_legend_matches_the_boxes_on_screen(self):
+        """GET IN renders through st.success, which is GREEN. The legend
+        said blue for weeks."""
+        src = self._src().read_text(encoding="utf-8")
+        assert "blue = GET IN" not in src
+        assert "Green = GET IN" in src and "Red = GET OUT" in src
+
+    def test_flags_are_labelled_with_the_instrument_not_the_bare_symbol(self):
+        """One helper spells every instrument on the euphoria tab - the
+        banners, the why-expanders and the lookup dropdown - so the
+        three can never disagree about what a name is called."""
+        src = self._src().read_text(encoding="utf-8")
+        assert "def flag_label(" in src
+        assert src.count("flag_label(n, kind)") >= 4, (
+            "the banners, both why-expanders and the lookup should all "
+            "route through flag_label")
+
+    def test_security_names_drop_the_share_class_boilerplate(self):
+        """'AMC Entertainment Holdings, Inc. Class A Common Stock' cut at
+        38 characters gave '...Inc. Class', which reads as broken data."""
+        # dashboard.py cannot be imported in a test (importing it runs
+        # the whole app), so the one pure function is compiled out of the
+        # source on its own.
+        src = self._src().read_text(encoding="utf-8")
+        start = src.index("_NAME_TAIL = re.compile(")
+        end = src.index("@st.cache_data", start)
+        ns = {}
+        exec("import re\n" + src[start:end], ns)
+        clean = ns["_clean_security_name"]
+        assert clean("NVIDIA Corporation - Common Stock") == \
+            "NVIDIA Corporation"
+        assert clean("AMC Entertainment Holdings, Inc. Class A Common "
+                     "Stock") == "AMC Entertainment Holdings, Inc."
+        assert clean("Micron Technology, Inc.") == "Micron Technology, Inc."
+        assert len(clean("A" * 90)) <= 38 and clean("A" * 90).endswith("…")
+
+
+class TestStaleTabIsVisible:
+    """A running dashboard must be able to say that it is out of date.
+
+    `.streamlit/config.toml` turns the file watcher OFF on purpose - the
+    pipeline rewrites parquet in place and a watcher reloading mid-read
+    is a source of spurious errors. The cost is that an edited
+    dashboard.py is never picked up by a live server, and a second
+    `streamlit run` takes the next port while the pinned tab keeps
+    serving the original process. Both look exactly like "the fix did
+    not work"."""
+
+    @staticmethod
+    def _src():
+        from pathlib import Path
+        return Path(__file__).resolve().parents[1] / "dashboard.py"
+
+    def test_the_watcher_is_still_off_and_still_explains_itself(self):
+        from pathlib import Path
+        cfg = (Path(__file__).resolve().parents[1]
+               / ".streamlit" / "config.toml")
+        text = cfg.read_text(encoding="utf-8")
+        assert 'fileWatcherType = "none"' in text, (
+            "the watcher was turned back on - if that is deliberate, the "
+            "stale-build banner and the RUNBOOK row should go with it")
+        assert "rewrites in place" in text, (
+            "the setting must keep its reason next to it")
+
+    def test_the_build_stamp_is_pinned_per_process(self):
+        """cache_resource survives reruns, so it holds the mtime this
+        PROCESS started with - which is the whole detection."""
+        src = self._src().read_text(encoding="utf-8")
+        assert "_mtime_at_process_start" in src
+        i = src.index("def _mtime_at_process_start")
+        assert "@st.cache_resource" in src[max(0, i - 200):i], (
+            "cache_data would be invalidated by its own argument and "
+            "could never detect a change; it must be cache_resource")
+
+    def test_the_stale_banner_says_what_to_do(self):
+        src = self._src().read_text(encoding="utf-8")
+        assert "Stale tab." in src
+        assert "restart the server" in src.lower()
+        assert "takes the next port" in src, (
+            "the port trap is the half of this that people miss")
+
+    def test_the_sidebar_shows_which_port_it_is_serving(self):
+        """Two servers, two ports, identical pages - the caption is the
+        only way to tell which one the browser is talking to."""
+        src = self._src().read_text(encoding="utf-8")
+        assert "server.port" in src
+
+    def test_the_runbook_has_the_restart_recipe(self):
+        from pathlib import Path
+        rb = (Path(__file__).resolve().parents[1]
+              / "RUNBOOK.md").read_text(encoding="utf-8")
+        assert "A code or config edit is not showing" in rb
+        assert "8501" in rb and "8502" in rb

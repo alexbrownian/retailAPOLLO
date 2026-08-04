@@ -623,15 +623,6 @@ def main():
         except Exception as e:                           # noqa: BLE001
             log(f"  agentic scan skipped: {type(e).__name__}: {e}", fh)
         try:
-            # the RALLY/PUMP scan (desk 2026-08-04): pure python over the
-            # same archives, incremental via its own ledger. No gateway
-            # needed - so the AI page's rally section keeps working off
-            # the VPN, on numbers rather than on the model's opinion.
-            from src.rally_watch import scan as _rally_scan
-            _rally_scan(log=lambda m: log(m, fh))
-        except Exception as e:                           # noqa: BLE001
-            log(f"  rally scan skipped: {type(e).__name__}: {e}", fh)
-        try:
             from analytics.ai_poll import run as _run_poll
             _ok, _msg = _run_poll(log=lambda m: log(m, fh))
             if not _ok:

@@ -28,7 +28,7 @@ dashboard, the notebooks — reads what it leaves on disk.
  4. COVERAGE   is the window even readable? reported, never silently patched
  5. ANALYSE    conviction -> signals -> euphoria + onset -> influence board
  5a. PRICES    Bloomberg pull for the approved instrument list
- 5b. AI LAYER  two local scanners, then the gateway consumers (section 4)
+ 5b. AI LAYER  the local scanner, then the gateway consumers (section 4)
  6. SAFETY     verify_abstracted: nothing with text reaches a commit
  7. SUMMARY    the run's key facts in one glance
 ```
@@ -97,16 +97,12 @@ model. Everything else asks it. Self-test: `python -m src.ai --selftest`
  the words     the poll          the map auditor        sentiment test
 ```
 
-Two **scanners** feed that layer and need no gateway at all — they are
-plain regex over the archives, so they run everywhere and always:
+One **scanner** feeds that layer and needs no gateway at all — it is
+plain regex over the archives, so it runs everywhere and always:
 
 * `src/agentic_watch.py` — posts about trading WITH an AI. Research
   only; its record is notebook 09 and `daily_agentic_counts.parquet`,
   deliberately not a dashboard page.
-* `src/rally_watch.py` — posts that are MOBILISING (recruiting, squeeze
-  mechanics, hold-the-line pledges, save-the-company framing,
-  coordinated timing, extreme-outcome claims, plus the crowd's own
-  pump-callouts). Feeds section 4 of the AI page.
 
 ### 4.1 The rule that shapes every AI feature
 
@@ -123,11 +119,6 @@ Two patterns implement it, and any future AI feature should copy one:
   a CSV with an empty `approved` column and CANNOT write to the config;
   a human types YES and runs the apply step, which is the only writer.
 
-The mobilisation section is the strongest form of the rule: the detector
-measures over 100% of posts and the model only explains what the counts
-point at, so the page keeps working with no gateway and the model cannot
-invent a rally the numbers do not support.
-
 ### 4.2 Degrade, never crash
 
 Off the VPN, `available()` is False and every consumer returns a reason
@@ -140,7 +131,7 @@ been allowed to fail a run.
 Raw crowd text goes TO the model and INTO the scanners. What comes back
 and gets stored is counts and model-written paraphrases — no verbatim
 crowd text, no usernames. The local-only text files
-(`data/reference/agentic_samples.jsonl`, `rally_samples.jsonl`,
+(`data/reference/agentic_samples.jsonl`,
 `nb10_sample_texts.jsonl`) are git-ignored and must stay that way.
 
 `verify_abstracted` enforces the boundary at every update. It is not a
@@ -177,8 +168,7 @@ would be a silent lookahead).
    record, re-execute notebooks 00/04/06/07/08. Nothing ships as live
    flags unless it beats the incumbent under the pre-stated rule.
    Notebook 08 is the worked example of a change that WON the display
-   and LOST the flags — that division is by design, and the rally
-   detector currently sits on the same side of it.
+   and LOST the flags — that division is by design.
 2. **Committed data is text-free.** Section 5. Never weaken it.
 3. **The dashboard shows conclusions; the notebooks are the record.**
    Performance claims belong in notebooks with confidence intervals,
