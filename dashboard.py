@@ -1572,6 +1572,14 @@ def pipeline_panel():
             else:
                 box.markdown(f"<span style='color:#8C8C8C'>[ &nbsp; ] "
                              f"{label}</span>", unsafe_allow_html=True)
+        # THE LIVE LINE (desk request 2026-08-04: "add the AI progress
+        # to it too") - the newest log line, so slow in-process stages
+        # (the 12-prompt AI poll, the two pulse calls) show their
+        # step-by-step progress without opening the technical log.
+        _tail = next((ln for ln in reversed(log_text.splitlines())
+                      if ln.strip()), "")
+        if _tail:
+            box.caption("latest: " + _tail[-100:])
         with box.expander("technical log"):
             st.code("\n".join(log_text.splitlines()[-25:]) or "starting...")
         if box.button("cancel pipeline", key="pipe_cancel"):
@@ -1677,8 +1685,25 @@ _hottest = "-"
 if euph is not None and len(euph):
     _latest = euph[euph["date"] == euph["date"].max()]
     _e_now = int((_latest["level"] >= 70).sum())
-    _hot = _latest.sort_values("level", ascending=False).iloc[0]
-    _hottest = f"{_hot['name']} ({_hot['level']:.0f})"
+    # HOTTEST = the theme with the most RETAIL ATTENTION right now (desk
+    # instruction 2026-08-04): the largest share of the tradeable
+    # universe's total mentions over the trailing 7 days - the same
+    # arithmetic as the euphoria tabs' attention sort. It used to show
+    # the top EUPHORIA LEVEL, which is a percentile of a name's own
+    # history - a tiny theme at its own extreme could outrank the theme
+    # the whole crowd is actually talking about.
+    _hottest = "-"
+    if theme_counts is not None and len(theme_counts):
+        _tc_h = theme_counts[theme_counts["theme"].isin(THEME_ETFS)]
+        if len(_tc_h):
+            _hi_h = _tc_h["date"].max()
+            _w_h = _tc_h[_tc_h["date"] > _hi_h - pd.Timedelta(days=7)]
+            _tot_h = _w_h["mention_count"].sum()
+            if _tot_h > 0:
+                _s_h = (_w_h.groupby("theme")["mention_count"].sum()
+                        / _tot_h)
+                _hottest = (f"{_s_h.idxmax()} "
+                            f"({_s_h.max():.0%} of mentions)")
     # the DESK flags - the ones every chart draws (review 2026-08-02
     # #8: this metric counted the retired level-detector's alerts, so
     # the headline could not be reconciled with the tabs).  Falls back
@@ -1692,7 +1717,7 @@ if euph is not None and len(euph):
         _alerts_w = int(_ew["alert"].sum())
 _m1.metric("euphoria alerts in window", _alerts_w)
 _m2.metric("instruments at level 70+", _e_now)
-_m3.metric("hottest right now", _hottest)
+_m3.metric("most retail attention (7d)", _hottest)
 _m4.metric("data through", str(data_max.date()))
 _m5.metric("priced symbols", len(priced))
 
@@ -5278,16 +5303,16 @@ if active_tab == "AI Pulse":
     _pulse_real = _pulse is not None and not _pulse.get("mock")
     _c1, _c2 = st.columns([3, 1])
     with _c2:
-        if st.button("generate pulse now", disabled=_pipe_running,
-                     help="Runs analytics/ai_pulse.py: builds the "
-                          "evidence pack from today's aggregates, hands "
-                          "the freshest raw posts to the firm LLM "
-                          "(Apollo gateway - needs the VPN), and saves "
-                          "the pulse this page renders. ~20-30s. Also "
-                          "runs automatically at the end of every "
-                          "update."):
-            start_pipeline([(["-m", "analytics.ai_pulse"], None)],
-                           "AI pulse", plan="pulse")
+        if st.button("refresh this page now (poll + pulse)",
+                     disabled=_pipe_running,
+                     help="Re-runs BOTH sections: the retail-prompt "
+                          "poll (section B, ~1 min - 12 gateway calls) "
+                          "and the market pulse (section A, ~30s - 3 "
+                          "calls). Needs the VPN. Both also run "
+                          "automatically at the end of every update."):
+            start_pipeline([(["-m", "analytics.ai_poll"], None),
+                            (["-m", "analytics.ai_pulse"], None)],
+                           "AI refresh (poll + pulse)", plan="pulse")
     with _c1:
         if _pulse_real:
             st.caption(f"generated {_pulse.get('generated_at')} · model "

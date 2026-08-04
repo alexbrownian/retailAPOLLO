@@ -23,7 +23,7 @@ immediately, never silently.
 | `config/theme_tickers.csv` | ticker → theme map (Signal 2), incl. ETF-constituent rows (source column says which ETF each came from). | When constituents drift (annually is fine) or a new name matters. `config/etf_constituents.csv` holds the researched holdings behind it. |
 | `config/agentic_terms.csv` | The regex bank detecting "trading with AI" posts (four categories). | When new AI products/phrasings appear (e.g. a new consumer agent product). One regex per row; the scanner fails loudly on a bad pattern. |
 | `config/ai_poll_prompts.csv` | The retail questions the pipeline asks the LLM at every refresh. | When retail's typical questions drift. Keep prompts stable where possible — the VALUE is the time series, and editing a prompt breaks its history (add new prompt_ids instead of rewording old ones). |
-| `.env` (from `example.env`) | FetchLayer key + Apollo LLM auth (ENVIRONMENT, APOLLO_AUTH_USERNAME/PASSWORD, AI_MODEL, AI_MAX_CALLS). | On credential rotation. Never committed. |
+| `.env` (project root - THE single env file, desk decision 2026-08-04; the old example.env template is retired) | ALL credentials: FETCHLAYER_KEY + Apollo LLM auth (ENVIRONMENT, APOLLO_AUTH_USERNAME, APOLLO_AUTH_PASSWORD, AI_MODEL, AI_DATA_CLASSIFICATION, AI_MAX_CALLS; optional AI_MOCK=1). | On credential rotation. GIT-IGNORED - a fresh clone has no template, so keep a private backup of this file; this row is the authoritative key list. |
 
 Reddit forum coverage: the subreddit panel is DYNAMIC —
 `ingestion/subreddit_panel.json` is maintained by the discovery pass

@@ -192,6 +192,9 @@ def _mock_answer(prompt: str, want_json: bool):
         return ("[MOCK - no gateway] A deterministic placeholder "
                 "answer for offline testing.")
     # shape-matching mocks for the known JSON consumers
+    if "rally_watch" in prompt and "market_pulse" not in prompt:
+        return {"rally_watch": [], "catalyst_watch": [],
+                "divergences": []}
     if '"market_pulse"' in prompt or "market_pulse" in prompt:
         return {
             "market_pulse": "[MOCK] Offline placeholder pulse - run on "

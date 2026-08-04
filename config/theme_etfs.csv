@@ -13,8 +13,8 @@ europe_defense,EUAD,EUAD|ITA,European A&D (Select STOXX). ITA was a US proxy - w
 short_squeeze,ARKK,ARKK,
 meme_stocks,ARKK,ARKK,
 biotech_pharma,XBI,XBI|XLV|BBH,
-rates_bonds,TLT,TLT|LQD|HYG|TIP,
-real_estate,XLRE,XLRE|ITB,
+rates_bonds,,,"REMOVED from the tradeable universe (desk instruction 2026-08-04: ""remove bonds TLT and real estate"") - still tracked in the data; refill the etf cell to reinstate."
+real_estate,,,"REMOVED from the tradeable universe (desk instruction 2026-08-04: ""remove bonds TLT and real estate"") - still tracked in the data; refill the etf cell to reinstate."
 cloud_saas,IGV,IGV|IYW,
 china_geopolitics,KWEB,KWEB|FXI|ASHR|CQQQ|159915 CS|588000 CH,
 financials,XLF,XLF|KBE|KRE,

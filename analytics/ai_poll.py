@@ -95,7 +95,9 @@ def run(log=print) -> tuple[bool, str]:
     log(f"AI POLL: asking {len(prompts)} retail prompts "
         f"(model {ai.MODEL}, T={POLL_TEMPERATURE})")
     rows, answers = [], []
-    for p in prompts:
+    for _i, p in enumerate(prompts, 1):
+        log(f"AI POLL: [{_i}/{len(prompts)}] asking: "
+            f"\"{p['prompt'][:52]}\"")
         try:
             text = ai.chat(p["prompt"], system=_SYSTEM,
                            temperature=POLL_TEMPERATURE,
@@ -104,6 +106,9 @@ def run(log=print) -> tuple[bool, str]:
             log(f"AI POLL: stopped early - {e}")
             break
         parsed = _extract(str(text))
+        log(f"AI POLL: [{_i}/{len(prompts)}] -> "
+            f"{len(parsed.get('tickers', []) or [])} names, "
+            f"{len(parsed.get('themes', []) or [])} themes")
         answers.append({"run_date": today, "prompt_id": p["prompt_id"],
                         "prompt": p["prompt"], "answer": str(text),
                         "model": ai.MODEL, "mock": ai.MOCK})

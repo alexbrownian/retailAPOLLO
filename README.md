@@ -291,7 +291,7 @@ pip install -r requirements.txt --user
 ```
 
 Create `.env` in the project root with `FETCHLAYER_KEY=...` (see
-`docs/LIVE_INGESTION.md` for all keys; `example.env` is the template).
+`docs/LIVE_INGESTION.md` for all keys; the single `.env` at the project root holds them all - it is git-ignored, so keep a copy of it somewhere safe: POST_INTERN_HANDOVER.md lists every key it must contain).
 For prices, install blpapi once per machine (Terminal running):
 
 ```powershell

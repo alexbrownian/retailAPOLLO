@@ -20,9 +20,12 @@ DESIGN RULES
     never invents a statistic: every figure it may cite is handed to it
     in the evidence pack, and the pack itself is saved alongside the
     prose so any sentence can be audited against the inputs.
-  * TWO CALLS PER RUN, not one per segment - the gateway round-trip is
-    ~5s, so segments share a call: (1) the market read, (2) the agentic
-    digest.  Budget-capped by AI_MAX_CALLS regardless.
+  * THREE CALLS PER RUN (desk request 2026-08-04: "longer and much
+    more detailed"): (1) the market read - a proper multi-paragraph
+    brief plus deep per-theme sections, (2) the watchlists - rallying,
+    catalysts, divergences at forensic length, (3) the agentic digest.
+    Splitting keeps each response inside the deployment's output
+    ceiling; budget-capped by AI_MAX_CALLS regardless.
   * PARAPHRASE, NEVER QUOTE.  Raw post text goes TO the model; only
     model-written summaries and paraphrases come back and are stored -
     no verbatim crowd text, no usernames, same text-free boundary as
@@ -53,8 +56,8 @@ from src.themes import THEME_ETFS, themes_in_text
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_PATH = os.path.join(PROCESSED_DIR, "ai_pulse.json")
 RAW_DIR = os.path.join(ROOT, "data", "raw", "RedditComments")
-POST_SAMPLE_N = 60          # newest posts handed to the model
-POST_CLIP = 320             # chars per post - mood, not essays
+POST_SAMPLE_N = 120         # newest posts handed to the model
+POST_CLIP = 400             # chars per post - mood, not essays
 
 
 def _read(name: str) -> pd.DataFrame | None:
@@ -179,36 +182,72 @@ _PULSE_SYSTEM = (
     "JSON object, no prose around it.")
 
 
-def _pulse_prompt(ev: dict, posts: list[dict]) -> str:
+def _market_prompt(ev: dict, posts: list[dict]) -> str:
+    """Call 1 - the market read.  Depth is the brief (desk 2026-08-04:
+    'longer and much more detailed'): a PM should be able to read
+    nothing else and still know what the crowd is doing this week."""
     seg = {
-        "market_pulse": "one paragraph (<=120 words): the week's retail "
-                        "read - what dominates, mood, rotation, what is "
-                        "notably absent",
-        "talk_of_the_town": "one paragraph (<=90 words): the specific "
-                            "topics/threads the crowd keeps returning to",
+        "market_pulse": "3-4 substantial paragraphs (350-450 words "
+                        "total): the week's retail read. Paragraph 1 - "
+                        "what dominates the conversation and how the "
+                        "mood actually feels (use the crowd's own tone, "
+                        "paraphrased). Paragraph 2 - the rotation: where "
+                        "attention came FROM and went TO, citing the "
+                        "share-vs-4-week numbers from EVIDENCE. "
+                        "Paragraph 3 - positioning and conviction: what "
+                        "the crowd is doing vs merely discussing, where "
+                        "the bulls and bears actually argue. Paragraph "
+                        "4 - what is notably ABSENT or quiet vs its own "
+                        "history, and why that matters",
+        "talk_of_the_town": "2 paragraphs (150-200 words): the specific "
+                            "topics, threads and running jokes the crowd "
+                            "keeps returning to - concrete, not generic; "
+                            "name the recurring arguments and who is "
+                            "winning them",
         "mood_gauge": "object {score: 0-100 int (0 fear, 100 greed), "
-                      "why: <=25 words}",
-        "theme_briefs": "list of <=5 objects {theme, brief:<=40 words} "
-                        "for the loudest themes - tone, framing, dissent",
-        "rally_watch": "list of <=3 objects {target, verdict: one of "
-                       "'clear rallying detected'|'early signs, watch'|"
-                       "'no rallying detected', why:<=60 words, "
-                       "example: a PARAPHRASE prefixed 'paraphrase - '} "
-                       "- mobilising/recruiting language, coordinated "
-                       "framing, evangelical tone",
-        "catalyst_watch": "list of <=4 objects {event, themes[], "
-                          "chatter:<=25 words} - events the crowd "
-                          "positions for",
-        "divergences": "list of <=3 objects {name, story:<=35 words} - "
-                       "where the crowd's story disagrees with the "
-                       "measured numbers in EVIDENCE",
+                      "why: 40-60 words - the two or three observations "
+                      "that set the score, with the strongest "
+                      "counter-signal acknowledged}",
+        "theme_briefs": "list of 6-8 objects {theme, brief: 70-100 "
+                        "words} for the loudest themes - the tone, the "
+                        "dominant framing, the actual ARGUMENTS being "
+                        "made (paraphrased), where the dissent is and "
+                        "how serious it sounds, and any change from the "
+                        "4-week baseline in EVIDENCE",
     }
     return (f"EVIDENCE (the only numbers you may cite):\n"
             f"{json.dumps(ev, indent=1)}\n\n"
             f"FRESH POSTS (a sample of the newest raw crowd text, "
             f"theme-tagged):\n{json.dumps(posts, indent=0)}\n\n"
-            f"Write the pulse. Return ONE JSON object with exactly "
-            f"these keys:\n{json.dumps(seg, indent=1)}")
+            f"Write the market read, at full depth. Return ONE JSON "
+            f"object with exactly these keys:\n{json.dumps(seg, indent=1)}")
+
+
+def _watch_prompt(ev: dict, posts: list[dict]) -> str:
+    """Call 2 - the watchlists, at forensic length."""
+    seg = {
+        "rally_watch": "list of 3-5 objects {target, verdict: one of "
+                       "'clear rallying detected'|'early signs, watch'|"
+                       "'no rallying detected', why: 80-120 words - the "
+                       "specific EVIDENCE OF MOBILISATION you saw: "
+                       "recruiting language, coordinated timing, "
+                       "identical talking points, evangelical tone, how "
+                       "objections are handled; be forensic, "
+                       "example: a PARAPHRASE prefixed 'paraphrase - '}",
+        "catalyst_watch": "list of 4-6 objects {event, themes[], "
+                          "chatter: 30-50 words - how the crowd is "
+                          "positioning for it, which side is louder, "
+                          "and any date they cite}",
+        "divergences": "list of 3-5 objects {name, story: 50-70 words - "
+                       "what the crowd SAYS vs what the measured "
+                       "numbers in EVIDENCE show, and which one has "
+                       "been right lately}",
+    }
+    return (f"EVIDENCE (the only numbers you may cite):\n"
+            f"{json.dumps(ev, indent=1)}\n\n"
+            f"FRESH POSTS:\n{json.dumps(posts, indent=0)}\n\n"
+            f"Write the watchlists, at full depth. Return ONE JSON "
+            f"object with exactly these keys:\n{json.dumps(seg, indent=1)}")
 
 
 _AGENTIC_SYSTEM = _PULSE_SYSTEM
@@ -242,14 +281,26 @@ def generate(log=print) -> tuple[bool, str]:
         return False, f"LLM unavailable: {ai.explain_unavailable()}"
     posts = _fresh_posts()
     log(f"AI PULSE: {len(posts)} fresh posts, model {ai.MODEL}, "
-        "generating (2 calls)")
+        "generating (3 calls)")
     try:
-        pulse = ai.chat(_pulse_prompt(ev, posts), system=_PULSE_SYSTEM,
-                        want_json=True, max_tokens=2200)
+        log("AI PULSE: call 1/3 - the market read (pulse, mood, "
+            "theme deep-dives)")
+        pulse = ai.chat(_market_prompt(ev, posts),
+                        system=_PULSE_SYSTEM,
+                        want_json=True, max_tokens=3600)
+        log("AI PULSE: call 1/3 done")
+        log("AI PULSE: call 2/3 - the watchlists (rallying, "
+            "catalysts, divergences)")
+        watch = ai.chat(_watch_prompt(ev, posts),
+                        system=_PULSE_SYSTEM,
+                        want_json=True, max_tokens=3000)
+        log("AI PULSE: call 2/3 done")
         from src.agentic_watch import recent_samples
+        log("AI PULSE: call 3/3 - the agentic digest")
         agentic = ai.chat(
             _agentic_prompt(ev, recent_samples(per_cat=8)),
             system=_AGENTIC_SYSTEM, want_json=True, max_tokens=900)
+        log("AI PULSE: call 3/3 done")
     except (RuntimeError, ValueError) as e:
         return False, f"generation failed: {e}"
     doc = {
@@ -261,6 +312,7 @@ def generate(log=print) -> tuple[bool, str]:
         "evidence": ev,
     }
     doc.update(pulse if isinstance(pulse, dict) else {})
+    doc.update(watch if isinstance(watch, dict) else {})
     doc["agentic"] = agentic if isinstance(agentic, dict) else {}
     json.dump(doc, open(OUT_PATH, "w", encoding="utf-8"), indent=1)
     log(f"AI PULSE: saved -> {os.path.relpath(OUT_PATH, ROOT)}")
