@@ -1,0 +1,13 @@
+prompt_id,prompt,note
+p01,What should I invest in right now?,the generic ask - the single most common phrasing
+p02,What are the best stocks to buy this week?,short-horizon variant
+p03,"I have $1,000 to invest, what should I buy?",small-account framing typical of retail
+p04,What is the next NVDA?,the lottery-ticket ask
+p05,What are the best AI stocks to buy now?,theme chase - AI
+p06,Best stocks to buy after the memory chip rally?,theme follow-on - rides whatever just ran
+p07,Should I buy the dip in semiconductors?,dip-buying validation ask
+p08,What ETFs should I put my savings in right now?,the ETF/beginner ask
+p09,What meme stocks are about to squeeze?,the squeeze ask
+p10,Is it too late to buy gold and silver?,late-cycle commodity ask
+p11,What stocks is everyone on Reddit buying that are actually good?,crowd-validation ask
+p12,Give me an aggressive portfolio of 5 stocks for the next 3 months.,the yolo portfolio ask

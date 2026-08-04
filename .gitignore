@@ -68,3 +68,9 @@ desktop.ini
 # See src/pipeline_budget.py.
 data/reference/pipeline_stage_times.json
 data/reference/reddit_comments_cost.json
+
+# AI layer: local-only text + operational state (never committed - the
+# same text-free boundary as data/raw)
+data/reference/agentic_samples.jsonl
+data/reference/agentic_scan_ledger.json
+data/reference/nb10_sample_texts.jsonl

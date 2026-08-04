@@ -1,5 +1,7 @@
 # retailAPOLLO — the retail EUPHORIA detector (calling tops)
 
+> **Maintaining this project?** Start with [`POST_INTERN_HANDOVER.md`](POST_INTERN_HANDOVER.md) — every editable config, the operating cadence, the AI keyword-audit workflow, and the pending items.
+
 **THE AIM (re-set July 2026): detect retail euphoria and use it to call
 price TOPS.** retailAPOLLO measures retail attention and sentiment for
 **themes, hot single names and retail commodities** across **17 finance
@@ -149,7 +151,7 @@ tradeable themes, each anchored to a liquid instrument), `sentiment.py`
 | `analytics/euphoria_phases.py` | *(new, July 2026)* | the **phases study**: episode ground truth (trough→peak→bust), the onset feature bank, the walk-forward tournament machinery, and the LIVE onset detector (winner: rules) feeding the dashboard's Start/End radar |
 | `analytics/influence_ml.py` | *(new, July 2026)* | the influential-users MODEL (thesis ch. 6 port): can HIGH-tier authors be identified from behaviour + graph position alone? MLP / LabelProp / GraphSAGE-lite vs random, run by notebook 05 on the live store |
 
-**Research notebooks (`notebooks/00–08`)** are the study's methods +
+**Research notebooks (`notebooks/00–10`)** are the study's methods +
 findings record (set reorganised 2026-07-31): **00** the
 presentation-grade method walkthrough (raw post → clean → features →
 thresholds → GET IN/GET OUT flag, one worked example); **01–03** the
@@ -179,7 +181,23 @@ score, both judged against the incumbent through the same walk-forward
 (verdict: neither beats the frozen flags, the phase clock wins as the
 DISPLAYED state — co-firing 28 days → 0, fast flips 69 → 0 — and the
 dashboard hover now leads with its QUIET / BUILDING / BLOW-OFF /
-TOPPING / COOLING reading). They import the SAME modules the pipeline
+TOPPING / COOLING reading); **09** the agentic watch — the desk's "what
+are retail traders prompting AI / what is it auto-trading for them, and
+does that link to our signals?" brief: the four-category
+AI-trading-chatter counter (`src/agentic_watch.py`) evidenced end to
+end, an analyst-paraphrased digest of the asks and answers, and the
+link tests against the flags, the episodes and the euphoria level
+(verdict: the measurement ships; every link test is null or untestable
+on ~4 dense archive months — no lead, said loudly — with signal-layer
+use gated on ≥2 years of coverage plus the walk-forward protocol);
+**10** the AI-sentiment tournament — "can the AI give a more accurate
+sentiment analysis than our pipeline?": finVADER (the production
+engine, scored) vs FinBERT and the firm LLM (cache-aware, PENDING off
+the desk machine) on a 1,465-post stratified sample under pre-stated
+adopt/keep criteria judged by forward anchor-ETF returns (verdict: keep
+the lexicon pending the desk-machine run; a swap would touch e2, the
+fade trigger, bull_inflection, conviction and the BUY/SELL gate, so it
+is a re-validation event, not a config change). They import the SAME modules the pipeline
 runs (a drift-guard assert enforces it) and re-execute end-to-end from
 current data:
 `jupyter nbconvert --to notebook --execute --inplace notebooks/*.ipynb`

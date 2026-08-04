@@ -1,0 +1,60 @@
+{
+ "as_of": "2026-08-04T02:47:58",
+ "criteria": {
+  "materiality_min_disagreement": 0.15,
+  "accuracy": "IC diff CI90 excludes 0 on >=1 of fwd5/fwd20, non-negative on the other (date-cluster bootstrap)",
+  "judge": "forward anchor-ETF returns (proxy judge - limits stated in section 1)"
+ },
+ "sample": {
+  "n_posts": 1465,
+  "n_themes": 32,
+  "n_dates": 84,
+  "eras": {
+   "2021": 164,
+   "2026": 1301
+  },
+  "sarcasm_oversample_share": 0.18,
+  "meta_path": "docs/research/nb10_sample.parquet (text-free)",
+  "texts_path": "data/reference/nb10_sample_texts.jsonl (LOCAL-ONLY)"
+ },
+ "engines": {
+  "finvader": {
+   "status": "scored (production path)",
+   "engine_name": "finvader+wsb"
+  },
+  "finbert": {
+   "status": "PENDING (CalledProcessError)",
+   "cache": "nb10_scores_finbert.parquet"
+  },
+  "llm": {
+   "status": "PENDING (gateway unavailable)",
+   "cache": "nb10_scores_llm.parquet",
+   "batch": 25,
+   "est_calls": 59
+  }
+ },
+ "judge": {
+  "n_cells": 271,
+  "ic_table": [
+   {
+    "engine": "finvader",
+    "horizon": "fwd5",
+    "IC": 0.0732,
+    "ci90_lo": -0.0415,
+    "ci90_hi": 0.1619,
+    "n_cells": 271
+   },
+   {
+    "engine": "finvader",
+    "horizon": "fwd20",
+    "IC": 0.1081,
+    "ci90_lo": 0.0034,
+    "ci90_hi": 0.2158,
+    "n_cells": 238
+   }
+  ],
+  "ic_diffs": "PENDING - single engine",
+  "disagreement_rates": "PENDING - single engine"
+ },
+ "verdict": "keep-lexicon pending desk-machine run; adopt rules pre-stated in section 7"
+}

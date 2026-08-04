@@ -606,6 +606,61 @@ def main():
     elif not internal and not live:
         log("backtest view: nothing rebuilt, nothing published", fh)
 
+    # ---- 5b. AI LAYER (desk instruction 2026-08-02: "when i
+    #          update_data it also does the updating of the AI pulse").
+    #          Two parts, both non-fatal by design:
+    #          * the AGENTIC SCAN - pure python over any new raw
+    #            archives (incremental via its ledger; seconds when
+    #            nothing is new), no gateway needed;
+    #          * the AI PULSE - the LLM's qualitative read, via the
+    #            Apollo gateway (src/ai.py). Off the VPN it skips with
+    #            the reason logged and the dashboard keeps the last
+    #            pulse; the pipeline NEVER fails on the AI stage.
+    if not dry:
+        try:
+            from src.agentic_watch import scan as _agentic_scan
+            _agentic_scan(log=lambda m: log(m, fh))
+        except Exception as e:                           # noqa: BLE001
+            log(f"  agentic scan skipped: {type(e).__name__}: {e}", fh)
+        try:
+            from analytics.ai_poll import run as _run_poll
+            _ok, _msg = _run_poll(log=lambda m: log(m, fh))
+            if not _ok:
+                log(f"AI POLL: skipped - {_msg}", fh)
+        except Exception as e:                           # noqa: BLE001
+            log(f"AI POLL: skipped - {type(e).__name__}: {e}", fh)
+        try:
+            from analytics.ai_pulse import generate as _gen_pulse
+            _ok, _msg = _gen_pulse(log=lambda m: log(m, fh))
+            if not _ok:
+                log(f"AI PULSE: skipped - {_msg}", fh)
+        except Exception as e:                           # noqa: BLE001
+            log(f"AI PULSE: skipped - {type(e).__name__}: {e}", fh)
+        # the keyword-map auditor, WEEKLY (desk question 2026-08-04
+        # "does it run every once in a while?" - it does now): if the
+        # newest suggestions file is older than 7 days and the gateway
+        # is up, a fresh audit is written for review. NEVER auto-applied
+        # - apply is a human step (tools/ai_keyword_audit.py --apply).
+        try:
+            import glob as _glob
+            _sugg = sorted(_glob.glob(os.path.join(
+                ROOT, "config", "keyword_suggestions_*.csv")))
+            _age_ok = True
+            if _sugg:
+                _age_ok = (time.time() - os.path.getmtime(_sugg[-1])
+                           > 7 * 86400)
+            if _age_ok:
+                from src import ai as _ai
+                if _ai.available() and not _ai.MOCK:
+                    from tools.ai_keyword_audit import audit as _audit
+                    _p = _audit()
+                    log(f"KEYWORD AUDIT: suggestions -> {_p} "
+                        "(review + approve, then --apply)", fh)
+        except SystemExit:
+            pass
+        except Exception as e:                           # noqa: BLE001
+            log(f"KEYWORD AUDIT: skipped - {type(e).__name__}: {e}", fh)
+
     # ---- 6. SAFETY CHECK the committed data ----
     safe = True
     if not dry:

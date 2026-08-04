@@ -1269,11 +1269,6 @@ if os.path.exists(_rep_path):
 onset = load("euphoria_onset.parquet")
 if onset is not None:
     onset["date"] = pd.to_datetime(onset["date"])
-onset_report = None
-_orep_path = os.path.join(PROCESSED_DIR, "euphoria_onset_report.json")
-if os.path.exists(_orep_path):
-    import json as _json
-    onset_report = _json.load(open(_orep_path))
 
 # the DESK CONFIGURATION store (desk decision 2026-07-24): the GET IN /
 # GET OUT signals the euphoria tabs actually show - boom-gated smoothed
@@ -1313,6 +1308,40 @@ def _live_conviction(sent_mtime):
 
 conv = _live_conviction(_mtime(os.path.join(PROCESSED_DIR,
                                             "daily_theme_sentiment.parquet")))
+
+
+@st.cache_data(show_spinner=False)
+def _ai_pulse_load_cached(mtime):
+    from analytics.ai_pulse import load as _pl
+    return _pl()
+
+
+def _ai_pulse_load():
+    return _ai_pulse_load_cached(
+        _mtime(os.path.join(PROCESSED_DIR, "ai_pulse.json")))
+
+
+@st.cache_data(show_spinner=False)
+def _agentic_load_cached(mtime):
+    from src.agentic_watch import load_series
+    return load_series()
+
+
+def _agentic_load():
+    return _agentic_load_cached(
+        _mtime(os.path.join(PROCESSED_DIR,
+                            "daily_agentic_counts.parquet")))
+
+
+@st.cache_data(show_spinner=False)
+def _ai_poll_load_cached(mtime):
+    from analytics.ai_poll import load_series
+    return load_series()
+
+
+def _ai_poll_load():
+    return _ai_poll_load_cached(
+        _mtime(os.path.join(PROCESSED_DIR, "ai_poll.parquet")))
 
 prices = _read(PRICES_PATH, _mtime(PRICES_PATH)) if os.path.exists(PRICES_PATH) else None
 priced = set(prices["symbol"]) if prices is not None else set()
@@ -1438,6 +1467,9 @@ STAGES = {
                  ["COMMENT PULL", "new comments", "fetch finished"]),
     "influence": ("Updating the influence board (calls, graph, tiers)",
                   ["influence board update", "influence update finished"]),
+    "pulse":    ("AI: agentic scan, the retail-prompt poll and the LLM "
+                 "market pulse (skips politely without the gateway)",
+                 ["agentic scan", "AI POLL:", "AI PULSE:"]),
 }
 # which stages each pipeline actually goes through (in order)
 # "analytics" and "full" plans removed with their buttons (2026-07-31):
@@ -1445,9 +1477,11 @@ STAGES = {
 # full historical rebuild is a shell-only operation on the machine that
 # holds posts.parquet (python update_data.py --full).
 PLANS = {
-    "live":      ["fetch", "store", "coverage", "analyse", "prices", "wrapup"],
-    "window":    ["prices", "coverage", "analyse", "wrapup"],
+    "live":      ["fetch", "store", "coverage", "analyse", "prices",
+                  "pulse", "wrapup"],
+    "window":    ["prices", "coverage", "analyse", "pulse", "wrapup"],
     "comments":  ["comments", "influence"],
+    "pulse":     ["pulse"],
 }
 
 
@@ -1645,8 +1679,17 @@ if euph is not None and len(euph):
     _e_now = int((_latest["level"] >= 70).sum())
     _hot = _latest.sort_values("level", ascending=False).iloc[0]
     _hottest = f"{_hot['name']} ({_hot['level']:.0f})"
-    _ew = clip_window(euph, "date", lo, hi)
-    _alerts_w = int(_ew["alert"].sum())
+    # the DESK flags - the ones every chart draws (review 2026-08-02
+    # #8: this metric counted the retired level-detector's alerts, so
+    # the headline could not be reconciled with the tabs).  Falls back
+    # to the level alerts only when no desk store exists.
+    if desk is not None and len(desk):
+        _dw = clip_window(desk, "date", lo, hi)
+        _alerts_w = int(_dw["get_out"].astype(bool).sum()
+                        + _dw["get_in"].astype(bool).sum())
+    else:
+        _ew = clip_window(euph, "date", lo, hi)
+        _alerts_w = int(_ew["alert"].sum())
 _m1.metric("euphoria alerts in window", _alerts_w)
 _m2.metric("instruments at level 70+", _e_now)
 _m3.metric("hottest right now", _hottest)
@@ -1695,7 +1738,7 @@ _m5.metric("priced symbols", len(priced))
 # a flick now costs one tab, not nine.
 _TAB_NAMES = ["EUPHORIA: Themes", "EUPHORIA: Singles", "Influence tracker",
               "Overlays: themes", "Top trends", "Emerging trends",
-              "Conviction", "AI Pulse (sample)", "Historical checker"]
+              "Conviction", "AI Pulse", "Historical checker"]
 active_tab = st.radio("view", _TAB_NAMES, horizontal=True,
                       key="active_tab", label_visibility="collapsed")
 
@@ -1871,15 +1914,6 @@ Ground truth peak = local 21d high >= 25% (ETF) / 50% (single) above its
 
 RECENT_D = 21          # display window = the alert cooldown: one episode
 #                        is "current" for one cooldown span
-
-def _last_alerts(df, kind, days=RECENT_D):
-    """{name: last alert date} for alerts within the trailing window."""
-    if df is None or not len(df):
-        return {}
-    mx = df["date"].max()
-    sub = df[(df["kind"] == kind) & df["alert"]
-             & (df["date"] > mx - pd.Timedelta(days=days))]
-    return sub.groupby("name")["date"].max().to_dict()
 
 
 def _state_of(name, starting, ending):
@@ -2129,6 +2163,13 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             return None
         px_ = pr.set_index("date")["px_last"]
         px_ = px_[~px_.index.duplicated(keep="last")]
+        # CALENDAR-DAILY series for the 10%-in-7d test - the SAME basis
+        # notebook 04 judges on (pxd = asfreq("D").ffill() there).  The
+        # 5/20/84 forward changes below stay on TRADING-day rows on
+        # purpose (they are labelled "td"); the weekly-move test was
+        # silently running on trading rows (~11 calendar days) and
+        # overstating hits vs the record - aligned 2026-07-31.
+        pxc = px_.asfreq("D").ffill()
         co_, ct_ = coherent.get(name, ([], []))
         if win_lo is not None:
             co_ = [d for d in co_
@@ -2138,9 +2179,9 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         out = {}
         for side_, alerts_ in (("out", ct_), ("in", co_)):
             sgn = -1.0 if side_ == "out" else 1.0
-            fwd_ext = (px_.rolling(8).min() if side_ == "out"
-                       else px_.rolling(8).max()).shift(-7)
-            week_move = (fwd_ext / px_ - 1) * sgn >= 0.10
+            fwd_ext = (pxc.rolling(8).min() if side_ == "out"
+                       else pxc.rolling(8).max()).shift(-7)
+            week_move = (fwd_ext / pxc - 1) * sgn >= 0.10
             chg, waits, hits, judged = {5: [], 20: [], 84: []}, [], 0, 0
             for a in alerts_:
                 pos = px_.index.searchsorted(pd.Timestamp(a))
@@ -2152,7 +2193,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                         chg[h].append(float(px_.iloc[pos + h]) / p0 - 1)
                 # the 10%-in-7d move: judgeable only with 30d of alert +
                 # 7d of measurement window after it
-                if px_.index[-1] < (pd.Timestamp(a)
+                if pxc.index[-1] < (pd.Timestamp(a)
                                     + pd.Timedelta(days=37)):
                     continue
                 judged += 1
@@ -2342,12 +2383,12 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             full = prices[prices["symbol"] == sym].sort_values("date")
             pxa = full.set_index("date")["px_last"].asfreq("D").ffill()
             # THE SAME WINDOW THE LIVE GATE USES, read from the constant.
-            low120 = pxa.rolling(EUPHORIA_BOOM_WINDOW_D,
+            low_w = pxa.rolling(EUPHORIA_BOOM_WINDOW_D,
                                  min_periods=EUPHORIA_BOOM_WINDOW_MIN_D
                                  ).min()
             bm = (EUPHORIA_BOOM_MIN_SINGLE if kind == "single"
                   else EUPHORIA_BOOM_MIN_ETF)
-            run_up = (pxa / low120 - 1)
+            run_up = (pxa / low_w - 1)
             boom_prog = (run_up / bm).reindex(one_i.index)
             boom = (run_up >= bm).reindex(one_i.index).eq(True)
             danger_days = one_i["hype_ok"].astype(bool) & boom
@@ -2398,7 +2439,9 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
 
         _z = gauge_zones()
         _lvl_ok = lvl.dropna()
-        _have_dial = _z.get("red_edge") is not None and len(_lvl_ok) > 0
+        _have_dial = (_z.get("red_edge") is not None
+                      and _z.get("amber_edge") is not None
+                      and len(_lvl_ok) > 0)
 
         # resolve the tab's MASTER day against this name's own level curve
         # (nearest at or before, never forward - see the master dial above).
@@ -2407,8 +2450,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         if _have_dial and len(_lvl_ok) > 1 and master_day is not None:
             _p = int(_lvl_ok.index.get_indexer(
                 [pd.Timestamp(master_day).normalize()], method="ffill")[0])
-            if _p >= 0:
-                _pos = _p
+            # a slider day BEFORE this name's first reading has no
+            # at-or-before neighbour (-1); clamp to the FIRST reading and
+            # say so via the as-of tag, never silently show the latest
+            _pos = _p if _p >= 0 else 0
             if _pos != len(_lvl_ok) - 1:
                 _as_of_click = _lvl_ok.index[_pos]
 
@@ -2512,12 +2557,16 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
 
         def _disp_state(_day):
             _day = pd.Timestamp(_day)
+            # STRICT <, ages 0-20 (review 2026-08-02 #2: at exactly 21
+            # days the banner said "no live signal" while this said "EXIT
+            # WINDOW ... owns the state" - the badge, the coherence engine
+            # and this resolver now share one boundary).
             _lo_ = [pd.Timestamp(x) for x in _ct_all
                     if 0 <= (_day - pd.Timestamp(x)).days
-                    <= EUPHORIA_COOLDOWN_DAYS_DISP]
+                    < EUPHORIA_COOLDOWN_DAYS_DISP]
             _li_ = [pd.Timestamp(x) for x in _co_all
                     if 0 <= (_day - pd.Timestamp(x)).days
-                    <= EUPHORIA_COOLDOWN_DAYS_DISP]
+                    < EUPHORIA_COOLDOWN_DAYS_DISP]
             _last_o = max(_lo_) if _lo_ else None
             _last_i = max(_li_) if _li_ else None
             if _last_o is not None and (_last_i is None
@@ -2538,7 +2587,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         _ph_now = None
         if _have_dial:
             _d_now = _lvl_ok.index[_pos]
-            _ph_now = _disp_state(_d_now) or _phase_of(
+            _ph_now = (("UNTRACKED", INK_MUTED, "")
+                       if (use_desk and (dk_i is None or not len(dk_i))
+                           and _on_mean is None)
+                       else None) or _disp_state(_d_now) or _phase_of(
                 _L_ser.get(_d_now, float("nan")),
                 _on_mean.get(_d_now, float("nan"))
                 if _on_mean is not None else None)
@@ -2625,6 +2677,14 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                         ("out", "GET OUT", BEAR, "fall"),
                         ("in", "GET IN", TEAL, "rally")):
                     _r = (_rec or {}).get(_sd)
+                    if _rec is None:
+                        # no price series at all - saying "no signals"
+                        # beside drawn flags would be false (review
+                        # 2026-08-02 #7)
+                        _rows.append((f"{_lab2} record",
+                                      "no price data to judge signals",
+                                      None))
+                        continue
                     if not _r or not _r["n"]:
                         _rows.append((f"{_lab2} record",
                                       "no signals in this window",
@@ -2654,7 +2714,9 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                          "**median px after 5/20/84 td**: the median price "
                          "change 5, 20 and 84 TRADING days after each "
                          "signal (a week / a month / the project's "
-                         "baseline window). **median wait**: days from "
+                         "baseline window; a horizon's median may rest on fewer "
+                         "than n signals when the newest are too recent "
+                         "to measure). **median wait**: days from "
                          "the signal to the start of a ≥10%-in-7-days "
                          "move within 30 days - a FALL after GET OUT, a "
                          "RALLY after GET IN; the same 10%-in-7d test "
@@ -2701,7 +2763,14 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                       .reindex(lvl.index) / float(_thr) * 100.0)
                 if _s.notna().any():
                     _ready.append((_lab, _s))
-        if not _ready and thr_now:
+        # A name the desk store does not COVER must not inherit the
+        # level fallback (review 2026-08-02 #1: europe_defense rendered
+        # "+107% of trigger · could fire today" from the retired level
+        # threshold while its factor lines divided by the desk trigger -
+        # two arithmetics in one panel).  The fallback exists for a
+        # machine with NO desk store at all, nothing else.
+        _no_desk = use_desk and (dk_i is None or not len(dk_i))
+        if not _ready and thr_now and not use_desk:
             # FALLBACK: with no desk store the euphoria level really is
             # the decider, so the identical construction applies to it.
             _ready.append(("SIGNAL", lvl / float(thr_now) * 100.0))
@@ -2808,10 +2877,14 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
 
         def _fline(v, label, thr):
             """one factor row: box, value, plain-English name, and its
-            share of the trigger (value/5 of the raw score)."""
+            share of the trigger (value/5 of the raw score).  With no
+            frozen trigger on disk the share clause is OMITTED, never
+            printed as a false 0% (review 2026-08-02 #6)."""
             if pd.isna(v):
                 return f"▱▱▱▱▱ n/a · {label}"
-            _c = float(v) / (5.0 * float(thr)) * 100.0 if thr else 0.0
+            if not thr:
+                return f"{_fbar(v)} {float(v):.2f} · {label}"
+            _c = float(v) / (5.0 * float(thr)) * 100.0
             return (f"{_fbar(v)} {float(v):.2f} · {label} → "
                     f"{_c:.0f}% of trigger")
 
@@ -2836,8 +2909,13 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # rules exactly as before; this chooses only what is DISPLAYED.
         _fired_out_days = {pd.Timestamp(d) for d in top_alerts}
         _fired_in_days = {pd.Timestamp(d) for d in onset_alerts}
-        _hover_txt = []
-        for _i2 in range(len(_idx)):
+        # ONE builder, two consumers (desk request 2026-07-31: "hover and
+        # then see the reasons outside the graph? right now its covering
+        # the price chart"): compact (_full=False) feeds the HOVER - a
+        # three-line glance that no longer buries the price - and full
+        # (_full=True) feeds the WHY panel rendered UNDER the chart.  Same
+        # arithmetic, same wording, so the two can never disagree.
+        def _day_lines(_i2, _full=False):
             _d = _idx[_i2]
             _dl = pd.Timestamp(_d).strftime("%d %b %y")
             _es_i = bool(_es.iloc[_i2])
@@ -2848,9 +2926,18 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             elif _d in _fired_in_days:
                 parts.append(f"<span style='color:{TEAL}'><b>★ GET IN "
                              "FIRED today</b></span>")
-            _ph = _disp_state(_d) or _phase_of(
-                _L_ser.iloc[_i2],
-                _on_mean.iloc[_i2] if _on_mean is not None else None)
+            if _no_desk and _on_mean is None:
+                # outside the detector's universe: the clock would read
+                # "TOPPING - arrivals dying" off a defaulted M=0 two lines
+                # above real factor values (review 2026-08-02) - say the
+                # truth instead.
+                _ph = ("UNTRACKED", INK_MUTED,
+                       "the desk detector does not cover this name (too "
+                       "little crowd data) - no flag can fire here")
+            else:
+                _ph = _disp_state(_d) or _phase_of(
+                    _L_ser.iloc[_i2],
+                    _on_mean.iloc[_i2] if _on_mean is not None else None)
             if _ph is not None:
                 parts.append(
                     f"<span style='color:{_ph[1]}'><b>state: "
@@ -2885,17 +2972,21 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 if pd.notna(_out_s.iloc[_i2]):
                     _head += " · could fire today"
                 parts.append(_head)
-                for (_c2, _), _v2 in zip(_out_bank, _ev):
-                    parts.append(_fline(_v2, PLAIN[_c2], thr_out_d))
-                parts.append(_fline(_fdv, PLAIN["fade"], thr_out_d)
-                             .replace(f"{_fdv:.2f}",
-                                      "yes " if _fdv else "no  "))
-                _raw_o = ([v for v in _ev if pd.notna(v)] + [_fdv])
-                _raw_pct = (sum(_raw_o) / 5.0 / float(thr_out_d) * 100.0
-                            if thr_out_d else 0.0)
-                parts.append(f"today's raw factor sum: {_raw_pct:.0f}% "
-                             "of trigger (bar above = the 7d-smoothed "
-                             "score that actually fires)")
+                if _full:
+                    for (_c2, _), _v2 in zip(_out_bank, _ev):
+                        parts.append(_fline(_v2, PLAIN[_c2], thr_out_d))
+                    parts.append(_fline(_fdv, PLAIN["fade"], thr_out_d)
+                                 .replace(f"{_fdv:.2f}",
+                                          "yes " if _fdv else "no  "))
+                    if thr_out_d:
+                        _raw_o = ([v for v in _ev if pd.notna(v)]
+                                  + [_fdv])
+                        _raw_pct = (sum(_raw_o) / 5.0
+                                    / float(thr_out_d) * 100.0)
+                        parts.append(f"today's raw factor sum: "
+                                     f"{_raw_pct:.0f}% of trigger (bar "
+                                     "above = the 7d-smoothed score "
+                                     "that actually fires)")
                 _g = []
                 _e1v = _ev[0]
                 if pd.notna(_e1v):
@@ -2943,9 +3034,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 if pd.notna(_in_s.iloc[_i2]) and not _es_i:
                     _head += " · could fire today"
                 parts.append(_head)
-                for _c2, _s2 in _in_bank:
-                    parts.append(_fline(_s2.iloc[_i2], PLAIN[_c2],
-                                        thr_in_d))
+                if _full:
+                    for _c2, _s2 in _in_bank:
+                        parts.append(_fline(_s2.iloc[_i2], PLAIN[_c2],
+                                            thr_in_d))
                 _hyp = _h_on["hype_raw"].iloc[_i2]
                 _g = []
                 if pd.notna(_hyp):
@@ -3001,7 +3093,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     f"<span style='color:{INK_MUTED}'>{_lead} - "
                     f"{_o_txt} · GET IN {-_i_v:+.0f}% of their "
                     "triggers</span>")
-            _hover_txt.append("<br>".join(parts))
+            return parts
+
+        _hover_txt = ["<br>".join(_day_lines(_j))
+                      for _j in range(len(_idx))]
 
         # ---- ONE PANEL: THE PRICE (desk brief 2026-07-31: "remove the
         # euphoria chart below the price chart").  Everything the lower
@@ -3139,6 +3234,30 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                          type="log" if _log_scale else "linear")
         _axes_fidelity(_theme(fig))
         st.plotly_chart(fig, width="stretch", key=key)
+        # ---- THE FULL REASONS, OUTSIDE THE CHART (desk request
+        # 2026-07-31).  Streamlit surfaces no hover events, so the panel
+        # follows the tab's master "read every dial on" slider - the
+        # control every dial already obeys - and renders the complete
+        # factor/gate evidence UNDER the chart where it covers nothing.
+        if _have_dial:
+            _d_now2 = _lvl_ok.index[_pos]
+            try:
+                _jp = int(_idx.get_loc(_d_now2))
+            except KeyError:
+                _jp = len(_idx) - 1
+            with st.container(border=True):
+                st.markdown(
+                    f"<span style='font-size:12px;font-weight:600;"
+                    f"color:{INK_MUTED};letter-spacing:.05em'>WHY - "
+                    "the full evidence for "
+                    + pd.Timestamp(_idx[_jp]).strftime("%d %b %y")
+                    + "</span><br>"
+                    + "<br>".join(_day_lines(_jp, _full=True)[1:]),
+                    unsafe_allow_html=True)
+                st.caption("Follows the \"read every dial on\" slider "
+                           "at the top of the tab - drag it to read any "
+                           "day's full evidence. The chart hover shows "
+                           "the same state in brief.")
         st.markdown(
             f"<span style='font-size:11px;color:{INK_MUTED}'>"
             "how to read this chart</span>",
@@ -5031,7 +5150,11 @@ if active_tab == "Conviction":
         cv = cv[cv["theme"].isin(THEME_ETFS)]     # tradeable universe only
         wide_cz = (cv.pivot_table(index="date", columns="theme",
                                   values="conviction_z")
-                   .asfreq("D").ffill(limit=7))
+                   .asfreq("D").ffill(limit=7)) if len(cv) else pd.DataFrame()
+        if not len(wide_cz):
+            st.info("no conviction data in the selected window - widen "
+                    "the window in the sidebar")
+            st.stop()
         ew_last = wide_cz.ewm(halflife=ew_hl, min_periods=5).mean().iloc[-1]
         flat_30 = wide_cz.tail(30).mean()
         recent = pd.DataFrame({
@@ -5146,45 +5269,221 @@ PULSE_IDEAS = """**Other things the LLM layer can extract from the live posts**
 - **Pump/scam radar** - coordinated-promotion patterns on small names,
   flagged before their counts pollute the mention data."""
 
-if active_tab == "AI Pulse (sample)":
-    st.subheader("AI market pulse - what an LLM will write from the live posts")
-    st.warning("PREVIEW: the text sections below are HAND-WRITTEN SAMPLES, "
-               "not generated from your data. They show the format the "
-               "future LLM layer will fill in at every live pull.")
+# ---- AI PULSE (LLM-written, via the Apollo gateway) ----
+if active_tab == "AI Pulse":
+    st.subheader("AI - the pulse, the advice, and the chatter")
+    st.markdown("## A - AI market pulse: what the posts are saying")
+    st.caption("The LLM's qualitative summary of the live posts - the numbers come from the stores, the words from the model.")
+    _pulse = _ai_pulse_load()
+    _pulse_real = _pulse is not None and not _pulse.get("mock")
+    _c1, _c2 = st.columns([3, 1])
+    with _c2:
+        if st.button("generate pulse now", disabled=_pipe_running,
+                     help="Runs analytics/ai_pulse.py: builds the "
+                          "evidence pack from today's aggregates, hands "
+                          "the freshest raw posts to the firm LLM "
+                          "(Apollo gateway - needs the VPN), and saves "
+                          "the pulse this page renders. ~20-30s. Also "
+                          "runs automatically at the end of every "
+                          "update."):
+            start_pipeline([(["-m", "analytics.ai_pulse"], None)],
+                           "AI pulse", plan="pulse")
+    with _c1:
+        if _pulse_real:
+            st.caption(f"generated {_pulse.get('generated_at')} · model "
+                       f"{_pulse.get('model')} · data through "
+                       f"{_pulse.get('as_of')} - every number the text "
+                       "cites is in the evidence pack below")
+        elif _pulse is not None:
+            st.warning("This pulse was generated in MOCK mode (no "
+                       "Apollo gateway) - placeholders only. Generate "
+                       "on the desk machine (VPN + dimsum_lite) for "
+                       "the real read.")
+        else:
+            st.warning("No pulse generated yet - the sections below are "
+                       "HAND-WRITTEN SAMPLES showing the format. Run an "
+                       "update (or the button here) on the desk machine "
+                       "to fill them from your data.")
 
-    st.markdown("### 1 - What the forums are talking about")
-    st.info(PULSE_TALK_SAMPLE)
+    if _pulse_real:
+        _mg = _pulse.get("mood_gauge") or {}
+        _mc1, _mc2 = st.columns([1, 3])
+        with _mc1:
+            st.metric("retail mood gauge",
+                      f"{_mg.get('score', '-')}/100")
+        with _mc2:
+            st.caption("0 = fear, 100 = greed. " + str(_mg.get("why", "")))
 
-    st.markdown("### 2 - The market in one paragraph")
-    st.info(PULSE_MARKET_SAMPLE)
+        st.markdown("### 1 - What the forums are talking about")
+        st.info(_pulse.get("talk_of_the_town") or "(empty)")
+        st.markdown("### 2 - The market in one paragraph")
+        st.info(_pulse.get("market_pulse") or "(empty)")
 
-    st.markdown("### 3 - What retail thinks, segment by segment")
-    cols = st.columns(2)
-    for i, (seg, txt) in enumerate(PULSE_SEGMENTS_SAMPLE.items()):
-        with cols[i % 2]:
-            st.markdown(f"**{seg}**")
-            st.info(txt)
+        _tb = _pulse.get("theme_briefs") or []
+        if _tb:
+            st.markdown("### 3 - What retail thinks, theme by theme")
+            cols = st.columns(2)
+            for i, b in enumerate(_tb):
+                with cols[i % 2]:
+                    _th = b.get("theme", "?")
+                    _lbl = (f"{theme_label(_th)}  "
+                            f"({THEME_ETFS.get(_th, '')})"
+                            if _th in THEME_ETFS else _th)
+                    st.markdown(f"**{_lbl}**")
+                    st.info(b.get("brief", ""))
 
-    st.markdown("### 4 - Rallying watch")
-    st.caption("The LLM reads the posts for MOBILISING language - "
-               "recruiting, coordinated timing, evangelical tone, "
-               "identical talking points from young accounts - and reports "
-               "what is being rallied, how convincingly, and why it "
-               "concluded that. Verdicts are words, not scores.")
-    for r in PULSE_RALLY_SAMPLE:
-        icon = ("[!]" if "clear" in r["verdict"]
-                else "[~]" if "early" in r["verdict"] else "[ ]")
-        with st.expander(f"{icon}  {r['target']} - {r['verdict']}"):
-            st.markdown(r["why"])
-            if r.get("example"):
-                st.markdown(f"> {r['example']}")
+        _rw = _pulse.get("rally_watch") or []
+        st.markdown("### 4 - Rallying watch")
+        st.caption("Mobilising language - recruiting, coordinated "
+                   "timing, evangelical tone. Verdicts are words, not "
+                   "scores; examples are PARAPHRASES, never quotes.")
+        if not _rw:
+            st.info("no rallying detected in the current sample")
+        for r in _rw:
+            _v = str(r.get("verdict", ""))
+            icon = ("[!]" if "clear" in _v
+                    else "[~]" if "early" in _v else "[ ]")
+            with st.expander(f"{icon}  {r.get('target', '?')} - {_v}"):
+                st.markdown(str(r.get("why", "")))
+                if r.get("example"):
+                    st.markdown(f"> {r['example']}")
+
+        _cw = _pulse.get("catalyst_watch") or []
+        _dv = _pulse.get("divergences") or []
+        if _cw or _dv:
+            _k1, _k2 = st.columns(2)
+            with _k1:
+                st.markdown("### 5 - Catalyst watch")
+                for c in _cw:
+                    st.markdown(f"- **{c.get('event', '?')}** "
+                                f"({', '.join(c.get('themes', []))}) - "
+                                f"{c.get('chatter', '')}")
+                if not _cw:
+                    st.caption("none surfaced")
+            with _k2:
+                st.markdown("### 6 - Story vs numbers (divergences)")
+                for d in _dv:
+                    st.markdown(f"- **{d.get('name', '?')}** - "
+                                f"{d.get('story', '')}")
+                if not _dv:
+                    st.caption("none surfaced")
+
+        with st.expander("the evidence pack this pulse was written from "
+                         "(audit any sentence against these numbers)"):
+            st.json(_pulse.get("evidence") or {})
+    else:
+        # SAMPLES, clearly labelled - the pre-LLM preview, unchanged
+        st.markdown("### 1 - What the forums are talking about")
+        st.info(PULSE_TALK_SAMPLE)
+        st.markdown("### 2 - The market in one paragraph")
+        st.info(PULSE_MARKET_SAMPLE)
+        st.markdown("### 3 - What retail thinks, segment by segment")
+        cols = st.columns(2)
+        for i, (seg, txt) in enumerate(PULSE_SEGMENTS_SAMPLE.items()):
+            with cols[i % 2]:
+                st.markdown(f"**{seg}**")
+                st.info(txt)
+        st.markdown("### 4 - Rallying watch")
+        for r in PULSE_RALLY_SAMPLE:
+            icon = ("[!]" if "clear" in r["verdict"]
+                    else "[~]" if "early" in r["verdict"] else "[ ]")
+            with st.expander(f"{icon}  {r['target']} - {r['verdict']}"):
+                st.markdown(r["why"])
+                if r.get("example"):
+                    st.markdown(f"> {r['example']}")
+
+    st.divider()
+    # ---- 1. THE POLL: what the AI recommends when asked like retail --
+    st.markdown("## B - What the AI is recommending to retail")
+    st.caption("The POLL: at every data refresh the pipeline itself asks the model the questions a retail trader asks (config/ai_poll_prompts.csv - editable) and records every name and theme it recommends - a direct reading of the advice flowing from AI into the crowd. No backfill is possible; the series starts the day you start polling, and its forward test against the flags is pre-registered in notebook 09 \u00a72b.")
+    _pl = _ai_poll_load()
+    _pl = (_pl[~_pl["mock"].astype(bool)]
+           if _pl is not None and "mock" in _pl.columns else _pl)
+    if _pl is None or not len(_pl):
+        st.info("No poll runs yet. The poll runs automatically at the "
+                "end of every update on the desk machine (Apollo "
+                "gateway), asking the retail prompt panel in "
+                "config/ai_poll_prompts.csv - edit that file to change "
+                "the questions. Run one now: "
+                "`python -m analytics.ai_poll`")
+    else:
+        _last_run = _pl["run_date"].max()
+        _today = _pl[_pl["run_date"] == _last_run]
+        _prev_runs = sorted(_pl["run_date"].unique())
+        _prev = (_pl[_pl["run_date"] == _prev_runs[-2]]
+                 if len(_prev_runs) > 1 else None)
+        st.caption(f"latest poll {_last_run.date()} · "
+                   f"{_pl['run_date'].nunique()} run(s) on record · "
+                   f"{_today['prompt_id'].nunique()} prompts answered")
+        _tk = _today[_today["kind"] == "ticker"]
+        _cnt = (_tk.groupby(["name", "direction"]).size()
+                .reset_index(name="prompts"))
+        _cnt = _cnt.sort_values("prompts", ascending=False).head(15)
+        _pc1, _pc2 = st.columns([1.2, 1])
+        with _pc1:
+            st.markdown("**most-recommended names today** (how many of "
+                        f"the {_today['prompt_id'].nunique()} retail "
+                        "prompts surfaced each)")
+            _flagged = set()
+            if desk is not None and len(desk):
+                _dw2 = desk[desk["date"] > desk["date"].max()
+                            - pd.Timedelta(days=21)]
+                _flagged = (set(_dw2[_dw2["get_out"].astype(bool)]
+                                ["name"])
+                            | set(_dw2[_dw2["get_in"].astype(bool)]
+                                  ["name"]))
+            for r in _cnt.itertuples():
+                _mark = ""
+                if r.name in _flagged:
+                    _mark = ("  <span style='color:%s;font-weight:600'>"
+                             "⚑ carries a live flag</span>" % BEAR)
+                _new = (" <span style='color:%s'>· new</span>" % ACCENT
+                        if _prev is not None
+                        and r.name not in set(_prev["name"]) else "")
+                st.markdown(
+                    f"- **{r.name}** ({r.direction}) - {r.prompts} "
+                    f"prompt(s){_new}{_mark}", unsafe_allow_html=True)
+        with _pc2:
+            _th2 = _today[_today["kind"] == "theme"]
+            st.markdown("**themes the AI pushes**")
+            for n, c in (_th2.groupby("name").size()
+                         .sort_values(ascending=False).head(8).items()):
+                st.markdown(f"- {n} ({c})")
+            if _prev is not None:
+                _dropped = (set(_prev[_prev['kind'] == 'ticker']['name'])
+                            - set(_tk['name']))
+                if _dropped:
+                    st.markdown("**dropped since last poll:** "
+                                + ", ".join(sorted(_dropped)[:8]))
+        if _pl["run_date"].nunique() >= 5:
+            _top5 = (_pl[_pl["kind"] == "ticker"].groupby("name").size()
+                     .nlargest(5).index)
+            _ts = (_pl[(_pl["kind"] == "ticker")
+                       & _pl["name"].isin(_top5)]
+                   .groupby(["run_date", "name"]).size()
+                   .unstack(fill_value=0))
+            fig0 = go.Figure()
+            for c in _ts.columns:
+                fig0.add_trace(go.Scatter(x=_ts.index, y=_ts[c],
+                                          mode="lines+markers", name=c))
+            fig0.update_layout(height=280, title=dict(text=""),
+                               margin=dict(l=10, r=10, t=24, b=10),
+                               yaxis_title="prompts recommending it",
+                               legend=dict(orientation="h",
+                                           yanchor="bottom", y=1.0, x=0))
+            _axes_fidelity(_theme(fig0))
+            st.plotly_chart(fig0, width="stretch", key="poll_ts")
+            st.caption("Rotation in the AI's advice. When a name climbs "
+                       "here while its euphoria chart heats up, the "
+                       "crowd and its AI are feeding each other - the "
+                       "herding mechanism notebook 09 \u00a72b tests.")
 
     with st.expander("planned LLM segments (the full roadmap)"):
         st.markdown(PULSE_IDEAS)
-    st.caption("Implementation note: the LLM reads the freshly fetched raw "
-               "posts DURING the live fold (before they are abstracted), "
-               "writes these sections, and only the finished text is stored "
-               "- consistent with the text-free data boundary.")
+    st.caption("The LLM reads the freshly fetched raw posts, writes "
+               "these sections, and only the finished text is stored - "
+               "paraphrases, no verbatim crowd text, no usernames: the "
+               "same text-free boundary as the committed aggregates.")
 
 # ---- HISTORICAL CHECKER ----
 if active_tab == "Historical checker":
@@ -5194,11 +5493,18 @@ if active_tab == "Historical checker":
         "from", (data_max - pd.Timedelta(days=730)).date(), key="h_lo"))
     h_hi = pd.Timestamp(c2.date_input(
         "to", (data_max - pd.Timedelta(days=365)).date(), key="h_hi"))
-    # theme picker shows its anchor ETF right in the label
+    # theme picker shows its anchor ETF right in the label.  Built from
+    # the UNCLIPPED store: this is the "any window" tab, so its theme
+    # list must not depend on the sidebar window (review 2026-08-02 #4 -
+    # an empty sidebar window returned None and crashed the tab).
+    _tc_all = theme_counts[theme_counts["theme"].isin(THEME_ETFS)]
     labels = {}
-    for t in sorted(tc["theme"].unique()):
+    for t in sorted(_tc_all["theme"].unique()):
         a = resolve_anchor(t, priced) or THEME_ETFS.get(t, "no anchor")
         labels[f"{t}  ({a})"] = t
+    if not labels:
+        st.info("no tradeable-theme data on disk yet")
+        st.stop()
     h_lab = st.selectbox("theme (anchor ETF)", list(labels))
     h_theme = labels[h_lab]
     symbol = resolve_anchor(h_theme, priced)

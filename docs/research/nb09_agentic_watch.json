@@ -1,0 +1,148 @@
+{
+ "as_of": "2026-08-04T02:47:38",
+ "store": {
+  "rows": 531,
+  "archive_days": 218,
+  "covered_days": 103,
+  "min_day_posts": 200,
+  "coverage_islands": [
+   [
+    "2021-06-29",
+    "2021-06-30"
+   ],
+   [
+    "2026-01-10",
+    "2026-01-12"
+   ],
+   [
+    "2026-02-25",
+    "2026-02-25"
+   ],
+   [
+    "2026-04-08",
+    "2026-06-30"
+   ],
+   [
+    "2026-07-16",
+    "2026-07-29"
+   ]
+  ],
+  "hits_by_category": {
+   "ask_ai": 458,
+   "auto_trade": 20,
+   "build_bot": 13,
+   "skeptic": 48
+  },
+  "pooled_share_per_10k": {
+   "all categories": 7.038880936342203,
+   "ask_ai only": 5.973181205793196,
+   "all, excl theme=ai": 6.802058773997979,
+   "all, excl ai + ai_megacap": 6.236316941731222
+  },
+  "structural_zero_2021": {
+   "days": 2,
+   "posts": 91265,
+   "hits": 0
+  }
+ },
+ "event_study": {
+  "GET OUT": {
+   "judgeable_flags": 6,
+   "flags": [
+    {
+     "date": "2026-04-28",
+     "name": "semiconductors",
+     "pre": 3.8703434929850027,
+     "post": 9.498863014881552
+    },
+    {
+     "date": "2026-05-19",
+     "name": "semiconductors",
+     "pre": 10.069264333445215,
+     "post": 9.122763367958367
+    },
+    {
+     "date": "2026-05-08",
+     "name": "memory",
+     "pre": 7.589963389588355,
+     "post": 8.222292084834708
+    },
+    {
+     "date": "2026-05-29",
+     "name": "memory",
+     "pre": 8.233629229383764,
+     "post": 8.627514666774934
+    },
+    {
+     "date": "2026-06-20",
+     "name": "memory",
+     "pre": 8.634957185003957,
+     "post": 9.558963255575582
+    },
+    {
+     "date": "2026-05-09",
+     "name": "datacenters",
+     "pre": 7.439499365454466,
+     "post": 9.191826345188431
+    }
+   ],
+   "post_minus_pre_mean": 1.397427623225469,
+   "post_minus_pre_ci90": [
+    0.17650608339975923,
+    2.876158184694266
+   ],
+   "pre_vs_baseline_ci90": [
+    -1.6922495147766607,
+    0.7947801828464158
+   ],
+   "verdict": "NO LEAD (pre-flag CI spans zero); post-flag rise fails leave-one-out - published, not adopted"
+  },
+  "GET IN": {
+   "judgeable_flags": 0,
+   "verdict": "UNTESTABLE - no judgeable flags"
+  }
+ },
+ "episode_prepeak": {
+  "n_peaks": 12,
+  "mean_prepeak_share": 8.13293282094673,
+  "naive_ordinary_share": 5.478972540454983,
+  "naive_gap_ci90": [
+   1.7450109981223274,
+   3.5799424018902073
+  ],
+  "same_regime_control_days": 14,
+  "same_regime_share": 6.6981417308184295,
+  "same_regime_gap_ci90": [
+   0.4855164213665865,
+   2.3605631427188953
+  ],
+  "verdict": "DEGENERATE - pre-peak windows tile the dense window; no genuine control group exists on this history"
+ },
+ "leadlag": {
+  "n_days": 84,
+  "lags_ci_excl_zero_levels": 0,
+  "lags_ci_excl_zero_diff7": 7,
+  "chance_expectation": 4.3,
+  "max_abs_r_by_variant": {
+   "all categories": {
+    "best_lag": 17,
+    "best_r": -0.134
+   },
+   "ask_ai only": {
+    "best_lag": 4,
+    "best_r": 0.114
+   },
+   "all, excl theme=ai": {
+    "best_lag": 15,
+    "best_r": -0.13
+   },
+   "all, excl ai + ai_megacap": {
+    "best_lag": 17,
+    "best_r": -0.114
+   }
+  },
+  "verdict": "NULL - consistent with chance at every lag, every variant"
+ },
+ "llm_digest": "PENDING - desk machine (Apollo gateway)",
+ "ships": "measurement + digest only; signal-layer use gated on >=2y dense coverage + walk-forward protocol"
+}
