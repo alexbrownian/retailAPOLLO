@@ -27,7 +27,8 @@ THE RULES (all documented in config.py, none invented here)
               the founding subs are the frozen CORE tier. One denominator
               step per month is what the 365d percentile normalisation
               absorbs gracefully.
-    audit     every review writes docs/panel_review_latest.md and every
+    audit     every review writes docs/panel_review_latest.md (written on each review; absent until the
+#   first one runs) and every
               ADD is logged in ingestion/subreddit_panel.json (tier,
               date, referral count, measured rates) - the manifest is
               what lets any analysis be re-cut excluding young additions.

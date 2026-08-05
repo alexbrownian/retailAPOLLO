@@ -34,7 +34,7 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(THIS_DIR)
 sys.path.insert(0, PROJECT_ROOT)
 
-from src.themes import THEME_ETFS, THEME_TICKERS  # noqa: E402
+from src.themes import THEME_ETFS  # noqa: E402
 
 OUT_DIR = os.path.join(PROJECT_ROOT, "data", "raw", "StockTwits")
 URL = "https://api.stocktwits.com/api/2/streams/symbol/{sym}.json"

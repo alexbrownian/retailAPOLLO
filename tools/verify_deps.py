@@ -45,7 +45,6 @@ import argparse
 import ast
 import os
 import re
-import sys
 
 SKIP_DIRS = ("_to_delete", ".git", "__pycache__", "node_modules",
              ".ipynb_checkpoints", "_salvaged_originals", "venv", ".venv",
@@ -94,6 +93,72 @@ def _top_level_names(body, ns):
                 _top_level_names(getattr(n, attr, []) or [], ns)
             for h in getattr(n, "handlers", []) or []:
                 _top_level_names(h.body, ns)
+
+
+# Directory prefixes worth checking even when the directory is absent -
+# absence is exactly the failure this catches. Extend the list rather than
+# deriving it, so a deleted folder stays visible to the sweep.
+_CITED_DIRS = ("src", "analytics", "ingestion", "tools", "helper", "docs",
+               "notebooks", "config", "tests")
+
+
+# A citation that already SAYS the file is absent is documentation, not a
+# dangling reference. Without this the sweep punishes exactly the honest
+# behaviour it is meant to encourage - notebook 07 says plainly that
+# a since-removed module does not exist, and that sentence should not
+# read as a defect.
+_KNOWN_ABSENT = ("not in this repo", "does not exist", "no longer",
+                 "is not on disk", "never present", "absent",
+                 "was removed", "not present", "was deleted")
+
+
+def _cited_paths(txt, pkgs=()):
+    """Every repo-relative file path this text mentions, quoted or not.
+
+    Two exclusions, both deliberate:
+      * anything under `data/` - those are RUNTIME artefacts. Whether
+        `data/processed/posts.parquet` exists depends on whether the
+        pipeline has run on this machine, so its absence is never a
+        broken reference and flagging it would train the reader to
+        ignore this check.
+      * any line that already declares the file missing (_KNOWN_ABSENT).
+    """
+    alt = "|".join(sorted((set(_CITED_DIRS) | set(pkgs)) - {"data"}))
+    pat = (r"(?<![\w/.-])((?:%s)/[\w./-]*\.(?:py|json|txt|md|csv|parquet))"
+           % alt)
+    # The marker is looked for in a WINDOW around the citation, not on the
+    # same line. Prose wraps: "removed the same day: the Index & factors
+    # tab, the basket-breadth module, the sp500 theme" puts the verb
+    # two lines above the path, and a same-line-only check would flag the
+    # sentence that is doing exactly the right thing.
+    lines = txt.splitlines()
+    out = set()
+    for i, line in enumerate(lines):
+        window = " ".join(lines[max(0, i - 2):i + 3]).lower()
+        if any(k in window for k in _KNOWN_ABSENT):
+            continue
+        out.update(m.rstrip(".,;:)") for m in re.findall(pat, line))
+    return out
+
+
+def sweep_docs(root):
+    """Cited paths in MARKDOWN. Docs are where operator instructions live,
+    so a dangling path here is a command somebody will run and watch fail -
+    which is precisely how the deleted research-charts command survived in
+    the RUNBOOK."""
+    _py, allf = _walk(root)
+    out = []
+    for rel in sorted(allf):
+        if not rel.endswith(".md") or rel.startswith("_to_delete"):
+            continue
+        try:
+            txt = open(os.path.join(root, rel), encoding="utf-8").read()
+        except OSError:
+            continue
+        for m in _cited_paths(txt):
+            if m not in allf:
+                out.append((rel, m))
+    return out
 
 
 def sweep(root):
@@ -179,10 +244,26 @@ def sweep(root):
                     continue
                 findings["attr"].append((p, f"{alias}.{at}"))
         # ---- 4 ----
-        pkg_alt = "|".join(sorted(pkgs | {"docs"}))
-        for m in set(re.findall(
-                r'["\']((?:%s)/[\w./-]+\.(?:py|json|txt|md|csv))["\']'
-                % pkg_alt, txt)):
+        # WIDENED 2026-08-05, after an audit found FOURTEEN cited paths
+        # that do not exist while this tool reported "Nothing dangles".
+        #
+        # The old pattern had two structural blind spots, and every one of
+        # the fourteen sat in one of them:
+        #   * it only matched inside QUOTED STRING LITERALS, so a path in
+        #     a comment or a docstring was invisible - and that is where
+        #     most cited paths live, because they are instructions to a
+        #     human, not arguments to a function;
+        #   * `pkgs` was derived from directories that EXIST, so a
+        #     reference to a directory that had been deleted (`helper/`,
+        #     cited five times including a RUNBOOK command) could never
+        #     be a prefix it looked for. The one broken directory was the
+        #     one it could not see.
+        #
+        # It now scans the raw text of the file rather than only its
+        # literals, and it knows the directory names that have EVER been
+        # cited rather than only those present. Markdown is swept
+        # separately in `sweep_docs` for the same reason.
+        for m in _cited_paths(txt, pkgs):
             if m not in allf:
                 findings["path"].append((p, m))
         # ---- 5 ----
@@ -294,6 +375,7 @@ def main():
                     help="print nothing; exit 1 if anything dangles")
     a = ap.parse_args()
     f = sweep(a.root)
+    f["path"] += sweep_docs(a.root)          # markdown counts too
     total = sum(len(set(v)) for v in f.values())
     if not a.quiet:
         for k in ("module", "name", "attr", "path", "flag"):
@@ -303,8 +385,10 @@ def main():
                 print(f"  {src}: {what}")
         print(f"\n{total} finding(s).",
               "Checks 1-3 and 5 are AST-based and should be exact; check 4 "
-              "is a regex over string literals and can flag a path that only "
-              "appears in prose - confirm that one before acting."
+              "is a regex over the raw text of every .py AND .md file, so "
+              "it sees comments, docstrings and operator instructions - "
+              "the places cited paths actually live. It can flag a path "
+              "that appears only as prose; confirm before acting."
               if total else "Nothing dangles.")
     return 1 if total else 0
 

@@ -2374,3 +2374,95 @@ class TestCrawlAndBudgetHygiene:
         assert "No priced instrument at all" in src
 
 
+
+
+class TestNothingCanDangle:
+    """The guards that stop this class of error coming back.
+
+    An audit on 2026-08-05 found FOURTEEN cited paths that did not exist -
+    including a RUNBOOK command an operator would run and watch fail -
+    while `tools/verify_deps.py` reported "Nothing dangles". The checker
+    had two structural blind spots: it read only quoted string literals in
+    .py files, and it derived its directory prefixes from directories that
+    EXIST, so a reference to a deleted folder was invisible by
+    construction. Both are fixed; these tests keep them fixed."""
+
+    @staticmethod
+    def _root():
+        from pathlib import Path
+        return Path(__file__).resolve().parents[1]
+
+    def test_no_cited_path_is_missing(self):
+        """The whole point. If this fails, something references a file
+        that is not there - fix the reference or say in the same
+        paragraph that the file is gone."""
+        import subprocess
+        import sys
+        r = subprocess.run([sys.executable, "tools/verify_deps.py"],
+                           cwd=self._root(), capture_output=True, text=True)
+        assert r.returncode == 0, (
+            "verify_deps found dangling references:\n" + r.stdout[-3000:])
+
+    def test_the_checker_still_reads_comments_and_markdown(self):
+        """The blind spots, pinned. A future 'tidy-up' that narrows this
+        back to string literals would silently stop catching anything."""
+        src = (self._root() / "tools" / "verify_deps.py").read_text(
+            encoding="utf-8")
+        assert "def sweep_docs(" in src, "markdown is no longer swept"
+        assert "_CITED_DIRS" in src and '"helper"' in src, (
+            "the prefix list must include directories that DO NOT exist - "
+            "that is the case the old checker could not see")
+        assert "_KNOWN_ABSENT" in src
+
+    def test_every_python_file_parses(self):
+        """A syntax error anywhere is a broken pipeline, and several of
+        these files are only imported on the desk machine."""
+        import ast
+        bad = []
+        for p in self._root().rglob("*.py"):
+            if "_to_delete" in str(p) or ".ipynb_checkpoints" in str(p):
+                continue
+            try:
+                ast.parse(p.read_text(encoding="utf-8"))
+            except SyntaxError as e:
+                bad.append(f"{p.relative_to(self._root())}: {e}")
+        assert not bad, "files will not parse:\n" + "\n".join(bad)
+
+    def test_config_exposes_everything_its_importers_ask_for(self):
+        """`from src.config import (...)` fails at IMPORT time, which on
+        the desk machine means the dashboard does not start at all."""
+        import ast
+        import src.config as C
+        missing = []
+        for p in self._root().rglob("*.py"):
+            if "_to_delete" in str(p):
+                continue
+            try:
+                tree = ast.parse(p.read_text(encoding="utf-8"))
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.ImportFrom)
+                        and node.module == "src.config"):
+                    for a in node.names:
+                        if a.name != "*" and not hasattr(C, a.name):
+                            missing.append(
+                                f"{p.relative_to(self._root())}: {a.name}")
+        assert not missing, ("src/config.py no longer defines:\n"
+                             + "\n".join(missing))
+
+    def test_the_retired_notebooks_folder_is_load_bearing(self):
+        """`docs/research/nb04_final_eval.json` is read live by the
+        dashboard and its ONLY producer is a notebook inside
+        `notebooks/_to_delete_2026-07-31_merged_into_04/`. Deleting that
+        folder as 'obviously retired' orphans a working read - this test
+        is the warning label."""
+        root = self._root()
+        dash = (root / "dashboard.py").read_text(encoding="utf-8")
+        if "nb04_final_eval" not in dash:
+            return                      # the read went away; guard moot
+        retired = root / "notebooks" / "_to_delete_2026-07-31_merged_into_04"
+        assert retired.exists(), (
+            "the dashboard still reads nb04_final_eval.json but the only "
+            "notebook that writes it has been deleted - restore the "
+            "folder or remove the dashboard read")

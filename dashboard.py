@@ -49,8 +49,8 @@ import streamlit as st
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
-from src.config import (ROLL, DERIV_SMOOTH, MIN_TOTAL, CROSS_AT,   # noqa: E402
-                        MIN_GAP, PROCESSED_DIR, PRICES_PATH, REFERENCE_DIR,
+from src.config import (ROLL, MIN_TOTAL, CROSS_AT,               # noqa: E402
+                        MIN_GAP, PROCESSED_DIR, PRICES_PATH,
                         EUPHORIA_HYPE_MULT, EUPHORIA_BOOM_MIN_ETF,
                         EUPHORIA_BOOM_MIN_SINGLE, EUPHORIA_BOOM_WINDOW_D,
                         EUPHORIA_BOOM_WINDOW_MIN_D, EUPHORIA_ONSET_HYPE_MIN,
@@ -59,8 +59,7 @@ from src.config import (ROLL, DERIV_SMOOTH, MIN_TOTAL, CROSS_AT,   # noqa: E402
                         EUPHORIA_CRASH_MIN_ETF, EUPHORIA_CRASH_MIN_SINGLE,
                         EUPHORIA_COOLDOWN_DAYS, EUPHORIA_FA_BUDGET_PER_IY,
                         EUPHORIA_FA_PENALTY,
-                        CONV_EXIT_LEVEL, CONV_EWM_HALFLIFE,
-                        EUPHORIA_EXCLUDED_THEMES)
+                        CONV_EXIT_LEVEL, CONV_EWM_HALFLIFE)
 import src.themes as _themes                                       # noqa: E402
 
 
@@ -162,6 +161,7 @@ from analytics import influence_graph as ig                        # noqa: E402
 from analytics.plain_english import (PLAIN, censor,                # noqa: E402,F401,E501
                                      censor_series, plain,         # noqa: E402,F401,E501
                                      theme_label)                  # noqa: E402,F401,E501
+from analytics.euphoria import resolve_anchor                      # noqa: E402
 from analytics.loaders import (price_series, clip_window,          # noqa: E402
                                THEME_COUNTS, TICKER_COUNTS)
 from analytics.overlays import (mention_share_series,              # noqa: E402
@@ -960,18 +960,10 @@ def _row(rows, **match):
     return {}
 
 
-def resolve_anchor(theme, priced):
-    """A theme's tradeable price line: the primary anchor ETF if priced,
-    else the first priced fallback (a window older than a young ETF can
-    still draw against an established proxy)."""
-    candidates = ([THEME_ETFS[theme]] if THEME_ETFS.get(theme) else [])
-    candidates += THEME_ETF_FALLBACKS.get(theme, [])
-    for sym in candidates:
-        if sym in priced:
-            return sym
-    return None
-
-
+# resolve_anchor lives in analytics.euphoria and is imported below - the
+# dashboard used to carry a character-for-character copy, which is one
+# more place for the fallback rule to drift out of step with the engine
+# that actually scores. Removed 2026-08-05.
 def ranked(df, by, ascending=False):
     """Add a 1-based 'rank' column - the TOP row is always rank 1."""
     out = df.sort_values(by, ascending=ascending).reset_index(drop=True)
@@ -5335,7 +5327,7 @@ if active_tab == "Influence tracker":
                 "(a record, not a prediction), and no influence number "
                 "touches the euphoria signal. Full evidence, plots and "
                 "confidence intervals: `notebooks/"
-                "05_influence_users_model.ipynb`.")
+                "05_influence_users_model.py`.")
             if os.path.exists(_nb05):
                 _v = _read_json(_nb05, _mtime(_nb05))
                 _h, _s = _v.get("headline", {}), _v.get("significance", {})

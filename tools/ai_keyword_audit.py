@@ -15,7 +15,7 @@ The `approved` column ships empty.  You review the file (Excel is
 fine), put YES on the rows you accept, then apply exactly those rows:
 
     python tools/ai_keyword_audit.py            # audit -> suggestions csv
-    python tools/ai_keyword_audit.py --apply config/keyword_suggestions_2026-08-02.csv
+    python tools/ai_keyword_audit.py --apply config/keyword_suggestions_<date>.csv (dated example; not present)
 
 The apply step edits config/theme_keywords.csv (adds/moves/removes),
 prints the diff it made, and never touches a row you did not approve —

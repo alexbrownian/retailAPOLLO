@@ -22,7 +22,7 @@
 # record of what was tried, because the question will be asked again and
 # the measurements are the reason it should not be re-attempted the same
 # way. Nothing described below is live: there is no `sp500` theme, no
-# `momentum_factor` / `growth_factor`, no `analytics/basket_breadth.py`,
+# `momentum_factor` / `growth_factor`, no basket-breadth module (`analytics/basket_breadth.py` was removed),
 # no index-scale ground-truth constants and no Index & factors tab.
 #
 # ---

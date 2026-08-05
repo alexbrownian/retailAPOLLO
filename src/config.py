@@ -205,6 +205,16 @@ EUPHORIA_HYPE_MULT = 2.0        # A1 (Reddit-only): the 7d mention share must
                                 # - not adopted here, for the multiple-
                                 # comparisons reason recorded at
                                 # EUPHORIA_MIN_HISTORY.
+# THE FOUR BUBBLE/BUST SIZES WERE SWEPT 2026-08-05 AND NOTHING MOVED.
+# Eight settings from 1.4x to 0.5x, walk-forward re-run at each. Two
+# results worth knowing before touching any of them: hit rate is
+# maximised by the TIGHTEST bars, purely because `detectable` collapses
+# (115 -> 45) while captures fall too (18 -> 10) - and that same tightest
+# setting is the only one that LOSES gold and GameStop from the ground
+# truth. Improving the ratio and keeping the desk's named episodes are
+# incompatible requests.
+# Full tables, the reasoning and the one row worth revisiting if coverage
+# ever binds (0.6x): docs/PARAMETER_REGISTER.md Class 4a.
 EUPHORIA_BOOM_MIN_ETF = 0.25    # G2: an ETF/theme peak must sit >= 25%
                                 # above its trailing low. Used in TWO places
                                 # with DIFFERENT windows - see the two
@@ -301,6 +311,48 @@ EUPHORIA_BOOM_MIN_SINGLE = 0.50  # single names boom harder before they count
 # The sweep itself lives in notebook 07 section A3b and re-runs from data.
 EUPHORIA_BOOM_WINDOW_D = 54     # LIVE GATE only (boom_state_frame)
 EUPHORIA_BOOM_WINDOW_MIN_D = 27  # min_periods: half the window, as before
+# ---- THE GRADING WINDOWS (the second half of the ground truth) ----
+#
+# Added to config 2026-08-05, desk question: "the comparison to trailing
+# low (how many days now and why)?" The honest answer was that nobody
+# could read it off this file, because these four numbers were typed
+# INSIDE `ground_truth_peaks` and never surfaced. They are the shape of a
+# top - what counts as a peak, how far back the run-up is measured, how
+# long the bust has to arrive in - and they belong here beside the sizes.
+#
+# EUPHORIA_BOOM_LOOKBACK_D = 120 is the one that was actually asked about.
+# It is NOT the same window as EUPHORIA_BOOM_WINDOW_D (54) above, and the
+# difference matters:
+#   * 54d  is the LIVE GATE - "is this name in a boom right now", the
+#          condition the detector needs before it may fire. Short on
+#          purpose, so a boom that ended months ago stops qualifying.
+#   * 120d is the GRADING window - "was this peak the end of a real
+#          run-up", asked once, after the fact, when the record is
+#          scored. Long on purpose: a top that took four months to build
+#          is still a top, and a 54d lookback would grade it as noise
+#          because the run-up started outside the window.
+# Measured on this store, moving the grading lookback to 54d empties the
+# ground truth completely - see docs/PARAMETER_REGISTER.md Class 4b.
+# SWEPT 2026-08-05. Captures are FLAT from 90d to 365d (18/18/19/19/19)
+# - only the denominator moves - so there is nothing to win by changing
+# this, and 120d sits mid-range. THE TRAP: at 54d (i.e. "harmonised" with
+# the live gate) NOT ONE peak in the store qualifies, the record silently
+# becomes empty and FA/instrument-year jumps to 0.260 because every alert
+# is a false alarm by default. Table: docs/PARAMETER_REGISTER.md Class 4b.
+EUPHORIA_BOOM_LOOKBACK_D = 120  # G2: run-up measured off the trailing
+                                # 120d low. GRADING only - see above.
+EUPHORIA_CRASH_WINDOW_D = 90    # G3: the bust has to arrive within 90d
+                                # of the peak. A fall that takes a year
+                                # is a bear market, not a bust, and the
+                                # detector was never claiming to call it.
+EUPHORIA_PEAK_LOCAL_MAX_D = 21  # G1: a peak is the highest close within
+                                # +/-21d. One month either side - shorter
+                                # and every wiggle is a peak, longer and
+                                # two distinct tops merge into one.
+EUPHORIA_PEAK_MERGE_D = 30      # two peaks closer than this are ONE
+                                # episode (the higher close wins), so a
+                                # jagged top is not counted three times.
+
 EUPHORIA_CRASH_MIN_ETF = 0.15   # G3: >= 15% drawdown within 90d = ETF bust
 EUPHORIA_CRASH_MIN_SINGLE = 0.30  # >= 30% for single names (structurally
                                   # more volatile - the desk's dual-threshold

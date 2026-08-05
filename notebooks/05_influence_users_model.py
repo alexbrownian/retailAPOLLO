@@ -748,7 +748,7 @@ plt.show()
 #   three definitions. The core finding is therefore a property of the
 #   crowd, not of where we drew the line.
 # - What changes: `softened` is fixed as the reporting regime for the rest
-#   of the notebook and for `docs/research/nb05_influence.json`. Nothing
+#   of the notebook and for `docs/research/nb05_influence.json (written by this notebook; absent until it runs)`. Nothing
 #   else in the pipeline changes — the dashboard's leaderboard still uses
 #   the production `HIGH_TIER` of 0.66.
 #

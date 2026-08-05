@@ -1,0 +1,58 @@
+{
+  "lookback_sweep": [
+    {
+      "lookback_d": 54,
+      "peaks": 0,
+      "detectable": 0,
+      "captured": 0,
+      "rate": null,
+      "fa_per_iy": 0.26,
+      "anchors_kept": 0
+    },
+    {
+      "lookback_d": 90,
+      "peaks": 229,
+      "detectable": 93,
+      "captured": 18,
+      "rate": 0.194,
+      "fa_per_iy": 0.21,
+      "anchors_kept": 4
+    },
+    {
+      "lookback_d": 120,
+      "peaks": 282,
+      "detectable": 115,
+      "captured": 18,
+      "rate": 0.157,
+      "fa_per_iy": 0.21,
+      "anchors_kept": 4
+    },
+    {
+      "lookback_d": 180,
+      "peaks": 330,
+      "detectable": 132,
+      "captured": 19,
+      "rate": 0.144,
+      "fa_per_iy": 0.2,
+      "anchors_kept": 4
+    },
+    {
+      "lookback_d": 250,
+      "peaks": 392,
+      "detectable": 159,
+      "captured": 19,
+      "rate": 0.119,
+      "fa_per_iy": 0.2,
+      "anchors_kept": 4
+    },
+    {
+      "lookback_d": 365,
+      "peaks": 457,
+      "detectable": 201,
+      "captured": 19,
+      "rate": 0.095,
+      "fa_per_iy": 0.2,
+      "anchors_kept": 4
+    }
+  ]
+}

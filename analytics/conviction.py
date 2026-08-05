@@ -234,31 +234,6 @@ def compute_conviction(sent_df: pd.DataFrame, entity_col: str,
 # used to draw as static matplotlib - here they return DATA, the dashboard
 # renders them as interactive Plotly).
 # ---------------------------------------------------------------------------
-def weekly_heatmap_frames(cs: ConvictionSet, top_n: int = 20,
-                          min_weekly_posts: int = 10):
-    """Weekly sentiment share + weekly conviction z for the most-posted
-    names. Returns (share_weekly, conv_z_weekly), rows = weeks, columns =
-    entities. Weeks with under `min_weekly_posts` scored posts are masked
-    (NaN) - too thin to mean anything, shown grey on the dashboard."""
-    top = list(cs.n_posts.sum().sort_values(ascending=False).head(top_n).index)
-    wk_bp = cs.bull_pressure[top].resample("W").sum()
-    wk_n = cs.n_posts[top].resample("W").sum()
-    wk_share = (wk_bp / wk_n.replace(0, np.nan)).where(wk_n >= min_weekly_posts)
-    wk_cz = (wk_bp - wk_bp.mean()) / wk_bp.std().replace(0, np.nan)
-    return wk_share, wk_cz
-
-
-def snail_trail(cs: ConvictionSet, name: str) -> pd.DataFrame:
-    """One name's monthly path through the attention-x-sentiment plane:
-    one row per month, columns az (avg attention z) and share (avg net
-    bullish share). A healthy swarm walks right AND up; the classic
-    blow-off walks right while sliding DOWN (crowd still growing, mood
-    already rolling over) - visible weeks before it shows in price."""
-    az_m = cs.attention_z[name].resample("ME").mean()
-    share_m = cs.share[name].resample("ME").mean()
-    return pd.DataFrame({"az": az_m, "share": share_m}).dropna()
-
-
 # ---------------------------------------------------------------------------
 # The pipeline entry point: recompute both conviction files on disk.
 # ---------------------------------------------------------------------------

@@ -134,6 +134,89 @@ them, not by intuition. Implementation: `analytics/plain_english.py`
 | Judgeable horizon | 45 d of future price | an unjudgeable alert is PENDING, not false |
 | Label sensitivity | 20/40 and 30/60 probes | robustness sweep values (not fitted — they test that conclusions survive ±1 step) |
 
+### Class 4a — the 2026-08-05 sweep: asked, measured, nothing adopted
+
+Desk question: *"if we change the criteria (the ground truths) for bubbles
+and bust can we improve the hit rate — but keep good results like memory /
+gold / game stop?"* Eight settings, walk-forward re-run in full at each,
+over the 59-instrument universe. The detector was untouched throughout.
+
+| setting | boom/crash ETF | single | cap | det | rate | FA/iy | names | anchors |
+|---|---|---|---|---|---|---|---|---|
+| tighter 1.4× | 35% / 21% | 70% / 42% | 10 | 45 | 0.222 | 0.230 | 26 | **2/4** |
+| tighter 1.2× | 30% / 18% | 60% / 36% | 14 | 72 | 0.194 | 0.220 | 36 | 4/4 |
+| **INCUMBENT** | **25% / 15%** | **50% / 30%** | **18** | **115** | **0.157** | **0.210** | **43** | **4/4** |
+| looser 0.8× | 20% / 12% | 40% / 24% | 25 | 214 | 0.117 | 0.190 | 52 | 4/4 |
+| looser 0.6× | 15% / 9% | 30% / 18% | 35 | 368 | 0.095 | 0.170 | 58 | 4/4 |
+| looser 0.5× | 12.5% / 7.5% | 25% / 15% | 43 | 501 | 0.086 | 0.140 | 58 | 4/4 |
+| crash-only looser | 25% / 10% | 50% / 20% | 25 | 193 | 0.130 | 0.190 | 52 | 4/4 |
+| boom-only looser | 15% / 15% | 30% / 30% | 19 | 196 | 0.097 | 0.200 | 54 | 4/4 |
+
+`names` = instruments with a gradeable episode; `anchors` = of four
+desk-named episodes still present (memory 2026, gold, GameStop 2021,
+semis).
+
+**The two requirements are incompatible, and that is the finding.** Hit
+rate is maximised by the TIGHTEST setting — because `detectable` collapses
+115 → 45 while captures fall 18 → 10 — and 1.4× is the only row that
+**loses gold and GameStop from the ground truth entirely**.
+
+**No column here is comparable across rows.** `det` moves by construction,
+so `rate` moves; and `FA/iy` moves too, because an alert is a false alarm
+only when no gradeable peak follows it, so loosening converts false alarms
+into hits without the detector changing. Threshold selection then shifts
+as well, since it optimises `hits − penalty × FA` against whatever truth it
+is handed. Changing the bars changes the exam, not the student.
+
+**Decision: 25%/50% stays** — it is the loosest pair at which the word
+still matches the event, not the best-scoring row (it wins no column). At
+0.5× an ETF "bubble" is a 12.5% run-up and a 7.5% fall, which is an
+ordinary quarter. **If coverage ever binds**, 0.6× is the row to argue:
+all four anchors kept, gradeable names 43 → 58, FA/iy 0.170. That is a
+coverage decision and must be argued as one, never as an accuracy gain.
+
+### Class 4b — the trailing-low window, and the trap at the short end
+
+Desk question: *"the comparison to trailing low (how many days now and
+why?)"* — 120 days. It could not be read off the config before the
+question was asked; it was typed inside `ground_truth_peaks`. It and the
+three other hardcoded windows are now named constants
+(`EUPHORIA_BOOM_LOOKBACK_D`, `EUPHORIA_CRASH_WINDOW_D`,
+`EUPHORIA_PEAK_LOCAL_MAX_D`, `EUPHORIA_PEAK_MERGE_D`) with behaviour
+unchanged — GME still peaks on 2021-01-27.
+
+| lookback | peaks | det | cap | rate | FA/iy | anchors |
+|---|---|---|---|---|---|---|
+| 54 d | **0** | **0** | **0** | — | 0.260 | **0/4** |
+| 90 d | 229 | 93 | 18 | 0.194 | 0.210 | 4/4 |
+| **120 d** | **282** | **115** | **18** | **0.157** | **0.210** | **4/4** |
+| 180 d | 330 | 132 | 19 | 0.144 | 0.200 | 4/4 |
+| 250 d | 392 | 159 | 19 | 0.119 | 0.200 | 4/4 |
+| 365 d | 457 | 201 | 19 | 0.095 | 0.200 | 4/4 |
+
+**Never "harmonise" this with the 54 d live gate.** At 54 d not one peak
+in the store qualifies: the record silently becomes empty and
+FA/instrument-year jumps to 0.260 because every alert is a false alarm by
+default. Nothing else in the pipeline reports that — it reads as a bad
+detector rather than an absent exam. The two windows do different jobs:
+54 d asks *is this name booming right now* (live, so the detector may
+fire); 120 d asks *was this peak the end of a real run-up* (once, after
+the fact, when grading). A top that took four months to build is still a
+top.
+
+Between 90 d and 365 d captures are flat (18, 18, 19, 19, 19) — only the
+denominator moves, walking the rate 0.194 → 0.095 while the detector is
+identical. Nothing to win; 120 d sits mid-range.
+
+*The sweep harness was not kept: ~250 lines that monkey-patched the
+grading constants to answer one question, and a tool that mutates the
+ground truth is exactly what gets re-run by accident. To repeat it: patch
+`analytics.euphoria.EUPHORIA_BOOM_MIN_*` / `_CRASH_MIN_*` /
+`_BOOM_LOOKBACK_D`, call `build_all_series(prices)` once, then
+`walk_forward(series, pxmap)` per setting, checking `peak_maps` for the
+anchor episodes — and restore the constants in a `finally`, or everything
+computed later in that process is wrong.*
+
 ## Class 5 — DESK DECISIONS (dated; rationale + evidence in DECISIONS.xlsx)
 
 | Decision | Date | One-line reason |
@@ -164,7 +247,7 @@ them, not by intuition. Implementation: `analytics/plain_english.py`
 actually been right and what they are saying now — it is a reading aid, not a
 predictor, and the reason it is only a reading aid is itself a measured
 finding (see the last three rows). Evidence for every number:
-`docs/research/nb05_influence.json` and `notebooks/05_influence_users_model.py`.*
+`docs/research/nb05_influence.json (absent until notebook 05 runs)` and `notebooks/05_influence_users_model.py`.*
 
 | Number | Value | Class | Why / what the evidence says |
 |---|---|---|---|

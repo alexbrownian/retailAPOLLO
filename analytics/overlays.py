@@ -29,7 +29,6 @@ mentions gives SHARE-OF-CHATTER (%), which is comparable across eras -
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from src.config import ROLL, DERIV_SMOOTH, MIN_TOTAL, HOLD_DAYS, CROSS_AT, MIN_GAP
@@ -255,48 +254,3 @@ def signal_scorecard(sig: pd.DataFrame, prices: pd.DataFrame, priced: set,
     return pd.DataFrame(out)
 
 
-def trade_desk(sig: pd.DataFrame, prices: pd.DataFrame | None, priced: set,
-               today, hold_days: int = HOLD_DAYS,
-               instrument_col: str = "etf") -> pd.DataFrame:
-    """The live ledger: one row per signal, MOST RECENT FIRST - entry
-    price/date, the dated hold_days exit, OPEN/closed status, days left,
-    and signed P&L so far (marked at min(exit, today))."""
-    rows = []
-    for _, r in sig.sort_values("action_date", ascending=False).iterrows():
-        instr = r.get(instrument_col)
-        entry_d = r["action_date"]
-        exit_d = entry_d + pd.Timedelta(days=hold_days)
-        row = {"signal date": entry_d.date(), "action": r["action"],
-               "theme": r.get("theme", r.get("ticker", "")),
-               "instrument": instr,
-               "exit by": exit_d.date(),
-               "status": "OPEN" if exit_d > today else "closed",
-               "days left": max((exit_d - today).days, 0),
-               "score": f"{r.get('score', '?')}/5",
-               "conv z": round(float(r.get("conv_z", float("nan"))), 2)}
-        if prices is not None and instr in priced:
-            px = price_series(prices, instr,
-                              entry_d - pd.Timedelta(days=5), None)
-            p0 = px.asof(entry_d) if not px.empty else float("nan")
-            mark_d = min(exit_d, today)
-            p1 = px.asof(mark_d) if not px.empty else float("nan")
-            if pd.notna(p0) and pd.notna(p1) and p0:
-                sign = 1 if r["action"] == "BUY" else -1
-                row["entry px"] = round(float(p0), 2)
-                row["P&L so far %"] = round(sign * (p1 / p0 - 1) * 100, 2)
-        rows.append(row)
-    return pd.DataFrame(rows)
-
-
-def certainty_table(sig: pd.DataFrame) -> pd.DataFrame:
-    """The desk's ranking metric, exactly as the old dashboard defined it:
-    certainty = score (breadth of evidence)
-              + |conviction z| capped at 3 (strength)
-              + a recency bonus fading linearly over 90 days
-                (a live edge beats an old one)."""
-    cert = sig.copy()
-    cert["strength"] = cert["conv_z"].abs().clip(upper=3)
-    age = (cert["action_date"].max() - cert["action_date"]).dt.days
-    cert["recency"] = (1 - age / 90).clip(lower=0)
-    cert["certainty"] = cert["score"] + cert["strength"] + cert["recency"]
-    return cert.sort_values("certainty", ascending=False)

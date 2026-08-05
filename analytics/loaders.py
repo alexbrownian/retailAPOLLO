@@ -75,13 +75,6 @@ def load(name: str, folder: str = PROCESSED_DIR) -> pd.DataFrame | None:
     return _read_cached(path, _mtime(path)).copy()
 
 
-def load_prices() -> pd.DataFrame | None:
-    """The Bloomberg price store (date, symbol, px_last), or None."""
-    if not os.path.exists(PRICES_PATH):
-        return None
-    return _read_cached(PRICES_PATH, _mtime(PRICES_PATH)).copy()
-
-
 def clip_window(df: pd.DataFrame, col: str, lo, hi) -> pd.DataFrame:
     """Rows with lo <= df[col] <= hi. hi=None means 'to the newest'."""
     out = df[df[col] >= lo]
@@ -124,9 +117,3 @@ def to_wide(long_df: pd.DataFrame, entity_col: str, value_col: str,
     return wide
 
 
-def day_span(*frames: pd.DataFrame) -> pd.DatetimeIndex:
-    """One calendar-daily index covering every date in every given frame,
-    so all the wide matrices in a computation share one aligned index."""
-    lo = min(f["date"].min() for f in frames if f is not None and len(f))
-    hi = max(f["date"].max() for f in frames if f is not None and len(f))
-    return pd.date_range(lo, hi, freq="D")

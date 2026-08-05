@@ -466,7 +466,7 @@ else:
     print(f"reason: {ai.explain_unavailable()}")
     print("to run: on the desk machine (VPN + dimsum_lite), re-execute "
           "this notebook; the digest cell writes "
-          "docs/research/nb09_llm_digest.json.")
+          "docs/research/nb09_llm_digest.json (written by this notebook; absent until it runs).")
     print("Until then, the ANALYST-PARAPHRASED characterisation below "
           "stands in — written by hand from the local samples, no verbatim "
           "text, no handles.")

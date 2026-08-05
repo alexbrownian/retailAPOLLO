@@ -36,7 +36,7 @@ import zstandard
 
 # The columns every cleaned file will have, in this order.
 # 'source' says where a row came from: 'reddit' here; X (Twitter) rows get
-# source='x' via src/x_data.py + ingestion/add_x_data.py.
+# source='x' via src/x_data.py + ingestion/fetch_x_live.py + merge_live.py (add_x_data.py was removed).
 OUTPUT_COLUMNS = ["id", "date", "author", "score", "subreddit", "title", "selftext", "num_comments", "source"]
 
 

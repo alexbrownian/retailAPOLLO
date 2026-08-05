@@ -141,7 +141,6 @@ retailAPOLLO/
 ├── src/                      # shared logic (config, extraction, themes, sentiment)
 ├── ingestion/                # live fetchers + fold/merge/rebuild scripts
 ├── analytics/                # conviction + signals + overlay maths (was nb 08-16)
-├── helper/                   # research tools (emerging terms, threshold tuning)
 ├── data/                     # gitignored except reference/ (processed, prices, raw)
 └── tests/                    # pytest invariants for the whole pipeline
 ```

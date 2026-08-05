@@ -70,9 +70,3 @@ def normalise_stocktwits(messages: list[dict]) -> pd.DataFrame:
     return df.sort_values("date").reset_index(drop=True)[OUTPUT_COLUMNS]
 
 
-def author_label(message: dict) -> str | None:
-    """The author's OWN sentiment label ('Bullish'/'Bearish') or None.
-    Only available in the raw messages - used by the calibration notebook."""
-    entities = message.get("entities") or {}
-    sentiment = entities.get("sentiment") or {}
-    return sentiment.get("basic")

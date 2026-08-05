@@ -197,7 +197,8 @@ on a downcast pandas 2.x deprecated.
 
 Built and removed the same week on desk instruction ("remove all the
 index stuff it doesnt seem to work"). Gone from the tree: the
-`Index & factors` tab, `analytics/basket_breadth.py`, the `sp500`,
+`Index & factors` tab, the basket-breadth module
+(`analytics/basket_breadth.py` was removed), the `sp500`,
 `momentum_factor` and `growth_factor` themes, the MTUM/VUG constituent
 rows, and `EUPHORIA_BOOM_MIN_INDEX` / `_CRASH_MIN_INDEX` /
 `EUPHORIA_INDEX_SCALE_NAMES`. The tradeable universe is back to **34
@@ -237,3 +238,65 @@ The anchor-substitution CHECK the removed expanders performed is kept as
 an inline warning that renders **only when something is wrong** — it is
 what caught `europe_defense` being drawn on ITA, a US line standing in
 for a European one.
+
+## Project clean-up pass, 2026-08-05
+
+**The one that mattered: the euphoria stage is ~4x faster.**
+`_bullish_series` used `groupby("date").apply(lambda ...)`, which on the
+306k-row sentiment store cost **482 ms per instrument** against **2 ms**
+for the vectorised form - the same arithmetic done once per group in
+Python instead of once in C. It ran once per instrument in TWO places
+(`analytics/euphoria.py` and a copy-pasted twin in
+`analytics/euphoria_phases.py`), so across 59 instruments that was ~84 s
+of pure interpreter overhead in every full analytics run. Output verified
+`.equals()`-identical before the swap. Measured end to end: the euphoria
+stage went **19.0s -> 5.1s**.
+
+**Dead code removed** (nothing imports, calls, tests or documents any of
+it): `trade_desk` and `certainty_table` (overlays), `weekly_heatmap_frames`
+and `snail_trail` (conviction), `load_prices` and `day_span` (loaders),
+`author_label` (stocktwits_data). Plus eight unused imports across
+`euphoria.py`, `euphoria_phases.py`, `overlays.py`, `fetch_stocktwits.py`,
+`verify_deps.py` and `dashboard.py`.
+
+**One duplicate implementation collapsed.** `resolve_anchor` existed
+character-for-character in both `dashboard.py` and `analytics/euphoria.py`
+- one more place for the fallback rule to drift away from the engine that
+actually scores. The dashboard now imports it.
+
+**Fourteen cited paths did not exist**, and the reason none of them were
+caught is worth recording: `tools/verify_deps.py` only matches paths
+inside QUOTED STRING LITERALS in `.py` files, so every reference living in
+a `.md` file or a Python comment is structurally invisible to it. It
+reports "0 findings. Nothing dangles" while the following were all broken:
+
+* **`helper/` does not exist in this repo** yet was cited five times,
+  including `RUNBOOK.md`'s command for rebuilding the evidence pack. That
+  means `docs/research/` is a FROZEN artefact - readable and citable, not
+  reproducible. Every citation now says so.
+* **`RUNBOOK.md`'s notebook re-run command globbed `01/02/03_*.ipynb`**,
+  none of which exist (01, 02, 03 and 05 are jupytext `.py` only), so the
+  command failed on three unmatched patterns. Corrected.
+* **`notebooks/05_influence_users_model.ipynb`** was cited by the RUNBOOK
+  and printed to the user by the dashboard. Only the `.py` exists.
+* `analytics/basket_breadth.py` (removed) in the handover (removed the same day),
+  `ingestion/add_x_data.py` (removed) in `src/clean_data.py`,
+  `docs/panel_review_latest.md` (absent) in `discover_subreddits.py`.
+
+**Left deliberately, with reasons:**
+
+* `docs/research/nb06_*.json`, `nb07_performance_battery.json` and
+  `nb04_final_eval.json` are produced ONLY by notebooks now sitting in
+  `notebooks/_to_delete_2026-07-31_merged_into_04/` - and `dashboard.py`
+  actively reads `nb04_final_eval`. **Deleting that `_to_delete` folder
+  orphans a live dashboard read.** Constraint on any future cleanup.
+* `src/config.py` has three constants nothing imports: `DATA_DIR`,
+  `COMMENT_EWMA_RUNS` and `DESK_EXIT_Z`. The first two are clerical.
+  **`DESK_EXIT_Z` is not** - it sits in the desk-configuration block, so
+  its absence may mean an exit rule was described in config and never
+  wired into `euphoria_phases.py`. Check that before deleting it.
+* `ingestion/merge_live.py` and `ingestion/append_live_abstracted.py`
+  share four near-identical collector functions differing only in their
+  column list. Both run on the same pass and write different stores, so
+  they cannot be merged blind - but a normalisation fix applied to one and
+  not the other is a silent divergence risk.
