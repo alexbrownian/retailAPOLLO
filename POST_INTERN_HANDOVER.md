@@ -86,7 +86,7 @@ the only writer, and it only writes approved rows.
 | Keyword audit (§2) | automatic weekly proposal; applying is manual | weekly propose, human apply |
 | Bloomberg pull for NEW instruments | first QUICK UPDATE after editing the instrument list | on change |
 | Notebook re-execution after a signal-code change | `python -m jupytext --to ipynb notebooks/<n>.py` then `python -m jupyter nbconvert --to notebook --execute --inplace notebooks/<n>.ipynb` | on change |
-| Test suite | `python -m pytest tests/ -q` — expect **133 passed, 2 skipped** | before any commit |
+| Test suite | `python -m pytest tests/ -q` — expect **138 passed, 2 skipped** | before any commit |
 
 ## 4. Before you change anything that scores
 

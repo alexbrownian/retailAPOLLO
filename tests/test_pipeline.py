@@ -2105,3 +2105,79 @@ class TestStaleTabIsVisible:
               / "RUNBOOK.md").read_text(encoding="utf-8")
         assert "A code or config edit is not showing" in rb
         assert "8501" in rb and "8502" in rb
+
+
+class TestApprovedUniverseCoverage:
+    """The approved list is the firm's tradeable universe. Nothing on it
+    should be unreachable, and nothing on screen should quote an
+    instrument the chart is not actually using.
+
+    Desk question 2026-08-04: "are there less themes than etfs? is that
+    why we are getting less in the dropdown?" - yes to the first, no to
+    the second. The dropdown lists THEMES; instruments outnumber them
+    because seven anchors serve two themes each, twenty-one lines are
+    fallbacks and twelve are benchmarks nobody posts about."""
+
+    @staticmethod
+    def _src():
+        from pathlib import Path
+        return Path(__file__).resolve().parents[1] / "dashboard.py"
+
+    def test_every_approved_instrument_is_requested_from_bloomberg(self):
+        """The regression that hid fifteen instruments: the puller built
+        its request from theme anchors and fallbacks only, so an approved
+        line no theme pointed at was never asked for and had no price
+        history - silently, with nothing on screen to say so."""
+        import pull_bloomberg_prices as pull
+        from src.themes import APPROVED_INSTRUMENTS
+        universe = set(pull.build_symbol_universe())
+        missing = sorted(s for s in APPROVED_INSTRUMENTS
+                         if s not in universe)
+        assert not missing, (
+            f"approved but never requested: {missing} - these can never "
+            "be drawn, and nothing would report it")
+
+    def test_every_instrument_has_exactly_one_role(self):
+        """anchor / fallback / benchmark must partition the list, or the
+        coverage panel is double-counting."""
+        from src.themes import (THEME_ETFS, THEME_ETF_FALLBACKS,
+                                APPROVED_INSTRUMENTS)
+        anchors = set(THEME_ETFS.values())
+        fallbacks = set()
+        for theme, chain in THEME_ETF_FALLBACKS.items():
+            fallbacks.update(s for s in chain if s != THEME_ETFS.get(theme))
+        fallbacks -= anchors
+        approved = set(APPROVED_INSTRUMENTS)
+        assert anchors <= approved and fallbacks <= approved
+        benchmarks = approved - anchors - fallbacks
+        assert (len(anchors) + len(fallbacks) + len(benchmarks)
+                == len(approved))
+
+    def test_the_label_names_the_line_actually_drawn(self):
+        """`resolve_anchor` falls through to the first PRICED line, so a
+        theme whose anchor has no history is drawn on a substitute. The
+        label has to follow that, not the config."""
+        src = self._src().read_text(encoding="utf-8")
+        assert "def _live_anchor(" in src
+        i = src.index("def flag_label(")
+        body = src[i:src.index("def _live_anchor(")]
+        assert "_live_anchor(name)" in body, (
+            "flag_label quotes THEME_ETFS directly again - it will name "
+            "an instrument the chart is not using")
+        assert "unpriced" in body
+
+    def test_a_substituted_anchor_is_reported_not_hidden(self):
+        src = self._src().read_text(encoding="utf-8")
+        assert "Drawn on a fallback, not the configured anchor" in src
+        assert "Approved but never priced" in src
+
+    def test_the_themes_are_not_forced_to_match_the_instrument_count(self):
+        """Deliberate: a theme exists because retail argues about it, and
+        the ETF is only how you would express it. One theme per approved
+        line would run that backwards and invent themes with no crowd
+        behind them."""
+        from src.themes import THEME_ETFS, APPROVED_INSTRUMENTS
+        assert len(THEME_ETFS) < len(APPROVED_INSTRUMENTS), (
+            "if these ever match, check it happened because the crowd "
+            "started discussing every approved line - not because "
+            "somebody padded the theme list to make the counts agree")

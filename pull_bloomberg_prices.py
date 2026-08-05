@@ -104,6 +104,24 @@ def build_symbol_universe():
     for fallbacks in THEME_ETF_FALLBACKS.values():
         symbols.update(fallbacks)
 
+    # EVERY APPROVED INSTRUMENT, whether or not a theme points at it.
+    #
+    # Added 2026-08-04 after a silent gap.  Twelve rows on the
+    # firm-approved list are neither an anchor nor a fallback, so the loop
+    # above never asked for them; seven of those had no price history at
+    # all and were therefore invisible everywhere on the dashboard - the
+    # factor and style lines (MTUM, RSP, IVE, IVW, VTV, VUG) and the
+    # CSI 1000 index.  Nothing reported it.  They simply were not there.
+    #
+    # The approved list is the firm's tradeable universe.  If an
+    # instrument is approved the system should be able to draw it, and
+    # deciding otherwise BY OMISSION is the wrong way to decide it.  These
+    # lines carry no crowd signal - nobody posts about VTV - and are not
+    # becoming themes; they are benchmarks, and a benchmark with no price
+    # series is not a benchmark.
+    from src.themes import APPROVED_INSTRUMENTS
+    symbols.update(APPROVED_INSTRUMENTS)
+
     # international names (Europe/Japan) priced through their US ADRs -
     # the keyword themes count them, these symbols let overlays price them
     from src.themes import INTERNATIONAL_ADRS

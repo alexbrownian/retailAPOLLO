@@ -85,3 +85,28 @@ rebuild runs on the machine holding `posts.parquet`:
 research pass and re-execute notebooks 00/04/06/07/08. This is a
 RE-VALIDATION EVENT: every count moves, so both frozen thresholds must be
 re-derived and compared against the incumbent.
+
+## Four themes are drawn on a substitute instrument (2026-08-04)
+
+`agriculture_food`, `consumer_retail`, `datacenters` and `europe_defense`
+have anchors with **no price history in the store** (MOO, XRT, DTCR,
+EUAD), so `resolve_anchor` falls through to the first priced line in the
+chain and the theme is actually drawn on XLP, XLY, IYW and ITA
+respectively. `europe_defense` is the one that matters: it is being
+priced on a **US** aerospace line, which is exactly the substitution
+that theme's own config note was written to prevent.
+
+Root cause, now fixed in code: `pull_bloomberg_prices.py` built its
+request from theme anchors and fallbacks only, so an approved
+instrument that no theme pointed at was never asked for. Fifteen of the
+sixty approved lines had no prices — the four anchors above, the factor
+and style lines (MTUM, RSP, IVE, IVW, VTV, VUG), the CSI 1000 index,
+BBH, KRE, and the two Chinese local listings.
+
+**What is owed:** one price pull on the desk machine with the Terminal
+open — `python pull_bloomberg_prices.py --dry-run` to preview, then
+without the flag. Verify `MTUM TF Equity` first; `approved_instruments.csv`
+records the exchange code as provided, and Cboe BZX is usually `UF`.
+Until it runs, the EUPHORIA: Themes tab flags every substitution in
+"the theme → instrument map" rather than leaving it silent.
+

@@ -207,12 +207,54 @@ def flag_label(name, kind):
     mapping in config/theme_etfs.csv therefore fixes every label on the
     page at once); single names get their company name from the Nasdaq
     directories this project already caches.  Anything unresolvable
-    falls back to the bare symbol rather than to a blank paren."""
-    if kind == "theme":
-        etf = THEME_ETFS.get(name)
-        return f"{theme_label(name)}  ({etf})" if etf else theme_label(name)
-    who = _security_names().get(name)
-    return f"{name}  ({who})" if who else str(name)
+    falls back to the bare symbol rather than to a blank paren.
+
+    A theme is labelled with the instrument ACTUALLY being drawn, not the
+    one the config nominates.  The two differ more often than is
+    comfortable: an anchor with no price history in the store silently
+    resolves to its first priced fallback, so on 2026-08-04
+    `europe_defense` was labelled EUAD and drawn on ITA - a US aerospace
+    line standing in for a European one, which is precisely the
+    substitution that theme's own config note warns about.  Where they
+    differ the label says so, because quoting an instrument the chart is
+    not using is worse than quoting none."""
+    if kind != "theme":
+        who = _security_names().get(name)
+        return f"{name}  ({who})" if who else str(name)
+    cfg = THEME_ETFS.get(name)
+    if not cfg:
+        return theme_label(name)
+    live = _live_anchor(name)
+    if live and live != cfg:
+        return f"{theme_label(name)}  ({live} - {cfg} unpriced)"
+    return f"{theme_label(name)}  ({cfg})"
+
+
+def _live_anchor(theme):
+    """The first instrument in the theme's chain that HAS prices - the one
+    `resolve_anchor` picks when something is actually drawn."""
+    have = _priced_symbols()
+    if not have:
+        return THEME_ETFS.get(theme)
+    chain = ([THEME_ETFS[theme]] if THEME_ETFS.get(theme) else [])
+    chain += THEME_ETF_FALLBACKS.get(theme, [])
+    for sym in chain:
+        if sym in have:
+            return sym
+    return None
+
+
+def _priced_symbols():
+    """Every symbol with price history, cached on the store's mtime."""
+    return _cached_priced_symbols(_mtime(PRICES_PATH))
+
+
+@st.cache_data(show_spinner=False)
+def _cached_priced_symbols(mtime):
+    if not os.path.exists(PRICES_PATH):
+        return frozenset()
+    return frozenset(pd.read_parquet(
+        PRICES_PATH, columns=["symbol"])["symbol"].unique())
 
 # ---------------------------------------------------------------------------
 # DESIGN TOKENS - institutional light theme (GIC design language, adopted
@@ -2199,14 +2241,28 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             for _t in sorted(THEME_ETFS):
                 _chain = [s for s in THEME_ETF_FALLBACKS.get(_t, [])
                           if s != THEME_ETFS[_t]]
+                _live = _live_anchor(_t)
                 _map_rows.append({
                     "theme": _t,
-                    "anchor": THEME_ETFS[_t],
+                    "anchor (config)": THEME_ETFS[_t],
+                    "drawn on": (_live or "nothing priced")
+                    + ("" if _live == THEME_ETFS[_t] else "  ⚠"),
                     "fallbacks": " → ".join(_chain) or "-",
                     "note": _notes.get(_t, ""),
                 })
-            st.dataframe(pd.DataFrame(_map_rows), width="stretch",
-                         hide_index=True)
+            _map_df = pd.DataFrame(_map_rows)
+            _subbed = [r["theme"] for r in _map_rows if "⚠" in r["drawn on"]]
+            if _subbed:
+                st.warning(
+                    "**Drawn on a fallback, not the configured anchor: "
+                    + ", ".join(_subbed) + ".** The anchor has no price "
+                    "history, so `resolve_anchor` silently substitutes "
+                    "the first priced line in the chain - which is the "
+                    "right behaviour for an old backtest window and the "
+                    "wrong thing to leave unsaid on a live screen. Fix "
+                    "it by pricing the anchors (see the panel below), "
+                    "not by editing the chain.")
+            st.dataframe(_map_df, width="stretch", hide_index=True)
             _p = os.path.join(ROOT, "config", "theme_etfs.csv")
             st.caption(
                 f"Read live from config/theme_etfs.csv (last edited "
@@ -2214,6 +2270,85 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 "Edit that file and rerun - no restart needed. Themes "
                 "with an EMPTY anchor are tracked but untradeable and "
                 "never appear above.")
+
+        # ---- WHERE EVERY APPROVED INSTRUMENT GOES ----------------------
+        # Desk 2026-08-04: "are there less themes than etfs? is that why we
+        # are getting less in the dropdown?"  Yes to the first, no to the
+        # second, and the counts should not have to be reconstructed by
+        # hand to see it.
+        #
+        # The dropdown lists THEMES, not instruments, and the two are not
+        # meant to be 1:1.  The direction of causation runs crowd -> theme
+        # -> instrument: a theme exists because retail argues about it, and
+        # the ETF is only how you would express it.  Forcing one theme per
+        # approved line would run that backwards and invent themes nobody
+        # is posting about, which is how a signal gets diluted with noise
+        # that has no crowd behind it.
+        #
+        # So the arithmetic is shown instead of asserted.  Three roles:
+        #   ANCHOR    - the tradeable expression of a theme (27 lines,
+        #               fewer than 34 because seven anchors legitimately
+        #               serve two themes each: SMH covers semis AND memory)
+        #   FALLBACK  - the depth chart. A backtest window older than a
+        #               young ETF still draws against an established proxy,
+        #               which is why ASHR/KWEB/CQQQ sit behind FXI and
+        #               GDX/SLV/SIL/COPX behind GLD.
+        #   BENCHMARK - approved, no theme points at it, and none should:
+        #               factor, style, credit and index lines nobody posts
+        #               about. They belong on a chart, not on a signal.
+        with st.expander(f"where every approved instrument goes  "
+                         f"({len(_approved_symbols())} on the approved "
+                         f"list)"):
+            _anchor_of = {}
+            for _t, _s in THEME_ETFS.items():
+                _anchor_of.setdefault(_s, []).append(_t)
+            _fb_of = {}
+            for _t, _ch in THEME_ETF_FALLBACKS.items():
+                for _s in _ch:
+                    if _s != THEME_ETFS.get(_t):
+                        _fb_of.setdefault(_s, []).append(_t)
+            _priced = (set(prices["symbol"].unique())
+                       if prices is not None else set())
+            _cov = []
+            for _s in sorted(_approved_symbols()):
+                if _s in _anchor_of:
+                    _role, _for = "anchor", sorted(_anchor_of[_s])
+                elif _s in _fb_of:
+                    _role, _for = "fallback", sorted(_fb_of[_s])
+                else:
+                    _role, _for = "benchmark", []
+                _cov.append({"instrument": _s, "role": _role,
+                             "themes": ", ".join(_for) or "-",
+                             "priced": "yes" if _s in _priced else "NO"})
+            _cov_df = pd.DataFrame(_cov)
+            _n_role = _cov_df["role"].value_counts()
+            st.markdown(
+                f"**{len(_cov_df)} approved instruments** carry "
+                f"**{len(THEME_ETFS)} tradeable themes**: "
+                f"{int(_n_role.get('anchor', 0))} anchors "
+                f"(seven serve two themes each), "
+                f"{int(_n_role.get('fallback', 0))} fallbacks, "
+                f"{int(_n_role.get('benchmark', 0))} benchmarks. "
+                "The dropdown lists themes, so it shows "
+                f"{len(THEME_ETFS)} - that is the map working, not a "
+                "truncated list.")
+            st.dataframe(_cov_df, width="stretch", hide_index=True)
+            _unpriced = _cov_df[_cov_df["priced"] == "NO"]["instrument"]
+            if len(_unpriced):
+                st.warning(
+                    "**Approved but never priced: "
+                    + ", ".join(_unpriced) + ".** These have no price "
+                    "history in the store, so nothing on this dashboard "
+                    "can draw them. `pull_bloomberg_prices.py` used to "
+                    "build its request from theme anchors and fallbacks "
+                    "only, so an approved line no theme pointed at was "
+                    "never asked for; that was fixed 2026-08-04 and the "
+                    "next price pull with the Terminal open collects "
+                    "them. Check MTUM's exchange code first - "
+                    "`approved_instruments.csv` stores `MTUM TF Equity` "
+                    "and Cboe BZX is usually `UF`.")
+            else:
+                st.caption("Every approved instrument has price history.")
 
     if euph is None or not len(euph):
         st.info("no euphoria data yet - run QUICK UPDATE in the sidebar")
