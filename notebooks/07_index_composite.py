@@ -11,33 +11,44 @@
 # ---
 
 # %% [markdown]
-# # Notebook 07 — The Index Composite: the process applied to the S&P 500 and MTUM
+# # Notebook 07 — The Index Composite: what was tried at index level, and why none of it ships
 #
 # > **The one question this notebook answers:** can the per-name GET IN /
-# > GET OUT machinery be aggregated across the whole tracked universe into
-# > an honest index-level call on the S&P 500 (and, once priced, MTUM) —
-# > and what does the record actually support today?
+# > GET OUT machinery say anything honest about the S&P 500 or a factor
+# > basket — and the answer, twice arrived at and twice acted on, is no.
 #
-# The desk's brief, verbatim: *"investigate how we can use this project to
-# test the S&P 500 index (use the constituent components and their
-# individual signals as a whole to determine the get out / get in of
-# that), and MTUM (momentum ETF), using the same process as we did
-# before."* §1 builds the constituent composite, §2 runs the SAME process
-# at index level and judges it, §3 does MTUM (signal today, judge
-# pending), §4 says what ships.
+# **RETIRED BY DESK DECISION, 2026-08-05.** The index and factor work was
+# built, measured, and removed the same week. This notebook is kept as the
+# record of what was tried, because the question will be asked again and
+# the measurements are the reason it should not be re-attempted the same
+# way. Nothing described below is live: there is no `sp500` theme, no
+# `momentum_factor` / `growth_factor`, no `analytics/basket_breadth.py`,
+# no index-scale ground-truth constants and no Index & factors tab.
 #
 # ---
 #
-# ## VERDICT BOX — read this first, then read why
+# ## WHAT WAS TRIED, AND WHAT KILLED IT
 #
-# | Question | Answer | Evidence |
+# | Attempt | Measurement | Outcome |
 # |---|---|---|
-# | Can we build "the constituents as a whole"? | **Yes — as a BREADTH composite over our 54 tracked names (31 retail-attention themes + 23 crowd favourites), which is a sentiment cross-section of the market, NOT the cap-weighted S&P membership.** That is the only honest mapping this project can make today, and §1 argues it is also the right one: the S&P question the desk is asking is "is the whole crowd euphoric at once?", which is exactly what breadth over our universe measures. | §1 |
-# | Does the SAME walk-forward process run at index level? | **The process runs; the EXAM does not.** `ground_truth_peaks(SPY, kind="theme")` returns **0 episodes** — SPY ran up ≥25% off a 120d low (max +45%, Jul 2020) and it crashed ≥15% (Mar 2020), but never both in one arc — so there are **no positives to freeze thresholds on, said loudly.** The walk-forward attempt is shown refusing (as it should), and the descriptive version runs instead, with the confirmatory test pre-specified for the day SPY ever stages a qualifying arc. | §2 |
-# | Does the descriptive index-level GET OUT work? | **Mostly null at these sample sizes — stated loudly.** 20 descriptive flags (2018–2022): at +5td and +20td the down-hit is BELOW the all-days baseline (25% vs 39%, 30% vs 34%); at +84td it is above (45% vs 31%) with a bootstrap CI [0.25, 0.65] too wide to claim. The one conspicuous pattern: the Dec-2019 → Jan-2020 flag cluster preceded the COVID crash by 72/49/28 days, and the composite's all-time maximum lands on the Jan-2021 meme mania — which SPY itself shrugged off. A crowd built from meme themes measures MEME euphoria, not S&P risk. | §2 |
-# | And the index-level GET IN? | A modest +5td edge (72% up-hit vs 61% baseline, n=18) that fades to below baseline by +84td. **Not shippable; recorded.** | §2 |
-# | MTUM? | **The signal side runs today; the judging CANNOT — MTUM has no rows in `prices.parquet` yet** (it entered `config/approved_instruments.csv` 2026-07-31; the next Bloomberg pull fetches it). The notebook detects the symbol automatically and prints a loud PENDING banner meanwhile; **as an interim proxy the composite is shown against QQQ** (the closest priced crowded-momentum line) — substitution stated in bold. QQQ, like SPY, has 0 exam episodes. | §3 |
-# | What ships? | **The §1 breadth composite ships as a DASHBOARD CONTEXT strip** (it is descriptive, needs no threshold, and its history is honest). **No index-level flag ships**: no exam, no frozen threshold, no record. | §4 |
+# | Count crowd mentions of the FUND (MTUM, VTV, IVW, IVE) | Over 176,126 archived comments: MTUM **0**, VTV **0**, IVW **0**, and the four apparent "IVE" hits are people typing "I've" against 82 lowercase. Retail does not discuss factors as factors. | Dead on arrival — and it is the reason every later attempt went through constituents instead. |
+# | Read a basket through its CONSTITUENTS | Coverage was genuinely good: MTUM's 25 holdings all discussed, 8 above 100 mentions/yr, 5.0% of all chatter; VUG 19 of 25 strong, 18.2%; a 269-name S&P union 22.5%. | The read worked. It measured mega-cap tech under three different names — momentum overlapped `memory` 12/25 and `semiconductors` 10/25 — so it added exposure, not information. |
+# | Give the S&P its own GET IN / GET OUT | At the frozen theme bars (boom 25% / crash 15%) `ground_truth_peaks` returns **0 episodes for SPY — and 0 for XLI**, the example the desk cited as working. Volatility scaling does not rescue it: SPY's 18.3% vol against the 25.8% median theme anchor implies 17.8% / 10.7%, which also returns **0**. An index's post-run-up drawdowns are shallower AND slower, so the rule misses them by shape, not size. | Only 12% / 8% produced usable ground truth (SPY 6). At those bars a "top" is a 12% run-up and an 8% fall — an ordinary market wiggle. The words stop meaning what they mean everywhere else on the dashboard. **Not shipped.** |
+# | Market-wide flag counts over the momentum price | Built and rendered; MTUM was never priced, so it drew against QQQ — a Nasdaq-100 concentration bet, not a momentum screen. | Descriptive only, never judged against forward returns. **Not shipped.** |
+#
+# ## The one durable conclusion
+#
+# The detector earns its keep on **narratives the crowd argues about**,
+# where attention concentrates and then breaks. An index is the opposite
+# object by construction: diversification is precisely what stops it
+# staging the run-up-then-bust arc the ground truth is built to find. That
+# is not a threshold problem to be tuned around — lowering the bars until
+# episodes appear buys ground truth made of milder events, and every
+# capture rate in the record would move for reasons unrelated to the
+# detector getting better.
+#
+# §1 below still contains the breadth composite as originally written. It
+# is left intact as the least-bad honest mapping if anyone revisits this.
 
 # %% [markdown]
 # ## Definitions — every term in desk English

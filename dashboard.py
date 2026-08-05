@@ -54,7 +54,11 @@ from src.config import (ROLL, DERIV_SMOOTH, MIN_TOTAL, CROSS_AT,   # noqa: E402
                         EUPHORIA_HYPE_MULT, EUPHORIA_BOOM_MIN_ETF,
                         EUPHORIA_BOOM_MIN_SINGLE, EUPHORIA_BOOM_WINDOW_D,
                         EUPHORIA_BOOM_WINDOW_MIN_D, EUPHORIA_ONSET_HYPE_MIN,
-                        EUPHORIA_ATT_GATE,
+                        EUPHORIA_ATT_GATE, EUPHORIA_MIN_COVERAGE,
+                        EUPHORIA_MIN_HISTORY, EUPHORIA_PCT_WINDOW,
+                        EUPHORIA_CRASH_MIN_ETF, EUPHORIA_CRASH_MIN_SINGLE,
+                        EUPHORIA_COOLDOWN_DAYS, EUPHORIA_FA_BUDGET_PER_IY,
+                        EUPHORIA_FA_PENALTY,
                         CONV_EXIT_LEVEL, CONV_EWM_HALFLIFE,
                         EUPHORIA_EXCLUDED_THEMES)
 import src.themes as _themes                                       # noqa: E402
@@ -84,29 +88,6 @@ def _theme_etf_maps():
 @st.cache_data(show_spinner=False)
 def _cached_theme_etf_maps(mtime):
     return _themes._load_theme_etfs()
-
-
-@st.cache_data(show_spinner=False)
-def _cached_theme_etf_notes(mtime):
-    """theme -> the `note` cell, the one column no code reads.
-
-    It carries the reasoning a maintainer needs and the dashboard now
-    shows it, so the caveat travels with the mapping instead of living
-    only in a file nobody opens."""
-    import csv as _csv_mod
-    out = {}
-    p = os.path.join(ROOT, "config", "theme_etfs.csv")
-    with open(p, newline="", encoding="utf-8-sig") as f:
-        for row in _csv_mod.DictReader(f):
-            t = str(row.get("theme", "")).strip()
-            if t:
-                out[t] = str(row.get("note", "") or "").strip()
-    return out
-
-
-def _theme_etf_notes():
-    return _cached_theme_etf_notes(
-        os.path.getmtime(os.path.join(ROOT, "config", "theme_etfs.csv")))
 
 
 THEME_ETFS, THEME_ETF_FALLBACKS = _theme_etf_maps()
@@ -2075,6 +2056,45 @@ Nothing else on the chart is a decision. The 0-100 curve is context.
 
 ---
 
+**Every gate and every number, both directions.**
+
+Desk request 2026-08-05: one table, so the whole rule set is readable in
+one place instead of being reconstructed from the register. Every value
+below is imported live from `src/config.py` - if a constant moves, this
+table moves with it, and the two can never disagree.
+
+| # | Gate | GET IN (euphoria starting) | GET OUT (euphoria ending) | Why this number |
+|---|---|---|---|---|
+| A0 | Enough data to measure | {EUPHORIA_MIN_COVERAGE} scored posts in the trailing 28d, and {EUPHORIA_MIN_HISTORY}d of history | same | below this the percentile ranks are noise dressed as a signal |
+| A1 | Crowd size vs its OWN normal | 7d mentions >= **{EUPHORIA_ONSET_HYPE_MIN:g}x** its 120d median | 7d mentions >= **{EUPHORIA_HYPE_MULT:g}x** its 120d median | GET IN has to fire EARLY, so its bar is lower - but not 1.0x, which breached the FA budget from the day it shipped (0.255 vs {EUPHORIA_FA_BUDGET_PER_IY}) |
+| A2 | Attention extremity | mention share at or above its **{EUPHORIA_ATT_GATE:.0%}** percentile vs its own trailing {EUPHORIA_PCT_WINDOW}d | same | "extreme" always means extreme FOR THIS NAME - a permanently loud name is judged against loud-for-itself |
+| A3 | The price actually ran | not required - the crowd arrives before the run | up **{EUPHORIA_BOOM_MIN_ETF:.0%}** (theme) / **{EUPHORIA_BOOM_MIN_SINGLE:.0%}** (single name) off its {EUPHORIA_BOOM_WINDOW_D}d low, sustained >= {EUPHORIA_BOOM_WINDOW_MIN_D}d | you cannot end a party that never started |
+| A4 | Not already in the other phase | must not already be in the ending stage | must be in a confirmed boom | the two rules cannot both own the same day |
+
+**The factors each rule scores** - the crowd does the predicting; price
+only gates and grades.
+
+| | GET IN bank | GET OUT bank |
+|---|---|---|
+| Factors | attention acceleration, hype ratio, bull inflection, influx speed, attention convexity | E1 attention level, E2 sustained bull, E3 crowd influx, E5 super-exponential attention, E4 fade trigger |
+| Threshold | frozen by walk-forward on strictly EARLIER years | same |
+| Cooldown | {EUPHORIA_COOLDOWN_DAYS}d - one episode flags once | {EUPHORIA_COOLDOWN_DAYS}d |
+| False-alarm budget | **{EUPHORIA_FA_BUDGET_PER_IY}** per instrument-year | **{EUPHORIA_FA_BUDGET_PER_IY}** |
+
+**Ground truth - what counts as a real top when the detector is graded.**
+All three must hold: a local price max (highest close within +/-21d); a
+run-up of at least **{EUPHORIA_BOOM_MIN_ETF:.0%}** (theme) or
+**{EUPHORIA_BOOM_MIN_SINGLE:.0%}** (single) off the trailing **120d** low;
+and a fall of at least **{EUPHORIA_CRASH_MIN_ETF:.0%}** (theme) or
+**{EUPHORIA_CRASH_MIN_SINGLE:.0%}** (single) within 90 days after it. Note
+the 120d here is the GRADING window and is not the same as the
+{EUPHORIA_BOOM_WINDOW_D}d boom gate in A3 above - one decides what counts
+as a real top, the other decides when the detector is allowed to fire. A
+false alarm costs a full captured top in threshold selection
+(penalty {EUPHORIA_FA_PENALTY:g}).
+
+---
+
 **What this is NOT.**
 
 - Not a price forecast, and not a short recommendation. Both were tested
@@ -2173,6 +2193,7 @@ RECENT_D = 21          # display window = the alert cooldown: one episode
 #                        is "current" for one cooldown span
 
 
+
 def _state_of(name, starting, ending):
     """STARTING / ENDING / quiet - the later phase wins a tie."""
     s, e = starting.get(name), ending.get(name)
@@ -2218,137 +2239,38 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                      expanded=False):
         st.markdown(euphoria_simple())
 
-    # ---- THE THEME -> INSTRUMENT MAP, ON SCREEN ------------------------
-    # Desk 2026-08-04: "the etf list is still broken".  It was not - the
-    # CSV had already been corrected - but the running app had imported
-    # the old map at start-up and there was no way to tell from the
-    # screen which version you were looking at.  Two fixes: the map now
-    # reloads on mtime (see `_theme_etf_maps`), and it is printed here
-    # WITH the file's last-modified date, so "did my edit land?" is a
-    # question the page answers instead of one you have to guess at.
+    # ---- ANCHOR TROUBLE, AND ONLY WHEN THERE IS ANY -------------------
+    # The two reference expanders that used to sit here were removed on
+    # desk instruction 2026-08-05 ("please remove these drop downs, only
+    # keep the what is euphoria one"). The CHECK they performed is kept,
+    # because it caught something real: `europe_defense` was being drawn
+    # on ITA, a US aerospace line standing in for a European one, and
+    # nothing said so.
     #
-    # The `note` column is shown verbatim because it is where the honest
-    # caveats live: which anchors are exact (URA, ITB, JETS, CIBR) and
-    # which are proxies standing in for an instrument the firm has not
-    # approved (solar wants TAN, gaming wants ESPO, quantum wants QTUM).
-    # A proxy that says so is a judgement; a proxy that stays quiet is a
-    # trap.
+    # It is now silent by default. Nothing renders while every anchor is
+    # priced and in use - so this costs no space on a normal day and
+    # speaks only when a theme is quietly being drawn on something other
+    # than the instrument it names.
     if kind == "theme":
-        with st.expander(f"the theme → instrument map  "
-                         f"({len(THEME_ETFS)} tradeable themes)"):
-            _notes = _theme_etf_notes()
-            _map_rows = []
-            for _t in sorted(THEME_ETFS):
-                _chain = [s for s in THEME_ETF_FALLBACKS.get(_t, [])
-                          if s != THEME_ETFS[_t]]
-                _live = _live_anchor(_t)
-                _map_rows.append({
-                    "theme": _t,
-                    "anchor (config)": THEME_ETFS[_t],
-                    "drawn on": (_live or "nothing priced")
-                    + ("" if _live == THEME_ETFS[_t] else "  ⚠"),
-                    "fallbacks": " → ".join(_chain) or "-",
-                    "note": _notes.get(_t, ""),
-                })
-            _map_df = pd.DataFrame(_map_rows)
-            _subbed = [r["theme"] for r in _map_rows if "⚠" in r["drawn on"]]
-            if _subbed:
-                st.warning(
-                    "**Drawn on a fallback, not the configured anchor: "
-                    + ", ".join(_subbed) + ".** The anchor has no price "
-                    "history, so `resolve_anchor` silently substitutes "
-                    "the first priced line in the chain - which is the "
-                    "right behaviour for an old backtest window and the "
-                    "wrong thing to leave unsaid on a live screen. Fix "
-                    "it by pricing the anchors (see the panel below), "
-                    "not by editing the chain.")
-            st.dataframe(_map_df, width="stretch", hide_index=True)
-            _p = os.path.join(ROOT, "config", "theme_etfs.csv")
-            st.caption(
-                f"Read live from config/theme_etfs.csv (last edited "
-                f"{pd.Timestamp(_mtime(_p), unit='s'):%Y-%m-%d %H:%M}). "
-                "Edit that file and rerun - no restart needed. Themes "
-                "with an EMPTY anchor are tracked but untradeable and "
-                "never appear above.")
-
-        # ---- WHERE EVERY APPROVED INSTRUMENT GOES ----------------------
-        # Desk 2026-08-04: "are there less themes than etfs? is that why we
-        # are getting less in the dropdown?"  Yes to the first, no to the
-        # second, and the counts should not have to be reconstructed by
-        # hand to see it.
-        #
-        # The dropdown lists THEMES, not instruments, and the two are not
-        # meant to be 1:1.  The direction of causation runs crowd -> theme
-        # -> instrument: a theme exists because retail argues about it, and
-        # the ETF is only how you would express it.  Forcing one theme per
-        # approved line would run that backwards and invent themes nobody
-        # is posting about, which is how a signal gets diluted with noise
-        # that has no crowd behind it.
-        #
-        # So the arithmetic is shown instead of asserted.  Three roles:
-        #   ANCHOR    - the tradeable expression of a theme (27 lines,
-        #               fewer than 34 because seven anchors legitimately
-        #               serve two themes each: SMH covers semis AND memory)
-        #   FALLBACK  - the depth chart. A backtest window older than a
-        #               young ETF still draws against an established proxy,
-        #               which is why ASHR/KWEB/CQQQ sit behind FXI and
-        #               GDX/SLV/SIL/COPX behind GLD.
-        #   BENCHMARK - approved, no theme points at it, and none should:
-        #               factor, style, credit and index lines nobody posts
-        #               about. They belong on a chart, not on a signal.
-        with st.expander(f"where every approved instrument goes  "
-                         f"({len(_approved_symbols())} on the approved "
-                         f"list)"):
-            _anchor_of = {}
-            for _t, _s in THEME_ETFS.items():
-                _anchor_of.setdefault(_s, []).append(_t)
-            _fb_of = {}
-            for _t, _ch in THEME_ETF_FALLBACKS.items():
-                for _s in _ch:
-                    if _s != THEME_ETFS.get(_t):
-                        _fb_of.setdefault(_s, []).append(_t)
-            _priced = (set(prices["symbol"].unique())
-                       if prices is not None else set())
-            _cov = []
-            for _s in sorted(_approved_symbols()):
-                if _s in _anchor_of:
-                    _role, _for = "anchor", sorted(_anchor_of[_s])
-                elif _s in _fb_of:
-                    _role, _for = "fallback", sorted(_fb_of[_s])
-                else:
-                    _role, _for = "benchmark", []
-                _cov.append({"instrument": _s, "role": _role,
-                             "themes": ", ".join(_for) or "-",
-                             "priced": "yes" if _s in _priced else "NO"})
-            _cov_df = pd.DataFrame(_cov)
-            _n_role = _cov_df["role"].value_counts()
-            st.markdown(
-                f"**{len(_cov_df)} approved instruments** carry "
-                f"**{len(THEME_ETFS)} tradeable themes**: "
-                f"{int(_n_role.get('anchor', 0))} anchors "
-                f"(seven serve two themes each), "
-                f"{int(_n_role.get('fallback', 0))} fallbacks, "
-                f"{int(_n_role.get('benchmark', 0))} benchmarks. "
-                "The dropdown lists themes, so it shows "
-                f"{len(THEME_ETFS)} - that is the map working, not a "
-                "truncated list.")
-            st.dataframe(_cov_df, width="stretch", hide_index=True)
-            _unpriced = _cov_df[_cov_df["priced"] == "NO"]["instrument"]
-            if len(_unpriced):
-                st.warning(
-                    "**Approved but never priced: "
-                    + ", ".join(_unpriced) + ".** These have no price "
-                    "history in the store, so nothing on this dashboard "
-                    "can draw them. `pull_bloomberg_prices.py` used to "
-                    "build its request from theme anchors and fallbacks "
-                    "only, so an approved line no theme pointed at was "
-                    "never asked for; that was fixed 2026-08-04 and the "
-                    "next price pull with the Terminal open collects "
-                    "them. Check MTUM's exchange code first - "
-                    "`approved_instruments.csv` stores `MTUM TF Equity` "
-                    "and Cboe BZX is usually `UF`.")
-            else:
-                st.caption("Every approved instrument has price history.")
+        _sub, _dark = [], []
+        for _t in sorted(THEME_ETFS):
+            _live = _live_anchor(_t)
+            if _live is None:
+                _dark.append(_t)
+            elif _live != THEME_ETFS[_t]:
+                _sub.append(f"{_t} ({THEME_ETFS[_t]} → {_live})")
+        if _dark:
+            st.error("**No priced instrument at all: " + ", ".join(_dark)
+                     + ".** These are counted in the crowd data and then "
+                     "dropped before scoring, so the universe holds fewer "
+                     "themes than the config defines. One Bloomberg pull "
+                     "fixes it.")
+        if _sub:
+            st.warning("**Drawn on a fallback, not the named anchor: "
+                       + ",  ".join(_sub) + ".** The anchor has no price "
+                       "history, so the first priced line in the chain is "
+                       "substituted - correct for an old backtest window, "
+                       "wrong to leave unsaid on a live screen.")
 
     if euph is None or not len(euph):
         st.info("no euphoria data yet - run QUICK UPDATE in the sidebar")

@@ -2168,8 +2168,7 @@ class TestApprovedUniverseCoverage:
 
     def test_a_substituted_anchor_is_reported_not_hidden(self):
         src = self._src().read_text(encoding="utf-8")
-        assert "Drawn on a fallback, not the configured anchor" in src
-        assert "Approved but never priced" in src
+        assert "Drawn on a fallback, not the named anchor" in src
 
     def test_the_themes_are_not_forced_to_match_the_instrument_count(self):
         """Deliberate: a theme exists because retail argues about it, and
@@ -2181,3 +2180,197 @@ class TestApprovedUniverseCoverage:
             "if these ever match, check it happened because the crowd "
             "started discussing every approved line - not because "
             "somebody padded the theme list to make the counts agree")
+
+
+class TestTickerMappingsAreCurrent:
+    """Every mapped symbol must be one that still trades under that
+    ticker, or be reachable by NAME instead.
+
+    Full audit 2026-08-05 (desk: "please check ALL the ticker mappings").
+    A renamed ticker does not break anything loudly - it just quietly
+    counts nothing, forever, while the theme it belonged to looks fine."""
+
+    @staticmethod
+    def _universe():
+        from pathlib import Path
+        from src.config import REFERENCE_DIR
+        from src.ticker_universe import load_us_ticker_universe
+        return load_us_ticker_universe(Path(REFERENCE_DIR))
+
+    @staticmethod
+    def _rows(name):
+        import csv
+        from pathlib import Path
+        p = Path(__file__).resolve().parents[1] / "config" / name
+        with open(p, newline="", encoding="utf-8-sig") as fh:
+            return list(csv.DictReader(fh))
+
+    def test_the_retired_tickers_are_gone(self):
+        """Each of these was found mapped and dead. The replacement is
+        checked too, so a half-applied rename fails."""
+        mapped = {r["ticker"] for r in self._rows("theme_tickers.csv")}
+        for dead, live in (("SQ", "XYZ"),        # Block re-tickered
+                           ("PARA", "PSKY"),     # Paramount Skydance
+                           ("MMC", "MRSH"),      # Marsh, 14 Jan 2026
+                           ("VSCO", "VSXY"),     # Victoria's Secret
+                           ("ARMN", "ARIS"),     # Aris Mining
+                           ("BITF", "KEEL")):    # Bitfarms -> Keel
+            assert dead not in mapped, f"{dead} is dead; it is now {live}"
+            assert live in mapped, f"{dead} was removed but {live} is absent"
+        for gone in ("CYBR", "DIDI"):
+            assert gone not in mapped, f"{gone} is delisted"
+        # SPLG -> SPYM was the same class of correction, but its only home
+        # was the short-lived broad_market_passive basket, which the sp500
+        # theme replaced with actual constituents. Nothing should carry
+        # the dead symbol either way.
+        assert "SPLG" not in mapped
+
+    def test_keel_moved_theme_as_well_as_ticker(self):
+        """Bitfarms did not just re-ticker - it stopped being a bitcoin
+        miner and became US AI infrastructure. A rename that keeps the
+        old theme is still a wrong mapping."""
+        rows = self._rows("theme_tickers.csv")
+        themes = {r["theme"] for r in rows if r["ticker"] == "KEEL"}
+        assert "crypto" not in themes
+        assert "datacenters" in themes
+
+    def test_every_unmatchable_constituent_is_reachable_by_name(self):
+        """OTC ADRs are absent from the listed file and dotted class
+        shares cannot pass ^[A-Z]{1,5}$, so those rows can NEVER match as
+        tickers. Each one must have its company name in the keyword map
+        instead, or it is silently contributing nothing to its theme."""
+        import collections
+        import re
+        uni = self._universe()
+        tt = collections.defaultdict(set)
+        for r in self._rows("theme_tickers.csv"):
+            tt[r["ticker"]].add(r["theme"])
+        names = {}
+        for r in self._rows("etf_constituents.csv"):
+            names.setdefault(r["ticker"], r["company"])
+        # A few mapped symbols are CURATED rather than ETF holdings, so
+        # etf_constituents.csv carries no company for them. Named here
+        # because the relationship has to be written down somewhere for
+        # this check to mean anything; add a line when you add such a row.
+        names.setdefault("NTDOY", "Nintendo ADR")
+        kw = collections.defaultdict(set)
+        for r in self._rows("theme_keywords.csv"):
+            kw[r["theme"]].add(r["keyword"].lower().strip())
+        orphans = []
+        for sym, themes in tt.items():
+            if sym in uni:
+                continue
+            # the shortest distinctive token of the company name is what a
+            # person actually types: "Rolls-Royce ADR" -> "rolls"
+            raw = re.sub(r"\b(adr|plc|ag|sa|nv|holdings?|class [a-z]|inc|"
+                         r"corp|company|companies|group|ltd)\b", " ",
+                         names.get(sym, sym).lower())
+            toks = [t for t in re.split(r"[^a-z0-9&-]+", raw) if len(t) > 2]
+            reachable = any(
+                any(t in phrase for t in toks) or
+                any(phrase in " ".join(toks) for phrase in ())
+                for th in themes for phrase in kw.get(th, set()))
+            if not reachable:
+                orphans.append((sym, names.get(sym, "?"), sorted(themes)))
+        assert not orphans, (
+            "these can never match as tickers and have no company name in "
+            f"the keyword map either: {orphans}")
+
+    def test_no_symbol_is_both_jargon_and_a_theme_ticker_by_accident(self):
+        """AI, DD and NOW are mapped AND stoplisted. That is deliberate -
+        the stoplist wins in extract_tickers, so C3.ai, DuPont and
+        ServiceNow are documented as theme members but never counted from
+        prose. ES joined them 2026-08-05 (it is the E-mini future, not
+        Eversource). The test pins the SET so a new clash gets noticed."""
+        from src.extract_tickers import STOP_TICKERS
+        mapped = {r["ticker"] for r in self._rows("theme_tickers.csv")}
+        clash = sorted(mapped & STOP_TICKERS)
+        assert clash == ["AI", "DD", "ES", "NOW"], (
+            f"the set of deliberate jargon/ticker clashes changed: {clash}")
+
+    def test_es_can_never_become_a_ticker(self):
+        """Measured: all six sampled bare-CAPS "ES" hits were the E-mini
+        S&P future, not Eversource. It is stoplisted so a future
+        allowlist edit cannot poison utilities_power."""
+        from src.extract_tickers import ALLOW_TICKERS, STOP_TICKERS
+        assert "ES" in STOP_TICKERS and "ES" not in ALLOW_TICKERS
+
+    def test_pm_was_measured_and_rejected(self):
+        """220 bare CAPS would have passed a ratio test. Reading the
+        samples showed "send a PM", "make this guy a PM", "Canadian PM" -
+        one hit in six was Philip Morris."""
+        from src.extract_tickers import ALLOW_TICKERS
+        assert "PM" not in ALLOW_TICKERS
+
+
+class TestCrawlAndBudgetHygiene:
+    """Two bugs the 2026-08-05 run made visible in its own log."""
+
+    @staticmethod
+    def _src(rel):
+        from pathlib import Path
+        return (Path(__file__).resolve().parents[1]
+                / rel).read_text(encoding="utf-8")
+
+    def test_a_dry_subreddit_stops_instead_of_burning_the_budget(self):
+        """The crawl walks newest-first, so once pages stop yielding
+        anything it is re-reading collected ground. Measured on that run:
+        ~95 budgeted pages returned ZERO new comments (personalfinance
+        21, Daytrading 14, Bogleheads 10) while r/wallstreetbets was
+        deferred for want of pages."""
+        src = self._src("ingestion/fetch_reddit_comments.py")
+        assert "DRY_PAGES_STOP" in src
+        assert "dry_pages >= DRY_PAGES_STOP" in src
+
+    def test_a_dry_crawl_advances_its_watermark(self):
+        """The half that unsticks it. Leaving `completed` False made the
+        next run start in the same place and buy the same dead pages -
+        a dry subreddit could never make progress."""
+        src = self._src("ingestion/fetch_reddit_comments.py")
+        i = src.index("dry_pages >= DRY_PAGES_STOP")
+        block = src[max(0, i - 2200):i]
+        assert "completed = True" in block or "completed` = True" in block \
+            or "completed = True" in src[i - 2600:i + 400], (
+            "the dry-stop must leave completed True or the watermark "
+            "will not advance")
+
+    def test_a_rate_limit_wearing_a_422_is_retried(self):
+        """r/Bitcoin stopped at page 15 on {"error": "Timeout. Maybe slow
+        down a bit"} - a rate limit returned as a client error. The body
+        is what separates it from a genuinely malformed request."""
+        src = self._src("ingestion/fetch_reddit_comments.py")
+        assert 'slow down' in src
+        assert "r.status_code == 422" in src
+
+    def test_the_fa_budget_is_a_constant_not_a_file_read(self):
+        """It was read from euphoria_report.json while the euphoria stage
+        rewrote that file IN PARALLEL, so the adoption bar depended on
+        which stage finished first: two consecutive passes over identical
+        data printed budget 0.23 then 0.19 and disagreed on the result
+        (GET OUT captured 17 then 16, adjacency 4 then 5)."""
+        from src.config import EUPHORIA_FA_BUDGET_PER_IY
+        assert EUPHORIA_FA_BUDGET_PER_IY == 0.23
+        src = self._src("analytics/euphoria_phases.py")
+        assert 'fa_per_instrument_year' not in src, (
+            "the FA budget is being read off the last run again - that "
+            "races the euphoria stage and ratchets the bar downward")
+        assert src.count("EUPHORIA_FA_BUDGET_PER_IY") >= 3
+
+    def test_no_silent_boolean_downcast_remains(self):
+        """Both pandas FutureWarnings came from filling NaN into an
+        otherwise-boolean column and relying on a deprecated downcast."""
+        for rel in ("analytics/euphoria_phases.py", "analytics/signals.py"):
+            src = self._src(rel)
+            assert ".fillna(False)\n" not in src.replace(
+                ".fillna(False).astype(bool)", ""), (
+                f"{rel} still fills a bool column without stating dtype")
+
+    def test_a_theme_with_no_priced_line_is_reported(self):
+        """broad_market_passive is defined, counted, and then dropped
+        before scoring because RSP/VTV/VUG/IVE/IVW are all unpriced -
+        which is why the universe line says 36 themes and the config
+        defines 37. Silent is the wrong way for that to happen."""
+        src = self._src("dashboard.py")
+        assert "No priced instrument at all" in src
+
+

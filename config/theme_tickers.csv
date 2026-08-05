@@ -161,7 +161,6 @@ china_geopolitics,BYDDY,FXI constituent
 china_geopolitics,BZ,KWEB constituent
 china_geopolitics,CICHY,FXI constituent
 china_geopolitics,CIHKY,FXI constituent
-china_geopolitics,DIDI,curated
 china_geopolitics,FXI,curated
 china_geopolitics,GDS,CQQQ constituent
 china_geopolitics,IDCBY,FXI constituent
@@ -267,12 +266,11 @@ consumer_retail,TGT,curated
 consumer_retail,TJX,XLY constituent
 consumer_retail,TSLA,XLY constituent
 consumer_retail,UPBD,XRT constituent
-consumer_retail,VSCO,XRT constituent
+consumer_retail,VSXY,XRT constituent
 consumer_retail,VVV,XRT constituent
 consumer_retail,WMT,curated
 consumer_retail,XLY,curated
 consumer_retail,YUM,XLY constituent
-crypto,BITF,curated
 crypto,BITO,curated
 crypto,CLSK,curated
 crypto,COIN,curated
@@ -296,7 +294,6 @@ cybersecurity,CIBR,curated
 cybersecurity,CRWD,curated
 cybersecurity,CSCO,CIBR constituent
 cybersecurity,CVLT,CIBR constituent
-cybersecurity,CYBR,curated
 cybersecurity,DDOG,CIBR constituent
 cybersecurity,DT,CIBR constituent
 cybersecurity,ESTC,CIBR constituent
@@ -568,7 +565,7 @@ financials,ICE,XLF constituent
 financials,JPM,curated
 financials,JXN,KBE constituent
 financials,MA,curated
-financials,MMC,XLF constituent
+financials,MRSH,XLF constituent
 financials,MS,curated
 financials,MTB,KBE constituent
 financials,MTG,KBE constituent
@@ -630,7 +627,7 @@ fintech_payments,INTU,IGV constituent
 fintech_payments,IPAY,curated
 fintech_payments,JPM,XLF constituent
 fintech_payments,MA,curated
-fintech_payments,MMC,XLF constituent
+fintech_payments,MRSH,XLF constituent
 fintech_payments,MS,XLF constituent
 fintech_payments,MSFT,IGV constituent
 fintech_payments,MSTR,IGV constituent
@@ -647,7 +644,7 @@ fintech_payments,SCHW,XLF constituent
 fintech_payments,SNPS,IGV constituent
 fintech_payments,SOFI,curated
 fintech_payments,SPGI,XLF constituent
-fintech_payments,SQ,curated
+fintech_payments,XYZ,curated
 fintech_payments,TEAM,IGV constituent
 fintech_payments,TOST,curated
 fintech_payments,TRV,XLF constituent
@@ -657,7 +654,6 @@ fintech_payments,USB,XLF constituent
 fintech_payments,V,curated
 fintech_payments,WDAY,IGV constituent
 fintech_payments,WFC,XLF constituent
-fintech_payments,XYZ,curated
 fintech_payments,ZM,IGV constituent
 fintech_payments,ZS,IGV constituent
 gaming_esports,BIDU,SOCL constituent
@@ -688,7 +684,7 @@ gaming_esports,YELP,SOCL constituent
 gold_metals,AEM,curated
 gold_metals,AG,GDX constituent
 gold_metals,AGI,GDX constituent
-gold_metals,ARMN,GDX constituent
+gold_metals,ARIS,GDX constituent
 gold_metals,ASM,SIL constituent
 gold_metals,AU,GDX constituent
 gold_metals,AUGO,GDX constituent
@@ -862,9 +858,8 @@ media_streaming,NTES,SOCL constituent
 media_streaming,NWS,XLC constituent
 media_streaming,NWSA,XLC constituent
 media_streaming,OMC,XLC constituent
-media_streaming,PARA,curated
+media_streaming,PSKY,curated
 media_streaming,PINS,SOCL constituent
-media_streaming,PSKY,XLC constituent
 media_streaming,RDDT,SOCL constituent
 media_streaming,ROKU,curated
 media_streaming,SNAP,SOCL constituent
@@ -1386,3 +1381,4 @@ weight_loss_glp1,TGTX,XBI constituent
 weight_loss_glp1,TVTX,XBI constituent
 weight_loss_glp1,TWST,XBI constituent
 weight_loss_glp1,VKTX,curated
+datacenters,KEEL,curated

@@ -142,7 +142,7 @@ GDX,BVN,Buenaventura ADR,19,yes
 GDX,SSRM,SSR Mining,20,yes
 GDX,BTG,B2Gold,21,yes
 GDX,OR,OR Royalties,22,yes
-GDX,ARMN,Aris Mining,23,yes
+GDX,ARIS,Aris Mining,23,yes
 GDX,CGAU,Centerra Gold,24,yes
 GDX,ORLA,Orla Mining,25,yes
 GDX,EXK,Endeavour Silver,26,yes
@@ -384,7 +384,7 @@ XLF,PNC,PNC Financial Services,18,yes
 XLF,USB,US Bancorp,19,yes
 XLF,BX,Blackstone,20,yes
 XLF,CME,CME Group,21,yes
-XLF,MMC,Marsh McLennan,22,yes
+XLF,MRSH,Marsh McLennan,22,yes
 XLF,ICE,Intercontinental Exchange,23,yes
 XLF,TRV,Travelers,24,yes
 XLF,AON,Aon,25,yes
@@ -483,7 +483,7 @@ XRT,CART,Maplebear (Instacart),17,yes
 XRT,VVV,Valvoline,18,yes
 XRT,LAD,Lithia Motors,19,yes
 XRT,CPNG,Coupang,20,yes
-XRT,VSCO,Victorias Secret,21,yes
+XRT,VSXY,Victorias Secret,21,yes
 XRT,TGT,Target,22,yes
 XRT,KSS,Kohls,23,yes
 XRT,SIG,Signet Jewelers,24,yes
@@ -825,3 +825,53 @@ ARKK,GOOGL,Alphabet Class A,40,yes
 ARKK,CERS,Cerus,41,yes
 ARKK,PACB,Pacific Biosciences,42,yes
 ARKK,FIG,Figma,43,yes
+XLK,NVDA,NVIDIA,1,yes
+XLK,AAPL,Apple,2,yes
+XLK,MSFT,Microsoft,3,yes
+XLK,AVGO,Broadcom,4,yes
+XLK,AMD,Advanced Micro Devices,5,yes
+XLK,MU,Micron Technology,6,yes
+XLK,CSCO,Cisco Systems,7,yes
+XLK,INTC,Intel,8,yes
+XLK,AMAT,Applied Materials,9,yes
+XLK,LRCX,Lam Research,10,yes
+XLK,PLTR,Palantir Technologies,11,yes
+XLK,PANW,Palo Alto Networks,12,yes
+XLK,TXN,Texas Instruments,13,yes
+XLK,KLAC,KLA Corporation,14,yes
+XLK,ORCL,Oracle,15,yes
+XLK,IBM,IBM,16,yes
+XLK,APH,Amphenol,17,yes
+XLK,CRWD,CrowdStrike Holdings,18,yes
+XLK,STX,Seagate Technology,19,yes
+XLK,WDC,Western Digital,20,yes
+XLK,ANET,Arista Networks,21,yes
+XLK,SNDK,Sandisk,22,yes
+XLK,ADI,Analog Devices,23,yes
+XLK,MRVL,Marvell Technology,24,yes
+XLK,QCOM,QUALCOMM,25,yes
+XLV,LLY,Eli Lilly,1,yes
+XLV,JNJ,Johnson & Johnson,2,yes
+XLV,ABBV,AbbVie,3,yes
+XLV,UNH,UnitedHealth Group,4,yes
+XLV,MRK,Merck,5,yes
+XLV,TMO,Thermo Fisher Scientific,6,yes
+XLV,AMGN,Amgen,7,yes
+XLV,ABT,Abbott Laboratories,8,yes
+XLV,GILD,Gilead Sciences,9,yes
+XLV,PFE,Pfizer,10,yes
+XLV,CVS,CVS Health,11,yes
+XLV,BMY,Bristol-Myers Squibb,12,yes
+XLV,ISRG,Intuitive Surgical,13,yes
+XLV,DHR,Danaher,14,yes
+XLV,VRTX,Vertex Pharmaceuticals,15,yes
+XLV,SYK,Stryker,16,yes
+XLV,MDT,Medtronic,17,yes
+XLV,MCK,McKesson,18,yes
+XLV,ELV,Elevance Health,19,yes
+XLV,CI,Cigna Group,20,yes
+XLV,REGN,Regeneron Pharmaceuticals,21,yes
+XLV,BSX,Boston Scientific,22,yes
+XLV,HCA,HCA Healthcare,23,yes
+XLV,COR,Cencora,24,yes
+XLV,CAH,Cardinal Health,25,yes

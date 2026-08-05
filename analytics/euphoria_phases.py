@@ -50,7 +50,8 @@ import numpy as np
 import pandas as pd
 
 from src.config import (EUPHORIA_CRASH_MIN_ETF, EUPHORIA_CRASH_MIN_SINGLE,
-                        EUPHORIA_PCT_WINDOW, EUPHORIA_MIN_HISTORY)
+                        EUPHORIA_PCT_WINDOW, EUPHORIA_MIN_HISTORY,
+                        EUPHORIA_FA_BUDGET_PER_IY)
 from analytics.euphoria import (EuphoriaSeries, ground_truth_peaks,
                                 judgeable_window, trailing_pct_rank,
                                 log_convexity, _mention_share,
@@ -306,7 +307,7 @@ def build_day_frame(series: list, pxmap: dict,
         j0, j1 = judgeable_window(pxmap[es.symbol])
         if j0 is None:
             continue
-        ok = es.coverage_ok.reindex(df.index).fillna(False)
+        ok = es.coverage_ok.reindex(df.index).fillna(False).astype(bool)
         mask = ok & (df.index >= j0)
         if clip_judgeable:
             mask = mask & (df.index <= j1)
@@ -318,7 +319,8 @@ def build_day_frame(series: list, pxmap: dict,
         if df.empty:
             continue
         df = df.assign(name=es.name, kind=es.kind, year=df.index.year,
-                       hype_ok=es.boom_ok.reindex(df.index).fillna(False))
+                       hype_ok=es.boom_ok.reindex(df.index)
+                       .fillna(False).astype(bool))
         frames.append(df.reset_index(names="date"))
     if not frames:
         return pd.DataFrame()
@@ -704,13 +706,12 @@ def rebuild_phase_files(verbose: bool = True,
         frame = build_day_frame(series, pxmap, episodes, counts, sents)
         onset_frame = frame[frame.hype_raw >= 1].copy()
 
-        # the derived FA budget: the noise level the desk already
-        # accepted from the validated top detector
-        rep_path = _os.path.join(PROCESSED_DIR, "euphoria_report.json")
-        fa_budget = 0.23
-        if _os.path.exists(rep_path):
-            fa_budget = _json.load(open(rep_path))["overall"][
-                "fa_per_instrument_year"]
+        # THE FA BUDGET IS A CONSTANT, not a reading off the last run.
+        # It used to be loaded from euphoria_report.json here, which
+        # raced with the euphoria stage rewriting that file in parallel
+        # and made the adoption bar depend on stage finishing order.
+        # See the block beside EUPHORIA_FA_BUDGET_PER_IY in src/config.py.
+        fa_budget = EUPHORIA_FA_BUDGET_PER_IY
 
         def _rules(train, apply, feats):
             return onset_score(apply).values
@@ -789,7 +790,12 @@ def rebuild_phase_files(verbose: bool = True,
     # live passes score today's data at the frozen thresholds in seconds.
     boom = boom_state_frame(series, pxmap)
     fpx_live = frame_live.merge(boom, on=["name", "date"], how="left")
-    fpx_live["boom_state"] = fpx_live["boom_state"].fillna(False)
+    # astype(bool) after the fill: the merge leaves an object column
+    # holding True/False/NaN, and pandas 2.x deprecated silently
+    # downcasting that back to bool on fillna. Saying the dtype out loud
+    # keeps the behaviour identical and drops the FutureWarning.
+    fpx_live["boom_state"] = (fpx_live["boom_state"]
+                              .fillna(False).astype(bool))
 
     desk_path = _os.path.join(PROCESSED_DIR, "euphoria_desk_report.json")
     desk_stored = None
@@ -803,18 +809,15 @@ def rebuild_phase_files(verbose: bool = True,
     _desk_lag = (None if desk_research
                  else desk_record_lags_data(desk_stored, data_max_year))
 
-    rep_path = _os.path.join(PROCESSED_DIR, "euphoria_report.json")
-    fa_budget = 0.23
-    if _os.path.exists(rep_path):
-        fa_budget = _json.load(open(rep_path))["overall"][
-            "fa_per_instrument_year"]
+    fa_budget = EUPHORIA_FA_BUDGET_PER_IY      # frozen - see src/config.py
 
     if desk_research:
         frame_j = (frame if research
                    else build_day_frame(series, pxmap, episodes, counts,
                                         sents))
         fpx_j = frame_j.merge(boom, on=["name", "date"], how="left")
-        fpx_j["boom_state"] = fpx_j["boom_state"].fillna(False)
+        fpx_j["boom_state"] = (fpx_j["boom_state"]
+                               .fillna(False).astype(bool))
         end_j, onset_j = desk_candidacy(fpx_j)
         wf_out = run_tournament_entry(end_j, episodes, TOP_FEATURES,
                                       "y_top", "top", desk_end_fit,

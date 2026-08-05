@@ -192,12 +192,17 @@ def make_decisions(names, all_days, az_f, cz_f, dv_f, crowd_f, xrise_f,
         # momentum triggers (vectorised per name, then iterated only on
         # the handful of trigger days - this loop is tiny)
         buy_t = crosses_above(az_f[name], k) | crosses_above(cz_f[name], k)
-        newly_crowded = (crowd_f[name] & ~crowd_f[name].shift(1).fillna(False)
+        # .astype(bool) after the shift: shift(1) introduces NaN in an
+        # otherwise-boolean column, and pandas 2.x deprecated the silent
+        # downcast back to bool that fillna used to do. Stating the dtype
+        # keeps the identical result and drops the FutureWarning.
+        newly_crowded = (crowd_f[name]
+                         & ~crowd_f[name].shift(1).fillna(False).astype(bool)
                          if name in crowd_f.columns
                          else pd.Series(False, index=all_days))
         sell_t = crosses_below(cz_f[name], -k) | newly_crowded
 
-        for day in all_days[(buy_t | sell_t).fillna(False)]:
+        for day in all_days[(buy_t | sell_t).fillna(False).astype(bool)]:
             az = _val(az_f, day, name)
             cz = _val(cz_f, day, name)
             dv = _val(dv_f, day, name)

@@ -78,6 +78,13 @@ LOCK_FILE = os.path.join(PROJECT_ROOT, "data", "reference",
 API = "https://arctic-shift.photon-reddit.com/api/comments/search"
 PAGE = 100
 PAUSE_S = 1.0
+# Consecutive full pages yielding ZERO new comments before a crawl is
+# called finished. Three rather than one because the API can return a
+# page of already-seen ids in the middle of a live band (deletions,
+# edits, and the 1-day watermark overlap all produce short all-seen
+# runs); three in a row is the crowd being genuinely exhausted, not a
+# gap. Measured cost of not having it: ~95 wasted pages in one run.
+DRY_PAGES_STOP = 3
 MAX_SEEN = 200_000
 # the fields the influence tracker needs - dropping the rest keeps the raw
 # files a fraction of full-comment size
@@ -267,8 +274,19 @@ def fetch_page(sub, after, before, retries=4):
                              timeout=(10, 60))
             if r.status_code == 200:
                 return r.json().get("data", [])
-            if r.status_code == 429 or r.status_code >= 500:
-                print(f"    HTTP {r.status_code} - backing off "
+            # A 422 is normally OUR fault (a malformed range) and must not
+            # be retried.  But this API also answers a too-fast crawl with
+            # 422 and the body {"error": "Timeout. Maybe slow down a bit"},
+            # which is a RATE LIMIT wearing a client-error status code.
+            # Observed 2026-08-05: r/Bitcoin stopped at page 15 with that
+            # exact message and 1,254 comments were left behind for no
+            # reason.  The body is what separates the two cases, so the
+            # body is what decides.
+            _slow = (r.status_code == 422
+                     and "slow down" in r.text.lower())
+            if r.status_code == 429 or r.status_code >= 500 or _slow:
+                print(f"    HTTP {r.status_code}"
+                      f"{' (rate limit)' if _slow else ''} - backing off "
                       f"{20*(attempt+1)}s", flush=True)
             else:
                 print(f"    HTTP {r.status_code} (client error - not "
@@ -417,6 +435,8 @@ def main():
             cursor = before                   # epoch, stays epoch
             page_num = 0
             pages_used = 0
+            dry_pages = 0                     # see DRY_PAGES_STOP
+            last_got = 0
             oldest_ts = None                  # how far back this crawl got
             cap = plan.get(sub) if budget is not None else None
             while True:
@@ -454,6 +474,42 @@ def main():
                     newest = max(newest, int(rec.get("created_utc", 0) or 0))
                     writer.write((json.dumps(slim) + "\n").encode("utf-8"))
                     got += 1
+                # ---- HAVE WE RUN DRY? -------------------------------
+                # The crawl walks NEWEST-FIRST, so every new comment is at
+                # the front. Once the pages stop yielding anything the
+                # crawl has re-entered ground an earlier run already
+                # covered, and every further page is a full 100 rows of
+                # comments we already hold.
+                #
+                # Nothing stopped it. Measured on the 2026-08-05 run, ~95
+                # of the budgeted pages returned ZERO new comments -
+                # r/personalfinance burned 21, r/Daytrading 14,
+                # r/Bogleheads 10 - and those pages came out of the same
+                # ceiling that then deferred r/wallstreetbets.
+                #
+                # Worse, the run then reported "page budget reached" and
+                # left the watermark where it was, so the NEXT run started
+                # in the same place and re-fetched the same dead pages. A
+                # dry subreddit could never make progress; it just paid
+                # rent every run.
+                #
+                # `completed = True` here is deliberate and is the half
+                # that unsticks it. It is also safe: `sub_after` is
+                # `max(after, watermark - 1 day)`, so the crawl can never
+                # reach further back than a day before the watermark
+                # anyway. Refusing to advance buys no extra history - it
+                # only guarantees the same dead pages are bought again.
+                if got == last_got:
+                    dry_pages += 1
+                    if dry_pages >= DRY_PAGES_STOP:
+                        print(f"    caught up - {DRY_PAGES_STOP} pages "
+                              "with nothing new, so r/" + sub + " is "
+                              "fully collected. Stopping here and "
+                              "advancing the watermark.", flush=True)
+                        break
+                else:
+                    dry_pages = 0
+                last_got = got
                 oldest = min(int(r["created_utc"]) for r in rows)
                 oldest_ts = oldest if oldest_ts is None else min(oldest_ts,
                                                                  oldest)

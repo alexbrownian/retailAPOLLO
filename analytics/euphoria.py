@@ -235,10 +235,21 @@ def single_name_universe(prices: pd.DataFrame,
         stoplist applies at ingestion, so it only reaches history after a
         FULL rebuild, and this tab should be right before that happens.
 
-    THE COVERAGE FLOOR is now the project's OWN measurability rule -
-    EUPHORIA_MIN_COVERAGE scored posts in the last 28 days, the same test
-    the detector already applies before it will read a euphoria level at
-    all.  It replaces a cumulative 3,000-post floor that had the same
+    THE COVERAGE FLOOR is EUPHORIA_MIN_COVERAGE scored posts measured
+    over the SAME trailing year the ranking uses - not over 28 days.
+    That single word is what took the universe from 27 names to 69
+    (2026-08-04) with no rebuild and no loosened gate, because MEMBERSHIP
+    AND FIRING ARE DIFFERENT QUESTIONS. The A0 firing gate still demands
+    EUPHORIA_MIN_COVERAGE posts in the last 28 DAYS: a name still cannot
+    raise an alert unless its euphoria is measurable right now, so signal
+    quality is protected by exactly the rule that protected it before.
+    Membership only asks whether the name is worth carrying.
+    There is also a mechanical argument for carrying MORE names than fire:
+    EUPHORIA_MIN_HISTORY requires 180 days of history before percentiles
+    exist at all, so a name that only joins the universe once it is
+    already hot cannot be scored when it matters. A broad, stable
+    universe warms names up BEFORE they go euphoric - which is the whole
+    point of 'catching the next one'.  It replaces a cumulative 3,000-post floor that had the same
     lookback flaw as the ranking: a 2021 relic with 8,000 posts from five
     years ago always cleared it, while the names actually being traded now
     - MU (2,815), SNDK (721), MSTR (1,884), SMCI (924) - never could.
@@ -265,7 +276,7 @@ def single_name_universe(prices: pd.DataFrame,
         recent = counts
     sent = sent.copy()
     sent["date"] = pd.to_datetime(sent["date"])
-    covered = (sent[sent["date"] > hi - pd.Timedelta(days=28)]
+    covered = (sent[sent["date"] > hi - pd.Timedelta(days=window_d)]
                .groupby("ticker")["n_posts"].sum())
     ranked = (recent.groupby("ticker")["mention_count"].sum()
               .sort_values(ascending=False))

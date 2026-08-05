@@ -205,12 +205,12 @@ EUPHORIA_HYPE_MULT = 2.0        # A1 (Reddit-only): the 7d mention share must
                                 # - not adopted here, for the multiple-
                                 # comparisons reason recorded at
                                 # EUPHORIA_MIN_HISTORY.
-EUPHORIA_BOOM_MIN_ETF = 0.20    # G2: an ETF/theme peak must sit >= 25%
+EUPHORIA_BOOM_MIN_ETF = 0.25    # G2: an ETF/theme peak must sit >= 25%
                                 # above its trailing low. Used in TWO places
                                 # with DIFFERENT windows - see the two
                                 # constants below and read the note there
                                 # before touching either.
-EUPHORIA_BOOM_MIN_SINGLE = 0.35  # single names boom harder before they count
+EUPHORIA_BOOM_MIN_SINGLE = 0.50  # single names boom harder before they count
 
 # --- THE TWO BOOM WINDOWS. They are not the same number and must not be
 #     merged (desk decision 2026-07-29).
@@ -441,6 +441,36 @@ EUPHORIA_MIN_COVERAGE = 100     # A0: scored posts needed in the last 28d
                                 # about where the missing names actually are.
 EUPHORIA_FA_PENALTY = 1.0       # (overrides above) a false alarm costs a
                                 # FULL captured peak in threshold selection
+
+# THE FALSE-ALARM BUDGET, FROZEN 2026-08-05.
+#
+# 0.23 false alarms per instrument-year: the incumbent top detector's
+# documented, desk-accepted walk-forward rate. The rule it enforces is
+# unchanged - a new detector may not be noisier than the noise already
+# accepted. What changed is that the number is now a CONSTANT instead of
+# being re-read from euphoria_report.json on every run.
+#
+# WHY, and it is not tidiness. `run_analytics` runs its stages in
+# PARALLEL. The phases stage read this budget out of
+# euphoria_report.json while the euphoria stage was rewriting that same
+# file, so the budget depended on which stage happened to finish first.
+# On the 2026-08-05 run two consecutive `--what phases` passes over
+# IDENTICAL data printed "vs budget 0.23" and then "vs budget 0.19", and
+# disagreed about the result: GET OUT captured 17 then 16, adjacency 4
+# then 5. A detector whose adoption bar moves between two runs of the
+# same data has no record anybody can defend.
+#
+# There was a second problem underneath the race. Reading the budget from
+# the last run's realised FA rate makes it RATCHET: a quiet run lowers
+# the bar, the lower bar changes what is adopted, and the next run is
+# measured against that. The bar drifts downward on its own, and nothing
+# on disk says by how much. The pre-stated rule in ARCHITECTURE.md §6 is
+# pre-stated only if the number stops moving.
+#
+# Changing this is a RE-VALIDATION EVENT: re-run
+# `--what phases --research` and compare the stored record before
+# trusting any threshold selected under the old, moving value.
+EUPHORIA_FA_BUDGET_PER_IY = 0.23
 # themes OUTSIDE the euphoria universe - the desk trades equities and
 # retail commodities only (gold/silver via GLD+fallbacks, oil via XLE,
 # uranium via URA all remain through their theme anchors)

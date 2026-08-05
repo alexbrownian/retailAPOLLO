@@ -46,3 +46,4 @@ DJIA,"the index. Added 2026-08-04. The symbol belongs to a Global X covered-call
 HVAC,"the equipment category. Added 2026-08-04. The symbol belongs to an AdvisorShares fund (2023); 663 mentions predate 2022."
 EBIT,"the accounting measure. Added 2026-08-04. 59% of mentions predate the fund that now holds the symbol."
 ROPE,"WSB slang, and grim slang at that. Added 2026-08-04. The symbol belongs to a 2020s ETF; 93% of its mentions predate 2022."
+ES,"The E-mini S&P 500 FUTURES contract, not Eversource Energy. Every one of six sampled bare-CAPS hits in 176k comments was the future - ""shorted 3 ES"", ""ES futures"", ""ES/SPY still not hit yesterdays low"". 56 CAPS vs 16 lowercase would have passed a pure ratio test, which is why the samples get read as well as counted. Stoplisted so it can never be allowlisted later and poison utilities_power."

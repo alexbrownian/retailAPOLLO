@@ -672,3 +672,59 @@ infrastructure,grid upgrade
 infrastructure,data center construction
 infrastructure,megaproject
 infrastructure,infrastructure bill
+memory,sandisk
+memory,seagate
+memory,western digital
+memory,kioxia
+memory,solidigm
+semiconductors,lam research
+semiconductors,applied materials
+semiconductors,taiwan semiconductor
+semiconductors,arm holdings
+semiconductors,kla corp
+semiconductors,analog devices
+semiconductors,global foundries
+semiconductors,foxconn
+utilities_power,ge vernova
+infrastructure,caterpillar
+cybersecurity,palo alto networks
+cloud_saas,oracle
+weight_loss_glp1,eli lilly
+china_geopolitics,agricultural bank of china
+china_geopolitics,bank of china
+agriculture_food,bayer
+europe_defense,babcock
+financials,berkshire
+financials,berkshire hathaway
+fintech_payments,berkshire
+fintech_payments,berkshire hathaway
+china_geopolitics,byd
+solar,byd
+china_geopolitics,china construction bank
+china_geopolitics,china merchants bank
+europe_defense,airbus
+travel_airlines,airbus
+defense_aerospace,heico
+europe_defense,heico
+space,heico
+china_geopolitics,icbc
+defense_aerospace,moog
+europe_defense,moog
+space,moog
+china_geopolitics,meituan
+europe_defense,mtu aero
+ev_clean_energy,panasonic
+solar,panasonic
+china_geopolitics,ping an
+europe_defense,qinetiq
+europe_defense,rolls royce
+europe_defense,rolls-royce
+europe_defense,safran
+gaming_esports,tencent
+media_streaming,tencent
+cybersecurity,thales
+ev_clean_energy,tdk
+solar,tdk
+shipping_logistics,u-haul
+shipping_logistics,uhaul
+china_geopolitics,xiaomi
