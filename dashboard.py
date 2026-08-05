@@ -5537,30 +5537,8 @@ PULSE_SEGMENTS_SAMPLE = {
         "crosses the conviction threshold.",
 }
 
-PULSE_IDEAS = """**Other things the LLM layer can extract from the live posts**
-(each is a planned segment - the same API call can return all of them):
-
-- **Retail mood gauge (0-100)** - a fear/greed-style dial with a one-line
-  justification, comparable day over day.
-- **Narrative tracker** - not just *what* is discussed but *why*: "retail
-  attributes the semis rally to HBM shortage chatter", with links between
-  themes.
-- **Catalyst watch** - events the crowd is positioning for (earnings dates,
-  product launches, macro prints), ranked by how much chatter they drive.
-- **Euphoria / contrarian warnings** - names where the language turns
-  uncritical (rockets, 'can't lose', all-in posts) - historically a
-  distribution signal; pairs with the crowded-top flag.
-- **Divergence detector** - where retail's story disagrees with price
-  action ('crowd bullish, price falling') - candidate squeeze/washout
-  setups.
-- **Sarcasm-adjusted sentiment** - the lexicon reads 'great, another red
-  day' as positive; an LLM does not. A daily corrected sentiment for the
-  noisiest themes.
-- **Representative quotes** - three verbatim posts per hot theme (with
-  scores), so the desk can read the raw voice without opening Reddit.
-- **Pump/scam radar** - coordinated-promotion patterns on small names,
-  flagged before their counts pollute the mention data."""
-
+# PULSE_IDEAS (the roadmap text) deleted 2026-08-05 with the expander
+# that displayed it - it described sections that do not exist.
 # ---- AI PULSE (LLM-written, via the Apollo gateway) ----
 if active_tab == "AI Pulse":
     st.subheader("AI - the pulse, the advice, and the chatter")
@@ -5819,8 +5797,69 @@ if active_tab == "AI Pulse":
                        "crowd and its AI are feeding each other - the "
                        "herding mechanism notebook 09 \u00a72b tests.")
 
-    with st.expander("planned LLM segments (the full roadmap)"):
-        st.markdown(PULSE_IDEAS)
+    # The "planned LLM segments (the full roadmap)" expander was removed
+    # on desk instruction 2026-08-05. It described sections that do not
+    # exist, which on a page whose whole claim is that every sentence is
+    # auditable against stored evidence is the one thing that should not
+    # be there.
+    # ---- READ THE PULSE AS OF AN EARLIER DAY -------------------------
+    # Desk 2026-08-05: "can we make it so we can dial back to a specific
+    # day and then re run the pulse?"
+    #
+    # A back-dated run clips EVERY store and every raw post to the chosen
+    # day and writes ai_pulse_<date>.json, never the live file. That
+    # separation is the point: reading history must not be able to
+    # overwrite today's page, and a dated file on disk is its own record
+    # of what the page would have said before an episode broke.
+    with st.expander("read the pulse as of an earlier day"):
+        _c1, _c2 = st.columns([1.2, 2.8])
+        _asof = _c1.date_input("as of", value=None, key="pulse_asof",
+                               help="Every store and every post is "
+                                    "clipped to this day, so the whole "
+                                    "page is dated consistently.")
+        if _asof:
+            _p = os.path.join(PROCESSED_DIR,
+                              f"ai_pulse_{_asof:%Y-%m-%d}.json")
+            if os.path.exists(_p):
+                _c2.success(f"A pulse for {_asof:%d %b %Y} already "
+                            "exists on disk - open it below.")
+                with st.expander(f"the pulse as it stood on "
+                                 f"{_asof:%d %b %Y}"):
+                    st.json(_read_json(_p, _mtime(_p)))
+            else:
+                _c2.info(f"No pulse stored for {_asof:%d %b %Y}. "
+                         "Generating one needs the LLM gateway, so it "
+                         "runs on the desk machine:")
+                _c2.code(f"python -m analytics.ai_pulse "
+                         f"--as-of {_asof:%Y-%m-%d}")
+                _c2.caption("It writes ai_pulse_"
+                            f"{_asof:%Y-%m-%d}.json and leaves today's "
+                            "page untouched.")
+
+    # ---- WHAT WE ACTUALLY ASKED THE MODEL ----------------------------
+    # Desk 2026-08-05: "actually what is the prompt?" - a fair question
+    # to ask of any page written by a model, and the answer should not
+    # require opening a source file. The instruction text is read live
+    # from analytics/ai_pulse.py, so it cannot drift from what was
+    # actually sent.
+    with st.expander("the exact prompt behind this page"):
+        try:
+            from analytics import ai_pulse as _apm
+            st.markdown("**System instruction** — applies to every call:")
+            st.code(_apm._PULSE_SYSTEM, language="text")
+            st.markdown("**The per-theme brief** — what section 3 asks "
+                        "for:")
+            st.code(_apm._themes_prompt({"<evidence pack>": "..."},
+                                        {"<theme>": ["<recent posts>"]}),
+                    language="text")
+            st.caption("Read live from analytics/ai_pulse.py, so this is "
+                       "the instruction that was actually sent - not a "
+                       "copy that can drift. The EVIDENCE block is the "
+                       "only source of numbers the model is permitted to "
+                       "cite.")
+        except Exception as _e:                      # noqa: BLE001
+            st.caption(f"prompt unavailable here: {type(_e).__name__}")
+
     st.caption("The LLM reads the freshly fetched raw posts, writes "
                "these sections, and only the finished text is stored - "
                "paraphrases, no verbatim crowd text, no usernames: the "

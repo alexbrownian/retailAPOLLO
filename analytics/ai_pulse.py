@@ -85,6 +85,24 @@ THEMES_PER_CALL = 12        # briefs per gateway call. 12 x ~110 words sits
                             # more themes simply means more calls.
 
 
+# THE AS-OF DATE. None = today, which is every normal run.
+#
+# Desk 2026-08-05: "can we make it so we can dial back to a specific day
+# and then re run the pulse?" Set this and the whole pulse is rebuilt as
+# if that were the newest day on record - useful for reading back into an
+# episode, and for showing what the page WOULD have said the week before
+# a top.
+#
+# It is applied HERE, in the one function every store passes through,
+# rather than threaded into a dozen call sites. Everything downstream
+# derives "now" from `.max()` on the frame it is handed, so clipping the
+# frame moves the whole clock at once and no section can be left behind
+# reading a different day. That property is the reason for the design:
+# a pulse where one paragraph is dated differently from another would be
+# worse than no back-dating at all.
+AS_OF: "pd.Timestamp | None" = None
+
+
 def _read(name: str) -> pd.DataFrame | None:
     p = os.path.join(PROCESSED_DIR, name)
     if not os.path.exists(p):
@@ -92,6 +110,8 @@ def _read(name: str) -> pd.DataFrame | None:
     df = pd.read_parquet(p)
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"])
+        if AS_OF is not None:
+            df = df[df["date"] <= AS_OF]
     return df
 
 
@@ -178,6 +198,7 @@ def _evidence() -> dict:
 
 
 _HARVEST: list[dict] | None = None
+_HARVEST_KEY = None
 
 
 def _harvest(max_posts: int = HARVEST_MAX) -> list[dict]:
@@ -185,9 +206,11 @@ def _harvest(max_posts: int = HARVEST_MAX) -> list[dict]:
     once per process.  The samplers below all slice from this, so the
     archives are decompressed a single time however many sections the
     pulse writes."""
-    global _HARVEST
-    if _HARVEST is not None:
+    global _HARVEST, _HARVEST_KEY
+    if _HARVEST is not None and _HARVEST_KEY == AS_OF:
         return _HARVEST
+    # a back-dated run must not be served the live cache, and vice versa
+    _HARVEST_KEY = AS_OF
     import zstandard
     files = sorted((f for f in os.listdir(RAW_DIR)
                     if f.endswith(".jsonl.zst") and ".tmp" not in f
@@ -225,6 +248,8 @@ def _harvest(max_posts: int = HARVEST_MAX) -> list[dict]:
                              "text": body[:POST_CLIP]})
         if len(rows) >= max_posts:
             break
+    if AS_OF is not None:
+        rows = [r for r in rows if pd.Timestamp(r["day"]) <= AS_OF]
     _HARVEST = rows
     return rows
 
@@ -332,13 +357,21 @@ def _market_prompt(ev: dict, posts: list[dict]) -> str:
                         "what ALL the forums are saying, taken as a "
                         "whole. Paragraph 1 - the state of the market "
                         "conversation overall and how it changed this "
-                        "week. Paragraph 2 - THE FORUMS THEMSELVES: use "
-                        "forums_7d and the `sub` field on the posts to "
-                        "contrast what the different boards are doing - "
-                        "the speculative boards vs the index/dividend/"
-                        "personal-finance boards vs the research-minded "
-                        "ones. Who is greedy, who is scared, who is "
-                        "bored, where the newcomers are. Paragraph 3 - "
+                        "week. Paragraph 2 - WHAT EACH BOARD IS ACTUALLY "
+                        "SAYING: for the two or three most active forums "
+                        "in forums_7d, give the SPECIFIC claims, trades "
+                        "and arguments appearing there this week, "
+                        "paraphrased from the posts. NEVER describe what "
+                        "a forum IS or what it is generally about - the "
+                        "desk knows that r/investing skews long-term and "
+                        "r/wallstreetbets skews speculative, and a "
+                        "sentence spent on it is a sentence wasted. Write "
+                        "'r/X is arguing that <claim>' and 'the case "
+                        "being made on r/Y is <argument>', never "
+                        "'r/X is a long-term-oriented community'. If two "
+                        "boards disagree about the same name, say what "
+                        "each one thinks and which is louder. "
+                        "Paragraph 3 - "
                         "the rotation: where attention came FROM and "
                         "went TO, citing share-vs-4-week numbers. "
                         "Paragraph 4 - positioning and conviction: what "
@@ -365,16 +398,30 @@ def _market_prompt(ev: dict, posts: list[dict]) -> str:
 def _themes_prompt(ev: dict, by_theme: dict) -> str:
     """Call 2 - one brief per theme the desk can select in the dropdown,
     each written from THAT theme's own posts."""
+    # LENGTH RAISED 80-120 -> 220-300 WORDS, desk 2026-08-05: "i want
+    # LONGER thoughts about a theme please". The extra words are spent on
+    # SUBSTANCE, not on padding, so the structure below is prescriptive:
+    # four things to cover, in order. Without that a longer target just
+    # produces the same brief with more adjectives.
     seg = {"theme_briefs":
-           "list of objects {theme (exactly as given), brief: 80-120 "
-           "words} - ONE for each theme in THEME POSTS below, in the "
-           "same order. Each brief: the tone and emotional register of "
-           "that theme's own conversation, the dominant framing, the "
-           "actual ARGUMENTS being made (paraphrased), where the "
-           "dissent is and how serious it sounds, and any change "
-           "against the 4-week baseline in EVIDENCE. Write about what "
-           "these specific posts say, not about the theme in general. "
-           "If a theme's posts genuinely contain nothing worth a "
+           "list of objects {theme (exactly as given), brief: 220-300 "
+           "words, written as 2-3 paragraphs} - ONE for each theme in "
+           "THEME POSTS below, in the same order. Cover, in this order: "
+           "(1) THE ARGUMENT - the specific case the crowd is making "
+           "for or against this theme right now, paraphrased with "
+           "enough detail that a PM could repeat it; name the "
+           "instruments and the reasoning, not just the mood. "
+           "(2) THE EVIDENCE THEY CITE - what facts, numbers, "
+           "catalysts, earnings or events the posts point to, and "
+           "whether they are being read correctly. (3) THE DISSENT - "
+           "who is arguing the other side, what their strongest point "
+           "is, and how seriously it is being taken; if there is no "
+           "real dissent, say that the conversation is one-sided and "
+           "what that implies. (4) WHAT CHANGED - the shift against "
+           "the 4-week baseline in EVIDENCE, and what a desk should "
+           "watch next. Write about what THESE posts say, never about "
+           "the theme in general or what people usually think about "
+           "it. If a theme's posts genuinely contain nothing worth a "
            "desk's attention, OMIT that theme entirely rather than "
            "writing that it is quiet."}
     return (f"EVIDENCE (the only numbers you may cite):\n"
@@ -473,9 +520,23 @@ def _drop_filler(doc: dict) -> dict:
     return doc
 
 
-def generate(log=print) -> tuple[bool, str]:
+def generate(log=print, as_of=None) -> tuple[bool, str]:
     """Build the evidence, call the model, write ai_pulse.json.
+
+    `as_of` (a date or YYYY-MM-DD string) rebuilds the pulse as if that
+    were the newest day on record. A back-dated run writes to
+    `ai_pulse_<date>.json` and NEVER touches the live file - reading
+    history must not be able to overwrite today's page.
+
     Returns (ok, message) - never raises for gateway problems."""
+    global AS_OF
+    AS_OF = pd.Timestamp(as_of).normalize() if as_of else None
+    out_path = (OUT_PATH if AS_OF is None else
+                os.path.join(PROCESSED_DIR,
+                             f"ai_pulse_{AS_OF:%Y-%m-%d}.json"))
+    if AS_OF is not None:
+        log(f"AI PULSE: BACK-DATED to {AS_OF:%Y-%m-%d} - every store and "
+            "every post is clipped to that day")
     log("AI PULSE: building evidence pack")
     ev = _evidence()
     if not ev:
@@ -536,8 +597,10 @@ def generate(log=print) -> tuple[bool, str]:
         doc.update(part if isinstance(part, dict) else {})
     doc["agentic"] = agentic if isinstance(agentic, dict) else {}
     doc = _drop_filler(doc)
-    json.dump(doc, open(OUT_PATH, "w", encoding="utf-8"), indent=1)
-    log(f"AI PULSE: saved -> {os.path.relpath(OUT_PATH, ROOT)} "
+    if AS_OF is not None:
+        doc["as_of_override"] = f"{AS_OF:%Y-%m-%d}"
+    json.dump(doc, open(out_path, "w", encoding="utf-8"), indent=1)
+    log(f"AI PULSE: saved -> {os.path.relpath(out_path, ROOT)} "
         f"({len(doc.get('theme_briefs') or [])} theme briefs)")
     return True, "ok"
 
@@ -552,10 +615,19 @@ def load() -> dict | None:
 
 
 if __name__ == "__main__":
-    import sys
-    if "--dry" in sys.argv:
+    import argparse
+    _ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    _ap.add_argument("--dry", action="store_true",
+                     help="print the evidence pack and exit, no LLM call")
+    _ap.add_argument("--as-of", dest="as_of", metavar="YYYY-MM-DD",
+                     help="rebuild the pulse as if this were the newest "
+                          "day on record. Writes ai_pulse_<date>.json and "
+                          "leaves the live file alone.")
+    _a = _ap.parse_args()
+    if _a.dry:
+        AS_OF = (pd.Timestamp(_a.as_of).normalize() if _a.as_of else None)
         print(json.dumps(_evidence(), indent=1))
     else:
-        ok, msg = generate()
+        ok, msg = generate(as_of=_a.as_of)
         print(f"[{'OK' if ok else 'SKIP'}] {msg}")
         raise SystemExit(0 if ok else 1)

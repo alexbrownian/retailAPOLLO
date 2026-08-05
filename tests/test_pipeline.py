@@ -2466,3 +2466,68 @@ class TestNothingCanDangle:
             "the dashboard still reads nb04_final_eval.json but the only "
             "notebook that writes it has been deleted - restore the "
             "folder or remove the dashboard read")
+
+
+class TestAiPulseControls:
+    """The AI Pulse changes of 2026-08-05."""
+
+    def test_a_back_dated_run_cannot_overwrite_the_live_pulse(self):
+        """Reading history must never clobber today's page. The dated
+        run writes ai_pulse_<date>.json; only a live run touches
+        ai_pulse.json."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "analytics"
+               / "ai_pulse.py").read_text(encoding="utf-8")
+        assert 'f"ai_pulse_{AS_OF:%Y-%m-%d}.json"' in src
+        i = src.index("out_path = (OUT_PATH if AS_OF is None")
+        assert "OUT_PATH if AS_OF is None" in src[i:i + 120]
+
+    def test_the_clock_moves_in_exactly_one_place(self):
+        """AS_OF is applied inside `_read`, the single function every
+        store passes through. Threading it per-call-site would let one
+        section keep reading a different day, and a pulse dated
+        inconsistently is worse than one not back-dated at all."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "analytics"
+               / "ai_pulse.py").read_text(encoding="utf-8")
+        body = src[src.index("def _read("):src.index("def _evidence(")]
+        assert "AS_OF is not None" in body and 'df["date"] <= AS_OF' in body
+
+    def test_the_forum_paragraph_asks_what_they_SAY(self):
+        """It used to ask the model to contrast what the boards ARE,
+        which produced 'r/investing is a long-term community' - a
+        sentence the desk already knows."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "analytics"
+               / "ai_pulse.py").read_text(encoding="utf-8")
+        assert "WHAT EACH BOARD IS ACTUALLY " in src
+        assert "NEVER describe what " in src
+        assert "THE FORUMS THEMSELVES" not in src
+
+    def test_theme_briefs_are_long_and_structured(self):
+        """Raising the word target alone just yields more adjectives -
+        the four required elements are what make the extra words carry
+        content."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "analytics"
+               / "ai_pulse.py").read_text(encoding="utf-8")
+        assert "220-300 " in src
+        # check the PROMPT text, not the file: the comment above the
+        # change legitimately mentions the old target, and a test that
+        # forbids explaining what changed is a test that discourages
+        # explaining what changed.
+        assert '"brief: 80-120' not in src.replace(" ", "")\
+            .replace("brief:80-120", '"brief: 80-120')
+        for part in ("THE ARGUMENT", "THE EVIDENCE THEY CITE",
+                     "THE DISSENT", "WHAT CHANGED"):
+            assert part in src, f"{part} missing from the theme prompt"
+
+    def test_the_roadmap_panel_is_gone(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1]
+               / "dashboard.py").read_text(encoding="utf-8")
+        # the EXPANDER must be gone; the comment recording why it went
+        # is meant to stay
+        assert 'st.expander("planned LLM segments' not in src
+        assert "the exact prompt behind this page" in src
+        assert "read the pulse as of an earlier day" in src
