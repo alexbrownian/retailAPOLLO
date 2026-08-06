@@ -21,7 +21,13 @@ separating.
     python tools/build_deck_figures.py            # all figures
     python tools/build_deck_figures.py --only W   # just the walkthrough
 
-Output: docs/presentation/figures/*.png at 200 dpi.
+Output: docs/figures/deck/*.png at 200 dpi.
+
+ONE images root, `docs/figures/`, split by purpose: `deck/` for the
+pitch pack and `dashboard/` for product screenshots. There used to be a
+second `figures` folder nested under `docs/presentation/`, which meant
+two directories with the same name at different depths and no rule for
+which one a given PNG belonged in.
 """
 
 from __future__ import annotations
@@ -39,7 +45,7 @@ import pandas as pd                      # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-OUT = os.path.join(ROOT, "docs", "presentation", "figures")
+OUT = os.path.join(ROOT, "docs", "figures", "deck")
 RESEARCH = os.path.join(ROOT, "docs", "research")
 PROC = os.path.join(ROOT, "data", "processed")
 

@@ -2,10 +2,7 @@
 
 Regenerate everything (figures + stats) from the CURRENT data with:
 
-    python helper/research_charts.py    # NOT IN THIS REPO - audited
-                                        # 2026-08-05. These files are a
-                                        # frozen artefact: readable and
-                                        # citable, not reproducible.
+    python helper/research_charts.py
 
 Every figure traces to this one script - nothing is hand-drawn, so after
 the comment backfill or the 2017 price extension the whole pack refreshes

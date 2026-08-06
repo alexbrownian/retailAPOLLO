@@ -68,6 +68,7 @@ documents ever start saying the same thing, one of them is wrong.*
 | `POST_INTERN_HANDOVER.md` | which files a maintainer edits, when, and what to run afterwards | architecture, rationale, open work |
 | `OPEN_ITEMS.md` | what is outstanding right now — the only document expected to go out of date | anything permanent |
 | `notebooks/00`–`10` | the research record: every claim with its evidence and its confidence intervals | operating instructions |
+| `docs/PRESENTATION_BRIEF.md` | the complete brief for building the pitch deck, with every number written out and the figure pack in `docs/figures/deck/` | anything about how the system runs |
 | `docs/NOTEBOOK_STYLE.md`, `docs/ETF_RESEARCH.md` | how the notebooks are written; the ETF constituent research behind `theme_tickers.csv` | — |
 
 ## Architecture
@@ -137,6 +138,9 @@ retailAPOLLO/
 ├── check_live_ingestion.py   # freshness check, layer by layer
 ├── RUNBOOK.md                # scenario cheat-sheet
 ├── docs/                     # ARCHITECTURE, PARAMETER_REGISTER, DECISIONS.xlsx
+│   ├── figures/deck/        # the pitch-deck figure pack (build_deck_figures.py)
+│   ├── figures/dashboard/   # product screenshots (dashboard_shots.py)
+│   └── research/            # the JSON each notebook exports
 ├── ABSTRACTED_DATA/          # the ONLY committed data: 6 text-free aggregates
 ├── src/                      # shared logic (config, extraction, themes, sentiment)
 ├── ingestion/                # live fetchers + fold/merge/rebuild scripts

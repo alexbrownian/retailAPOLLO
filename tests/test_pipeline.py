@@ -2393,9 +2393,19 @@ class TestNothingCanDangle:
         return Path(__file__).resolve().parents[1]
 
     def test_no_cited_path_is_missing(self):
-        """The whole point. If this fails, something references a file
-        that is not there - fix the reference or say in the same
-        paragraph that the file is gone."""
+        """If this fails, something references a file that is not there -
+        fix the reference, or say in the same paragraph that the file is
+        gone.
+
+        BEFORE YOU "FIX" A FINDING, CHECK YOU HAVE THE WHOLE REPO. On
+        2026-08-05 this check was run inside an incomplete clone that was
+        missing `helper/` and four docs; it reported them as dangling and
+        five citations were edited to say the directory did not exist,
+        which was false. verify_deps cannot tell a deleted file from an
+        un-cloned one, so a "missing file" result is only as good as the
+        tree it ran against. `helper/` is skipped here for that reason -
+        Paths known to live on the full repository are listed in
+        `_DESK_ONLY` inside verify_deps rather than filtered here."""
         import subprocess
         import sys
         r = subprocess.run([sys.executable, "tools/verify_deps.py"],
@@ -2530,4 +2540,131 @@ class TestAiPulseControls:
         # is meant to stay
         assert 'st.expander("planned LLM segments' not in src
         assert "the exact prompt behind this page" in src
-        assert "read the pulse as of an earlier day" in src
+        # the time control moved to a SLIDER at the top of the page
+        # (desk 2026-08-05) - one control owns the date, so the old
+        # lower expander is gone on purpose
+        assert "the market's mood on" in src
+        assert "_market_read(" in src
+
+
+class TestOneImagesRoot:
+    """All figures live under docs/figures/, split by purpose.
+
+    There used to be a second `figures` folder nested at
+    docs/presentation/figures — two directories with the same name at
+    different depths, and no rule saying which one a given PNG belonged
+    in. Consolidated 2026-08-05."""
+
+    @staticmethod
+    def _root():
+        from pathlib import Path
+        return Path(__file__).resolve().parents[1]
+
+    def test_there_is_exactly_one_figures_directory(self):
+        dirs = sorted(p.relative_to(self._root()).as_posix()
+                      for p in self._root().rglob("figures")
+                      if p.is_dir() and "_to_delete" not in str(p))
+        assert dirs == ["docs/figures"], (
+            f"more than one figures root again: {dirs}")
+
+    def test_the_deck_pack_is_complete(self):
+        """The deck is assembled on a machine with only the brief and
+        these PNGs, so a missing one is a hole in the presentation with
+        no way to notice until the room does."""
+        deck = self._root() / "docs" / "figures" / "deck"
+        names = {p.name for p in deck.glob("*.png")}
+        for stem in ("W1_walkthrough_attention", "W2_walkthrough_factors",
+                     "W3_walkthrough_level_and_flag",
+                     "W4_walkthrough_outcome", "F10_feature_auroc",
+                     "F11_feature_ap", "F12_feature_correlation",
+                     "F15_frontier", "F16_noise_control",
+                     "F17_parameter_sweeps", "F19_performance_table",
+                     "S05a_dashboard_themes", "S05b_dashboard_singles",
+                     "S22_influence_tracker", "S23_ai_pulse"):
+            assert f"{stem}.png" in names, f"deck figure missing: {stem}"
+
+    def test_the_builder_writes_where_the_brief_points(self):
+        src = (self._root() / "tools"
+               / "build_deck_figures.py").read_text(encoding="utf-8")
+        assert '"docs", "figures", "deck"' in src
+        brief = (self._root()
+                 / "docs" / "PRESENTATION_BRIEF.md").read_text(
+                     encoding="utf-8")
+        assert "figures/deck/" in brief
+
+
+class TestPreflight:
+    """The health check must itself keep working - it is the thing that
+    catches the failures nothing else reports."""
+
+    def test_preflight_runs_clean(self):
+        import subprocess
+        import sys
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        r = subprocess.run([sys.executable, "tools/preflight.py"],
+                           cwd=root, capture_output=True, text=True)
+        assert r.returncode == 0, (
+            "preflight is FAILING - something downstream is already "
+            "wrong:\n" + r.stdout[-2500:])
+
+    def test_the_164mb_write_stays_disabled(self):
+        """daily_ticker_conviction.parquet was 164MB, rebuilt every run,
+        and read by nothing. A write that large on a finite disk is a
+        failure waiting for a quiet week."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "analytics"
+               / "conviction.py").read_text(encoding="utf-8")
+        i = src.index("for sent_name, out_name, entity in [")
+        loop = src[i:i + 220]
+        assert "TICKER_CONVICTION" not in loop, (
+            "the ticker conviction write is back - it is 164MB per run "
+            "and nothing reads it")
+        assert "THEME_CONVICTION" in loop, "the theme file must still ship"
+
+
+class TestPulseRegister:
+    """Section 2 must read like a colleague briefing you, not a summary.
+
+    Desk 2026-08-05, quoting the output they want: "users on WSB are
+    really talking a lot about this stock xx because of this but many
+    are worried about y ... sentiment super bullish as everyone is
+    posting that they are making money"."""
+
+    @staticmethod
+    def _src():
+        from pathlib import Path
+        return (Path(__file__).resolve().parents[1] / "analytics"
+                / "ai_pulse.py").read_text(encoding="utf-8")
+
+    def test_the_crowds_own_vocabulary_reaches_the_model(self):
+        """Without emerging terms the pulse can name themes and tickers
+        but cannot say "everyone is suddenly talking about tariffs" -
+        which is often the actual subject, ahead of any ticker."""
+        src = self._src()
+        assert "emerging_terms_7d" in src
+        assert "daily_term_counts.parquet" in src
+
+    def test_mood_must_be_shown_as_behaviour_not_asserted(self):
+        """An adjective is the model's conclusion; the behaviour behind
+        it is evidence, and a desk can judge evidence."""
+        src = self._src()
+        assert "never just label the mood" in src
+        assert "gain screenshots" in src
+
+    def test_the_forum_ticker_reason_triple_is_required(self):
+        src = self._src()
+        assert "Name the forum, name the " in src
+        assert "REASON in the same " in src
+
+    def test_the_evidence_pack_actually_carries_terms(self):
+        """The instruction is worthless if the numbers are not supplied."""
+        import analytics.ai_pulse as ap
+        ev = ap._evidence()
+        if not ev:
+            import pytest
+            pytest.skip("no aggregates on disk")
+        assert "emerging_terms_7d" in ev, (
+            "the prompt cites emerging_terms_7d but the evidence pack "
+            "does not contain it - the model would be told to use a key "
+            "that is not there")

@@ -5,7 +5,16 @@ expected to go out of date. Everything permanent lives elsewhere (see
 the documentation map at the end of `docs/ARCHITECTURE.md`). Delete a
 line when it is done; do not archive it here.*
 
-Last reviewed: **2026-08-04**
+Last reviewed: **2026-08-05**
+
+> **Before you change anything, and after: `python tools/preflight.py`.**
+> Eight checks, no writes, no network, safe to run at any time. It exists
+> because almost nothing in this project fails loudly — a renamed ticker
+> counts zero forever, a theme whose anchor lost its prices is silently
+> drawn on a fallback, and a config edit that fails validation only
+> surfaces at the next full run. Every check corresponds to something
+> that actually happened. Exit 1 = something downstream is already
+> wrong; warnings = something is owed.
 
 ## Needs the desk machine (Bloomberg / the VPN)
 
@@ -22,16 +31,16 @@ Last reviewed: **2026-08-04**
 | Item | What to check |
 |---|---|
 | MTUM Bloomberg code | stored as `MTUM TF Equity` as provided; Cboe BZX is usually `UF`. One cell in `config/approved_instruments.csv` |
-| EUAD approval | confirm it is actually on the firm's approved list — it was chosen as the `europe_defense` anchor (note in `config/theme_etfs.csv`) |
+
 | CSIN0852 | the CSI 1000 INDEX, not a fund; priced for reference only. Flagged in the instruments CSV — decide whether to keep pulling it |
 
 ## Housekeeping (safe, unglamorous)
 
 | Item | What to do |
 |---|---|
-| `data/processed/daily_ticker_conviction.parquet` (164MB) | written by the pipeline, read by nothing — the dashboard computes conviction live. Safe to delete; consider disabling the write in `analytics/conviction.py` |
+| ~~`daily_ticker_conviction.parquet` (164MB)~~ | **DONE 2026-08-05** — the write is disabled in `analytics/conviction.py` and the file deleted. It was read by nothing; the dashboard computes ticker conviction live from the sentiment store. A 164MB write every run on a finite disk is a failure waiting for a quiet week |
 | Git history (~85MB) | junk blobs committed inside old `_to_delete` folders. `git gc` locally, or `git filter-repo` on the `_to_delete*` paths before sharing the repo |
-| Stale folders | `notebooks/_to_delete_2026-07-31_merged_into_04/` and `data/raw/RedditComments/_salvaged_originals/…tmp` — delete when convenient |
+| Stale folders | `data/raw/RedditComments/_salvaged_originals/…tmp` — delete when convenient. **`notebooks/_to_delete_2026-07-31_merged_into_04/` is NOT safe to delete**: it holds the only notebook that writes `docs/research/nb04_final_eval.json`, which `dashboard.py` reads live. Deleting it orphans a working dashboard read. A test now fails if it disappears while that read exists |
 
 ## Sealed until their gate opens — do not peek
 
@@ -270,10 +279,21 @@ inside QUOTED STRING LITERALS in `.py` files, so every reference living in
 a `.md` file or a Python comment is structurally invisible to it. It
 reports "0 findings. Nothing dangles" while the following were all broken:
 
-* **`helper/` does not exist in this repo** yet was cited five times,
-  including `RUNBOOK.md`'s command for rebuilding the evidence pack. That
-  means `docs/research/` is a FROZEN artefact - readable and citable, not
-  reproducible. Every citation now says so.
+* ~~**`helper/` does not exist in this repo**~~ — **THIS FINDING WAS
+  WRONG, corrected 2026-08-05.** `helper/` DOES exist on the desk machine
+  and contains `research_charts.py` and `find_emerging_terms.py`. The
+  cloud working copy this audit ran in was an incomplete clone, and five
+  citations were "corrected" to say the directory was missing before the
+  error was caught. All five have been reverted. Same for
+  `docs/panel_review_latest.md`, which also exists on the desk machine.
+  **The lesson is about the method, not the folder:** an
+  absence-of-evidence finding is only as good as the completeness of the
+  tree it was run against, and `tools/verify_deps.py` cannot know it is
+  looking at a partial checkout. Run it on the FULL repository before
+  believing a "missing file" result. The desk machine also carries
+  `docs/HANDOFF_PROMPT.md`, `docs/LIVE_INGESTION.md`,
+  `docs/RESEARCH_REPORT.md` and `docs/DATA_FLOW.tex`, none of which were
+  present in the audited copy either.
 * **`RUNBOOK.md`'s notebook re-run command globbed `01/02/03_*.ipynb`**,
   none of which exist (01, 02, 03 and 05 are jupytext `.py` only), so the
   command failed on three unmatched patterns. Corrected.

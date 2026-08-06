@@ -242,9 +242,28 @@ def rebuild_conviction_files(verbose: bool = True) -> dict:
     conviction parquets (atomic write). Returns {filename: n_rows}."""
     from src.abstracted_data import _safe_write   # atomic parquet swap
 
+    # THE TICKER CONVICTION FILE IS NO LONGER WRITTEN (2026-08-05).
+    #
+    # It was 164 MB on disk, rebuilt in full on every run, and read by
+    # NOTHING: the dashboard computes ticker conviction live from the
+    # sentiment store (that path is cached on the store's mtime and takes
+    # under a second), and no notebook, test or analytics stage opens the
+    # parquet. It was the single largest artefact in data/processed and
+    # pure cost.
+    #
+    # This is a durability fix, not a tidy-up. A 164 MB write per run on
+    # a laptop with a finite disk is a failure waiting for a quiet week -
+    # and when a disk fills mid-run the symptom is a half-written store,
+    # not a clear error.
+    #
+    # The THEME file stays: `analytics/signals.py` and the notebooks read
+    # it, and it is three orders of magnitude smaller.
+    #
+    # To bring it back, put the TICKER pair back in the list below - the
+    # computation itself is untouched and still exercised by the theme
+    # path, so nothing has bit-rotted.
     written = {}
     for sent_name, out_name, entity in [
-            (TICKER_SENT, TICKER_CONVICTION, "ticker"),
             (THEME_SENT, THEME_CONVICTION, "theme")]:
         sent = load(sent_name)
         if sent is None:

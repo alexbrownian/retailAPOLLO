@@ -1,7 +1,7 @@
 # RetailRadar — pitch deck brief
 
 **Read this first.** You are building this deck on a machine that has
-**only this file and the PNGs in `figures/`**. No repository, no data, no
+**only this file and the PNGs in `figures/deck/`**. No repository, no data, no
 notebooks. Everything you need is therefore written out below — every
 number, every slide, every figure and what it shows. Do not go looking
 for a source file; if a number is not in this document, leave it out.
@@ -363,7 +363,7 @@ sponsor, a data budget. Do not end on "thank you".
 
 ## FIGURE INDEX — 15 files, one folder, all of them used
 
-`figures/` holds **exactly** what the deck needs and nothing else. Every
+`figures/deck/` holds **exactly** what the deck needs and nothing else. Every
 file below appears on a slide; there is no "extras" pile to sift, and
 nothing else in the repository needs to be hunted down.
 

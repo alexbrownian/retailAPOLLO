@@ -102,8 +102,7 @@ import matplotlib.pyplot as plt
 ROOT = Path.cwd().parent if Path.cwd().name == "notebooks" else Path.cwd()
 sys.path.insert(0, str(ROOT))
 
-# House chart rules (they were shared with helper/research_charts.py, which
-# is not in this repo - audited 2026-08-05): one axis per
+# House chart rules (identical to helper/research_charts.py): one axis per
 # panel, fixed validated categorical palette, direct labels, recessive grid.
 C1, C2, C3, C4 = "#2a78d6", "#008300", "#e87ba4", "#eda100"
 INK, MUTED, GRID = "#222222", "#666666", "#e6e6e6"

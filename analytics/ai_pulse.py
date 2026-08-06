@@ -166,6 +166,30 @@ def _evidence() -> dict:
         ev["euphoria_top5"] = {
             r.name: round(float(r.level))
             for r in last.nlargest(5, "level").itertuples()}
+    # THE WORDS THE CROWD HAS JUST STARTED USING.
+    #
+    # Added 2026-08-05. The pulse could name themes and tickers but had
+    # no way to say "everyone is suddenly talking about tariffs" - the
+    # topical phrase that spreads through a forum in a week and is often
+    # the actual subject, ahead of any ticker. Measured as this week
+    # against its own 4-week average, so a permanently common word never
+    # qualifies and a genuinely new one always does.
+    tm = _read("daily_term_counts.parquet")
+    if tm is not None and len(tm):
+        hi = tm["date"].max()
+        cur = (tm[tm["date"] > hi - pd.Timedelta(days=7)]
+               .groupby("term")["mention_count"].sum())
+        prev = (tm[(tm["date"] <= hi - pd.Timedelta(days=7))
+                   & (tm["date"] > hi - pd.Timedelta(days=35))]
+                .groupby("term")["mention_count"].sum() / 4.0)
+        spikes = {t: round(float(cur[t] / prev[t]), 2) for t in cur.index
+                  if prev.get(t, 0) >= 3 and cur[t] >= 15}
+        top = sorted(spikes.items(), key=lambda kv: -kv[1])[:15]
+        if top:
+            ev["emerging_terms_7d"] = {
+                t: {"vs_4w_avg": r, "mentions_7d": int(cur[t])}
+                for t, r in top}
+
     # WHICH FORUMS are carrying the conversation - so the market read can
     # say "r/investing vs r/wallstreetbets" instead of "the crowd"
     sub = _read("daily_ticker_counts_by_subreddit.parquet")
@@ -331,7 +355,12 @@ def _market_prompt(ev: dict, posts: list[dict]) -> str:
     trending-topics list - the loudest theme is an input here, not the
     subject."""
     seg = {
-        "market_vibe": "object {bullets: list of 5-8 SHORT lines (10-20 "
+        # LENGTHENED 2026-08-05, desk: "i just want like that but more
+        # words". Section 1 stays BULLETS - the format was right - but
+        # 10-20 words could only carry a mood adjective. 30-45 gives room
+        # for the observation AND what it implies, which is the part a
+        # desk can act on.
+        "market_vibe": "object {bullets: list of 5-8 lines (30-45 "
                        "words each) describing how the market FEELS "
                        "right now as a whole - mood, confidence, "
                        "frustration, greed, boredom, fatigue, who is "
@@ -353,9 +382,39 @@ def _market_prompt(ev: dict, posts: list[dict]) -> str:
                       "why: 40-60 words - the two or three observations "
                       "that set the score, with the strongest "
                       "counter-signal acknowledged}",
-        "market_pulse": "4-5 substantial paragraphs (450-550 words): "
-                        "what ALL the forums are saying, taken as a "
-                        "whole. Paragraph 1 - the state of the market "
+        # THE REGISTER, desk 2026-08-05, quoting the output they want:
+        # "users on WSB are really talking a lot about this stock xx
+        # because of this but many are worried about y. lots of them
+        # talking about situational awareness. sentiment is a little
+        # worried due to losses or sentiment super bullish as everyone
+        # is posting that they are making money."
+        #
+        # Three things in that sentence, and the spec below is built to
+        # force all three: a NAMED forum and a NAMED instrument with the
+        # REASON attached; the counter-worry alongside it; and - the one
+        # that matters most - sentiment expressed as the BEHAVIOUR that
+        # reveals it ("everyone is posting their gains") rather than as
+        # an adjective ("sentiment is bullish"). An adjective is the
+        # model's conclusion; the behaviour is the evidence, and a desk
+        # can judge evidence.
+        "market_pulse": "4-5 substantial paragraphs (450-550 words). "
+                        "REGISTER, and follow it closely: write the way "
+                        "a colleague who reads these boards all day "
+                        "would brief you. Name the forum, name the "
+                        "instrument, and give the REASON in the same "
+                        "sentence - 'r/wallstreetbets is all over NVDA "
+                        "because of the HBM supply headlines, though a "
+                        "lot of them are worried about the valuation'. "
+                        "Say what people are DOING that shows the mood, "
+                        "never just label the mood: 'half the front "
+                        "page is gain screenshots' and 'the loss posts "
+                        "are back' are worth more than 'sentiment is "
+                        "positive'. Use emerging_terms_7d to say what "
+                        "phrase the crowd has suddenly picked up this "
+                        "week and what they mean by it. "
+                        "This is what ALL the forums are saying, taken "
+                        "as a whole. Paragraph 1 - the state of the "
+                        "market "
                         "conversation overall and how it changed this "
                         "week. Paragraph 2 - WHAT EACH BOARD IS ACTUALLY "
                         "SAYING: for the two or three most active forums "

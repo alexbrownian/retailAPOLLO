@@ -9,8 +9,7 @@ Two consumers:
     ABSTRACTED_DATA/daily_term_counts.parquet from post text
     (date, term, mention_count - plus one __TOTAL__ row per day holding the
     day's post count, so shares can be computed without the raw store).
-  * the spike test used to run from helper/find_emerging_terms.py, which is
-    NOT in this repo (audited 2026-08-05) - from raw text on the
+  * helper/find_emerging_terms.py runs the spike test - from raw text on the
     external machine, or from the counts file on EITHER machine.
 
 WHY THIS FILE IS SAFE TO SHARE: a table of daily word frequencies contains

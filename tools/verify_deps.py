@@ -107,6 +107,22 @@ _CITED_DIRS = ("src", "analytics", "ingestion", "tools", "helper", "docs",
 # behaviour it is meant to encourage - notebook 07 says plainly that
 # a since-removed module does not exist, and that sentence should not
 # read as a defect.
+# PRESENT ON THE DESK MACHINE, ABSENT FROM SOME CLONES.
+#
+# Learned the hard way on 2026-08-05: this checker was run inside an
+# incomplete working copy, reported `helper/` and four docs as dangling,
+# and five citations were "corrected" to say the directory did not exist.
+# It does exist - it holds research_charts.py and find_emerging_terms.py.
+#
+# The tool cannot tell a DELETED file from an UN-CLONED one; both are
+# simply not on disk. So paths known to live on the full repository are
+# listed here rather than being reported every run and eventually
+# ignored. Remove an entry only after confirming on the desk machine
+# that the file has genuinely gone.
+_DESK_ONLY = ("helper/", "docs/panel_review_latest.md",
+              "docs/HANDOFF_PROMPT.md", "docs/LIVE_INGESTION.md",
+              "docs/RESEARCH_REPORT.md", "docs/DATA_FLOW.tex")
+
 _KNOWN_ABSENT = ("not in this repo", "does not exist", "no longer",
                  "is not on disk", "never present", "absent",
                  "was removed", "not present", "was deleted")
@@ -156,7 +172,7 @@ def sweep_docs(root):
         except OSError:
             continue
         for m in _cited_paths(txt):
-            if m not in allf:
+            if m not in allf and not m.startswith(_DESK_ONLY):
                 out.append((rel, m))
     return out
 
@@ -264,7 +280,7 @@ def sweep(root):
         # cited rather than only those present. Markdown is swept
         # separately in `sweep_docs` for the same reason.
         for m in _cited_paths(txt, pkgs):
-            if m not in allf:
+            if m not in allf and not m.startswith(_DESK_ONLY):
                 findings["path"].append((p, m))
         # ---- 5 ----
         # only scripts that ACTUALLY parse argv: a script with no

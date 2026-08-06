@@ -9,7 +9,7 @@ energy,XLE,XLE|XOP|OIH|USO|UNG,
 ev_clean_energy,LIT,LIT|XLY,
 uranium_nuclear,URA,URA,
 defense_aerospace,ITA,ITA|XLI,
-europe_defense,EUAD,EUAD|ITA,European A&D (Select STOXX). ITA was a US proxy - wrong region. Confirm EUAD is priced/approved.
+europe_defense,EUAD,EUAD|ITA,European A&D (Select STOXX). ITA was a US proxy - wrong region. EUAD approval CONFIRMED by the desk 2026-08-05.
 short_squeeze,ARKK,ARKK,"PROXY, weak by construction: no squeeze ETF exists. ARKK is the closest approved high-beta speculative basket, so it tracks the RISK APPETITE these names ride, not the names themselves. Read this theme's price panel as a regime indicator, not a tradeable line."
 meme_stocks,ARKK,ARKK,"PROXY, same caveat as short_squeeze: ARKK holds none of the meme names. It is the approved stand-in for speculative appetite. The single-name tab is where GME/AMC are actually tracked."
 biotech_pharma,XBI,XBI|XLV|BBH,

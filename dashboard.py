@@ -1512,6 +1512,8 @@ def _live_conviction(sent_mtime):
 
 conv = _live_conviction(_mtime(os.path.join(PROCESSED_DIR,
                                             "daily_theme_sentiment.parquet")))
+# per-theme bullishness, for the AI Pulse date slider's market read
+theme_sentiment = load("daily_theme_sentiment.parquet")
 
 
 @st.cache_data(show_spinner=False)
@@ -5540,8 +5542,186 @@ PULSE_SEGMENTS_SAMPLE = {
 # PULSE_IDEAS (the roadmap text) deleted 2026-08-05 with the expander
 # that displayed it - it described sections that do not exist.
 # ---- AI PULSE (LLM-written, via the Apollo gateway) ----
+
+@st.cache_data(show_spinner=False)
+def _market_read(day_ts, tc_m, ts_m, tk_m):
+    """The market's mood on ONE day, computed from the stores.
+
+    Desk 2026-08-05: "can you make the slider at the top of the page so i
+    can see what the market is feeling / its sentiment / bullishness
+    score ... and the ability to go to a specific point in time".
+    
+    WHY THIS IS NOT THE LLM. The prose on this page needs a gateway call
+    that takes ~30s and only runs on the desk machine, so it cannot move
+    with a slider. But the FEELING is arithmetic - bullishness, breadth,
+    attention, acceleration are all in the committed stores, for every
+    day back to 2017. So the slider drives the numbers, instantly and
+    over the whole history, and the model's words layer on top when a
+    pulse has been written for that day.
+    
+    That split is also the project's standing rule (ARCHITECTURE §4.1):
+    numbers come from the stores, words come from the model. The slider
+    is that rule turned into an interaction.
+    
+    Cached on the three store mtimes, so it recomputes only when the
+    data changes - not on every drag.
+    """
+    import pandas as _pd
+    day = _pd.Timestamp(day_ts)
+    out = {"day": day}
+    tc = theme_counts
+    if tc is not None and len(tc):
+        t = tc[tc["theme"].isin(THEME_ETFS)].copy()
+        t["date"] = _pd.to_datetime(t["date"])
+        w = t[(t["date"] <= day) & (t["date"] > day - _pd.Timedelta(days=7))]
+        prev = t[(t["date"] <= day - _pd.Timedelta(days=7))
+                 & (t["date"] > day - _pd.Timedelta(days=35))]
+        cur = w.groupby("theme")["mention_count"].sum()
+        base = prev.groupby("theme")["mention_count"].sum() / 4.0
+        if cur.sum():
+            share = (cur / cur.sum()).sort_values(ascending=False)
+            out["top"] = [(k, float(v),
+                           float(cur[k] / base[k]) if base.get(k) else None)
+                          for k, v in share.head(6).items()]
+            movers = {k: float(cur[k] / base[k]) for k in cur.index
+                      if base.get(k, 0) > 0 and cur[k] >= 20}
+            out["movers"] = sorted(movers.items(), key=lambda kv: -kv[1])[:3]
+            out["faders"] = sorted(movers.items(), key=lambda kv: kv[1])[:3]
+    ts = theme_sentiment
+    if ts is not None and len(ts):
+        d = ts.copy()
+        d["date"] = _pd.to_datetime(d["date"])
+        r = d[(d["date"] <= day) & (d["date"] > day - _pd.Timedelta(days=7))]
+        if len(r) and r["n_posts"].sum():
+            nb = float((r["net_bullish"] * r["n_posts"]).sum()
+                       / r["n_posts"].sum())
+            out["net_bullish"] = nb
+            # 0-100 where 50 is neutral. net_bullish runs about -1..+1, so
+            # the map is linear and stated rather than fitted - a "mood
+            # score" nobody can reconstruct is worse than no score.
+            out["score"] = int(round(max(0.0, min(1.0, (nb + 1) / 2)) * 100))
+            per = r.groupby("theme").apply(
+                lambda g: (g["net_bullish"] * g["n_posts"]).sum()
+                / max(g["n_posts"].sum(), 1), include_groups=False)
+            per = per[per.index.isin(THEME_ETFS)]
+            if len(per):
+                out["breadth"] = float((per > 0).mean())
+                out["most_bull"] = per.sort_values(ascending=False).head(3)
+                out["most_bear"] = per.sort_values().head(3)
+            out["n_posts"] = int(r["n_posts"].sum())
+    tk = ticker_counts
+    if tk is not None and len(tk):
+        k = tk.copy()
+        k["date"] = _pd.to_datetime(k["date"])
+        r = k[(k["date"] <= day) & (k["date"] > day - _pd.Timedelta(days=7))]
+        if len(r):
+            out["loud"] = (r.groupby("ticker")["mention_count"].sum()
+                           .sort_values(ascending=False).head(10))
+    return out
+
+
 if active_tab == "AI Pulse":
     st.subheader("AI - the pulse, the advice, and the chatter")
+
+    # ---- THE MOOD SLIDER --------------------------------------------
+    # Desk 2026-08-05: a slider at the top of the page for the market's
+    # feeling and bullishness at any point in time.
+    #
+    # It drives the NUMBERS, not the prose. The model's words need a
+    # ~30s gateway call that only runs on the desk machine, so they
+    # cannot follow a drag; bullishness, breadth, attention and
+    # acceleration are arithmetic over the committed stores and exist
+    # for every day back to 2017. Dragging is therefore instant and
+    # covers the whole history, which is the opposite trade-off from
+    # regenerating text and the right one for an exploratory control.
+    #
+    # It is also the project's standing rule made interactive: numbers
+    # from the stores, words from the model (ARCHITECTURE §4.1).
+    _mr_lo = _mr_hi = None
+    if theme_counts is not None and len(theme_counts):
+        _d = pd.to_datetime(theme_counts["date"])
+        _mr_lo, _mr_hi = _d.min().to_pydatetime(), _d.max().to_pydatetime()
+    if _mr_lo and _mr_hi and _mr_lo < _mr_hi:
+        _day = st.slider("the market's mood on", min_value=_mr_lo,
+                         max_value=_mr_hi, value=_mr_hi, format="DD MMM YYYY",
+                         key="pulse_mood_day",
+                         help="Drag to any day since 2017. The score, the "
+                              "themes and the loud names are recomputed "
+                              "from the stores for the 7 days ending "
+                              "there - instantly, no model call.")
+        _mr = _market_read(
+            pd.Timestamp(_day),
+            _mtime(os.path.join(PROCESSED_DIR, "daily_theme_counts.parquet")),
+            _mtime(os.path.join(PROCESSED_DIR,
+                                "daily_theme_sentiment.parquet")),
+            _mtime(os.path.join(PROCESSED_DIR,
+                                "daily_ticker_counts.parquet")))
+        _k1, _k2, _k3, _k4 = st.columns(4)
+        _sc = _mr.get("score")
+        if _sc is not None:
+            _word = ("euphoric" if _sc >= 80 else "bullish" if _sc >= 65
+                     else "constructive" if _sc >= 55 else
+                     "balanced" if _sc >= 45 else "cautious" if _sc >= 35
+                     else "fearful")
+            _k1.metric("bullishness (0-100)", f"{_sc}", _word,
+                       delta_color="off",
+                       help="Post-weighted net-bullish across every "
+                            "tradeable theme over the 7 days ending on "
+                            "the selected day, mapped linearly from "
+                            "-1..+1 onto 0..100. 50 is neutral. The map "
+                            "is stated rather than fitted - a mood score "
+                            "nobody can reconstruct is worse than none.")
+        if _mr.get("breadth") is not None:
+            _k2.metric("themes net bullish", f"{_mr['breadth']:.0%}",
+                       help="Breadth. A high score carried by one theme "
+                            "is a different market from a high score "
+                            "carried by all of them.")
+        if _mr.get("n_posts"):
+            _k3.metric("scored posts (7d)", f"{_mr['n_posts']:,}")
+        _k4.metric("as of", f"{pd.Timestamp(_day):%d %b %Y}")
+
+        _t1, _t2 = st.columns(2)
+        with _t1:
+            st.markdown("**What the crowd was talking about**")
+            for _nm, _sh, _rt in (_mr.get("top") or []):
+                _rr = f"  ·  {_rt:.2f}x its 4-week average" if _rt else ""
+                st.markdown(f"- **{theme_label(_nm)}** — {_sh:.1%} of "
+                            f"theme chatter{_rr}")
+            if _mr.get("loud") is not None and len(_mr["loud"]):
+                st.caption("loudest names: "
+                           + ", ".join(f"{t} ({int(n)})"
+                                       for t, n in _mr["loud"].head(8).items()))
+        with _t2:
+            st.markdown("**How it felt**")
+            if _mr.get("movers"):
+                st.markdown("- heating up: "
+                            + ", ".join(f"**{theme_label(k)}** {v:.2f}x"
+                                        for k, v in _mr["movers"]))
+            if _mr.get("faders"):
+                st.markdown("- cooling: "
+                            + ", ".join(f"**{theme_label(k)}** {v:.2f}x"
+                                        for k, v in _mr["faders"]))
+            if _mr.get("most_bull") is not None:
+                st.markdown("- most bullish: "
+                            + ", ".join(f"**{theme_label(k)}** {v:+.2f}"
+                                        for k, v in _mr["most_bull"].items()))
+            if _mr.get("most_bear") is not None:
+                st.markdown("- least bullish: "
+                            + ", ".join(f"**{theme_label(k)}** {v:+.2f}"
+                                        for k, v in _mr["most_bear"].items()))
+        _pp = os.path.join(PROCESSED_DIR,
+                           f"ai_pulse_{pd.Timestamp(_day):%Y-%m-%d}.json")
+        if os.path.exists(_pp):
+            with st.expander(f"the model's words for "
+                             f"{pd.Timestamp(_day):%d %b %Y}"):
+                st.json(_read_json(_pp, _mtime(_pp)))
+        elif pd.Timestamp(_day).date() != pd.Timestamp(_mr_hi).date():
+            st.caption("Numbers only for this day — the written read is "
+                       "generated per-day on the desk machine: "
+                       f"`python -m analytics.ai_pulse --as-of "
+                       f"{pd.Timestamp(_day):%Y-%m-%d}`")
+        st.divider()
+
     st.markdown("## A - AI market pulse: what the posts are saying")
     st.caption("The LLM's qualitative summary of the live posts - the numbers come from the stores, the words from the model.")
     _pulse = _ai_pulse_load()
@@ -5802,40 +5982,11 @@ if active_tab == "AI Pulse":
     # exist, which on a page whose whole claim is that every sentence is
     # auditable against stored evidence is the one thing that should not
     # be there.
-    # ---- READ THE PULSE AS OF AN EARLIER DAY -------------------------
-    # Desk 2026-08-05: "can we make it so we can dial back to a specific
-    # day and then re run the pulse?"
-    #
-    # A back-dated run clips EVERY store and every raw post to the chosen
-    # day and writes ai_pulse_<date>.json, never the live file. That
-    # separation is the point: reading history must not be able to
-    # overwrite today's page, and a dated file on disk is its own record
-    # of what the page would have said before an episode broke.
-    with st.expander("read the pulse as of an earlier day"):
-        _c1, _c2 = st.columns([1.2, 2.8])
-        _asof = _c1.date_input("as of", value=None, key="pulse_asof",
-                               help="Every store and every post is "
-                                    "clipped to this day, so the whole "
-                                    "page is dated consistently.")
-        if _asof:
-            _p = os.path.join(PROCESSED_DIR,
-                              f"ai_pulse_{_asof:%Y-%m-%d}.json")
-            if os.path.exists(_p):
-                _c2.success(f"A pulse for {_asof:%d %b %Y} already "
-                            "exists on disk - open it below.")
-                with st.expander(f"the pulse as it stood on "
-                                 f"{_asof:%d %b %Y}"):
-                    st.json(_read_json(_p, _mtime(_p)))
-            else:
-                _c2.info(f"No pulse stored for {_asof:%d %b %Y}. "
-                         "Generating one needs the LLM gateway, so it "
-                         "runs on the desk machine:")
-                _c2.code(f"python -m analytics.ai_pulse "
-                         f"--as-of {_asof:%Y-%m-%d}")
-                _c2.caption("It writes ai_pulse_"
-                            f"{_asof:%Y-%m-%d}.json and leaves today's "
-                            "page untouched.")
-
+    # The second time control that used to sit here is gone (desk
+    # 2026-08-05: "the button to go back in time should be at the top of
+    # the page"). One control, at the top, owns the date - the mood
+    # slider. Two ways to set the same thing in two places is how a page
+    # ends up showing one date in the header and another in the body.
     # ---- WHAT WE ACTUALLY ASKED THE MODEL ----------------------------
     # Desk 2026-08-05: "actually what is the prompt?" - a fair question
     # to ask of any page written by a model, and the answer should not

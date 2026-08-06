@@ -87,7 +87,8 @@ the only writer, and it only writes approved rows.
 | Keyword audit (§2) | automatic weekly proposal; applying is manual | weekly propose, human apply |
 | Bloomberg pull for NEW instruments | first QUICK UPDATE after editing the instrument list | on change |
 | Notebook re-execution after a signal-code change | `python -m jupytext --to ipynb notebooks/<n>.py` then `python -m jupyter nbconvert --to notebook --execute --inplace notebooks/<n>.ipynb` | on change |
-| Test suite | `python -m pytest tests/ -q` — expect **160 passed, 2 skipped** | before any commit |
+| Health check | `python tools/preflight.py` — expect **0 failing**. Warnings are things that are owed (usually a price pull), not breakage. No writes, no network | after any config edit, before any commit |
+| Test suite | `python -m pytest tests/ -q` — expect **169 passed, 2 skipped** | before any commit |
 | Dangling-reference check | `python tools/verify_deps.py` — expect **0 findings**. It sweeps every `.py` AND `.md` for cited paths, including ones in comments and docstrings, and knows about directories that no longer exist. A path that is deliberately gone must say so in the same paragraph ("removed", "not in this repo", "absent until it runs") or it is reported | before any commit; the test suite runs it too |
 
 ## 4. Before you change anything that scores
