@@ -1,0 +1,344 @@
+{
+ "figures": [
+  "S0a_source_regime.png",
+  "S0b_estimator_fix.png",
+  "S1a_what_we_hunt.png",
+  "S1b_why_these_bars.png",
+  "S1c_episode_anatomy.png",
+  "S2a_three_streams.png",
+  "S2b_the_11_measurements.png",
+  "S3_the_menu.png",
+  "S4a_feature_auroc.png",
+  "S4b_ablation.png",
+  "S5_why_this_model.png",
+  "S6a_score_distributions.png",
+  "S6b_spearman_and_cuts.png",
+  "S6c_flip_flop_fix.png",
+  "S6d_four_cases.png",
+  "S7a_how_a_call_is_made_gold.png",
+  "S7b_how_a_call_is_made_gme.png",
+  "S8a_the_record.png",
+  "S8b_the_tape_agrees.png",
+  "S8c_event_study.png"
+ ],
+ "palette": {
+  "navy": "#0A2540",
+  "blue": "#2E6FDB",
+  "sky": "#9DB9DC",
+  "grey": "#6B7280"
+ },
+ "winner": "ens",
+ "conditioning": {
+  "version": 2,
+  "trigger": "shaped crossing (phase gates + re-arm + 63d spacing)",
+  "get_out": "only after the 120d G2 boom bar; re-arms at the cut",
+  "get_in": "only before the boom completes; re-arms at the train-median score",
+  "separation": "no GET IN within 21d of a GET OUT, either direction",
+  "standard": "F1 cut",
+  "strict": "F0.5 cut (precision weighted 2x)",
+  "evidence": "docs/research/alert_shape_sweep.json",
+  "decided": "2026-08-09"
+ },
+ "headline": {
+  "GET OUT": {
+   "rules": {
+    "captured": 22,
+    "detectable": 188,
+    "capture_rate": 0.117,
+    "precision": 0.595,
+    "fa_per_iy": 0.094,
+    "forward_returns": {
+     "fwd_5d": {
+      "n": 49,
+      "median_pct": 0.48,
+      "mean_pct": 8.52,
+      "pct_positive": 57.1
+     },
+     "fwd_21d": {
+      "n": 49,
+      "median_pct": 0.39,
+      "mean_pct": 10.49,
+      "pct_positive": 51.0
+     },
+     "fwd_84d": {
+      "n": 45,
+      "median_pct": 3.95,
+      "mean_pct": 34.62,
+      "pct_positive": 57.8
+     }
+    }
+   },
+   "shipped_standard": {
+    "captured": 63,
+    "detectable": 218,
+    "capture_rate": 0.289,
+    "false_alarms": 55,
+    "fa_per_iy": 0.115,
+    "precision": 0.534,
+    "n_alerts": 130,
+    "median_lead_days": 6
+   },
+   "shipped_strict": {
+    "captured": 50,
+    "detectable": 218,
+    "capture_rate": 0.229,
+    "false_alarms": 43,
+    "fa_per_iy": 0.09,
+    "precision": 0.538,
+    "n_alerts": 98,
+    "median_lead_days": 7
+   },
+   "forward_returns_shipped": {
+    "fwd_5d": {
+     "n": 130,
+     "median_pct": 0.41,
+     "mean_pct": 3.85,
+     "pct_positive": 54.6
+    },
+    "fwd_21d": {
+     "n": 130,
+     "median_pct": 0.21,
+     "mean_pct": 3.45,
+     "pct_positive": 50.8
+    },
+    "fwd_84d": {
+     "n": 122,
+     "median_pct": 1.28,
+     "mean_pct": 21.31,
+     "pct_positive": 52.5
+    }
+   }
+  },
+  "GET IN": {
+   "rules": {
+    "captured": 18,
+    "detectable": 198,
+    "capture_rate": 0.091,
+    "precision": 0.173,
+    "fa_per_iy": 0.18,
+    "forward_returns": {
+     "fwd_5d": {
+      "n": 113,
+      "median_pct": 0.61,
+      "mean_pct": -0.2,
+      "pct_positive": 58.4
+     },
+     "fwd_21d": {
+      "n": 113,
+      "median_pct": 1.57,
+      "mean_pct": 0.1,
+      "pct_positive": 61.9
+     },
+     "fwd_84d": {
+      "n": 112,
+      "median_pct": 0.51,
+      "mean_pct": 0.58,
+      "pct_positive": 52.7
+     }
+    }
+   },
+   "shipped_standard": {
+    "captured": 21,
+    "detectable": 198,
+    "capture_rate": 0.106,
+    "false_alarms": 49,
+    "fa_per_iy": 0.103,
+    "precision": 0.3,
+    "n_alerts": 71,
+    "median_lead_days": 21
+   },
+   "shipped_strict": {
+    "captured": 10,
+    "detectable": 198,
+    "capture_rate": 0.051,
+    "false_alarms": 17,
+    "fa_per_iy": 0.036,
+    "precision": 0.37,
+    "n_alerts": 29,
+    "median_lead_days": 18
+   },
+   "forward_returns_shipped": {
+    "fwd_5d": {
+     "n": 71,
+     "median_pct": -0.19,
+     "mean_pct": -0.48,
+     "pct_positive": 45.1
+    },
+    "fwd_21d": {
+     "n": 71,
+     "median_pct": -0.03,
+     "mean_pct": -0.95,
+     "pct_positive": 49.3
+    },
+    "fwd_84d": {
+     "n": 71,
+     "median_pct": -1.68,
+     "mean_pct": -2.33,
+     "pct_positive": 45.1
+    }
+   }
+  }
+ },
+ "score_quality": {
+  "get_out": {
+   "ap": 0.255,
+   "ap_baseline": 0.104,
+   "auroc": 0.717
+  },
+  "get_in": {
+   "ap": 0.283,
+   "ap_baseline": 0.111,
+   "auroc": 0.75
+  }
+ },
+ "thresholds": {
+  "GET OUT": {
+   "2018": 0.9316035816035816,
+   "2019": 0.963056623230524,
+   "2020": 0.9660224109131401,
+   "2021": 0.9082077957477739,
+   "2022": 0.9155682015423146,
+   "2023": 0.9443136086973931,
+   "2024": 0.9449874256973022,
+   "2025": 0.9206238449062724,
+   "2026": 0.9210220564810824
+  },
+  "GET IN": {
+   "2018": 0.9555148555148555,
+   "2019": 0.930116246367301,
+   "2020": 0.937114420935412,
+   "2021": 0.9216186625477012,
+   "2022": 0.9236802301073669,
+   "2023": 0.9216366175469507,
+   "2024": 0.9215011050144795,
+   "2025": 0.9213616904914571,
+   "2026": 0.9212279575735999
+  }
+ },
+ "strict_thresholds_final": {
+  "GET IN": 0.9684451305211476,
+  "GET OUT": 0.9694772126754492
+ },
+ "ablation": {
+  "GET OUT": [
+   {
+    "column": "attention_accel",
+    "feature": "week vs month",
+    "delta": -0.0022765903957945866
+   },
+   {
+    "column": "hype_ratio",
+    "feature": "week vs own normal",
+    "delta": -0.0010627089715360416
+   },
+   {
+    "column": "bull_inflection",
+    "feature": "mood turning",
+    "delta": -0.004158960894660613
+   },
+   {
+    "column": "influx_speed",
+    "feature": "attention change (2 weeks)",
+    "delta": 0.0006563503341626697
+   },
+   {
+    "column": "attention_convexity",
+    "feature": "attention accelerating",
+    "delta": -0.0247449824933601
+   },
+   {
+    "column": "e1",
+    "feature": "attention level (vs own year)",
+    "delta": 0.004827566532882799
+   },
+   {
+    "column": "e3",
+    "feature": "attention change (1 month)",
+    "delta": -0.0014557832212857558
+   },
+   {
+    "column": "bull_level",
+    "feature": "bullishness level",
+    "delta": -0.005887580618606225
+   },
+   {
+    "column": "bull_persist",
+    "feature": "bullishness persistence",
+    "delta": 0.019022616049518715
+   },
+   {
+    "column": "price_runup",
+    "feature": "price run-up off its 54d low",
+    "delta": 0.06939449015670063
+   },
+   {
+    "column": "price_ret21",
+    "feature": "price return, 1 month",
+    "delta": -0.02134531814501922
+   }
+  ],
+  "GET IN": [
+   {
+    "column": "attention_accel",
+    "feature": "week vs month",
+    "delta": 0.00022347767770353189
+   },
+   {
+    "column": "hype_ratio",
+    "feature": "week vs own normal",
+    "delta": 0.0018514297779176903
+   },
+   {
+    "column": "bull_inflection",
+    "feature": "mood turning",
+    "delta": -0.0005286361713830456
+   },
+   {
+    "column": "influx_speed",
+    "feature": "attention change (2 weeks)",
+    "delta": 0.002371609387022744
+   },
+   {
+    "column": "attention_convexity",
+    "feature": "attention accelerating",
+    "delta": 0.0029353097311525245
+   },
+   {
+    "column": "e1",
+    "feature": "attention level (vs own year)",
+    "delta": 0.003374972112927699
+   },
+   {
+    "column": "e3",
+    "feature": "attention change (1 month)",
+    "delta": 0.000660017649517175
+   },
+   {
+    "column": "bull_level",
+    "feature": "bullishness level",
+    "delta": 0.015795212022607585
+   },
+   {
+    "column": "bull_persist",
+    "feature": "bullishness persistence",
+    "delta": 0.003636150569736929
+   },
+   {
+    "column": "price_runup",
+    "feature": "price run-up off its 54d low",
+    "delta": -0.015527666996921208
+   },
+   {
+    "column": "price_ret21",
+    "feature": "price return, 1 month",
+    "delta": 0.036643284674221066
+   }
+  ]
+ },
+ "ablation_note": "final fold (fit < newest year, tested on it); delta = AP(all 11) - AP(without the feature)",
+ "alert_shape": {
+  "GET IN": "pre-boom gate (run-up vs 120d low below the G2 bar), crossing, re-arm at train-median score, one call per name per 63d",
+  "GET OUT": "boom gate (run-up >= G2 bar), crossing, re-arm at the cut, one call per name per 63d",
+  "separation": "no GET IN stands within 21d of any GET OUT (either direction); GET OUT never suppressed"
+ }
+}

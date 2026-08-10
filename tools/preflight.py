@@ -192,12 +192,15 @@ def check_frozen_constants() -> None:
     record it no longer belongs to."""
     try:
         from src import config as C
+        # ground-truth bars updated 2026-08-07 (Class 14b sweep - the
+        # walk-forward record was RE-FROZEN under these values the same
+        # day, so record and constants moved together, as required)
         expect = {"EUPHORIA_HYPE_MULT": 2.0, "EUPHORIA_MIN_HISTORY": 180,
                   "EUPHORIA_ONSET_HYPE_MIN": 1.10,
-                  "EUPHORIA_BOOM_MIN_ETF": 0.25,
-                  "EUPHORIA_BOOM_MIN_SINGLE": 0.50,
-                  "EUPHORIA_CRASH_MIN_ETF": 0.15,
-                  "EUPHORIA_CRASH_MIN_SINGLE": 0.30,
+                  "EUPHORIA_BOOM_MIN_ETF": 0.20,
+                  "EUPHORIA_BOOM_MIN_SINGLE": 0.40,
+                  "EUPHORIA_CRASH_MIN_ETF": 0.12,
+                  "EUPHORIA_CRASH_MIN_SINGLE": 0.25,
                   "EUPHORIA_COOLDOWN_DAYS": 21,
                   "EUPHORIA_FA_BUDGET_PER_IY": 0.23,
                   "EUPHORIA_BOOM_LOOKBACK_D": 120}

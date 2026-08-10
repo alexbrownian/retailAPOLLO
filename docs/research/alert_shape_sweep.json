@@ -1,0 +1,2885 @@
+{
+ "as_of": "2026-08-09",
+ "separation_days": 21,
+ "design": "phase-gated alerts (120d G2 bar): OUT only after the boom; IN only pre-boom / not-end-stage; crossing + re-arm + spacing; hard IN-vs-OUT 21d separation",
+ "adoption_rule": "per head: capture >= 75% of the phase-gated baseline (F1.0|IN=pre-boom|rearm=p*|space=21d), minimise calls_per_alerted_episode, ties fewer FAs then more capture; F0.5 twin = Strict",
+ "results": {
+  "F1.0|IN=pre-boom|rearm=p*|space=21d": {
+   "GET IN": {
+    "captured": 22,
+    "detectable": 198,
+    "capture_rate": 0.111,
+    "false_alarms": 55,
+    "fa_per_iy": 0.115,
+    "precision": 0.286,
+    "n_alerts": 79,
+    "calls_per_alerted_episode": 1.17
+   },
+   "GET OUT": {
+    "captured": 75,
+    "detectable": 218,
+    "capture_rate": 0.344,
+    "false_alarms": 65,
+    "fa_per_iy": 0.136,
+    "precision": 0.536,
+    "n_alerts": 163,
+    "calls_per_alerted_episode": 1.53
+   },
+   "ins_dropped_by_separation": 13
+  },
+  "F1.0|IN=pre-boom|rearm=p*|space=63d": {
+   "GET IN": {
+    "captured": 21,
+    "detectable": 198,
+    "capture_rate": 0.106,
+    "false_alarms": 51,
+    "fa_per_iy": 0.107,
+    "precision": 0.292,
+    "n_alerts": 73,
+    "calls_per_alerted_episode": 1.09
+   },
+   "GET OUT": {
+    "captured": 63,
+    "detectable": 218,
+    "capture_rate": 0.289,
+    "false_alarms": 55,
+    "fa_per_iy": 0.115,
+    "precision": 0.534,
+    "n_alerts": 130,
+    "calls_per_alerted_episode": 1.2
+   },
+   "ins_dropped_by_separation": 12
+  },
+  "F1.0|IN=pre-boom|rearm=p*-10|space=21d": {
+   "GET IN": {
+    "captured": 25,
+    "detectable": 198,
+    "capture_rate": 0.126,
+    "false_alarms": 53,
+    "fa_per_iy": 0.111,
+    "precision": 0.321,
+    "n_alerts": 80,
+    "calls_per_alerted_episode": 1.13
+   },
+   "GET OUT": {
+    "captured": 63,
+    "detectable": 218,
+    "capture_rate": 0.289,
+    "false_alarms": 53,
+    "fa_per_iy": 0.111,
+    "precision": 0.543,
+    "n_alerts": 132,
+    "calls_per_alerted_episode": 1.35
+   },
+   "ins_dropped_by_separation": 9
+  },
+  "F1.0|IN=pre-boom|rearm=p*-10|space=63d": {
+   "GET IN": {
+    "captured": 24,
+    "detectable": 198,
+    "capture_rate": 0.121,
+    "false_alarms": 50,
+    "fa_per_iy": 0.105,
+    "precision": 0.324,
+    "n_alerts": 75,
+    "calls_per_alerted_episode": 1.08
+   },
+   "GET OUT": {
+    "captured": 55,
+    "detectable": 218,
+    "capture_rate": 0.252,
+    "false_alarms": 49,
+    "fa_per_iy": 0.103,
+    "precision": 0.529,
+    "n_alerts": 116,
+    "calls_per_alerted_episode": 1.19
+   },
+   "ins_dropped_by_separation": 9
+  },
+  "F1.0|IN=pre-boom|rearm=p50|space=21d": {
+   "GET IN": {
+    "captured": 25,
+    "detectable": 198,
+    "capture_rate": 0.126,
+    "false_alarms": 50,
+    "fa_per_iy": 0.105,
+    "precision": 0.333,
+    "n_alerts": 77,
+    "calls_per_alerted_episode": 1.1
+   },
+   "GET OUT": {
+    "captured": 56,
+    "detectable": 218,
+    "capture_rate": 0.257,
+    "false_alarms": 42,
+    "fa_per_iy": 0.088,
+    "precision": 0.571,
+    "n_alerts": 110,
+    "calls_per_alerted_episode": 1.17
+   },
+   "ins_dropped_by_separation": 8
+  },
+  "F1.0|IN=pre-boom|rearm=p50|space=63d": {
+   "GET IN": {
+    "captured": 24,
+    "detectable": 198,
+    "capture_rate": 0.121,
+    "false_alarms": 49,
+    "fa_per_iy": 0.103,
+    "precision": 0.329,
+    "n_alerts": 74,
+    "calls_per_alerted_episode": 1.08
+   },
+   "GET OUT": {
+    "captured": 55,
+    "detectable": 218,
+    "capture_rate": 0.252,
+    "false_alarms": 41,
+    "fa_per_iy": 0.086,
+    "precision": 0.573,
+    "n_alerts": 107,
+    "calls_per_alerted_episode": 1.15
+   },
+   "ins_dropped_by_separation": 8
+  },
+  "F1.0|IN=not-end-stage|rearm=p*|space=21d": {
+   "GET IN": {
+    "captured": 48,
+    "detectable": 198,
+    "capture_rate": 0.242,
+    "false_alarms": 73,
+    "fa_per_iy": 0.153,
+    "precision": 0.397,
+    "n_alerts": 142,
+    "calls_per_alerted_episode": 1.31
+   },
+   "GET OUT": {
+    "captured": 75,
+    "detectable": 218,
+    "capture_rate": 0.344,
+    "false_alarms": 65,
+    "fa_per_iy": 0.136,
+    "precision": 0.536,
+    "n_alerts": 163,
+    "calls_per_alerted_episode": 1.53
+   },
+   "ins_dropped_by_separation": 112
+  },
+  "F1.0|IN=not-end-stage|rearm=p*|space=63d": {
+   "GET IN": {
+    "captured": 43,
+    "detectable": 198,
+    "capture_rate": 0.217,
+    "false_alarms": 63,
+    "fa_per_iy": 0.132,
+    "precision": 0.406,
+    "n_alerts": 119,
+    "calls_per_alerted_episode": 1.1
+   },
+   "GET OUT": {
+    "captured": 63,
+    "detectable": 218,
+    "capture_rate": 0.289,
+    "false_alarms": 55,
+    "fa_per_iy": 0.115,
+    "precision": 0.534,
+    "n_alerts": 130,
+    "calls_per_alerted_episode": 1.2
+   },
+   "ins_dropped_by_separation": 82
+  },
+  "F1.0|IN=not-end-stage|rearm=p*-10|space=21d": {
+   "GET IN": {
+    "captured": 49,
+    "detectable": 198,
+    "capture_rate": 0.247,
+    "false_alarms": 70,
+    "fa_per_iy": 0.147,
+    "precision": 0.412,
+    "n_alerts": 138,
+    "calls_per_alerted_episode": 1.24
+   },
+   "GET OUT": {
+    "captured": 63,
+    "detectable": 218,
+    "capture_rate": 0.289,
+    "false_alarms": 53,
+    "fa_per_iy": 0.111,
+    "precision": 0.543,
+    "n_alerts": 132,
+    "calls_per_alerted_episode": 1.35
+   },
+   "ins_dropped_by_separation": 81
+  },
+  "F1.0|IN=not-end-stage|rearm=p*-10|space=63d": {
+   "GET IN": {
+    "captured": 44,
+    "detectable": 198,
+    "capture_rate": 0.222,
+    "false_alarms": 63,
+    "fa_per_iy": 0.132,
+    "precision": 0.411,
+    "n_alerts": 122,
+    "calls_per_alerted_episode": 1.12
+   },
+   "GET OUT": {
+    "captured": 55,
+    "detectable": 218,
+    "capture_rate": 0.252,
+    "false_alarms": 49,
+    "fa_per_iy": 0.103,
+    "precision": 0.529,
+    "n_alerts": 116,
+    "calls_per_alerted_episode": 1.19
+   },
+   "ins_dropped_by_separation": 72
+  },
+  "F1.0|IN=not-end-stage|rearm=p50|space=21d": {
+   "GET IN": {
+    "captured": 47,
+    "detectable": 198,
+    "capture_rate": 0.237,
+    "false_alarms": 64,
+    "fa_per_iy": 0.134,
+    "precision": 0.423,
+    "n_alerts": 125,
+    "calls_per_alerted_episode": 1.16
+   },
+   "GET OUT": {
+    "captured": 56,
+    "detectable": 218,
+    "capture_rate": 0.257,
+    "false_alarms": 42,
+    "fa_per_iy": 0.088,
+    "precision": 0.571,
+    "n_alerts": 110,
+    "calls_per_alerted_episode": 1.17
+   },
+   "ins_dropped_by_separation": 72
+  },
+  "F1.0|IN=not-end-stage|rearm=p50|space=63d": {
+   "GET IN": {
+    "captured": 43,
+    "detectable": 198,
+    "capture_rate": 0.217,
+    "false_alarms": 61,
+    "fa_per_iy": 0.128,
+    "precision": 0.413,
+    "n_alerts": 116,
+    "calls_per_alerted_episode": 1.09
+   },
+   "GET OUT": {
+    "captured": 55,
+    "detectable": 218,
+    "capture_rate": 0.252,
+    "false_alarms": 41,
+    "fa_per_iy": 0.086,
+    "precision": 0.573,
+    "n_alerts": 107,
+    "calls_per_alerted_episode": 1.15
+   },
+   "ins_dropped_by_separation": 68
+  },
+  "F0.5|IN=pre-boom|rearm=p*|space=21d": {
+   "GET IN": {
+    "captured": 10,
+    "detectable": 198,
+    "capture_rate": 0.051,
+    "false_alarms": 19,
+    "fa_per_iy": 0.04,
+    "precision": 0.345,
+    "n_alerts": 31,
+    "calls_per_alerted_episode": 1.17
+   },
+   "GET OUT": {
+    "captured": 57,
+    "detectable": 218,
+    "capture_rate": 0.261,
+    "false_alarms": 47,
+    "fa_per_iy": 0.099,
+    "precision": 0.548,
+    "n_alerts": 118,
+    "calls_per_alerted_episode": 1.41
+   },
+   "ins_dropped_by_separation": 6
+  },
+  "F0.5|IN=pre-boom|rearm=p*|space=63d": {
+   "GET IN": {
+    "captured": 10,
+    "detectable": 198,
+    "capture_rate": 0.051,
+    "false_alarms": 16,
+    "fa_per_iy": 0.034,
+    "precision": 0.385,
+    "n_alerts": 28,
+    "calls_per_alerted_episode": 1.11
+   },
+   "GET OUT": {
+    "captured": 50,
+    "detectable": 218,
+    "capture_rate": 0.229,
+    "false_alarms": 43,
+    "fa_per_iy": 0.09,
+    "precision": 0.538,
+    "n_alerts": 98,
+    "calls_per_alerted_episode": 1.14
+   },
+   "ins_dropped_by_separation": 6
+  },
+  "F0.5|IN=pre-boom|rearm=p*-10|space=21d": {
+   "GET IN": {
+    "captured": 11,
+    "detectable": 198,
+    "capture_rate": 0.056,
+    "false_alarms": 19,
+    "fa_per_iy": 0.04,
+    "precision": 0.367,
+    "n_alerts": 33,
+    "calls_per_alerted_episode": 1.1
+   },
+   "GET OUT": {
+    "captured": 51,
+    "detectable": 218,
+    "capture_rate": 0.234,
+    "false_alarms": 42,
+    "fa_per_iy": 0.088,
+    "precision": 0.548,
+    "n_alerts": 101,
+    "calls_per_alerted_episode": 1.25
+   },
+   "ins_dropped_by_separation": 3
+  },
+  "F0.5|IN=pre-boom|rearm=p*-10|space=63d": {
+   "GET IN": {
+    "captured": 11,
+    "detectable": 198,
+    "capture_rate": 0.056,
+    "false_alarms": 17,
+    "fa_per_iy": 0.036,
+    "precision": 0.393,
+    "n_alerts": 31,
+    "calls_per_alerted_episode": 1.1
+   },
+   "GET OUT": {
+    "captured": 48,
+    "detectable": 218,
+    "capture_rate": 0.22,
+    "false_alarms": 41,
+    "fa_per_iy": 0.086,
+    "precision": 0.539,
+    "n_alerts": 94,
+    "calls_per_alerted_episode": 1.14
+   },
+   "ins_dropped_by_separation": 3
+  },
+  "F0.5|IN=pre-boom|rearm=p50|space=21d": {
+   "GET IN": {
+    "captured": 12,
+    "detectable": 198,
+    "capture_rate": 0.061,
+    "false_alarms": 19,
+    "fa_per_iy": 0.04,
+    "precision": 0.387,
+    "n_alerts": 34,
+    "calls_per_alerted_episode": 1.09
+   },
+   "GET OUT": {
+    "captured": 48,
+    "detectable": 218,
+    "capture_rate": 0.22,
+    "false_alarms": 34,
+    "fa_per_iy": 0.071,
+    "precision": 0.585,
+    "n_alerts": 87,
+    "calls_per_alerted_episode": 1.12
+   },
+   "ins_dropped_by_separation": 1
+  },
+  "F0.5|IN=pre-boom|rearm=p50|space=63d": {
+   "GET IN": {
+    "captured": 12,
+    "detectable": 198,
+    "capture_rate": 0.061,
+    "false_alarms": 18,
+    "fa_per_iy": 0.038,
+    "precision": 0.4,
+    "n_alerts": 33,
+    "calls_per_alerted_episode": 1.09
+   },
+   "GET OUT": {
+    "captured": 48,
+    "detectable": 218,
+    "capture_rate": 0.22,
+    "false_alarms": 34,
+    "fa_per_iy": 0.071,
+    "precision": 0.585,
+    "n_alerts": 87,
+    "calls_per_alerted_episode": 1.12
+   },
+   "ins_dropped_by_separation": 1
+  },
+  "F0.5|IN=not-end-stage|rearm=p*|space=21d": {
+   "GET IN": {
+    "captured": 21,
+    "detectable": 198,
+    "capture_rate": 0.106,
+    "false_alarms": 30,
+    "fa_per_iy": 0.063,
+    "precision": 0.412,
+    "n_alerts": 61,
+    "calls_per_alerted_episode": 1.24
+   },
+   "GET OUT": {
+    "captured": 57,
+    "detectable": 218,
+    "capture_rate": 0.261,
+    "false_alarms": 47,
+    "fa_per_iy": 0.099,
+    "precision": 0.548,
+    "n_alerts": 118,
+    "calls_per_alerted_episode": 1.41
+   },
+   "ins_dropped_by_separation": 52
+  },
+  "F0.5|IN=not-end-stage|rearm=p*|space=63d": {
+   "GET IN": {
+    "captured": 21,
+    "detectable": 198,
+    "capture_rate": 0.106,
+    "false_alarms": 26,
+    "fa_per_iy": 0.055,
+    "precision": 0.447,
+    "n_alerts": 54,
+    "calls_per_alerted_episode": 1.05
+   },
+   "GET OUT": {
+    "captured": 50,
+    "detectable": 218,
+    "capture_rate": 0.229,
+    "false_alarms": 43,
+    "fa_per_iy": 0.09,
+    "precision": 0.538,
+    "n_alerts": 98,
+    "calls_per_alerted_episode": 1.14
+   },
+   "ins_dropped_by_separation": 40
+  },
+  "F0.5|IN=not-end-stage|rearm=p*-10|space=21d": {
+   "GET IN": {
+    "captured": 21,
+    "detectable": 198,
+    "capture_rate": 0.106,
+    "false_alarms": 27,
+    "fa_per_iy": 0.057,
+    "precision": 0.438,
+    "n_alerts": 57,
+    "calls_per_alerted_episode": 1.07
+   },
+   "GET OUT": {
+    "captured": 51,
+    "detectable": 218,
+    "capture_rate": 0.234,
+    "false_alarms": 42,
+    "fa_per_iy": 0.088,
+    "precision": 0.548,
+    "n_alerts": 101,
+    "calls_per_alerted_episode": 1.25
+   },
+   "ins_dropped_by_separation": 42
+  },
+  "F0.5|IN=not-end-stage|rearm=p*-10|space=63d": {
+   "GET IN": {
+    "captured": 22,
+    "detectable": 198,
+    "capture_rate": 0.111,
+    "false_alarms": 25,
+    "fa_per_iy": 0.052,
+    "precision": 0.468,
+    "n_alerts": 54,
+    "calls_per_alerted_episode": 1.05
+   },
+   "GET OUT": {
+    "captured": 48,
+    "detectable": 218,
+    "capture_rate": 0.22,
+    "false_alarms": 41,
+    "fa_per_iy": 0.086,
+    "precision": 0.539,
+    "n_alerts": 94,
+    "calls_per_alerted_episode": 1.14
+   },
+   "ins_dropped_by_separation": 37
+  },
+  "F0.5|IN=not-end-stage|rearm=p50|space=21d": {
+   "GET IN": {
+    "captured": 22,
+    "detectable": 198,
+    "capture_rate": 0.111,
+    "false_alarms": 28,
+    "fa_per_iy": 0.059,
+    "precision": 0.44,
+    "n_alerts": 57,
+    "calls_per_alerted_episode": 1.07
+   },
+   "GET OUT": {
+    "captured": 48,
+    "detectable": 218,
+    "capture_rate": 0.22,
+    "false_alarms": 34,
+    "fa_per_iy": 0.071,
+    "precision": 0.585,
+    "n_alerts": 87,
+    "calls_per_alerted_episode": 1.12
+   },
+   "ins_dropped_by_separation": 33
+  },
+  "F0.5|IN=not-end-stage|rearm=p50|space=63d": {
+   "GET IN": {
+    "captured": 22,
+    "detectable": 198,
+    "capture_rate": 0.111,
+    "false_alarms": 26,
+    "fa_per_iy": 0.055,
+    "precision": 0.458,
+    "n_alerts": 55,
+    "calls_per_alerted_episode": 1.05
+   },
+   "GET OUT": {
+    "captured": 48,
+    "detectable": 218,
+    "capture_rate": 0.22,
+    "false_alarms": 34,
+    "fa_per_iy": 0.071,
+    "precision": 0.585,
+    "n_alerts": 87,
+    "calls_per_alerted_episode": 1.12
+   },
+   "ins_dropped_by_separation": 33
+  }
+ },
+ "case_alerts": {
+  "F1.0|IN=pre-boom|rearm=p*|space=21d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-23"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-05-12",
+     "2019-06-18"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-01",
+     "2021-02-02",
+     "2022-03-28",
+     "2022-05-30",
+     "2022-07-05",
+     "2022-08-03",
+     "2022-11-11",
+     "2023-01-16",
+     "2023-02-15",
+     "2024-02-27",
+     "2026-04-17"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-21",
+     "2019-10-10"
+    ],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-15",
+     "2021-12-07",
+     "2022-08-10",
+     "2022-11-10",
+     "2023-02-02",
+     "2026-01-15",
+     "2026-04-17",
+     "2026-06-02"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2019-02-04",
+     "2022-04-04",
+     "2024-05-13",
+     "2024-06-13"
+    ],
+    "out": [
+     "2022-08-10"
+    ]
+   }
+  },
+  "F1.0|IN=pre-boom|rearm=p*|space=63d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-23"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-05-12",
+     "2019-06-18"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-01",
+     "2022-03-28",
+     "2022-05-30",
+     "2022-08-03",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27",
+     "2026-04-17"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-21",
+     "2019-10-10"
+    ],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-15",
+     "2022-08-10",
+     "2022-11-10",
+     "2023-02-02",
+     "2026-01-15",
+     "2026-04-17",
+     "2026-06-19"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2019-02-04",
+     "2022-04-04",
+     "2024-05-13"
+    ],
+    "out": [
+     "2022-08-10"
+    ]
+   }
+  },
+  "F1.0|IN=pre-boom|rearm=p*-10|space=21d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-23"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-05-12",
+     "2019-06-18"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-01",
+     "2022-03-28",
+     "2022-05-30",
+     "2022-07-05",
+     "2022-08-03",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27",
+     "2026-04-17"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-21",
+     "2019-10-10",
+     "2022-07-20"
+    ],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2022-11-10",
+     "2023-02-02",
+     "2026-01-15",
+     "2026-04-17",
+     "2026-06-15"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2019-02-04",
+     "2022-04-04",
+     "2022-08-03",
+     "2024-05-13",
+     "2024-06-13"
+    ],
+    "out": []
+   }
+  },
+  "F1.0|IN=pre-boom|rearm=p*-10|space=63d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-23"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-05-12",
+     "2019-06-18"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-01",
+     "2022-03-28",
+     "2022-05-30",
+     "2022-08-03",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27",
+     "2026-04-17"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-21",
+     "2019-10-10",
+     "2022-07-20"
+    ],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2022-11-10",
+     "2023-02-02",
+     "2026-01-15",
+     "2026-04-17"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2019-02-04",
+     "2022-04-04",
+     "2022-08-03",
+     "2024-05-13"
+    ],
+    "out": []
+   }
+  },
+  "F1.0|IN=pre-boom|rearm=p50|space=21d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-23"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-05-12",
+     "2019-06-18"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2020-12-08",
+     "2021-01-01",
+     "2022-03-28",
+     "2022-05-30",
+     "2022-07-05",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27",
+     "2026-04-17"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-21",
+     "2019-10-10",
+     "2022-07-20"
+    ],
+    "out": [
+     "2019-04-17",
+     "2019-07-25",
+     "2022-11-10",
+     "2023-02-02",
+     "2026-01-15",
+     "2026-04-17"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2019-02-04",
+     "2022-04-04",
+     "2022-08-03",
+     "2024-05-13",
+     "2024-06-13"
+    ],
+    "out": []
+   }
+  },
+  "F1.0|IN=pre-boom|rearm=p50|space=63d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-23"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-05-12",
+     "2019-06-18"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2020-12-08",
+     "2021-01-01",
+     "2022-03-28",
+     "2022-05-30",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27",
+     "2026-04-17"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-21",
+     "2019-10-10",
+     "2022-07-20"
+    ],
+    "out": [
+     "2019-04-17",
+     "2019-07-25",
+     "2022-11-10",
+     "2023-02-02",
+     "2026-01-15",
+     "2026-04-17"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2019-02-04",
+     "2022-04-04",
+     "2022-08-03",
+     "2024-05-13"
+    ],
+    "out": []
+   }
+  },
+  "F1.0|IN=not-end-stage|rearm=p*|space=21d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-23"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-01-31",
+     "2018-05-12",
+     "2019-02-18",
+     "2019-06-18",
+     "2020-04-24",
+     "2020-08-03",
+     "2021-06-28"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-01",
+     "2021-02-02",
+     "2022-03-28",
+     "2022-05-30",
+     "2022-07-05",
+     "2022-08-03",
+     "2022-11-11",
+     "2023-01-16",
+     "2023-02-15",
+     "2024-02-27",
+     "2026-04-17"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-21",
+     "2019-03-17",
+     "2019-10-10",
+     "2019-11-27",
+     "2021-02-16",
+     "2022-12-08"
+    ],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-15",
+     "2021-12-07",
+     "2022-08-10",
+     "2022-11-10",
+     "2023-02-02",
+     "2026-01-15",
+     "2026-04-17",
+     "2026-06-02"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2019-02-04",
+     "2020-05-08",
+     "2022-04-04",
+     "2024-05-13",
+     "2024-06-13"
+    ],
+    "out": [
+     "2022-08-10"
+    ]
+   }
+  },
+  "F1.0|IN=not-end-stage|rearm=p*|space=63d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-23"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-01-31",
+     "2018-05-12",
+     "2019-02-18",
+     "2019-06-18",
+     "2020-04-24",
+     "2020-08-03",
+     "2021-06-28"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-01",
+     "2022-03-28",
+     "2022-05-30",
+     "2022-08-03",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27",
+     "2026-04-17"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-21",
+     "2019-10-10",
+     "2021-02-16"
+    ],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-15",
+     "2022-08-10",
+     "2022-11-10",
+     "2023-02-02",
+     "2026-01-15",
+     "2026-04-17",
+     "2026-06-19"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2019-02-04",
+     "2020-05-08",
+     "2022-04-04",
+     "2024-05-13"
+    ],
+    "out": [
+     "2022-08-10"
+    ]
+   }
+  },
+  "F1.0|IN=not-end-stage|rearm=p*-10|space=21d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-23"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-01-31",
+     "2018-05-12",
+     "2019-02-18",
+     "2019-06-18",
+     "2020-04-24",
+     "2020-08-03",
+     "2021-06-28"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-01",
+     "2022-03-28",
+     "2022-05-30",
+     "2022-07-05",
+     "2022-08-03",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27",
+     "2026-04-17"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-21",
+     "2019-03-17",
+     "2019-10-10",
+     "2019-11-27",
+     "2021-02-16",
+     "2022-07-20",
+     "2022-12-08"
+    ],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2022-11-10",
+     "2023-02-02",
+     "2026-01-15",
+     "2026-04-17",
+     "2026-06-15"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2019-02-04",
+     "2020-05-08",
+     "2022-04-04",
+     "2022-08-03",
+     "2024-05-13",
+     "2024-06-13"
+    ],
+    "out": []
+   }
+  },
+  "F1.0|IN=not-end-stage|rearm=p*-10|space=63d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-23"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-01-31",
+     "2018-05-12",
+     "2019-02-18",
+     "2019-06-18",
+     "2020-04-24",
+     "2020-08-03",
+     "2021-06-28"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-01",
+     "2022-03-28",
+     "2022-05-30",
+     "2022-08-03",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27",
+     "2026-04-17"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-21",
+     "2019-10-10",
+     "2021-02-16",
+     "2022-07-20"
+    ],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2022-11-10",
+     "2023-02-02",
+     "2026-01-15",
+     "2026-04-17"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2019-02-04",
+     "2020-05-08",
+     "2022-04-04",
+     "2022-08-03",
+     "2024-05-13"
+    ],
+    "out": []
+   }
+  },
+  "F1.0|IN=not-end-stage|rearm=p50|space=21d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-23"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-01-31",
+     "2018-05-12",
+     "2019-02-18",
+     "2019-06-18",
+     "2020-04-24",
+     "2021-06-28"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2020-12-08",
+     "2021-01-01",
+     "2022-03-28",
+     "2022-05-30",
+     "2022-07-05",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27",
+     "2026-04-17"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-21",
+     "2019-10-10",
+     "2019-11-27",
+     "2021-02-16",
+     "2022-07-20"
+    ],
+    "out": [
+     "2019-04-17",
+     "2019-07-25",
+     "2022-11-10",
+     "2023-02-02",
+     "2026-01-15",
+     "2026-04-17"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2019-02-04",
+     "2020-05-08",
+     "2022-04-04",
+     "2022-08-03",
+     "2024-05-13",
+     "2024-06-13"
+    ],
+    "out": []
+   }
+  },
+  "F1.0|IN=not-end-stage|rearm=p50|space=63d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-23"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-01-31",
+     "2018-05-12",
+     "2019-02-18",
+     "2019-06-18",
+     "2020-04-24",
+     "2021-06-28"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2020-12-08",
+     "2021-01-01",
+     "2022-03-28",
+     "2022-05-30",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27",
+     "2026-04-17"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-21",
+     "2019-10-10",
+     "2021-02-16",
+     "2022-07-20"
+    ],
+    "out": [
+     "2019-04-17",
+     "2019-07-25",
+     "2022-11-10",
+     "2023-02-02",
+     "2026-01-15",
+     "2026-04-17"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2019-02-04",
+     "2020-05-08",
+     "2022-04-04",
+     "2022-08-03",
+     "2024-05-13"
+    ],
+    "out": []
+   }
+  },
+  "F0.5|IN=pre-boom|rearm=p*|space=21d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-28"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-05-12",
+     "2019-06-19"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-19",
+     "2021-06-24",
+     "2022-03-29",
+     "2022-07-07",
+     "2022-08-04",
+     "2022-11-11",
+     "2023-01-16",
+     "2023-02-15",
+     "2024-02-27"
+    ]
+   },
+   "semiconductors": {
+    "in": [],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-08",
+     "2022-08-03",
+     "2022-11-15",
+     "2023-02-02",
+     "2026-04-20",
+     "2026-05-19"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2024-06-18"
+    ],
+    "out": []
+   }
+  },
+  "F0.5|IN=pre-boom|rearm=p*|space=63d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-28"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-05-12",
+     "2019-06-19"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-19",
+     "2021-06-24",
+     "2022-03-29",
+     "2022-07-07",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27"
+    ]
+   },
+   "semiconductors": {
+    "in": [],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-08",
+     "2022-08-03",
+     "2022-11-15",
+     "2023-02-02",
+     "2026-04-20"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2024-06-18"
+    ],
+    "out": []
+   }
+  },
+  "F0.5|IN=pre-boom|rearm=p*-10|space=21d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-28"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-05-12",
+     "2019-06-19"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-19",
+     "2021-06-24",
+     "2022-03-29",
+     "2022-07-07",
+     "2022-08-04",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27"
+    ]
+   },
+   "semiconductors": {
+    "in": [],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-08",
+     "2022-08-03",
+     "2022-11-15",
+     "2023-02-02",
+     "2026-04-20"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2024-06-18"
+    ],
+    "out": []
+   }
+  },
+  "F0.5|IN=pre-boom|rearm=p*-10|space=63d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-28"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-05-12",
+     "2019-06-19"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-19",
+     "2021-06-24",
+     "2022-03-29",
+     "2022-07-07",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27"
+    ]
+   },
+   "semiconductors": {
+    "in": [],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-08",
+     "2022-08-03",
+     "2022-11-15",
+     "2023-02-02",
+     "2026-04-20"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2024-06-18"
+    ],
+    "out": []
+   }
+  },
+  "F0.5|IN=pre-boom|rearm=p50|space=21d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-28"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-05-12",
+     "2019-06-19"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2020-12-08",
+     "2021-01-19",
+     "2021-06-24",
+     "2022-03-29",
+     "2022-07-07",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-26"
+    ],
+    "out": [
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-08",
+     "2022-08-03",
+     "2022-11-15",
+     "2023-02-02",
+     "2026-04-20"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2024-06-18"
+    ],
+    "out": []
+   }
+  },
+  "F0.5|IN=pre-boom|rearm=p50|space=63d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-28"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-05-12",
+     "2019-06-19"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2020-12-08",
+     "2021-01-19",
+     "2021-06-24",
+     "2022-03-29",
+     "2022-07-07",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-26"
+    ],
+    "out": [
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-08",
+     "2022-08-03",
+     "2022-11-15",
+     "2023-02-02",
+     "2026-04-20"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2024-06-18"
+    ],
+    "out": []
+   }
+  },
+  "F0.5|IN=not-end-stage|rearm=p*|space=21d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-28"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-01-31",
+     "2018-05-12",
+     "2019-06-19",
+     "2020-05-10"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-19",
+     "2021-06-24",
+     "2022-03-29",
+     "2022-07-07",
+     "2022-08-04",
+     "2022-11-11",
+     "2023-01-16",
+     "2023-02-15",
+     "2024-02-27"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-03-21"
+    ],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-08",
+     "2022-08-03",
+     "2022-11-15",
+     "2023-02-02",
+     "2026-04-20",
+     "2026-05-19"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2024-06-18"
+    ],
+    "out": []
+   }
+  },
+  "F0.5|IN=not-end-stage|rearm=p*|space=63d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-28"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-01-31",
+     "2018-05-12",
+     "2019-06-19",
+     "2020-05-10"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-19",
+     "2021-06-24",
+     "2022-03-29",
+     "2022-07-07",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27"
+    ]
+   },
+   "semiconductors": {
+    "in": [],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-08",
+     "2022-08-03",
+     "2022-11-15",
+     "2023-02-02",
+     "2026-04-20"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2024-06-18"
+    ],
+    "out": []
+   }
+  },
+  "F0.5|IN=not-end-stage|rearm=p*-10|space=21d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-28"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-01-31",
+     "2018-05-12",
+     "2019-06-19",
+     "2020-05-10"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-19",
+     "2021-06-24",
+     "2022-03-29",
+     "2022-07-07",
+     "2022-08-04",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-03-21"
+    ],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-08",
+     "2022-08-03",
+     "2022-11-15",
+     "2023-02-02",
+     "2026-04-20"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2024-06-18"
+    ],
+    "out": []
+   }
+  },
+  "F0.5|IN=not-end-stage|rearm=p*-10|space=63d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-28"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-01-31",
+     "2018-05-12",
+     "2019-06-19",
+     "2020-05-10"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2019-07-15",
+     "2019-11-25",
+     "2020-12-08",
+     "2021-01-19",
+     "2021-06-24",
+     "2022-03-29",
+     "2022-07-07",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27"
+    ]
+   },
+   "semiconductors": {
+    "in": [],
+    "out": [
+     "2019-02-13",
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-08",
+     "2022-08-03",
+     "2022-11-15",
+     "2023-02-02",
+     "2026-04-20"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2024-06-18"
+    ],
+    "out": []
+   }
+  },
+  "F0.5|IN=not-end-stage|rearm=p50|space=21d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-28"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-01-31",
+     "2018-05-12",
+     "2019-06-19",
+     "2020-05-10"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2020-12-08",
+     "2021-01-19",
+     "2021-06-24",
+     "2022-03-29",
+     "2022-07-07",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-26"
+    ],
+    "out": [
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-08",
+     "2022-08-03",
+     "2022-11-15",
+     "2023-02-02",
+     "2026-04-20"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2024-06-18"
+    ],
+    "out": []
+   }
+  },
+  "F0.5|IN=not-end-stage|rearm=p50|space=63d": {
+   "gold_metals": {
+    "in": [],
+    "out": [
+     "2026-01-28"
+    ]
+   },
+   "meme_stocks": {
+    "in": [
+     "2018-01-31",
+     "2018-05-12",
+     "2019-06-19",
+     "2020-05-10"
+    ],
+    "out": [
+     "2018-03-09",
+     "2018-06-12",
+     "2018-08-28",
+     "2020-12-08",
+     "2021-01-19",
+     "2021-06-24",
+     "2022-03-29",
+     "2022-07-07",
+     "2022-11-11",
+     "2023-01-16",
+     "2024-02-27"
+    ]
+   },
+   "semiconductors": {
+    "in": [
+     "2019-01-26"
+    ],
+    "out": [
+     "2019-04-17",
+     "2019-07-25",
+     "2021-11-08",
+     "2022-08-03",
+     "2022-11-15",
+     "2023-02-02",
+     "2026-04-20"
+    ]
+   },
+   "ai_megacap": {
+    "in": [
+     "2024-06-18"
+    ],
+    "out": []
+   }
+  }
+ },
+ "adopted": {
+  "config": {
+   "GET IN": "pre-boom gate (run-up vs 120d low below the G2 bar), crossing, re-arm at train-median score, one call per name per 63d",
+   "GET OUT": "boom gate (run-up >= G2 bar), crossing, re-arm at the cut, one call per name per 63d",
+   "separation": "no GET IN stands within 21d of any GET OUT (either direction); GET OUT never suppressed"
+  },
+  "standard": {
+   "GET IN": {
+    "captured": 21,
+    "detectable": 198,
+    "capture_rate": 0.106,
+    "false_alarms": 49,
+    "fa_per_iy": 0.103,
+    "precision": 0.3,
+    "n_alerts": 71,
+    "median_lead_days": 21
+   },
+   "GET OUT": {
+    "captured": 63,
+    "detectable": 218,
+    "capture_rate": 0.289,
+    "false_alarms": 55,
+    "fa_per_iy": 0.115,
+    "precision": 0.534,
+    "n_alerts": 130,
+    "median_lead_days": 6
+   },
+   "forward_returns": {
+    "GET IN": {
+     "fwd_5d": {
+      "n": 71,
+      "median_pct": -0.19,
+      "mean_pct": -0.48,
+      "pct_positive": 45.1
+     },
+     "fwd_21d": {
+      "n": 71,
+      "median_pct": -0.03,
+      "mean_pct": -0.95,
+      "pct_positive": 49.3
+     },
+     "fwd_84d": {
+      "n": 71,
+      "median_pct": -1.68,
+      "mean_pct": -2.33,
+      "pct_positive": 45.1
+     }
+    },
+    "GET OUT": {
+     "fwd_5d": {
+      "n": 130,
+      "median_pct": 0.41,
+      "mean_pct": 3.85,
+      "pct_positive": 54.6
+     },
+     "fwd_21d": {
+      "n": 130,
+      "median_pct": 0.21,
+      "mean_pct": 3.45,
+      "pct_positive": 50.8
+     },
+     "fwd_84d": {
+      "n": 122,
+      "median_pct": 1.28,
+      "mean_pct": 21.31,
+      "pct_positive": 52.5
+     }
+    }
+   },
+   "alerts": {
+    "fintech_payments": {
+     "in": [
+      "2018-01-27",
+      "2019-02-02"
+     ],
+     "out": []
+    },
+    "infrastructure": {
+     "in": [],
+     "out": []
+    },
+    "financials": {
+     "in": [
+      "2024-08-30",
+      "2025-05-05"
+     ],
+     "out": []
+    },
+    "biotech_pharma": {
+     "in": [
+      "2018-01-24"
+     ],
+     "out": [
+      "2019-01-18",
+      "2019-11-25",
+      "2022-07-05",
+      "2022-09-12"
+     ]
+    },
+    "TSLA": {
+     "in": [
+      "2018-04-17",
+      "2018-08-03",
+      "2018-10-29",
+      "2019-01-10",
+      "2019-06-18",
+      "2021-04-13",
+      "2022-03-18",
+      "2022-07-08",
+      "2023-01-17"
+     ],
+     "out": [
+      "2019-07-15",
+      "2019-10-24",
+      "2020-07-02",
+      "2020-11-29",
+      "2021-01-01",
+      "2021-10-18",
+      "2022-01-03",
+      "2022-08-01"
+     ]
+    },
+    "ev_clean_energy": {
+     "in": [
+      "2019-09-21",
+      "2022-03-24"
+     ],
+     "out": [
+      "2020-07-06",
+      "2021-01-01",
+      "2021-07-07",
+      "2021-10-25",
+      "2023-01-27",
+      "2026-01-22",
+      "2026-04-16"
+     ]
+    },
+    "solar": {
+     "in": [],
+     "out": [
+      "2021-01-01",
+      "2021-10-19",
+      "2022-08-23"
+     ]
+    },
+    "NBIS": {
+     "in": [],
+     "out": [
+      "2026-05-27"
+     ]
+    },
+    "robotics_automation": {
+     "in": [],
+     "out": []
+    },
+    "GOOGL": {
+     "in": [],
+     "out": [
+      "2026-05-06"
+     ]
+    },
+    "ai_megacap": {
+     "in": [
+      "2019-02-04",
+      "2022-04-04",
+      "2024-05-13"
+     ],
+     "out": [
+      "2022-08-10"
+     ]
+    },
+    "INTC": {
+     "in": [
+      "2021-02-11"
+     ],
+     "out": [
+      "2026-04-30"
+     ]
+    },
+    "memory": {
+     "in": [
+      "2022-04-04"
+     ],
+     "out": [
+      "2019-02-19",
+      "2021-11-20",
+      "2026-04-16"
+     ]
+    },
+    "space": {
+     "in": [],
+     "out": [
+      "2020-06-05",
+      "2021-02-19",
+      "2026-01-17"
+     ]
+    },
+    "utilities_power": {
+     "in": [
+      "2022-12-08"
+     ],
+     "out": []
+    },
+    "AMC": {
+     "in": [],
+     "out": [
+      "2021-01-22",
+      "2021-04-08",
+      "2021-08-25"
+     ]
+    },
+    "GME": {
+     "in": [
+      "2021-08-25",
+      "2022-09-09"
+     ],
+     "out": [
+      "2020-12-23",
+      "2021-01-01",
+      "2021-04-04",
+      "2022-03-27",
+      "2022-08-16"
+     ]
+    },
+    "AAPL": {
+     "in": [
+      "2018-08-30",
+      "2019-03-01",
+      "2022-03-26",
+      "2022-07-27"
+     ],
+     "out": [
+      "2020-08-06"
+     ]
+    },
+    "MU": {
+     "in": [],
+     "out": []
+    },
+    "energy": {
+     "in": [
+      "2018-01-25",
+      "2018-05-15",
+      "2019-01-25",
+      "2019-11-07"
+     ],
+     "out": [
+      "2020-12-11",
+      "2021-01-16",
+      "2022-01-05",
+      "2022-03-21",
+      "2022-05-23",
+      "2022-08-24",
+      "2022-11-17",
+      "2026-02-06"
+     ]
+    },
+    "COIN": {
+     "in": [
+      "2022-11-30"
+     ],
+     "out": []
+    },
+    "shipping_logistics": {
+     "in": [
+      "2019-01-19"
+     ],
+     "out": [
+      "2021-03-26"
+     ]
+    },
+    "NVDA": {
+     "in": [
+      "2018-08-29",
+      "2019-02-15",
+      "2022-02-15",
+      "2022-05-30",
+      "2026-04-18"
+     ],
+     "out": [
+      "2020-05-21",
+      "2020-08-18",
+      "2021-06-02",
+      "2021-09-06",
+      "2021-12-07",
+      "2023-02-23"
+     ]
+    },
+    "uranium_nuclear": {
+     "in": [],
+     "out": [
+      "2021-01-01",
+      "2021-03-15",
+      "2021-09-04",
+      "2022-03-12",
+      "2026-01-12"
+     ]
+    },
+    "RKLB": {
+     "in": [],
+     "out": [
+      "2026-05-14"
+     ]
+    },
+    "consumer_retail": {
+     "in": [
+      "2021-01-30"
+     ],
+     "out": [
+      "2021-03-09",
+      "2023-02-01",
+      "2024-02-27",
+      "2025-05-12"
+     ]
+    },
+    "gaming_esports": {
+     "in": [
+      "2018-02-24",
+      "2019-01-18",
+      "2022-03-27"
+     ],
+     "out": [
+      "2021-01-21",
+      "2022-11-30",
+      "2023-02-02"
+     ]
+    },
+    "japan": {
+     "in": [
+      "2018-10-05"
+     ],
+     "out": []
+    },
+    "media_streaming": {
+     "in": [
+      "2019-01-19",
+      "2019-06-22"
+     ],
+     "out": [
+      "2023-02-02"
+     ]
+    },
+    "MSFT": {
+     "in": [
+      "2021-10-29",
+      "2022-07-30",
+      "2026-04-22"
+     ],
+     "out": []
+    },
+    "datacenters": {
+     "in": [],
+     "out": [
+      "2026-01-27",
+      "2026-04-26"
+     ]
+    },
+    "AVGO": {
+     "in": [],
+     "out": []
+    },
+    "china_geopolitics": {
+     "in": [
+      "2025-04-11"
+     ],
+     "out": [
+      "2022-04-02",
+      "2022-06-08",
+      "2022-11-11",
+      "2023-01-10"
+     ]
+    },
+    "meme_stocks": {
+     "in": [
+      "2018-05-12",
+      "2019-06-18"
+     ],
+     "out": [
+      "2018-03-09",
+      "2018-06-12",
+      "2018-08-28",
+      "2019-07-15",
+      "2019-11-25",
+      "2020-12-08",
+      "2021-01-01",
+      "2022-03-28",
+      "2022-05-30",
+      "2022-08-03",
+      "2022-11-11",
+      "2023-01-16",
+      "2024-02-27",
+      "2026-04-17"
+     ]
+    },
+    "ASTS": {
+     "in": [],
+     "out": [
+      "2026-05-28"
+     ]
+    },
+    "AMZN": {
+     "in": [
+      "2018-04-27",
+      "2018-12-03",
+      "2019-01-28",
+      "2022-03-30",
+      "2022-06-06",
+      "2023-01-28",
+      "2026-04-29"
+     ],
+     "out": [
+      "2018-02-22",
+      "2020-04-16"
+     ]
+    },
+    "MSTR": {
+     "in": [],
+     "out": []
+    },
+    "GOOG": {
+     "in": [],
+     "out": []
+    },
+    "AMD": {
+     "in": [],
+     "out": []
+    },
+    "PLTR": {
+     "in": [
+      "2021-06-02",
+      "2021-09-16"
+     ],
+     "out": []
+    },
+    "travel_airlines": {
+     "in": [],
+     "out": [
+      "2021-02-23",
+      "2022-02-15",
+      "2022-04-20"
+     ]
+    },
+    "RDDT": {
+     "in": [],
+     "out": [
+      "2026-06-15"
+     ]
+    },
+    "ai": {
+     "in": [
+      "2019-01-18",
+      "2019-07-09",
+      "2019-11-27",
+      "2022-08-03"
+     ],
+     "out": [
+      "2019-02-18",
+      "2023-02-02",
+      "2025-07-20",
+      "2025-10-08"
+     ]
+    },
+    "defense_aerospace": {
+     "in": [
+      "2022-02-28"
+     ],
+     "out": [
+      "2026-01-16"
+     ]
+    },
+    "gold_metals": {
+     "in": [],
+     "out": [
+      "2026-01-23"
+     ]
+    },
+    "quantum_computing": {
+     "in": [],
+     "out": [
+      "2026-06-02"
+     ]
+    },
+    "IBKR": {
+     "in": [],
+     "out": []
+    },
+    "SPCE": {
+     "in": [],
+     "out": [
+      "2020-12-09",
+      "2021-01-14",
+      "2021-05-24"
+     ]
+    },
+    "agriculture_food": {
+     "in": [],
+     "out": []
+    },
+    "cybersecurity": {
+     "in": [],
+     "out": [
+      "2026-05-21"
+     ]
+    },
+    "short_squeeze": {
+     "in": [
+      "2018-05-20"
+     ],
+     "out": [
+      "2019-02-13",
+      "2019-11-29",
+      "2021-01-08",
+      "2021-07-09",
+      "2022-03-28",
+      "2022-07-20",
+      "2022-11-11",
+      "2023-01-17",
+      "2026-04-18"
+     ]
+    },
+    "semiconductors": {
+     "in": [
+      "2019-01-21",
+      "2019-10-10"
+     ],
+     "out": [
+      "2019-02-13",
+      "2019-04-17",
+      "2019-07-25",
+      "2021-11-15",
+      "2022-08-10",
+      "2022-11-10",
+      "2023-02-02",
+      "2026-01-15",
+      "2026-04-17",
+      "2026-06-19"
+     ]
+    },
+    "cloud_saas": {
+     "in": [
+      "2018-03-21",
+      "2022-07-30"
+     ],
+     "out": [
+      "2019-02-01",
+      "2020-05-23",
+      "2026-05-29"
+     ]
+    }
+   }
+  },
+  "strict": {
+   "GET IN": {
+    "captured": 10,
+    "detectable": 198,
+    "capture_rate": 0.051,
+    "false_alarms": 17,
+    "fa_per_iy": 0.036,
+    "precision": 0.37,
+    "n_alerts": 29,
+    "median_lead_days": 18
+   },
+   "GET OUT": {
+    "captured": 50,
+    "detectable": 218,
+    "capture_rate": 0.229,
+    "false_alarms": 43,
+    "fa_per_iy": 0.09,
+    "precision": 0.538,
+    "n_alerts": 98,
+    "median_lead_days": 7
+   },
+   "forward_returns": {
+    "GET IN": {
+     "fwd_5d": {
+      "n": 29,
+      "median_pct": 0.72,
+      "mean_pct": 0.68,
+      "pct_positive": 55.2
+     },
+     "fwd_21d": {
+      "n": 29,
+      "median_pct": 0.11,
+      "mean_pct": -0.27,
+      "pct_positive": 51.7
+     },
+     "fwd_84d": {
+      "n": 29,
+      "median_pct": -3.82,
+      "mean_pct": -4.23,
+      "pct_positive": 37.9
+     }
+    },
+    "GET OUT": {
+     "fwd_5d": {
+      "n": 98,
+      "median_pct": -0.07,
+      "mean_pct": 4.43,
+      "pct_positive": 49.0
+     },
+     "fwd_21d": {
+      "n": 98,
+      "median_pct": -0.84,
+      "mean_pct": 3.39,
+      "pct_positive": 48.0
+     },
+     "fwd_84d": {
+      "n": 92,
+      "median_pct": 0.62,
+      "mean_pct": 25.57,
+      "pct_positive": 50.0
+     }
+    }
+   },
+   "alerts": {
+    "fintech_payments": {
+     "in": [
+      "2018-01-27"
+     ],
+     "out": []
+    },
+    "infrastructure": {
+     "in": [],
+     "out": []
+    },
+    "financials": {
+     "in": [],
+     "out": []
+    },
+    "biotech_pharma": {
+     "in": [
+      "2018-01-24"
+     ],
+     "out": [
+      "2019-01-18",
+      "2019-11-25",
+      "2022-07-05"
+     ]
+    },
+    "TSLA": {
+     "in": [
+      "2018-04-17",
+      "2018-08-03",
+      "2018-10-29",
+      "2022-03-21",
+      "2023-01-23"
+     ],
+     "out": [
+      "2019-07-15",
+      "2019-10-24",
+      "2020-07-02",
+      "2020-11-29",
+      "2021-01-01",
+      "2021-10-25",
+      "2022-01-03",
+      "2022-08-01"
+     ]
+    },
+    "ev_clean_energy": {
+     "in": [
+      "2019-09-21"
+     ],
+     "out": [
+      "2020-07-06",
+      "2021-01-05",
+      "2022-04-04",
+      "2023-01-27"
+     ]
+    },
+    "solar": {
+     "in": [],
+     "out": [
+      "2021-01-05"
+     ]
+    },
+    "NBIS": {
+     "in": [],
+     "out": [
+      "2026-05-28"
+     ]
+    },
+    "robotics_automation": {
+     "in": [],
+     "out": []
+    },
+    "GOOGL": {
+     "in": [],
+     "out": [
+      "2026-05-06"
+     ]
+    },
+    "ai_megacap": {
+     "in": [
+      "2024-06-18"
+     ],
+     "out": []
+    },
+    "INTC": {
+     "in": [],
+     "out": [
+      "2026-04-30"
+     ]
+    },
+    "memory": {
+     "in": [],
+     "out": [
+      "2019-02-19",
+      "2026-04-24"
+     ]
+    },
+    "space": {
+     "in": [],
+     "out": [
+      "2020-06-05"
+     ]
+    },
+    "utilities_power": {
+     "in": [],
+     "out": []
+    },
+    "AMC": {
+     "in": [],
+     "out": [
+      "2021-01-22",
+      "2021-04-14",
+      "2021-08-31"
+     ]
+    },
+    "GME": {
+     "in": [],
+     "out": [
+      "2020-12-23",
+      "2021-01-01",
+      "2021-04-05",
+      "2022-03-27"
+     ]
+    },
+    "AAPL": {
+     "in": [
+      "2018-08-30",
+      "2022-03-29",
+      "2022-07-29"
+     ],
+     "out": [
+      "2020-08-06"
+     ]
+    },
+    "MU": {
+     "in": [],
+     "out": []
+    },
+    "energy": {
+     "in": [
+      "2018-01-25",
+      "2018-05-15"
+     ],
+     "out": [
+      "2020-12-11",
+      "2022-01-11",
+      "2022-05-30",
+      "2022-11-01"
+     ]
+    },
+    "COIN": {
+     "in": [],
+     "out": []
+    },
+    "shipping_logistics": {
+     "in": [],
+     "out": []
+    },
+    "NVDA": {
+     "in": [
+      "2018-08-29",
+      "2019-02-18"
+     ],
+     "out": [
+      "2020-05-21",
+      "2020-08-18",
+      "2021-11-04",
+      "2023-02-23",
+      "2026-05-14"
+     ]
+    },
+    "uranium_nuclear": {
+     "in": [],
+     "out": [
+      "2021-02-17",
+      "2021-09-06",
+      "2026-01-20"
+     ]
+    },
+    "RKLB": {
+     "in": [],
+     "out": [
+      "2026-05-14"
+     ]
+    },
+    "consumer_retail": {
+     "in": [],
+     "out": [
+      "2023-02-01",
+      "2024-02-27",
+      "2025-05-12"
+     ]
+    },
+    "gaming_esports": {
+     "in": [
+      "2018-02-24"
+     ],
+     "out": [
+      "2022-04-04",
+      "2023-02-02"
+     ]
+    },
+    "japan": {
+     "in": [
+      "2018-10-05"
+     ],
+     "out": [
+      "2022-03-29"
+     ]
+    },
+    "media_streaming": {
+     "in": [],
+     "out": [
+      "2023-02-02"
+     ]
+    },
+    "MSFT": {
+     "in": [],
+     "out": []
+    },
+    "datacenters": {
+     "in": [],
+     "out": []
+    },
+    "AVGO": {
+     "in": [],
+     "out": []
+    },
+    "china_geopolitics": {
+     "in": [
+      "2025-04-14"
+     ],
+     "out": [
+      "2022-04-04",
+      "2022-11-14",
+      "2023-01-10"
+     ]
+    },
+    "meme_stocks": {
+     "in": [
+      "2018-05-12",
+      "2019-06-19"
+     ],
+     "out": [
+      "2018-03-09",
+      "2018-06-12",
+      "2018-08-28",
+      "2019-07-15",
+      "2019-11-25",
+      "2020-12-08",
+      "2021-01-19",
+      "2021-06-24",
+      "2022-03-29",
+      "2022-07-07",
+      "2022-11-11",
+      "2023-01-16",
+      "2024-02-27"
+     ]
+    },
+    "ASTS": {
+     "in": [],
+     "out": [
+      "2026-05-28"
+     ]
+    },
+    "AMZN": {
+     "in": [
+      "2018-04-27",
+      "2018-12-03",
+      "2022-03-30",
+      "2023-02-02"
+     ],
+     "out": [
+      "2018-02-22",
+      "2020-04-16",
+      "2022-08-16"
+     ]
+    },
+    "MSTR": {
+     "in": [],
+     "out": []
+    },
+    "GOOG": {
+     "in": [],
+     "out": []
+    },
+    "AMD": {
+     "in": [],
+     "out": []
+    },
+    "PLTR": {
+     "in": [],
+     "out": []
+    },
+    "travel_airlines": {
+     "in": [],
+     "out": []
+    },
+    "RDDT": {
+     "in": [],
+     "out": []
+    },
+    "ai": {
+     "in": [
+      "2019-01-20",
+      "2019-07-09"
+     ],
+     "out": [
+      "2019-02-18",
+      "2023-02-02",
+      "2025-07-20",
+      "2025-10-08",
+      "2026-04-26"
+     ]
+    },
+    "defense_aerospace": {
+     "in": [],
+     "out": []
+    },
+    "gold_metals": {
+     "in": [],
+     "out": [
+      "2026-01-28"
+     ]
+    },
+    "quantum_computing": {
+     "in": [],
+     "out": []
+    },
+    "IBKR": {
+     "in": [],
+     "out": []
+    },
+    "SPCE": {
+     "in": [],
+     "out": [
+      "2020-12-09",
+      "2021-01-18",
+      "2021-05-24"
+     ]
+    },
+    "agriculture_food": {
+     "in": [],
+     "out": []
+    },
+    "cybersecurity": {
+     "in": [],
+     "out": [
+      "2026-05-29"
+     ]
+    },
+    "short_squeeze": {
+     "in": [
+      "2018-05-20"
+     ],
+     "out": [
+      "2019-02-13",
+      "2019-11-29",
+      "2021-01-14",
+      "2022-04-04",
+      "2022-07-21",
+      "2022-11-11",
+      "2023-01-17"
+     ]
+    },
+    "semiconductors": {
+     "in": [],
+     "out": [
+      "2019-02-13",
+      "2019-04-17",
+      "2019-07-25",
+      "2021-11-08",
+      "2022-08-03",
+      "2022-11-15",
+      "2023-02-02",
+      "2026-04-20"
+     ]
+    },
+    "cloud_saas": {
+     "in": [
+      "2018-03-21"
+     ],
+     "out": [
+      "2019-02-01",
+      "2020-05-23",
+      "2026-06-01"
+     ]
+    }
+   }
+  }
+ }
+}

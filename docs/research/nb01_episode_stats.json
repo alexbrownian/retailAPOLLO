@@ -1,61 +1,61 @@
 {
- "episodes_total": 333,
- "onset_detectable": 126,
- "top_detectable": 136,
- "median_run_days": 86.0,
- "median_boom_pct": 0.6351197263397947,
- "median_bust_pct": -0.3631833033403371,
+ "episodes_total": 494,
+ "onset_detectable": 199,
+ "top_detectable": 219,
+ "median_run_days": 93.5,
+ "median_boom_pct": 0.48883892694035636,
+ "median_bust_pct": -0.26633663366336635,
  "onset_window_days": 45,
  "per_year": {
   "2017": {
-   "episodes": 8,
+   "episodes": 5,
    "onset_detectable": 1,
    "top_detectable": 1
   },
   "2018": {
-   "episodes": 10,
-   "onset_detectable": 5,
-   "top_detectable": 5
+   "episodes": 23,
+   "onset_detectable": 15,
+   "top_detectable": 16
   },
   "2019": {
-   "episodes": 21,
-   "onset_detectable": 8,
-   "top_detectable": 8
+   "episodes": 19,
+   "onset_detectable": 14,
+   "top_detectable": 13
   },
   "2020": {
-   "episodes": 50,
-   "onset_detectable": 24,
-   "top_detectable": 24
+   "episodes": 56,
+   "onset_detectable": 35,
+   "top_detectable": 37
   },
   "2021": {
-   "episodes": 62,
+   "episodes": 67,
    "onset_detectable": 52,
-   "top_detectable": 58
+   "top_detectable": 53
   },
   "2022": {
-   "episodes": 47,
-   "onset_detectable": 24,
-   "top_detectable": 22
+   "episodes": 76,
+   "onset_detectable": 42,
+   "top_detectable": 40
   },
   "2023": {
-   "episodes": 35,
-   "onset_detectable": 7,
-   "top_detectable": 5
+   "episodes": 63,
+   "onset_detectable": 18,
+   "top_detectable": 16
   },
   "2024": {
-   "episodes": 44,
-   "onset_detectable": 0,
-   "top_detectable": 0
+   "episodes": 65,
+   "onset_detectable": 1,
+   "top_detectable": 1
   },
   "2025": {
-   "episodes": 34,
+   "episodes": 53,
    "onset_detectable": 0,
    "top_detectable": 0
   },
   "2026": {
-   "episodes": 22,
-   "onset_detectable": 5,
-   "top_detectable": 13
+   "episodes": 67,
+   "onset_detectable": 21,
+   "top_detectable": 42
   }
  }
 }

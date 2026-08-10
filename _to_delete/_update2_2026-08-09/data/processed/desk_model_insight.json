@@ -1,0 +1,87 @@
+{
+ "bank": [
+  "attention_accel",
+  "hype_ratio",
+  "bull_inflection",
+  "influx_speed",
+  "attention_convexity",
+  "e1",
+  "e3",
+  "bull_level",
+  "bull_persist",
+  "price_runup",
+  "price_ret21"
+ ],
+ "plain_labels": {
+  "attention_accel": "week vs month",
+  "hype_ratio": "week vs own normal",
+  "bull_inflection": "mood turning",
+  "influx_speed": "attention change (2 weeks)",
+  "attention_convexity": "attention accelerating",
+  "e1": "attention level (vs own year)",
+  "e3": "attention change (1 month)",
+  "bull_level": "bullishness level",
+  "bull_persist": "bullishness persistence",
+  "price_runup": "price run-up off its 54d low",
+  "price_ret21": "price return, 1 month"
+ },
+ "fitted_on_years_before": 2026,
+ "importance_evaluated_on": 2026,
+ "get_out": {
+  "logit_weights": {
+   "attention_accel": 0.249,
+   "hype_ratio": -0.368,
+   "bull_inflection": 0.083,
+   "influx_speed": -0.208,
+   "attention_convexity": 0.52,
+   "e1": 0.296,
+   "e3": -0.167,
+   "bull_level": 0.477,
+   "bull_persist": 1.145,
+   "price_runup": 3.49,
+   "price_ret21": 2.541
+  },
+  "gbm_permutation_importance": {
+   "attention_accel": 0.0,
+   "hype_ratio": -0.0002,
+   "bull_inflection": -0.0067,
+   "influx_speed": 0.0016,
+   "attention_convexity": -0.014,
+   "e1": 0.0007,
+   "e3": -0.0003,
+   "bull_level": -0.0063,
+   "bull_persist": 0.0185,
+   "price_runup": 0.1824,
+   "price_ret21": 0.0013
+  }
+ },
+ "get_in": {
+  "logit_weights": {
+   "attention_accel": -0.216,
+   "hype_ratio": -0.087,
+   "bull_inflection": 0.504,
+   "influx_speed": 0.209,
+   "attention_convexity": 0.436,
+   "e1": 0.054,
+   "e3": 0.089,
+   "bull_level": -0.799,
+   "bull_persist": -0.444,
+   "price_runup": 6.296,
+   "price_ret21": 0.301
+  },
+  "gbm_permutation_importance": {
+   "attention_accel": 0.0007,
+   "hype_ratio": 0.0003,
+   "bull_inflection": 0.002,
+   "influx_speed": 0.0054,
+   "attention_convexity": 0.0093,
+   "e1": 0.0013,
+   "e3": -0.0002,
+   "bull_level": -0.0004,
+   "bull_persist": 0.0054,
+   "price_runup": 0.2236,
+   "price_ret21": 0.0596
+  }
+ },
+ "model": "ens"
+}

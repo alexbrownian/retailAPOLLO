@@ -93,7 +93,7 @@ model. Everything else asks it. Self-test: `python -m src.ai --selftest`
                               |
    +--------------+-----------+-----------+---------------+
    |              |                       |               |
- ai_pulse.py   ai_poll.py       tools/ai_keyword_audit  notebook 10
+ ai_pulse.py   ai_poll.py       tools/ai_keyword_audit  notebook 10 (retired 2026-08-07; record frozen)
  the words     the poll          the map auditor        sentiment test
 ```
 
@@ -101,7 +101,7 @@ One **scanner** feeds that layer and needs no gateway at all — it is
 plain regex over the archives, so it runs everywhere and always:
 
 * `src/agentic_watch.py` — posts about trading WITH an AI. Research
-  only; its record is notebook 09 and `daily_agentic_counts.parquet`,
+  only; its record is notebook 09 (retired 2026-08-07, JSON frozen) and `daily_agentic_counts.parquet`,
   deliberately not a dashboard page.
 
 ### 4.1 The rule that shapes every AI feature
@@ -165,10 +165,11 @@ would be a silent lookahead).
 
 1. **Frozen means frozen.** Any change to scoring code or constants is a
    RE-VALIDATION EVENT: re-run the research pass, compare the stored
-   record, re-execute notebooks 00/04/06/07/08. Nothing ships as live
+   record, re-execute notebooks 00-04 and the presentation pack (11). Nothing ships as live
    flags unless it beats the incumbent under the pre-stated rule.
-   Notebook 08 is the worked example of a change that WON the display
-   and LOST the flags — that division is by design.
+   The single-state study (notebook 08, retired 2026-08-07 with its
+   record frozen) is the worked example of a change that WON the
+   display and LOST the flags — that division is by design.
 2. **Committed data is text-free.** Section 5. Never weaken it.
 3. **The dashboard shows conclusions; the notebooks are the record.**
    Performance claims belong in notebooks with confidence intervals,

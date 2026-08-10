@@ -191,6 +191,18 @@ def log_convexity(s: pd.Series, window: int = 60) -> pd.Series:
     pinv = np.linalg.pinv(X)             # (3, window), built once
     logp = np.log(s.where(s > 0))
 
+    x = logp.to_numpy(dtype=float)
+    if len(x) >= window and not np.isnan(x).any():
+        # FAST PATH (2026-08-07): the rolling quadratic coefficient is a
+        # fixed dot product per window - i.e. a correlation with a fixed
+        # kernel - so compute it with one vectorised convolution instead
+        # of a Python-level rolling.apply (~50x faster; identical values,
+        # verified allclose against the apply path in the test suite).
+        vals = np.convolve(x, pinv[2][::-1], mode="valid")
+        out = np.full(len(x), np.nan)
+        out[window - 1:] = vals
+        return pd.Series(out, index=s.index)
+
     def _c(win):
         if np.isnan(win).any():
             return np.nan
@@ -319,23 +331,37 @@ class EuphoriaSeries:
     e3: pd.Series = None       # crowd influx          (0-1)
     e5: pd.Series = None       # super-exponential attention (0-1)
     fade: pd.Series = None     # E4 flag (bool)
+    # the UN-GATED sentiment ingredients (2026-08-07, for the ML bank):
+    # e2 multiplies its rank by a hard 75%-persistence gate, which is one
+    # of the embedded constants the learned models exist to remove - so
+    # the bank gets the two raw ingredients and learns the interaction
+    bull_level: pd.Series = None    # pct-rank of the 28d net-bullish share
+    bull_persist: pd.Series = None  # fraction of last 28 posting days bullish
     boom_ok: pd.Series = None  # A1 hype prerequisite (bool, Reddit-only)
     coverage_ok: pd.Series = None  # A0 gate (bool): enough scored posts
     alerts: list = field(default_factory=list)   # filled by detect_alerts
 
 
-def _mention_share(counts_long, entity_col, name, all_days):
-    """(7d-smoothed share of the day's total mentions in %,
-        7d-smoothed raw mention count). The share powers E1/E3/A1 (it is
-    coverage-shift-proof); the raw count powers E5's contagion fit."""
-    day_tot = counts_long.groupby("date")["mention_count"].sum()
+def _mention_share(counts_long, entity_col, name, all_days,
+                   by_source=None):
+    """(coverage-robust 7d share of total mentions in %, 7d-smoothed raw
+    mention count). The share powers E1/E3/A1; the raw count powers E5's
+    contagion fit.
+
+    ROBUST SINCE 2026-08-07 (analytics/robust_share.py): ratio-of-sums
+    over the 7d window + per-source stratification (tickers) + empirical-
+    Bayes shrinkage toward the name's own 120d baseline. The old
+    mean-of-daily-ratios collapsed to fake zeros on thin pull days and
+    was diluted wholesale whenever a big StockTwits/X pull landed - a
+    coverage artifact the detector then percentile-ranked as if it were
+    crowd behaviour."""
+    from analytics.robust_share import robust_share
+    share = robust_share(counts_long, entity_col, name, all_days,
+                         by_source=by_source)
     m = (counts_long[counts_long[entity_col] == name]
          .groupby("date")["mention_count"].sum()
          .reindex(all_days).fillna(0.0))
-    tot = day_tot.reindex(all_days).fillna(0.0)
-    share = (m / tot.where(tot > 0)) * 100
-    return (share.rolling(7, min_periods=1).mean(),
-            m.rolling(7, min_periods=1).mean())
+    return share, m.rolling(7, min_periods=1).mean()
 
 
 def _bullish_series(sent_long, entity_col, name, all_days):
@@ -366,14 +392,15 @@ def _bullish_series(sent_long, entity_col, name, all_days):
 
 
 def compute_euphoria(name, symbol, kind, counts_long, sent_long,
-                     entity_col) -> EuphoriaSeries | None:
+                     entity_col, by_source=None) -> EuphoriaSeries | None:
     """Build the full euphoria series for one instrument - from the
     Reddit aggregates ONLY (no price input; price is for testing).
     Returns None when there is not enough data to say anything honest."""
     all_days = pd.date_range(counts_long["date"].min(),
                              counts_long["date"].max(), freq="D")
 
-    share, m7 = _mention_share(counts_long, entity_col, name, all_days)
+    share, m7 = _mention_share(counts_long, entity_col, name, all_days,
+                               by_source=by_source)
     share28, persist, fade_chg, posts28 = _bullish_series(
         sent_long, entity_col, name, all_days)
 
@@ -398,6 +425,8 @@ def compute_euphoria(name, symbol, kind, counts_long, sent_long,
     level = 100 * pd.concat([e1, e2, e3, e5], axis=1).mean(axis=1)
     return EuphoriaSeries(name=name, symbol=symbol, kind=kind, level=level,
                           e1=e1, e2=e2, e3=e3, e5=e5, fade=fade,
+                          bull_level=trailing_pct_rank(share28),
+                          bull_persist=persist,
                           boom_ok=boom_ok.fillna(False),
                           coverage_ok=coverage_ok)
 
@@ -434,13 +463,20 @@ def detect_alerts(es: EuphoriaSeries, threshold: float,
     return alerts
 
 
-def ground_truth_peaks(px: pd.Series, kind: str) -> list:
+def ground_truth_peaks(px: pd.Series, kind: str,
+                       boom_min: float | None = None,
+                       crash_min: float | None = None) -> list:
     """The price-only definition of a top (G1-G3 in the module docstring).
-    Returns the peak dates."""
-    boom_min = (EUPHORIA_BOOM_MIN_SINGLE if kind == "single"
-                else EUPHORIA_BOOM_MIN_ETF)
-    crash_min = (EUPHORIA_CRASH_MIN_SINGLE if kind == "single"
-                 else EUPHORIA_CRASH_MIN_ETF)
+    Returns the peak dates. boom_min/crash_min default to the frozen
+    config constants; the overrides exist for the ground-truth SWEEP
+    (notebook 03 / analytics.ml_detector --sweep), which re-runs the
+    whole evaluation under looser and stricter episode definitions."""
+    if boom_min is None:
+        boom_min = (EUPHORIA_BOOM_MIN_SINGLE if kind == "single"
+                    else EUPHORIA_BOOM_MIN_ETF)
+    if crash_min is None:
+        crash_min = (EUPHORIA_CRASH_MIN_SINGLE if kind == "single"
+                     else EUPHORIA_CRASH_MIN_ETF)
     px = px.dropna()
     if len(px) < 240:
         return []
@@ -513,6 +549,12 @@ def build_all_series(prices: pd.DataFrame) -> list:
         if df is None:
             raise FileNotFoundError("aggregates missing - run the pipeline")
         df["date"] = pd.to_datetime(df["date"])
+    # the by-source table powers the stratified share (tickers only -
+    # themes have no by-source aggregate); optional by design
+    from analytics.loaders import TICKER_COUNTS_BY_SOURCE
+    tick_by_src = load(TICKER_COUNTS_BY_SOURCE)
+    if tick_by_src is not None:
+        tick_by_src["date"] = pd.to_datetime(tick_by_src["date"])
     pxmap = {s: g.sort_values("date").set_index("date")["px_last"]
              .asfreq("D").ffill() for s, g in prices.groupby("symbol")}
     priced = set(pxmap)
@@ -528,7 +570,7 @@ def build_all_series(prices: pd.DataFrame) -> list:
             out.append(es)
     for tick in single_name_universe(prices):
         es = compute_euphoria(tick, tick, "single", tick_counts,
-                              tick_sent, "ticker")
+                              tick_sent, "ticker", by_source=tick_by_src)
         if es is not None:
             out.append(es)
     return out, pxmap

@@ -5,7 +5,15 @@ expected to go out of date. Everything permanent lives elsewhere (see
 the documentation map at the end of `docs/ARCHITECTURE.md`). Delete a
 line when it is done; do not archive it here.*
 
-Last reviewed: **2026-08-05**
+Last reviewed: **2026-08-07**
+
+## From the 2026-08-07 rebuild (robust shares · looser ground truth · learned desk model)
+
+| Item | What to do | Why |
+|---|---|---|
+| Re-execute notebook 04 on the desk machine when convenient | standard jupytext → nbconvert loop | 00 (new), 01, 02, 03 and the presentation pack (11) were re-executed under the new ground truth / estimator / model on 2026-08-07; 04 is the heavy rules-era record and re-runs cleanly but its stored figures still quote pre-change numbers until re-run. (Notebooks 06–10 were RETIRED the same day — see `notebooks/_retired_2026-08-07_presentation_refactor/README.md`; their frozen JSONs remain live.) |
+| Refresh the deck figure pack | `python tools/build_deck_figures.py` after the notebook re-run | F10/F11/F15/F19 quote the old record; the new comparison table is `docs/research/ml_tournament.md` + `docs/figures/deck/F20_model_tournament.png` |
+| Watch the first live weeks of the ens model | nothing to run — read the signal snapshots | the frozen cut (~0.92 both heads) was chosen by train-year F1 under the new ground truth; the forward snapshots are its real out-of-sample test |
 
 > **Before you change anything, and after: `python tools/preflight.py`.**
 > Eight checks, no writes, no network, safe to run at any time. It exists
@@ -22,8 +30,8 @@ Last reviewed: **2026-08-05**
 |---|---|---|
 | Prices for the new instruments | run a QUICK UPDATE with the Terminal open | EUAD, MOO, XRT, DTCR, BBH, KRE, 159915 CS, 588000 CH, MTUM have no price history yet; until then charts fall back down the ETF fallback chains |
 | First real AI pulse and poll | run any update on the VPN | the committed `ai_pulse.json` is MOCK and `ai_poll.parquet` does not exist yet — the first live run writes both |
-| Notebook 10 (AI sentiment) | re-execute on the desk machine with `AI_MAX_CALLS=80` | the FinBERT and LLM scoring cells were proxy-blocked in the cloud. Each caches its scores, so re-execution completes the verdict |
-| Notebook 07 (index composite) | re-execute once MTUM is priced | MTUM judging auto-activates then; nothing to edit |
+| Notebook 10 (AI sentiment) — RETIRED 2026-08-07, verdict still pending | resurrect from `notebooks/_retired_2026-08-07_presentation_refactor/`, re-execute on the desk machine with `AI_MAX_CALLS=80` | the FinBERT and LLM scoring cells were proxy-blocked in the cloud. Each caches its scores, so re-execution completes the verdict |
+| Notebook 07 (index composite) — RETIRED 2026-08-07 | resurrect from `notebooks/_retired_2026-08-07_presentation_refactor/` and re-execute once MTUM is priced | MTUM judging auto-activates then; nothing to edit |
 | `.env` | fill `APOLLO_AUTH_PASSWORD`, then `python -m src.ai --selftest` (expect Paris) | the gateway cannot authenticate without it |
 
 ## Needs a human decision
@@ -49,7 +57,7 @@ is how a pre-registration stops being one.*
 
 | Test | Gate | Where |
 |---|---|---|
-| Does the AI poll LEAD our flags? | ≥60 distinct poll days | notebook 09 §2b — self-activating |
+| Does the AI poll LEAD our flags? | ≥60 distinct poll days | notebook 09 §2b (retired 2026-08-07 — resurrect from `notebooks/_retired_2026-08-07_presentation_refactor/` when the data threshold is met) |
 
 ## The one big open question (raised 2026-08-04)
 
@@ -91,7 +99,7 @@ rebuild runs on the machine holding `posts.parquet`:
   under-counted in history — MU by roughly 44×, measured.
 
 `python update_data.py --full` on the external machine, then re-run the
-research pass and re-execute notebooks 00/04/06/07/08. This is a
+research pass and re-execute notebooks 00–04 and the presentation pack (11). This is a
 RE-VALIDATION EVENT: every count moves, so both frozen thresholds must be
 re-derived and compared against the incumbent.
 
@@ -219,7 +227,8 @@ holdings the file was missing), the **VOO/VTI/KO allowlist entries** and
 the **ES stoplist row**, all of which came from measurement rather than
 from the index idea.
 
-`notebooks/07_index_composite.py` is kept as the RECORD of what was
+`notebooks/_retired_2026-08-07_presentation_refactor/07_index_composite.py`
+is kept as the RECORD of what was
 tried, because the question will be asked again. Its verdict box now
 carries the three measurements that killed it: the crowd never types a
 factor fund (MTUM 0 mentions in 176k comments, "IVE" is "I've"); reading

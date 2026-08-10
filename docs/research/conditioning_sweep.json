@@ -1,0 +1,187 @@
+{
+ "as_of": "2026-08-09",
+ "smooth_days": 7,
+ "adoption_rule": "fewest flips among configs cutting FAs with capture within 5pts of shipped, per head; one family both heads",
+ "results": {
+  "GET OUT": {
+   "raw|F1.0|level": {
+    "captured": 93,
+    "detectable": 218,
+    "capture_rate": 0.427,
+    "false_alarms": 165,
+    "fa_per_iy": 0.346,
+    "precision": 0.36,
+    "episode_f1": 0.391,
+    "n_alerts": 305,
+    "flips_within_30d": 241
+   },
+   "raw|F1.0|crossing": {
+    "captured": 89,
+    "detectable": 218,
+    "capture_rate": 0.408,
+    "false_alarms": 154,
+    "fa_per_iy": 0.323,
+    "precision": 0.366,
+    "episode_f1": 0.386,
+    "n_alerts": 271,
+    "flips_within_30d": 183
+   },
+   "raw|F0.5|level": {
+    "captured": 65,
+    "detectable": 218,
+    "capture_rate": 0.298,
+    "false_alarms": 97,
+    "fa_per_iy": 0.203,
+    "precision": 0.401,
+    "episode_f1": 0.342,
+    "n_alerts": 184,
+    "flips_within_30d": 98
+   },
+   "raw|F0.5|crossing": {
+    "captured": 65,
+    "detectable": 218,
+    "capture_rate": 0.298,
+    "false_alarms": 87,
+    "fa_per_iy": 0.182,
+    "precision": 0.428,
+    "episode_f1": 0.351,
+    "n_alerts": 169,
+    "flips_within_30d": 87
+   },
+   "smooth|F1.0|level": {
+    "captured": 76,
+    "detectable": 218,
+    "capture_rate": 0.349,
+    "false_alarms": 150,
+    "fa_per_iy": 0.314,
+    "precision": 0.336,
+    "episode_f1": 0.342,
+    "n_alerts": 255,
+    "flips_within_30d": 264
+   },
+   "smooth|F1.0|crossing": {
+    "captured": 71,
+    "detectable": 218,
+    "capture_rate": 0.326,
+    "false_alarms": 117,
+    "fa_per_iy": 0.245,
+    "precision": 0.378,
+    "episode_f1": 0.35,
+    "n_alerts": 196,
+    "flips_within_30d": 146
+   },
+   "smooth|F0.5|level": {
+    "captured": 52,
+    "detectable": 218,
+    "capture_rate": 0.239,
+    "false_alarms": 72,
+    "fa_per_iy": 0.151,
+    "precision": 0.419,
+    "episode_f1": 0.304,
+    "n_alerts": 141,
+    "flips_within_30d": 96
+   },
+   "smooth|F0.5|crossing": {
+    "captured": 49,
+    "detectable": 218,
+    "capture_rate": 0.225,
+    "false_alarms": 63,
+    "fa_per_iy": 0.132,
+    "precision": 0.438,
+    "episode_f1": 0.297,
+    "n_alerts": 116,
+    "flips_within_30d": 65
+   }
+  },
+  "GET IN": {
+   "raw|F1.0|level": {
+    "captured": 112,
+    "detectable": 198,
+    "capture_rate": 0.566,
+    "false_alarms": 112,
+    "fa_per_iy": 0.235,
+    "precision": 0.5,
+    "episode_f1": 0.531,
+    "n_alerts": 341,
+    "flips_within_30d": 241
+   },
+   "raw|F1.0|crossing": {
+    "captured": 108,
+    "detectable": 198,
+    "capture_rate": 0.545,
+    "false_alarms": 99,
+    "fa_per_iy": 0.208,
+    "precision": 0.522,
+    "episode_f1": 0.533,
+    "n_alerts": 282,
+    "flips_within_30d": 183
+   },
+   "raw|F0.5|level": {
+    "captured": 60,
+    "detectable": 198,
+    "capture_rate": 0.303,
+    "false_alarms": 42,
+    "fa_per_iy": 0.088,
+    "precision": 0.588,
+    "episode_f1": 0.4,
+    "n_alerts": 141,
+    "flips_within_30d": 98
+   },
+   "raw|F0.5|crossing": {
+    "captured": 60,
+    "detectable": 198,
+    "capture_rate": 0.303,
+    "false_alarms": 41,
+    "fa_per_iy": 0.086,
+    "precision": 0.594,
+    "episode_f1": 0.401,
+    "n_alerts": 133,
+    "flips_within_30d": 87
+   },
+   "smooth|F1.0|level": {
+    "captured": 122,
+    "detectable": 198,
+    "capture_rate": 0.616,
+    "false_alarms": 151,
+    "fa_per_iy": 0.317,
+    "precision": 0.447,
+    "episode_f1": 0.518,
+    "n_alerts": 417,
+    "flips_within_30d": 264
+   },
+   "smooth|F1.0|crossing": {
+    "captured": 114,
+    "detectable": 198,
+    "capture_rate": 0.576,
+    "false_alarms": 109,
+    "fa_per_iy": 0.229,
+    "precision": 0.511,
+    "episode_f1": 0.542,
+    "n_alerts": 277,
+    "flips_within_30d": 146
+   },
+   "smooth|F0.5|level": {
+    "captured": 55,
+    "detectable": 198,
+    "capture_rate": 0.278,
+    "false_alarms": 47,
+    "fa_per_iy": 0.099,
+    "precision": 0.539,
+    "episode_f1": 0.367,
+    "n_alerts": 157,
+    "flips_within_30d": 96
+   },
+   "smooth|F0.5|crossing": {
+    "captured": 51,
+    "detectable": 198,
+    "capture_rate": 0.258,
+    "false_alarms": 43,
+    "fa_per_iy": 0.09,
+    "precision": 0.543,
+    "episode_f1": 0.349,
+    "n_alerts": 122,
+    "flips_within_30d": 65
+   }
+  }
+ }
+}

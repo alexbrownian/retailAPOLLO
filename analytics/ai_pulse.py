@@ -11,7 +11,7 @@ saves one JSON the dashboard renders verbatim:
 
     data/processed/ai_pulse.json
         as_of, generated_at, model, evidence (the numbers used),
-        market_pulse, talk_of_the_town, mood_gauge{score,why},
+        market_pulse, talk_of_the_town,
         theme_briefs[], catalyst_watch[], divergences[],
         agentic{digest, asks[], actions[], risk_note}
 
@@ -44,6 +44,7 @@ CLI:
 from __future__ import annotations
 
 import io
+import re as _re
 import json
 import os
 import re
@@ -235,12 +236,41 @@ def _harvest(max_posts: int = HARVEST_MAX) -> list[dict]:
         return _HARVEST
     # a back-dated run must not be served the live cache, and vice versa
     _HARVEST_KEY = AS_OF
+    # string compare on YYYY-MM-DD: same ordering as dates, and it runs
+    # once per post over 300k+ posts, where a Timestamp round-trip is not
+    _AS_OF_STR = f"{AS_OF:%Y-%m-%d}" if AS_OF is not None else ""
     import zstandard
-    files = sorted((f for f in os.listdir(RAW_DIR)
-                    if f.endswith(".jsonl.zst") and ".tmp" not in f
-                    and "_salvaged" not in f),
-                   key=lambda f: os.path.getmtime(
-                       os.path.join(RAW_DIR, f)), reverse=True)
+    files = [f for f in os.listdir(RAW_DIR)
+             if f.endswith(".jsonl.zst") and ".tmp" not in f
+             and "_salvaged" not in f]
+
+    # READ THE ARCHIVES MOST LIKELY TO CONTAIN THE TARGET DATE FIRST.
+    #
+    # Newest-mtime order is right for a live run and wrong for a
+    # back-dated one. The filenames carry their date range, so for an
+    # as-of run the file whose range CONTAINS that date is opened first
+    # and the rest follow backwards. Without this, one 43 MB archive
+    # filled the cap, the loop broke, and archives holding the target
+    # week were never opened at all - which is why as-of 2021-02-01
+    # returned nothing while the 2021 archive sat on disk.
+    def _span(fname):
+        ds = _re.findall(r"(\d{4}-\d{2}-\d{2})", fname)
+        return (ds[0], ds[-1]) if ds else ("", "")
+
+    def _rank(fname):
+        lo, hi = _span(fname)
+        if AS_OF is None:
+            return (0, -os.path.getmtime(os.path.join(RAW_DIR, fname)))
+        if lo and hi and lo <= _AS_OF_STR <= hi:
+            return (0, 0)               # contains the day - read first
+        if hi and hi <= _AS_OF_STR:
+            return (1, -_ord(hi))       # before it, newest first
+        return (2, 0)                   # entirely after it - last resort
+
+    def _ord(d):
+        return int(d.replace("-", ""))
+
+    files.sort(key=_rank)
     rows: list[dict] = []
     for fname in files:
         with open(os.path.join(RAW_DIR, fname), "rb") as fh:
@@ -265,15 +295,38 @@ def _harvest(max_posts: int = HARVEST_MAX) -> list[dict]:
                     score = int(float(d.get("score") or 0))
                 except (ValueError, TypeError):
                     score = 0
+                # THE AS-OF FILTER APPLIES *HERE*, NOT AFTER THE CAP.
+                #
+                # It used to run once at the end, over whatever the
+                # newest-first walk had already collected. For a live run
+                # that is identical. For a BACK-DATED one it was fatal:
+                # the cap filled with recent posts, the filter then threw
+                # nearly all of them away, and the model was handed
+                # either a stale sample or nothing at all. Measured
+                # before this fix - as-of 2026-07-20 returned posts whose
+                # newest was 30 June, a twenty-day hole, and as-of
+                # 2021-02-01 returned ZERO despite the 2021 archive
+                # sitting right there on disk.
+                #
+                # Filtering inside the loop means the cap fills with
+                # posts that are actually ELIGIBLE, so the walk keeps
+                # reading older archives until it has enough of them.
+                # That is what makes "drag the slider back and have the
+                # model read that week" work at all.
+                if AS_OF is not None and day and day > _AS_OF_STR:
+                    continue
                 rows.append({"day": day,
                              "sub": str(d.get("subreddit", "")),
                              "score": score,
                              "themes": sorted(themes_in_text(body))[:3],
                              "text": body[:POST_CLIP]})
+                if len(rows) >= max_posts:
+                    break               # the cap was only checked BETWEEN
+                                        # files, so a single large archive
+                                        # blew past it by 5x and starved
+                                        # every archive after it
         if len(rows) >= max_posts:
             break
-    if AS_OF is not None:
-        rows = [r for r in rows if pd.Timestamp(r["day"]) <= AS_OF]
     _HARVEST = rows
     return rows
 
@@ -378,10 +431,10 @@ def _market_prompt(ev: dict, posts: list[dict]) -> str:
                        "PARAPHRASE you compose, never a real post "
                        "copied. one_liner_why: 15-30 words on what in "
                        "the chatter that line is distilling}",
-        "mood_gauge": "object {score: 0-100 int (0 fear, 100 greed), "
-                      "why: 40-60 words - the two or three observations "
-                      "that set the score, with the strongest "
-                      "counter-signal acknowledged}",
+        # (mood_gauge {score, why} was removed from this spec on desk
+        # instruction 2026-08-07 - "remove the bullish score number and
+        # all the associated code". The vibe bullets + one_liner carry
+        # the mood; no numeric mood score is requested or displayed.)
         # THE REGISTER, desk 2026-08-05, quoting the output they want:
         # "users on WSB are really talking a lot about this stock xx
         # because of this but many are worried about y. lots of them

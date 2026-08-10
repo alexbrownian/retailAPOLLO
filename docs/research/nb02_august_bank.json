@@ -1,0 +1,79 @@
+[
+ {
+  "feature": "price run-up off its 54d low",
+  "column": "price_runup",
+  "new in August": true,
+  "AUROC vs y_onset": 0.761,
+  "AUROC vs y_top": 0.767
+ },
+ {
+  "feature": "price return, 1 month",
+  "column": "price_ret21",
+  "new in August": true,
+  "AUROC vs y_onset": 0.672,
+  "AUROC vs y_top": 0.696
+ },
+ {
+  "feature": "attention level (vs own year)",
+  "column": "e1",
+  "new in August": false,
+  "AUROC vs y_onset": 0.55,
+  "AUROC vs y_top": 0.553
+ },
+ {
+  "feature": "bullishness level",
+  "column": "bull_level",
+  "new in August": true,
+  "AUROC vs y_onset": 0.456,
+  "AUROC vs y_top": 0.551
+ },
+ {
+  "feature": "bullishness persistence",
+  "column": "bull_persist",
+  "new in August": true,
+  "AUROC vs y_onset": 0.468,
+  "AUROC vs y_top": 0.55
+ },
+ {
+  "feature": "week vs own normal",
+  "column": "hype_ratio",
+  "new in August": false,
+  "AUROC vs y_onset": 0.529,
+  "AUROC vs y_top": 0.516
+ },
+ {
+  "feature": "mood turning",
+  "column": "bull_inflection",
+  "new in August": false,
+  "AUROC vs y_onset": 0.543,
+  "AUROC vs y_top": 0.515
+ },
+ {
+  "feature": "attention accelerating",
+  "column": "attention_convexity",
+  "new in August": false,
+  "AUROC vs y_onset": 0.545,
+  "AUROC vs y_top": 0.512
+ },
+ {
+  "feature": "week vs month",
+  "column": "attention_accel",
+  "new in August": false,
+  "AUROC vs y_onset": 0.518,
+  "AUROC vs y_top": 0.507
+ },
+ {
+  "feature": "attention change (1 month)",
+  "column": "e3",
+  "new in August": false,
+  "AUROC vs y_onset": 0.536,
+  "AUROC vs y_top": 0.507
+ },
+ {
+  "feature": "attention change (2 weeks)",
+  "column": "influx_speed",
+  "new in August": false,
+  "AUROC vs y_onset": 0.521,
+  "AUROC vs y_top": 0.504
+ }
+]

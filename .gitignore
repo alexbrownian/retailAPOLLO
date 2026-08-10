@@ -74,3 +74,20 @@ data/reference/reddit_comments_cost.json
 data/reference/agentic_samples.jsonl
 data/reference/agentic_scan_ledger.json
 data/reference/nb10_sample_texts.jsonl
+
+# ---- .env IS TRACKED ON PURPOSE ----
+# Desk decision 2026-08-06: ".env to be committed in the future, its
+# fine." So it is NOT ignored, and the credentials it holds travel with
+# the repository.
+#
+# Two things follow from that, neither of them optional:
+#   * this repo must stay private. Anyone with read access has the
+#     FetchLayer key and the Apollo gateway password.
+#   * rotating a key means committing the rotation, so the OLD value
+#     stays in history forever. Treat every key that has ever been in
+#     here as burned the day the repo leaves the desk.
+#
+# POST_INTERN_HANDOVER.md previously claimed this file was git-ignored.
+# It never was - the only matching pattern was `env/`, the virtualenv
+# DIRECTORY, which never matched a file called `.env`. The claim is
+# corrected there.

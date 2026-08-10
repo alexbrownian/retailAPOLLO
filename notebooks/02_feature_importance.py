@@ -384,13 +384,29 @@ print(per_feature.round(3).to_string())
 
 # %%
 from analytics.plain_english import plain                         # noqa: E402
+from matplotlib.patches import Patch                              # noqa: E402
 
-fig, axes = plt.subplots(1, 2, figsize=(11, 3.8), sharex=True)
-for ax, label, title in [(axes[0], "y_onset", "ONSET label"),
-                         (axes[1], "y_top", "TOP label")]:
+# TWO THINGS ARE ON THIS CHART AND THEY ARE NOT THE SAME THING:
+#   * the PANEL says which question the measurement is being graded on -
+#     left = "does it spot the START?" (GET IN), right = "does it spot
+#     the TOP?" (GET OUT). Every measurement is graded on BOTH.
+#   * the COLOUR says which detector that measurement is a part of - the
+#     GET IN bank (the five onset features) or the GET OUT bank (the
+#     incumbent euphoria features).
+# So a GET OUT-coloured bar scoring high in the LEFT panel is a
+# measurement doing a job it was not hired for, which is precisely the
+# thing this chart exists to reveal.
+GET_IN_C, GET_OUT_C = C1, C2
+_bank_color = [GET_IN_C if f in ONSET_BANK else GET_OUT_C for f in ALL_FEATS]
+_color_of = dict(zip(ALL_FEATS, _bank_color))
+
+fig, axes = plt.subplots(1, 2, figsize=(11, 4.2), sharex=True)
+for ax, label, question in [
+        (axes[0], "y_onset", "graded on: did it spot the START?  (GET IN)"),
+        (axes[1], "y_top", "graded on: did it spot the TOP?  (GET OUT)")]:
     sub = (per_feature[per_feature.label == label]
            .sort_values("auroc", ascending=True).reset_index(drop=True))
-    colors = [C1 if f in ONSET_BANK else C2 for f in sub.feature]
+    colors = [_color_of[f] for f in sub.feature]
     # plain-English tick labels: the stored column names never change, only
     # what a human reads (analytics/plain_english.py is the single glossary)
     ax.barh([plain(f) for f in sub.feature], sub.auroc - 0.5, left=0.5,
@@ -399,19 +415,38 @@ for ax, label, title in [(axes[0], "y_onset", "ONSET label"),
                 xerr=[sub.auroc - sub.ci_lo, sub.ci_hi - sub.auroc],
                 fmt="none", ecolor=INK, elinewidth=1, capsize=2)
     ax.axvline(0.5, color=INK, lw=1)
-    ax.set_title(f"per-feature AUROC vs {title} (90% cluster-bootstrap CI)")
+    ax.set_title(f"per-feature AUROC — {question}\n"
+                 "90% cluster-bootstrap CI", fontsize=9)
     ax.set_xlim(0.42, 0.72)
     despine(ax)
 fig.tight_layout()
-fig.text(0.01, -0.03, "blue = onset bank, green = incumbent top bank; "
-         "bars start at no-skill 0.5", fontsize=8, color=MUTED)
+fig.legend(handles=[Patch(color=GET_IN_C,
+                          label="measurement belongs to the GET IN bank"),
+                    Patch(color=GET_OUT_C,
+                          label="measurement belongs to the GET OUT bank")],
+           loc="upper center", bbox_to_anchor=(0.5, 0.02), ncol=2,
+           frameon=False, fontsize=8)
+fig.text(0.01, -0.13, "bars start at no-skill 0.5; a whisker crossing 0.5 "
+         "means the measurement has not been shown to do anything",
+         fontsize=8, color=MUTED)
 plt.show()
 
 # %% [markdown]
 # **READ THE CHART LIKE THIS** — the bar is the point estimate, the whisker is
 # the 90% interval, the vertical line at 0.5 is a coin flip. A feature whose
-# whisker crosses that line has not been shown to do anything. Blue = onset
-# bank, green = incumbent top bank.
+# whisker crosses that line has not been shown to do anything.
+#
+# * **Panel = the question.** Left panel grades every measurement on *did it
+#   spot the START of an episode* (the **GET IN** job); right panel grades the
+#   same measurements on *did it spot the TOP* (the **GET OUT** job).
+# * **Colour = the team.** Blue bars are the measurements that make up the
+#   **GET IN** bank; green bars are the ones that make up the **GET OUT**
+#   bank. Colour never changes between panels — it is a property of the
+#   measurement, not of the panel it is in.
+# * So the interesting cases are the mismatches: a **green bar high in the
+#   left panel** is a GET OUT measurement that also sees starts, and a **blue
+#   bar high in the right panel** is a GET IN measurement that also sees tops.
+#   Those are the crossovers notebook 03 is allowed to exploit.
 #
 # **SO WHAT**
 #
@@ -620,31 +655,38 @@ def ablation_table(bank, label):
 
 abl_onset = ablation_table(ONSET_BANK, "y_onset")
 abl_top = ablation_table(TOP_BANK, "y_top")
-print("START bank, scored against 'did a start happen here'")
+print("GET IN bank (start), scored against 'did a start happen here'")
 print(abl_onset.round(4).to_string(index=False))
 print()
-print("TOP bank, scored against 'did a top happen here'")
+print("GET OUT bank (top), scored against 'did a top happen here'")
 print(abl_top.round(4).to_string(index=False))
 print()
 _worst_on = abl_onset.iloc[1:].sort_values("d_auroc").iloc[0]
 _worst_tp = abl_top.iloc[1:].sort_values("d_auroc").iloc[0]
-print(f"most load-bearing in the START bank: {_worst_on['variant']} costs "
+print(f"most load-bearing in the GET IN bank:  {_worst_on['variant']} costs "
       f"{_worst_on['d_auroc']:+.4f} AUROC")
-print(f"most load-bearing in the TOP bank:   {_worst_tp['variant']} costs "
+print(f"most load-bearing in the GET OUT bank: {_worst_tp['variant']} costs "
       f"{_worst_tp['d_auroc']:+.4f} AUROC")
 
 # %%
+# Here the colour means ONE thing only - the DIRECTION of the change -
+# and it means the same thing in both panels. (It used to be blue on the
+# left and green on the right for identical results, which read as a
+# per-bank colour code and is not what it was.)
+KEEP_C, DROP_C = C1, DIV_POS
+
 fig, axes = plt.subplots(1, 2, figsize=(11.5, 3.4))
-for ax, abl, title, color in [(axes[0], abl_onset, "start bank", C1),
-                              (axes[1], abl_top, "top bank", C2)]:
+for ax, abl, title in [(axes[0], abl_onset, "the GET IN bank"),
+                       (axes[1], abl_top, "the GET OUT bank")]:
     sub = abl[abl.variant != "FULL bank"]
-    ax.barh(sub.variant, sub.d_auroc, color=[
-        DIV_POS if v > 0 else color for v in sub.d_auroc], height=0.55)
+    ax.barh(sub.variant, sub.d_auroc, height=0.55,
+            color=[DROP_C if v > 0 else KEEP_C for v in sub.d_auroc])
     ax.axvline(0, color=INK, lw=1)
     ax.set_title(f"Take one measurement away — {title}\n"
-                 "bar to the LEFT of zero = the bank got worse without it, "
-                 "so it was earning its place", fontsize=9)
-    ax.set_xlabel("change in AUROC")
+                 "LEFT (blue) = the bank got WORSE without it, it was "
+                 "earning its place\nRIGHT (red) = the bank got BETTER "
+                 "without it", fontsize=9)
+    ax.set_xlabel("change in AUROC vs the full bank")
     despine(ax)
 fig.tight_layout()
 plt.show()
@@ -827,3 +869,88 @@ print(f"most damaging feed to lose: {plain(_worst_feat)} "
 per_feature.to_json(RESEARCH_DIR / "nb02_feature_stats.json", orient="records",
                     indent=1)
 print("saved nb02_feature_stats.json")
+
+# %% [markdown]
+# ---
+# # SS — The August-2026 bank extension (the four columns the desk model added)
+#
+# **WHY THIS**
+#
+# * The July bank above was built for the RULES detectors. The August desk
+#   model (`analytics/ml_detector.py`, selected in notebook 03 §SS) widened
+#   the bank in two deliberate ways, and this section gives the new columns
+#   the same per-feature scrutiny the original ten received:
+#   - **`bull_level` + `bull_persist`** — e2's two raw ingredients, split
+#     apart so the model can learn the interaction the old 75% persistence
+#     GATE hard-coded;
+#   - **`price_runup` + `price_ret21`** — the price pair, licensed for the
+#     DESK heads only (the desk configuration may use price; the crowd-only
+#     detectors above never see these columns).
+#
+# **HOW IT WORKS** — same instrument as the rest of this notebook:
+# standalone AUROC per feature per label on the coverage-gated day frame,
+# descriptive attribution only (the walk-forward evidence for the bank as a
+# whole is notebook 03's tournament).
+
+# %%
+from analytics import ml_detector as mld                    # noqa: E402
+from sklearn.metrics import roc_auc_score as _auroc         # noqa: E402
+
+_prices_aug = pd.read_parquet(ROOT / "data" / "prices" / "prices.parquet")
+_prices_aug["date"] = pd.to_datetime(_prices_aug["date"])
+from analytics.euphoria import build_all_series as _bas     # noqa: E402
+from analytics.euphoria_phases import (episode_catalog as _ec,  # noqa: E402
+                                       build_day_frame as _bdf)
+from analytics.loaders import load as _load                 # noqa: E402
+
+_series_aug, _pxmap_aug = _bas(_prices_aug)
+_eps_aug = _ec(_series_aug, _pxmap_aug)
+_frame_aug = _bdf(_series_aug, _pxmap_aug, _eps_aug,
+                  {"theme": _load("daily_theme_counts.parquet"),
+                   "ticker": _load("daily_ticker_counts.parquet")},
+                  {"theme": _load("daily_theme_sentiment.parquet"),
+                   "ticker": _load("daily_ticker_sentiment.parquet")})
+_cand_aug = mld.attach_price_features(
+    mld.candidate_frame(_frame_aug), _series_aug, _pxmap_aug)
+
+_rows_aug = []
+for _f in mld.DESK_ML_BANK:
+    _rows_aug.append({
+        "feature": mld.ML_BANK_LABELS.get(_f, _f),
+        "column": _f,
+        "new in August": _f in ("bull_level", "bull_persist",
+                                "price_runup", "price_ret21"),
+        "AUROC vs y_onset": round(_auroc(_cand_aug["y_onset"],
+                                         _cand_aug[_f]), 3),
+        "AUROC vs y_top": round(_auroc(_cand_aug["y_top"],
+                                       _cand_aug[_f]), 3),
+    })
+_aug_board = (pd.DataFrame(_rows_aug)
+              .sort_values("AUROC vs y_top", ascending=False))
+_aug_board
+
+# %% [markdown]
+# **SO WHAT**
+#
+# * The price pair is the strongest standalone material in the bank — which
+#   is exactly why the July system used it as a hard GATE. Handing it to the
+#   model as a continuous feature (rather than a 25%/50% door) is where a
+#   large part of the August accuracy gain came from (notebook 03 §SS
+#   measures the bank jointly, walk-forward).
+# * `bull_level` / `bull_persist` sit in the same weak-but-real band as the
+#   rest of the crowd bank — consistent with §5's finding that no single
+#   crowd measurement is a detector. Splitting e2 cost nothing in signal
+#   and removed one embedded constant (the 75% gate).
+# * Numbers here are DESCRIPTIVE (full-frame, not walk-forward) — the
+#   selection evidence stays notebook 03's tournament, and nothing in this
+#   section chose the shipped model.
+
+# %%
+import json                                                 # noqa: E402
+
+# its own file, beside the July board (nb02_feature_stats.json is a LIST
+# of per-feature rows and stays exactly as the July record wrote it)
+with open(RESEARCH_DIR / "nb02_august_bank.json", "w") as _fh:
+    json.dump(_aug_board.to_dict(orient="records"), _fh, indent=1,
+              default=str)
+print("saved nb02_august_bank.json (the August bank extension board)")

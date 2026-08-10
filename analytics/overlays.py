@@ -40,26 +40,61 @@ from analytics.loaders import price_series, clip_window
 # ---------------------------------------------------------------------------
 def mention_share_series(counts: pd.DataFrame, entity_col: str, name: str,
                          lo, hi, normalise: bool = True,
-                         roll: int = ROLL) -> pd.Series:
+                         roll: int = ROLL,
+                         by_source: pd.DataFrame | None = None) -> pd.Series:
     """One entity's daily mention line over the window.
 
-    normalise=True  -> share of that day's total chatter (%), 7d-smoothed
-                       (the era-safe default, see module docstring)
+    normalise=True  -> coverage-robust share of chatter (%) - the
+                       ratio-of-sums / stratified / shrunk estimator in
+                       analytics/robust_share.py (2026-08-07 fix: the old
+                       mean-of-daily-ratios printed fake zeros on thin
+                       pull days and diluted every share when a big
+                       StockTwits/X pull landed)
     normalise=False -> raw 7d rolling mean of mention counts
+
+    Masking moves with the estimator: a value is masked only when the
+    whole trailing window carries under MIN_TOTAL posts (there is
+    genuinely nothing to estimate from) - not when one thin DAY does,
+    because a thin day inside a healthy week is now handled by the
+    weighting, not by a hole in the chart.
     """
     c = clip_window(counts, "date", lo, hi)
-    day_totals = c.groupby("date")["mention_count"].sum()
     m = (c[c[entity_col] == name].sort_values("date")
          .set_index("date")["mention_count"].asfreq("D").fillna(0))
     if m.empty:
         return m
-    if normalise:
-        # keep everything float64: where() puts NaN where totals is zero,
-        # so no pd.NA ever enters the series (rolling needs plain floats)
-        totals = day_totals.reindex(m.index).fillna(0).astype("float64")
-        m = (m.astype("float64") / totals.where(totals > 0)) * 100
-        m[totals < MIN_TOTAL] = float("nan")
-    return m.rolling(roll, min_periods=1).mean()
+    if not normalise:
+        return m.rolling(roll, min_periods=1).mean()
+    from analytics.robust_share import robust_share, window_totals
+    bs = None
+    if by_source is not None:
+        bs = clip_window(by_source, "date", lo, hi)
+    share = robust_share(c, entity_col, name, m.index, by_source=bs,
+                         window=roll)
+    share[window_totals(c, m.index, window=roll) < MIN_TOTAL] = float("nan")
+    return share
+
+
+def sentiment_series(sent: pd.DataFrame, entity_col: str, name: str,
+                     lo, hi, window: int = 28) -> pd.Series:
+    """One entity's DENOISED sentiment line: the post-weighted net-bullish
+    share over a trailing `window` days (ratio-of-sums, same estimator
+    family as the robust mention share - a 3-post day contributes 3
+    posts of evidence, not a full day's vote). Range -1..+1; NaN where
+    the window holds no scored posts ("no posts" = no opinion, never a
+    neutral one). Built for the Top/Emerging trends charts (2026-08-07:
+    price + attention + sentiment on one graph, none of them noisy)."""
+    d = clip_window(sent, "date", lo, hi)
+    one = d[d[entity_col] == name]
+    if one.empty:
+        return pd.Series(dtype="float64")
+    days = pd.date_range(d["date"].min(), d["date"].max(), freq="D")
+    n = (one.groupby("date")["n_posts"].sum()
+         .reindex(days).fillna(0.0))
+    nb = ((one["n_posts"] * one["net_bullish"]).groupby(one["date"]).sum()
+          .reindex(days).fillna(0.0))
+    roll_n = n.rolling(window, min_periods=1).sum()
+    return nb.rolling(window, min_periods=1).sum() / roll_n.where(roll_n > 0)
 
 
 def chatter_change_series(counts: pd.DataFrame, entity_col: str, name: str,

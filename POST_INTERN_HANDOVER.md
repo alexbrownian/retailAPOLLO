@@ -12,7 +12,7 @@ If you are looking for something else:
 | why the system is shaped this way, and the rules that must not be broken | `docs/ARCHITECTURE.md` |
 | why a particular number has the value it has | `docs/PARAMETER_REGISTER.md` |
 | what is still outstanding | `OPEN_ITEMS.md` |
-| the evidence behind any claim | `notebooks/00`–`10` |
+| the evidence behind any claim | `notebooks/00`–`05` (the presentation pipeline) + `11_presentation_pack` (the deck-figure source); retired studies with frozen records: `notebooks/_retired_2026-08-07_presentation_refactor/` |
 
 ---
 
@@ -35,9 +35,16 @@ immediately, never silently.
 | `ai_poll_prompts.csv` | the 30 retail questions the pipeline asks the LLM at every refresh: the plain questions retail types, plus the personas and agent scaffolds retail actually runs (the `family` column tags which) | when retail's typical questions drift, or a new AI-agent product changes how people prompt. **ADDING a prompt is always safe. REWORDING one is not** — the value is the time series, and an edit silently breaks that prompt_id's history, so add a new id instead. A unit test fails the build if p01–p12 are altered | nothing — it takes effect on the next update |
 | `.env` (project root) | ALL credentials: `FETCHLAYER_KEY` plus the Apollo LLM auth (`ENVIRONMENT`, `APOLLO_AUTH_USERNAME`, `APOLLO_AUTH_PASSWORD`, `AI_MODEL`, `AI_DATA_CLASSIFICATION`, `AI_MAX_CALLS`; optional `AI_MOCK=1`). This row is the authoritative key list | on credential rotation | `python -m src.ai --selftest` (expect Paris) |
 
-**`.env` is git-ignored and there is no template** — the old
+**`.env` is COMMITTED, by desk decision 2026-08-06** — it is not
+git-ignored, and an earlier version of this line claiming it was is
+corrected. (The only matching `.gitignore` pattern was `env/`, the
+virtualenv directory, which never matched a file called `.env`.) The
+credentials therefore travel with the repository, so **this repo must
+stay private**, and any key that has ever been in the file should be
+treated as burned the day the repo leaves the desk — rotating a key
+commits the rotation, but the old value stays in history. The old
 `example.env` was retired on 2026-08-04 so there is only ever one env
-file to confuse. Keep a private backup.
+file to confuse.
 
 **Reddit forum coverage is NOT a config file.** The subreddit panel is
 dynamic: `ingestion/subreddit_panel.json` is maintained by the discovery
@@ -88,7 +95,7 @@ the only writer, and it only writes approved rows.
 | Bloomberg pull for NEW instruments | first QUICK UPDATE after editing the instrument list | on change |
 | Notebook re-execution after a signal-code change | `python -m jupytext --to ipynb notebooks/<n>.py` then `python -m jupyter nbconvert --to notebook --execute --inplace notebooks/<n>.ipynb` | on change |
 | Health check | `python tools/preflight.py` — expect **0 failing**. Warnings are things that are owed (usually a price pull), not breakage. No writes, no network | after any config edit, before any commit |
-| Test suite | `python -m pytest tests/ -q` — expect **169 passed, 2 skipped** | before any commit |
+| Test suite | `python -m pytest tests/ -q` — expect **179 passed, 2 skipped** | before any commit |
 | Dangling-reference check | `python tools/verify_deps.py` — expect **0 findings**. It sweeps every `.py` AND `.md` for cited paths, including ones in comments and docstrings, and knows about directories that no longer exist. A path that is deliberately gone must say so in the same paragraph ("removed", "not in this repo", "absent until it runs") or it is reported | before any commit; the test suite runs it too |
 
 ## 4. Before you change anything that scores
@@ -96,7 +103,7 @@ the only writer, and it only writes approved rows.
 Editing `src/config.py` or any file under `analytics/` is a
 **re-validation event**, not a code change. `docs/ARCHITECTURE.md` §6
 has the protocol and the reasoning. In short: re-run the research pass,
-compare the stored record, re-execute notebooks 00/04/06/07/08, and ship
+compare the stored record, re-execute notebooks 00-04 and the presentation pack (11), and ship
 nothing as a live flag unless it beats the incumbent under the
 pre-stated rule.
 
