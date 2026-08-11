@@ -24,12 +24,14 @@
 #
 # | § | The question | Figures |
 # |---|---|---|
+# | 0 | The pipeline on one page — and which figure answers what | S00 |
 # | P | Was the data trustworthy? (the defect we fixed first) | S0a, S0b |
 # | 1 | What cases are we optimising for? (the bubbles; the objective) | S1a, S1b, S1c |
 # | 2 | What features come from the raw data? | S2a, S2b |
 # | 3 | What choices did we have for the modelling? | S3 |
 # | 4 | Which features were good? (AUROC + ablation) | S4a, S4b |
 # | 5 | Why this particular ML model? | S5 |
+# | 5.5 | What are the weights, and how do they become a call? | S5b, S5c |
 # | 6 | Why these thresholds? (score distributions, yearly cuts, Spearman) | S6a, S6b |
 # | 6.5 | One clear call per boom: phase gates, re-arm, spacing, separation | S6c |
 # | 7 | How do the pieces combine into a GET IN / GET OUT? | S7a, S7b |
@@ -177,6 +179,116 @@ print(f"{time.time()-t0:.0f}s | {len(series)} instruments | "
       f"{len(episodes)} episodes | {len(cand_px):,} candidate days | "
       f"model on file: {desk_rep['model']} | trigger: "
       f"{desk_rep.get('conditioning', {}).get('trigger', 'level')}")
+
+# %% [markdown]
+# **The walk-forward scores, computed once here and reused everywhere
+# below** (cached to `docs/research/nb07_wf_scores.parquet`): the SAME
+# construction production uses — fit on years < Y, score year Y,
+# rank-average the two members within the year.
+
+# %%
+CACHE = RESEARCH_DIR / "nb07_wf_scores.parquet"
+FP = {"rows": len(cand_px), "max_date": str(cand_px["date"].max().date())}
+WF = None
+if CACHE.exists():
+    _c = pd.read_parquet(CACHE)
+    if ("fingerprint" in _c.columns
+            and json.loads(_c["fingerprint"].iloc[0]) == FP):
+        WF = _c.drop(columns=["fingerprint"])
+        print("reusing cached walk-forward scores")
+if WF is None:
+    parts = []
+    for label, head in (("y_top", "GET OUT"), ("y_onset", "GET IN")):
+        t1 = time.time()
+        key = ["name", "date", "test_year"]
+        lg = walk_forward_scores(cand_px, mld.DESK_ML_BANK, label,
+                                 mld.make_logit_fit(label))
+        gb = walk_forward_scores(cand_px, mld.DESK_ML_BANK, label,
+                                 mld.make_gbm_fit(label))
+        m = (lg[key + [label, "score"]].rename(columns={"score": "logit"})
+             .merge(gb[key + ["score"]].rename(columns={"score": "gbm"}),
+                    on=key))
+        m["logit_rank"] = m.groupby("test_year")["logit"].rank(pct=True)
+        m["gbm_rank"] = m.groupby("test_year")["gbm"].rank(pct=True)
+        m["score"] = (m["logit_rank"] + m["gbm_rank"]) / 2
+        m["head"] = head
+        m = m.rename(columns={label: "y"})
+        parts.append(m)
+        print(f"{head}: walk-forward members {time.time()-t1:.0f}s")
+    WF = pd.concat(parts, ignore_index=True)
+    out = WF.copy()
+    out["fingerprint"] = json.dumps(FP)
+    out.to_parquet(CACHE, index=False)
+    print(f"cached -> {CACHE.relative_to(ROOT)}")
+
+THR = {h: {int(k): v for k, v in RES[hk]["ens"]["thresholds"].items()}
+       for h, hk in (("GET OUT", "get_out"), ("GET IN", "get_in"))}
+
+
+# %% [markdown]
+# ---
+# # S00 — The pipeline on one page (and which figure answers what)
+#
+# Read this first. It is the whole machine end to end, and it names the
+# figure that answers each question — so "where is the evidence for X?"
+# never needs a search.
+
+# %%
+_fig, _ax = plt.subplots(figsize=(13.4, 6.6))
+_ax.set_xlim(0, 100)
+_ax.set_ylim(0, 100)
+_ax.axis("off")
+
+_STAGE = [
+    (2, "THE CROWD", "Reddit · StockTwits · X\nevery post pulled",
+     NAVY),
+    (21.5, "READ & DISCARD", "tickers · themes · mood\nthe text is thrown "
+     "away", NAVY),
+    (41, "11 MEASUREMENTS", "9 crowd + 2 price\neach vs the name's OWN "
+     "history", BLUE),
+    (60.5, "TWO MODELS", "logistic + monotone GBM\nfitted on PAST years "
+     "only", BLUE),
+    (80, "ONE CALL", "rank-average → frozen cut\nGET IN / GET OUT",
+     "#1F6F5C"),
+]
+for _x, _t, _sub, _c in _STAGE:
+    _ax.add_patch(mpatches.FancyBboxPatch(
+        (_x, 52), 17, 22, boxstyle="round,pad=0.6,rounding_size=1.2",
+        facecolor=_c, edgecolor="none"))
+    _ax.text(_x + 8.5, 68, _t, ha="center", va="center", color="white",
+             fontsize=10.5, fontweight="bold")
+    _ax.text(_x + 8.5, 60, _sub, ha="center", va="center", color="white",
+             fontsize=8.5, linespacing=1.5)
+for _x in (19, 38.5, 58, 77.5):
+    _ax.annotate("", (_x + 2.6, 63), (_x, 63),
+                 arrowprops=dict(arrowstyle="-|>", lw=1.8, color=GREY))
+
+_Q = [
+    (2, "How is the raw data\nturned into numbers?", "S0a · S0b · S2a\nnb06 W0"),
+    (21.5, "What is the target,\nand why those bars?", "S1a · S1b · S1c"),
+    (41, "Which measurements\nactually matter?", "S4a · S4b · S5b"),
+    (60.5, "Why this model, and\nhow does it work?", "S3 · S5 · S5b · S5c"),
+    (80, "When does it fire, and\nis it any good?", "S6a–S6d · S7 · S8"),
+]
+for _x, _q, _figs in _Q:
+    _ax.annotate("", (_x + 8.5, 44), (_x + 8.5, 51),
+                 arrowprops=dict(arrowstyle="-|>", lw=1.3, color=GREY))
+    _ax.add_patch(mpatches.FancyBboxPatch(
+        (_x, 20), 17, 23, boxstyle="round,pad=0.5,rounding_size=1.0",
+        facecolor="#F2F5FA", edgecolor="none"))
+    _ax.text(_x + 8.5, 37, _q, ha="center", va="center", color=NAVY,
+             fontsize=9.5, fontweight="bold", linespacing=1.5)
+    _ax.text(_x + 8.5, 26, _figs, ha="center", va="center", color=BLUE,
+             fontsize=9, linespacing=1.6)
+
+_ax.text(2, 12,
+         "Everything is WALK-FORWARD: the measurements, the models and the cut that fire in year Y were built from years before Y "
+         "only.\nThe text-free boundary sits between box 2 and box 3 — no post text is ever committed or read by the desk machine.",
+         fontsize=9.5, color=GREY, va="top")
+_ax.set_title("The pipeline, end to end — and where each question is "
+              "answered", fontsize=15, fontweight="bold", loc="left")
+save(_fig, "S00_pipeline_map.png")
+plt.show()
 
 # %% [markdown]
 # ---
@@ -683,52 +795,238 @@ plt.show()
 # head-to-head vs the previous rules; 04 §SS.1 is the plain-language
 # report card.
 #
+
+# %% [markdown]
+# ---
+# # Q5.5 — Inside the model: the weights, and how they become a call
+#
+# §5 says *which* model won. This section opens it: **the fitted
+# weights themselves**, what the two members disagree about, and then
+# one real day carried end-to-end — feature values → weighted sum →
+# probability → rank → ensemble → the call. Nothing here is a
+# description of the code; it is the code's own fitted objects,
+# printed.
+
+# %%
+# fit the LIVE model once (all full years before the newest - the same
+# fit the pipeline freezes), then read it two ways
+from sklearn.linear_model import LogisticRegression           # noqa: E402
+from sklearn.ensemble import HistGradientBoostingClassifier   # noqa: E402
+from sklearn.inspection import permutation_importance         # noqa: E402
+from analytics.ml_detector import _balanced_weights           # noqa: E402
+
+_ymax5 = int(cand_px["year"].max())
+_tr5 = cand_px[cand_px["year"] < _ymax5]
+_te5 = cand_px[cand_px["year"] == _ymax5]
+BANK = mld.DESK_ML_BANK
+LBL = {f: mld.ML_BANK_LABELS.get(f, f) for f in BANK}
+
+_fits = {}
+for _label5, _head5 in (("y_top", "GET OUT"), ("y_onset", "GET IN")):
+    _lg5 = LogisticRegression(class_weight="balanced", max_iter=2000)
+    _lg5.fit(_tr5[BANK], _tr5[_label5])
+    _gb5 = HistGradientBoostingClassifier(
+        max_depth=3, learning_rate=0.1, max_iter=200,
+        monotonic_cst=[1] * len(BANK), random_state=0)
+    _gb5.fit(_tr5[BANK], _tr5[_label5],
+             sample_weight=_balanced_weights(_tr5[_label5].values))
+    _pi5 = permutation_importance(
+        _gb5, _te5[BANK], _te5[_label5], n_repeats=5, random_state=0,
+        scoring="average_precision")
+    _fits[_head5] = {"logit": _lg5, "gbm": _gb5,
+                     "imp": dict(zip(BANK, _pi5.importances_mean))}
+    print(f"{_head5}: fitted on {len(_tr5):,} days from years "
+          f"{int(_tr5.year.min())}-{int(_tr5.year.max())}, "
+          f"tested on {_ymax5}")
+
+print()
+print("THE GET OUT MODEL, WRITTEN OUT IN FULL:")
+print("  P(a top is near) = sigmoid(")
+_lg_out = _fits["GET OUT"]["logit"]
+for _f5, _w5 in sorted(zip(BANK, _lg_out.coef_[0]), key=lambda t: -abs(t[1])):
+    print(f"      {_w5:+6.2f} × {LBL[_f5]}")
+print(f"      {_lg_out.intercept_[0]:+6.2f}   )")
+
+# %%
+# S5b — the fitted weights, both reads, on one slide
+fig, axes = plt.subplots(1, 2, figsize=(12.8, 5.4), sharey=True)
+_w_out = dict(zip(BANK, _fits["GET OUT"]["logit"].coef_[0]))
+_order5 = sorted(BANK, key=lambda f: _w_out[f])
+_names5 = [LBL[f] for f in _order5]
+
+_vals = [_w_out[f] for f in _order5]
+_cols = [BLUE if v >= 0 else GREY for v in _vals]
+axes[0].barh(_names5, _vals, color=_cols, height=0.62)
+axes[0].axvline(0, color=NAVY, lw=1.2)
+for i, v in enumerate(_vals):
+    axes[0].text(v + (0.06 if v >= 0 else -0.06), i, f"{v:+.2f}",
+                 va="center", ha="left" if v >= 0 else "right",
+                 fontsize=10, color=NAVY)
+axes[0].set_title("MEMBER 1 — the logistic regression\n"
+                  "one weight per measurement (+ = raises top risk)",
+                  fontsize=12.5)
+axes[0].set_xlabel("fitted weight (all features on the same 0–1 scale)")
+despine(axes[0])
+
+_imp = _fits["GET OUT"]["imp"]
+axes[1].barh(_names5, [max(_imp[f], 0) for f in _order5], color=NAVY,
+             height=0.62)
+for i, f in enumerate(_order5):
+    axes[1].text(max(_imp[f], 0) + 0.0007, i, f"{_imp[f]:.3f}",
+                 va="center", fontsize=10, color=NAVY)
+axes[1].set_title("MEMBER 2 — the monotone GBM\n"
+                  "how much accuracy is lost if you shuffle it",
+                  fontsize=12.5)
+axes[1].set_xlabel("drop in average precision when shuffled")
+despine(axes[1])
+fig.suptitle("What the GET OUT model actually weighs — two independent "
+             "reads of the same fit", fontsize=16, fontweight="bold",
+             y=1.02)
+fig.text(0.01, -0.05,
+         "LEFT is the model itself: the logistic member IS this list of numbers, and a positive weight means 'more of this,\n"
+         "more top risk'. RIGHT is a behavioural test on days the model never saw: shuffle one measurement and watch accuracy\n"
+         "fall. They agree on the headline — the price run-up and the attention block carry the call, the mood block confirms it.",
+         fontsize=11, color=GREY, va="top")
+fig.tight_layout()
+save(fig, "S5b_the_weights.png")
+plt.show()
+
+# %%
+# S5c — ONE REAL DAY, carried end to end: values -> contributions ->
+# log-odds -> probability -> rank -> ensemble -> the call
+_case_name = "gold_metals"
+_wf_out5 = WF[(WF["head"] == "GET OUT") & (WF["name"] == _case_name)]
+_alert_day = None
+_shape_alerts = SHAPE["adopted"]["standard"]["alerts"].get(_case_name, {})
+if _shape_alerts.get("out"):
+    _alert_day = pd.Timestamp(_shape_alerts["out"][-1])
+if _alert_day is None or _alert_day not in set(_wf_out5["date"]):
+    _alert_day = _wf_out5.sort_values("score")["date"].iloc[-1]
+
+_row5 = cand_px[(cand_px["name"] == _case_name)
+                & (cand_px["date"] == _alert_day)]
+if _row5.empty:                    # fall back to the nearest scored day
+    _cn = cand_px[cand_px["name"] == _case_name].copy()
+    _cn["gap"] = (_cn["date"] - _alert_day).abs()
+    _row5 = _cn.sort_values("gap").head(1)
+    _alert_day = pd.Timestamp(_row5["date"].iloc[0])
+_x5 = _row5[BANK].iloc[0]
+
+_contrib = {f: float(_w_out[f]) * float(_x5[f]) for f in BANK}
+_b0 = float(_fits["GET OUT"]["logit"].intercept_[0])
+_logodds = _b0 + sum(_contrib.values())
+_p_lg = 1 / (1 + np.exp(-_logodds))
+_p_gb = float(_fits["GET OUT"]["gbm"].predict_proba(_row5[BANK])[0, 1])
+
+_day_all = WF[(WF["head"] == "GET OUT") & (WF["date"] == _alert_day)]
+_r_lg = float((_day_all["logit"] <= _day_all.loc[
+    _day_all["name"] == _case_name, "logit"].iloc[0]).mean()) \
+    if len(_day_all) and (_day_all["name"] == _case_name).any() else np.nan
+_ens_row = _wf_out5[_wf_out5["date"] == _alert_day]
+_ens_score = float(_ens_row["score"].iloc[0]) if len(_ens_row) else np.nan
+_cut5 = THR["GET OUT"].get(int(pd.Timestamp(_alert_day).year), np.nan)
+
+fig, axes = plt.subplots(1, 2, figsize=(13.2, 5.8),
+                         width_ratios=[1.35, 1])
+
+# left: the contribution waterfall
+_ord_c = sorted(BANK, key=lambda f: _contrib[f])
+axes[0].barh([LBL[f] for f in _ord_c], [_contrib[f] for f in _ord_c],
+             color=[BLUE if _contrib[f] >= 0 else GREY for f in _ord_c],
+             height=0.62)
+axes[0].axvline(0, color=NAVY, lw=1.2)
+for i, f in enumerate(_ord_c):
+    v = _contrib[f]
+    axes[0].text(v + (0.03 if v >= 0 else -0.03), i,
+                 f"{_x5[f]:.2f} × {_w_out[f]:+.2f} = {v:+.2f}",
+                 va="center", ha="left" if v >= 0 else "right",
+                 fontsize=9, color=NAVY)
+axes[0].set_title(f"Gold on {pd.Timestamp(_alert_day):%d %b %Y} — each "
+                  "measurement's contribution\n(its value × its weight)",
+                  fontsize=12.5)
+axes[0].set_xlabel("contribution to the log-odds")
+axes[0].margins(x=0.28)
+despine(axes[0])
+
+# right: the ladder from log-odds to the call
+axes[1].axis("off")
+_steps = [
+    ("1  add them up", f"{_b0:+.2f} (base) + contributions  =  "
+     f"{_logodds:+.2f} log-odds"),
+    ("2  squash to a probability",
+     f"sigmoid({_logodds:+.2f})  =  {_p_lg:.3f}"),
+    ("3  the other member", f"monotone GBM says  {_p_gb:.3f}"),
+    ("4  rank each across the market",
+     "both probabilities become percentile ranks that day"),
+    ("5  average the two ranks",
+     f"the ensemble score  =  {_ens_score:.3f}"
+     if np.isfinite(_ens_score) else "the ensemble score"),
+    ("6  compare with the frozen cut",
+     f"{_ens_score:.3f}  vs  {_cut5:.3f}   →   "
+     f"{'FIRE — GET OUT' if np.isfinite(_ens_score) and _ens_score >= _cut5 else 'no call'}"
+     if np.isfinite(_ens_score) and np.isfinite(_cut5) else "the cut"),
+]
+_y5 = 0.95
+for _k, (_t1, _t2) in enumerate(_steps):
+    _fc = "#1F6F5C" if _k == len(_steps) - 1 else "#F2F5FA"
+    _tc = "white" if _k == len(_steps) - 1 else NAVY
+    axes[1].add_patch(mpatches.FancyBboxPatch(
+        (0.01, _y5 - 0.125), 0.97, 0.115,
+        boxstyle="round,pad=0.006", facecolor=_fc, edgecolor="none",
+        transform=axes[1].transAxes))
+    axes[1].text(0.04, _y5 - 0.045, _t1, fontsize=11, fontweight="bold",
+                 color=_tc, va="center", transform=axes[1].transAxes)
+    axes[1].text(0.04, _y5 - 0.093, _t2, fontsize=10.5, color=_tc,
+                 va="center", transform=axes[1].transAxes)
+    if _k < len(_steps) - 1:
+        axes[1].annotate("", (0.5, _y5 - 0.135), (0.5, _y5 - 0.125),
+                         xycoords=axes[1].transAxes,
+                         textcoords=axes[1].transAxes,
+                         arrowprops=dict(arrowstyle="-|>", lw=1.3,
+                                         color=GREY))
+    _y5 -= 0.155
+axes[1].set_title("…and how that becomes a call", fontsize=12.5,
+                  loc="left")
+fig.suptitle("How one day becomes one signal — the arithmetic, in full",
+             fontsize=16, fontweight="bold", y=1.0)
+fig.text(0.01, -0.04,
+         "Read left to right. Every measurement is a percentile (0–1) against gold's OWN history, so a contribution is just\n"
+         "'how extreme is this, times how much the model cares'. The log-odds are turned into a probability, the second member\n"
+         "votes independently, the two are averaged in RANK space, and only then is the frozen cut applied. No step is hidden.",
+         fontsize=11, color=GREY, va="top")
+fig.tight_layout()
+save(fig, "S5c_one_day_one_signal.png")
+plt.show()
+
+# %% [markdown]
+# **SO WHAT**
+#
+# * **The model is a readable object.** Member 1 is eleven signed
+#   numbers and an intercept — you can evaluate it on paper. Member 2 is
+#   300 shallow trees, but every feature is constrained to push one way,
+#   so it cannot contradict member 1's direction; the only thing it adds
+#   is *interactions* (how loud AND how fast, together).
+# * **A call is six steps, none of them discretionary:** value × weight,
+#   sum, sigmoid, rank, average, compare with a cut chosen on past years.
+#   The only quantity a human ever chose is which measurements to offer.
+# * **Both reads agree on what matters**, which is the honest test of an
+#   explanation: if the linear weights and the shuffle test disagreed
+#   about a feature, we could not claim to know why the model fires.
+#
+# **IF ASKED — "why average RANKS instead of probabilities?"** Because
+# the two members are calibrated differently: the GBM's probabilities
+# cluster near the extremes and would dominate a plain average. Ranking
+# each member across the market on the day puts them on one scale and
+# makes the ensemble a vote about ORDER — which is exactly what an
+# alert threshold consumes.
+
+# %% [markdown]
 # ---
 # # Q6 — Why these thresholds? (and the final feature set)
 #
-# The walk-forward member scores are computed once here (cached to
-# `docs/research/nb07_wf_scores.parquet`) and reused for §6.5's
-# conditioning study and §7's worked examples — the SAME construction
-# production uses: fit on years < Y, score year Y, rank-average the two
-# members within the year.
-
-# %%
-CACHE = RESEARCH_DIR / "nb07_wf_scores.parquet"
-FP = {"rows": len(cand_px), "max_date": str(cand_px["date"].max().date())}
-WF = None
-if CACHE.exists():
-    _c = pd.read_parquet(CACHE)
-    if ("fingerprint" in _c.columns
-            and json.loads(_c["fingerprint"].iloc[0]) == FP):
-        WF = _c.drop(columns=["fingerprint"])
-        print("reusing cached walk-forward scores")
-if WF is None:
-    parts = []
-    for label, head in (("y_top", "GET OUT"), ("y_onset", "GET IN")):
-        t1 = time.time()
-        key = ["name", "date", "test_year"]
-        lg = walk_forward_scores(cand_px, mld.DESK_ML_BANK, label,
-                                 mld.make_logit_fit(label))
-        gb = walk_forward_scores(cand_px, mld.DESK_ML_BANK, label,
-                                 mld.make_gbm_fit(label))
-        m = (lg[key + [label, "score"]].rename(columns={"score": "logit"})
-             .merge(gb[key + ["score"]].rename(columns={"score": "gbm"}),
-                    on=key))
-        m["logit_rank"] = m.groupby("test_year")["logit"].rank(pct=True)
-        m["gbm_rank"] = m.groupby("test_year")["gbm"].rank(pct=True)
-        m["score"] = (m["logit_rank"] + m["gbm_rank"]) / 2
-        m["head"] = head
-        m = m.rename(columns={label: "y"})
-        parts.append(m)
-        print(f"{head}: walk-forward members {time.time()-t1:.0f}s")
-    WF = pd.concat(parts, ignore_index=True)
-    out = WF.copy()
-    out["fingerprint"] = json.dumps(FP)
-    out.to_parquet(CACHE, index=False)
-    print(f"cached -> {CACHE.relative_to(ROOT)}")
-
-THR = {h: {int(k): v for k, v in RES[hk]["ens"]["thresholds"].items()}
-       for h, hk in (("GET OUT", "get_out"), ("GET IN", "get_in"))}
+# The walk-forward scores loaded at the top of this notebook are what
+# every panel below reads: fit on years < Y, score year Y,
+# rank-average the two members within the year.
 
 # %%
 # S6a — where the trigger sits: the two score distributions and the cut
@@ -843,8 +1141,19 @@ plt.show()
 #   GET IN stands within 21 days of a GET OUT, either direction** (GET
 #   OUT, the risk signal, is never suppressed).
 #
-# No new constants: the bar, the window, the median and the 21d
-# separation are all reused quantities; 63d = three cooldowns.
+# No new constants beyond one tolerance: the bar, the windows, the
+# median and the 21d separation are all reused quantities; 63d = three
+# cooldowns.
+#
+# **Round 3 — "closer to the actual peak" (2026-08-10,
+# `alert_shape_sweep.json → timing_sweep`):** seven timing variants
+# were tested, including the desk's own price-escalation idea ("+25%
+# above the last flag to re-fire" — REJECTED: busts reset prices
+# between episodes, so it cost 14–20 captures), a crest-call (closest
+# to the peak but precision collapses to 0.38), and a near-high gate
+# (measured best: capture 63→65, FA 55→47, precision 0.53→0.58). The
+# desk reviewed the round and **kept the round-2 shape unchanged** —
+# the measurements are kept as the record of what was tried.
 
 # %%
 _sh_rows = []

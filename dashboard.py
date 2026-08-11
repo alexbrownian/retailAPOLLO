@@ -164,7 +164,8 @@ from analytics.euphoria import resolve_anchor                      # noqa: E402
 from analytics.loaders import (price_series, clip_window,          # noqa: E402
                                THEME_COUNTS, TICKER_COUNTS)
 from analytics.overlays import (mention_share_series,              # noqa: E402
-                                chatter_change_series, sentiment_series)
+                                chatter_change_series, sentiment_series,
+                                relative_sentiment_series)
 
 st.set_page_config(page_title="RetailRadar", layout="wide",
                    initial_sidebar_state="expanded")
@@ -1259,7 +1260,9 @@ def fig_series_vs_price(series, series_name, series_color, px, symbol, title,
 def fig_theme_pulse(share, sent, px, symbol, title,
                     att_label="attention (share of chatter, %)",
                     att_axis="share of chatter (%)",
-                    zero_line=False):
+                    zero_line=False,
+                    mood_label="sentiment (net-bullish, 28d)",
+                    mood_relative=False):
     """THE PM CHART (reworked 2026-08-09, desk: "separate these charts -
     it's hard to read; the attention is way too noisy; fill the gaps in
     visually"): three STACKED panels on one shared time axis - attention,
@@ -1309,13 +1312,22 @@ def fig_theme_pulse(share, sent, px, symbol, title,
     if sent is not None and sent.notna().any():
         s_filled = sent.interpolate(method="time", limit_area="inside")
         fig.add_trace(go.Scatter(
-            x=s_filled.index, y=s_filled.values,
-            name="sentiment (net-bullish, 28d)",
+            x=s_filled.index, y=s_filled.values, name=mood_label,
             line=dict(color=BULL, width=1.6)), row=3, col=1)
         smin = float(sent.min(skipna=True))
-        fig.update_yaxes(range=[min(-1.0, smin), 1.0], zeroline=True,
-                         zerolinewidth=1, zerolinecolor=INK_LABEL,
-                         title_text="net-bullish", row=3, col=1)
+        smax = float(sent.max(skipna=True))
+        if mood_relative:
+            # centred on 0 = "as bullish as the market today", so the
+            # line reads both ways instead of hugging the top
+            _lim = max(0.12, abs(smin), abs(smax)) * 1.15
+            _rng = [-_lim, _lim]
+            _ttl = "vs market"
+        else:
+            _rng = [min(-1.0, smin), 1.0]
+            _ttl = "net-bullish"
+        fig.update_yaxes(range=_rng, zeroline=True, zerolinewidth=1.4,
+                         zerolinecolor=INK_LABEL, title_text=_ttl,
+                         row=3, col=1)
     fig.update_layout(title=dict(text=title, y=0.98, x=0.01),
                       height=560, hovermode="x unified",
                       margin=dict(l=10, r=10, t=50, b=20),
@@ -1337,6 +1349,40 @@ def _attention_mode_control(key):
              "posted. CHANGE = its smoothed day-on-day move: positive = "
              "the crowd is arriving, negative = leaving. Same estimator "
              "underneath either way.")
+
+
+def _mood_mode_control(key):
+    """The mood line: RELATIVE to the market's mood (default) or the raw
+    net-bullish level (desk question 2026-08-10, "how come net
+    bullishness is always positive?").
+
+    Measured on this store: 46% of posts score bullish vs 24% bearish,
+    so the raw line is positive on ~82% of theme-days - part real (retail
+    is structurally long), part the lexicon reading ordinary market
+    language as upbeat. Subtracting the market's own mood that day turns
+    an always-positive level into a readable "more or less excited than
+    everywhere else"."""
+    return st.radio(
+        "mood line", ["vs the market's mood that day",
+                      "raw net-bullish level"],
+        horizontal=True, key=key,
+        help="Retail chatter is structurally bullish, so the RAW line "
+             "sits above zero almost always and only its wiggles carry "
+             "information. VS THE MARKET subtracts the same-day mood "
+             "across every tracked name: 0 = as bullish as everyone "
+             "else, above = this crowd is unusually excited, below = "
+             "unusually cool. Same correction the forward-return study "
+             "applies to price.")
+
+
+def _mood_series(mode, sent_df, entity_col, name, lo, hi):
+    if sent_df is None:
+        return None, "sentiment (net-bullish, 28d)", False
+    if mode.startswith("raw"):
+        return (sentiment_series(sent_df, entity_col, name, lo, hi),
+                "mood (raw net-bullish, 28d)", False)
+    return (relative_sentiment_series(sent_df, entity_col, name, lo, hi),
+            "mood vs the market that day (28d)", True)
 
 
 def _attention_series(mode, entity_counts, entity_col, name, lo, hi):
@@ -1591,14 +1637,25 @@ _sig_mode = st.sidebar.radio(
          "alarms, fewer caught episodes. Both settings fire at most "
          "one call per name per quarter per side, GET IN only before "
          "a boom completes, GET OUT only after. All cuts are chosen "
-         "from past years by the pipeline - never by hand.")
+         "from past years by the pipeline - never by hand.\n\n"
+         "STRICT is also the better PERFORMING setting, measured "
+         "walk-forward: names it flags underperform the rest of the "
+         "universe by 1.4% over the next month after a GET OUT, and "
+         "outperform by 0.7% after a GET IN (Standard: +0.1% / -0.4%). "
+         "Fewer, higher-conviction calls is where the edge lives.\n\n"
+         "NOTE on reading any forward return: the tracked universe "
+         "itself drifts about +1% per 21 days, so a RAW move after a "
+         "GET OUT looks positive even when the name badly "
+         "underperformed - the honest measure is the move MINUS what "
+         "everything else did that day.")
 STRICT_SIGNALS = _sig_mode.startswith("Strict")
+_SIG_SUFFIX = "_strict" if STRICT_SIGNALS else ""
 
 
 def sig_col(base, frame):
     """The desk-signal column for the active signal setting - falls
-    back to standard if the store predates the strict columns."""
-    _c = f"{base}_strict" if STRICT_SIGNALS else base
+    back to standard if the store predates the extra columns."""
+    _c = f"{base}{_SIG_SUFFIX}"
     return _c if frame is not None and _c in frame.columns else base
 
 
@@ -2480,23 +2537,6 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                       "logit": "logistic regression",
                       "gbm": "monotone gradient boosting",
                       "mlp": "neural network (MLP)"}.get(_mdl, _mdl)
-        _mode_word = ("STRICT (F0.5 — precision weighted twice)"
-                      if STRICT_SIGNALS else "Standard (F1 — balanced)")
-        st.caption(f"Signal engine: the **{_mdl_words}** — tournament-"
-                   "selected 2026-08-07, fitted walk-forward on past "
-                   "years only. Signal setting: "
-                   f"**{_mode_word}**, frozen cuts "
-                   f"{sig_thr(desk_report.get('get_in')) or 0:.2f} in / "
-                   f"{sig_thr(desk_report.get('get_out')) or 0:.2f} out. "
-                   "Calls are SHAPED (2026-08-09): a GET IN can only "
-                   "fire before a name's boom completes and re-arms "
-                   "only after the crowd fully cools; a GET OUT only "
-                   "after the boom (the ground truth's own 120d bar) "
-                   "and re-arms below the cut; one call per name per "
-                   "quarter per side, and a GET IN never stands within "
-                   "21 days of a GET OUT. Records: notebook 03 §SS, "
-                   "docs/research/ml_tournament.md, "
-                   "docs/research/alert_shape_sweep.json.")
         _ins_path = os.path.join(PROCESSED_DIR, "desk_model_insight.json")
         if os.path.exists(_ins_path):
             with st.expander("what drives GET IN / GET OUT — the "
@@ -3915,15 +3955,126 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
 
     sort_mode = st.radio(
         "order charts by", ("recent GET IN / GET OUT signals",
+                            "closest to firing (the watchlist)",
                             "share of total mentions (retail attention)"),
         horizontal=True, key=f"{key_prefix}_sort",
         help="RECENT SIGNALS charts only the names that actually alerted "
-             "in the window, newest signal first. SHARE OF MENTIONS "
-             "charts the names the crowd is talking about most - each "
-             "name's share of the universe's total mentions over the "
-             "last 7 days - whether or not it ever alerted.")
+             "in the window, newest signal first. CLOSEST TO FIRING "
+             "ranks every name by how far its score sits below the "
+             "trigger right now, and which way it is moving - the names "
+             "to watch before they alert. SHARE OF MENTIONS charts the "
+             "names the crowd is talking about most - each name's share "
+             "of the universe's total mentions over the last 7 days - "
+             "whether or not it ever alerted.")
 
-    if sort_mode.startswith("share"):
+    if sort_mode.startswith("closest"):
+        # THE WATCHLIST (desk request 2026-08-10: "which ones are
+        # closest / eligible to fire, how close, and in what
+        # direction - the ones I should be watching").
+        #
+        # No new modelling: this reads the SAME stored scores and the
+        # SAME frozen cuts the alerts themselves use, as of the day the
+        # slider is on. Three facts per name, per side:
+        #   GAP        cut - score, in score points (0 = at the trigger)
+        #   DIRECTION  the score's 21-day change (rising = approaching)
+        #   ELIGIBLE   does the phase gate allow this side to fire at
+        #              all today? (GET OUT needs the name to have
+        #              boomed; GET IN needs it NOT to have boomed) - an
+        #              ineligible side can NEVER fire however high its
+        #              score, which is exactly what a watcher must know.
+        _as_of = dk["date"].max() if hi is None else min(
+            hi, dk["date"].max())
+        _prev = _as_of - pd.Timedelta(days=EUPHORIA_COOLDOWN_DAYS_DISP)
+        _rows_w = []
+        for _n, _g in dk[dk["date"] <= _as_of].groupby("name"):
+            _g = _g.sort_values("date")
+            if _g.empty:
+                continue
+            _cur = _g.iloc[-1]
+            _old = _g[_g["date"] <= _prev]
+            _boomed = bool(_cur.get("boomed120", False))
+            for _side, _sc_col, _thr, _elig in (
+                    ("GET OUT", "out_score", _thr_out_d, _boomed),
+                    ("GET IN", "in_score", _thr_in_d, not _boomed)):
+                _sc = _cur.get(_sc_col)
+                if _thr is None or _sc is None or pd.isna(_sc):
+                    continue
+                _d21 = (float(_sc) - float(_old.iloc[-1][_sc_col])
+                        if len(_old) and pd.notna(_old.iloc[-1][_sc_col])
+                        else None)
+                _rows_w.append({
+                    "name": _n, "symbol": _cur.get("symbol") or "-",
+                    "side": _side,
+                    "score": float(_sc), "trigger": float(_thr),
+                    "gap": float(_thr) - float(_sc),
+                    "d21": _d21, "eligible": _elig})
+        _watch = pd.DataFrame(_rows_w)
+        if _watch.empty:
+            st.info("no scored names as of this day")
+            _watch = pd.DataFrame(columns=["name", "side", "gap"])
+        else:
+            # rank: eligible first, then smallest gap to its trigger.
+            # A name already OVER its trigger (gap <= 0) is on the
+            # verge / just fired - it sorts to the very top.
+            _watch = _watch.sort_values(
+                ["eligible", "gap"], ascending=[False, True])
+            _best = (_watch.sort_values(["eligible", "gap"],
+                                        ascending=[False, True])
+                     .drop_duplicates("name"))
+
+            def _arrow(v):
+                if v is None or pd.isna(v):
+                    return "·  flat"
+                if v > 0.02:
+                    return "▲ approaching"
+                if v < -0.02:
+                    return "▼ receding"
+                return "·  flat"
+
+            _disp = pd.DataFrame({
+                "name": _best["name"],
+                "ticker": _best["symbol"],
+                "watch for": _best["side"],
+                "how close": [
+                    ("AT / OVER the trigger" if g <= 0
+                     else f"{g:.2f} below the trigger")
+                    for g in _best["gap"]],
+                "% of the way there": [
+                    f"{min(s / t, 1.0):.0%}" if t else "-"
+                    for s, t in zip(_best["score"], _best["trigger"])],
+                "direction (21d)": [_arrow(v) for v in _best["d21"]],
+                "can it fire today?": [
+                    "yes" if e else "no - wrong phase"
+                    for e in _best["eligible"]],
+            })
+            st.markdown(
+                f"**The watchlist — {kind_label.lower()} ranked by how "
+                f"close they are to their next call**, as of "
+                f"{pd.Timestamp(_as_of):%d %b %Y}. *Can it fire today* "
+                "is the phase gate: a GET OUT only exists once a name "
+                "has boomed, a GET IN only before it has — so a name "
+                "in the wrong phase cannot fire whatever its score.")
+            st.dataframe(_disp.head(max(how_many, 10)), hide_index=True,
+                         width="stretch")
+        show = [n for n in _best["name"].tolist()][:how_many] \
+            if not _watch.empty else []
+        _gap_by = dict(zip(_best["name"], _best["gap"])) \
+            if not _watch.empty else {}
+        _side_by = dict(zip(_best["name"], _best["side"])) \
+            if not _watch.empty else {}
+        _sym_by_w = dict(zip(_best["name"], _best["symbol"])) \
+            if not _watch.empty else {}
+        for i, name in enumerate(show, 1):
+            if name == pick:
+                continue
+            _g = _gap_by.get(name, float("nan"))
+            _lbl = ("AT trigger" if _g <= 0 else f"{_g:.2f} to go")
+            _sym_w = _sym_by_w.get(name)
+            _tag = f" ({_sym_w})" if _sym_w and _sym_w != "-" else ""
+            draw_chart(name,
+                       f"#{i}{_tag} · {_side_by.get(name, '')} {_lbl}  ",
+                       f"{key_prefix}_{name}")
+    elif sort_mode.startswith("share"):
         # trailing-7d mention share of the euphoria universe, from the
         # SAME aggregates the pipeline builds (theme or ticker counts).
         _cnts = theme_counts if kind == "theme" else ticker_counts
@@ -5619,6 +5770,7 @@ if active_tab == "Top trends":
                "post-weighted lean, so neither line carries pull-day "
                "noise.")
     _att_mode = _attention_mode_control("top_att_mode")
+    _mood_mode = _mood_mode_control("top_mood_mode")
     top = (tc.groupby("theme")["mention_count"].sum()
            .rename("total mentions").reset_index())
     top_r = ranked(top, "total mentions").head(how_many)
@@ -5627,14 +5779,15 @@ if active_tab == "Top trends":
         symbol = resolve_anchor(theme, priced)
         share, _albl, _aax, _zl = _attention_series(
             _att_mode, theme_counts, "theme", theme, lo, hi)
-        sent = sentiment_series(theme_sentiment, "theme", theme, lo, hi) \
-            if theme_sentiment is not None else None
+        sent, _mlbl, _mrel = _mood_series(
+            _mood_mode, theme_sentiment, "theme", theme, lo, hi)
         px = (price_series(prices, symbol, lo, hi)
               if prices is not None and symbol else None)
         st.plotly_chart(fig_theme_pulse(
             share, sent, px, symbol,
             f"#{i}  {theme}  vs  {symbol or 'no priced anchor'}",
-            att_label=_albl, att_axis=_aax, zero_line=_zl),
+            att_label=_albl, att_axis=_aax, zero_line=_zl,
+            mood_label=_mlbl, mood_relative=_mrel),
             width="stretch", key=f"top_{theme}")
 
 # ---- EMERGING TRENDS ----
@@ -5668,19 +5821,20 @@ if active_tab == "Emerging trends":
                    "lookback; the toggle below picks what the chart's "
                    "attention line shows.")
         _att_mode_e = _attention_mode_control("emerg_att_mode")
+        _mood_mode_e = _mood_mode_control("emerg_mood_mode")
         for i, theme in enumerate(mv["theme"], 1):
             symbol = resolve_anchor(theme, priced)
             share, _albl, _aax, _zl = _attention_series(
                 _att_mode_e, theme_counts, "theme", theme, lo, hi)
-            sent = (sentiment_series(theme_sentiment, "theme", theme,
-                                     lo, hi)
-                    if theme_sentiment is not None else None)
+            sent, _mlbl, _mrel = _mood_series(
+                _mood_mode_e, theme_sentiment, "theme", theme, lo, hi)
             px = (price_series(prices, symbol, lo, hi)
                   if prices is not None and symbol else None)
             fig = fig_theme_pulse(
                 share, sent, px, symbol,
                 f"#{i}  {theme}: the crowd arriving  vs  {symbol or '-'}",
-                att_label=_albl, att_axis=_aax, zero_line=_zl)
+                att_label=_albl, att_axis=_aax, zero_line=_zl,
+                mood_label=_mlbl, mood_relative=_mrel)
             # grey out everything the growth ranking does NOT look at
             if len(share.dropna()):
                 focus = share.dropna().index.max() - pd.Timedelta(days=look)

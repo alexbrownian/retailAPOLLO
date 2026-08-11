@@ -310,6 +310,20 @@ def choose_threshold_strict(train_scored: pd.DataFrame,
 
 
 # ---------------------------------------------------------------------------
+# WITHDRAWN 2026-08-10 - the "Max Performance" operating point.
+# The desk asked for a cut chosen purely for outcome (most negative
+# forward move after a GET OUT). It was built and measured walk-forward
+# against the DATE-MATCHED EXCESS move - the name's forward return minus
+# what the whole tracked universe did that day, because the universe
+# itself drifts ~+1% per 21d and a RAW median can never go negative in
+# a bull run. Verdict: the edge it found on the train years did not
+# survive out of sample (GET OUT +0.1%, GET IN 0.0% excess), while the
+# plain precision-weighted STRICT cut delivered -1.4% / +0.7%. Removed
+# at the desk's instruction; the measurement stays in
+# docs/research/max_performance.json as the record of a tested null.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 # forward-return battery: what did price do after the alerts?
 # (evaluation only - the finance-audience numbers; never a feature)
 # ---------------------------------------------------------------------------

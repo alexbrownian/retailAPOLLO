@@ -97,6 +97,50 @@ def sentiment_series(sent: pd.DataFrame, entity_col: str, name: str,
     return nb.rolling(window, min_periods=1).sum() / roll_n.where(roll_n > 0)
 
 
+def sentiment_baseline(sent: pd.DataFrame, entity_col: str, lo, hi,
+                       window: int = 28) -> pd.Series:
+    """The MARKET's mood on each day: the post-weighted net-bullish
+    share over EVERY tracked entity, same trailing window and same
+    ratio-of-sums estimator as `sentiment_series`.
+
+    WHY THIS EXISTS (desk question 2026-08-10: "how come net bullishness
+    is always positive?"): retail social finance is structurally long -
+    measured on this store, 46% of posts score bullish against 24%
+    bearish, so net-bullish is positive on 82% of theme-days and only
+    1 theme in 42 has a negative median. Part of that is real (people
+    post about what they own) and part is the lexicon reading ordinary
+    market language as upbeat. Either way an absolute mood line answers
+    the wrong question. Subtracting this baseline turns "is the mood
+    positive?" (always yes) into "is this name's crowd more excited than
+    the crowd everywhere else today?" - which is the question with
+    information in it, and it self-corrects for both the lexicon tilt
+    and the market's own mood swings. Exactly the control the forward-
+    return study uses on price."""
+    d = clip_window(sent, "date", lo, hi)
+    if d.empty:
+        return pd.Series(dtype="float64")
+    days = pd.date_range(d["date"].min(), d["date"].max(), freq="D")
+    n = d.groupby("date")["n_posts"].sum().reindex(days).fillna(0.0)
+    nb = ((d["n_posts"] * d["net_bullish"]).groupby(d["date"]).sum()
+          .reindex(days).fillna(0.0))
+    roll_n = n.rolling(window, min_periods=1).sum()
+    return nb.rolling(window, min_periods=1).sum() / roll_n.where(roll_n > 0)
+
+
+def relative_sentiment_series(sent: pd.DataFrame, entity_col: str,
+                              name: str, lo, hi,
+                              window: int = 28) -> pd.Series:
+    """`sentiment_series` minus `sentiment_baseline`: 0 = this crowd is
+    exactly as bullish as the market's crowd today, + = more excited
+    than everyone else, - = less. Same units (-2..+2 in principle,
+    -1..+1 in practice)."""
+    one = sentiment_series(sent, entity_col, name, lo, hi, window)
+    if one.empty:
+        return one
+    base = sentiment_baseline(sent, entity_col, lo, hi, window)
+    return one - base.reindex(one.index)
+
+
 def chatter_change_series(counts: pd.DataFrame, entity_col: str, name: str,
                           lo, hi, smooth: int = DERIV_SMOOTH) -> pd.Series:
     """The FIRST DERIVATIVE of attention: day-to-day change of the smoothed

@@ -1,0 +1,74 @@
+{
+ "as_of": "2026-08-10",
+ "objective": "date-matched EXCESS 21d move (name minus the universe median that day)",
+ "universe_drift_note": "the tracked universe's own median 21d move is about +1.0%, which is why RAW medians after a GET OUT look positive",
+ "method": "walk-forward: cut chosen on years < Y by the setting's objective, frozen, fired in Y",
+ "results": {
+  "standard": {
+   "GET OUT": {
+    "alerts": 130,
+    "captured": 63,
+    "detectable": 218,
+    "false_alarms": 55,
+    "precision": 0.534,
+    "fwd21_raw_median_pct": 0.21,
+    "fwd21_excess_median_pct": 0.06,
+    "n_judged": 130
+   },
+   "GET IN": {
+    "alerts": 71,
+    "captured": 21,
+    "detectable": 198,
+    "false_alarms": 49,
+    "precision": 0.3,
+    "fwd21_raw_median_pct": -0.03,
+    "fwd21_excess_median_pct": -0.35,
+    "n_judged": 71
+   }
+  },
+  "strict": {
+   "GET OUT": {
+    "alerts": 98,
+    "captured": 50,
+    "detectable": 218,
+    "false_alarms": 43,
+    "precision": 0.538,
+    "fwd21_raw_median_pct": -0.84,
+    "fwd21_excess_median_pct": -1.4,
+    "n_judged": 98
+   },
+   "GET IN": {
+    "alerts": 29,
+    "captured": 10,
+    "detectable": 198,
+    "false_alarms": 17,
+    "precision": 0.37,
+    "fwd21_raw_median_pct": 0.11,
+    "fwd21_excess_median_pct": 0.73,
+    "n_judged": 29
+   }
+  },
+  "maxperf": {
+   "GET OUT": {
+    "alerts": 238,
+    "captured": 75,
+    "detectable": 218,
+    "false_alarms": 139,
+    "precision": 0.35,
+    "fwd21_raw_median_pct": 1.38,
+    "fwd21_excess_median_pct": 0.13,
+    "n_judged": 238
+   },
+   "GET IN": {
+    "alerts": 218,
+    "captured": 41,
+    "detectable": 198,
+    "false_alarms": 176,
+    "precision": 0.189,
+    "fwd21_raw_median_pct": 0.87,
+    "fwd21_excess_median_pct": 0.0,
+    "n_judged": 218
+   }
+  }
+ }
+}

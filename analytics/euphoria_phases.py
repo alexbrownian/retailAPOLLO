@@ -1144,8 +1144,7 @@ def rebuild_phase_files(verbose: bool = True,
     def _alert_dates(scored, thr, rearm, gate_boomed):
         """gate_boomed True -> fire only after the boom (GET OUT);
         False -> only before it (GET IN). rearm None -> re-arm at the
-        cut. Under the rules model the phase gates are already in the
-        candidacy, so the gate defaults to open for missing rows."""
+        cut."""
         by = {}
         sc = scored.merge(_b120, on=["name", "date"], how="left")
         sc["boomed120"] = sc["boomed120"].fillna(False).astype(bool)
