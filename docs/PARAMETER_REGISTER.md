@@ -143,6 +143,30 @@ in `tests/test_pipeline.py::TestHandleCensoring`.*
 | Tag source | **md5 of the true handle**, not Python `hash` | INVARIANT | `hash` is salted per process, so the same person would carry a different label on every run and the board could not be read week to week |
 | What this does NOT do | it is not anonymisation | RECORDED LIMITATION | a revealed prefix plus a public forum is enough to re-identify a determined reader, and the store still holds the true handles by desk decision (they are the join key, and the influence record is worthless without them). This is a decorum and shoulder-surfing measure — the same class of protection as Class 3b, applied to identity instead of language |
 
+### Class 3d — THE TURN CONTEXT MARKER (added 2026-08-12)
+
+*Desk: "integrate the turn into the main pipeline", after being shown that
+it hits 9.6% against a 5.6% base, fires at tops AND bottoms with no
+direction, and beat its base rate in only 4 of the 6 years with data. The
+desk chose **context marker only** and **sweep the trigger first**. Both
+choices are honoured below. Prototype: notebook 08. Evidence:
+`docs/research/turn_trigger_sweep.json`. Tests:
+`tests/test_pipeline.py::TestTurnMarker` (7).*
+
+| Number / choice | Value | Class | Why / what the evidence says |
+|---|---|---|---|
+| Role | **context marker, never a call** | DESK DECISION 2026-08-12 | drawn as a tick on the price panel, absent from the watchlist, from the state machine and from every ordering. `test_the_turn_head_cannot_touch_get_in_or_get_out` and `test_the_marker_is_not_a_call_on_the_dashboard` fence it. The head is **withdrawable for free**: GET IN and GET OUT are bit-identical with it removed, which is the property that made adopting a weak signal acceptable at all |
+| Extremum half-window | 21 days (43-day centred window) | CONVENTION, **unswept** | a day must be the max/min of ±21 days to be a candidate turn. Registered as unswept on purpose — the desk chose to sweep the TRIGGER, not the label |
+| Move-away minimum | 8% **excess** over 21d | CONVENTION, **unswept** | the second test, and the one that matters: without it every flat drift containing a local maximum is a "turning point". Excess over the cross-sectional median, not raw — a raw forward move carries whatever the market did that month, the control adopted after the max-performance work |
+| Lookahead | 10 days | CONVENTION | the label is "a turn lands in the next 10 days", so a signal is allowed to be early rather than exact |
+| Cut | **0.95** of the train-year score distribution | **MEASURED — the one lever that separates** | 80 viable configs swept over cut × re-arm × spacing. 0.95 beats both 0.97 and 0.90 at *every* re-arm and spacing. Adopted config scores **9.6% hit / 1.72× lift** against the inherited 0.97/0.50/21 at **8.1% / 1.46×** |
+| Re-arm / spacing | 0.50 / 63 days | **CONVENTION, and deliberately so** | within cut=0.95 every re-arm×spacing combination lands in 0.088–0.096 hit rate — inside noise at ~250 flags. Rather than pick the sweep's winner and pretend it was evidence, both were set to **match the euphoria heads** (63d = one call per name per quarter). Recorded this way so a future sweep knows these two were never really chosen |
+| Phase gate | **none** | DERIVED from what the head is for | GET IN and GET OUT are gated by the 120d boom bar. A reversal is exactly as interesting at the bottom of a bust as at the top of a boom, so gating would discard half the label. `test_turn_fires_with_no_phase_gate` |
+| Feature bank | crowd bank **+ 4 new price-free features** | MEASURED (notebook 08) | `att_vol_21`, `bull_dispersion`, `att_x_mood`, `breadth_chg` lift the turn head 1.06 → 1.34. They are used by **this head only** — changing GET IN's or GET OUT's inputs is a separate adoption needing its own research re-freeze, and bundling it here would make the turn head impossible to evaluate against the record it is joining |
+| Threshold freezing | frozen on disk, research re-opens by being typed | INVARIANT (unit-tested) | identical contract to the two desk cuts. A threshold recomputed every live run leaves nothing on disk describing how today's marker differs from yesterday's. Bootstrap on first run is the one exception |
+| **Lookahead** | none in the FEATURES; the usual two caveats in the DISPLAY | **AUDITED 2026-08-12** | *Features*: every turn input is trailing or contemporaneous (`rolling(21)` windows, `e1 x bull_level`) — nothing at day *t* reads a price or a post after *t*. *Label*: `y_turn` deliberately looks forward ~31 days (a centred 43-day extremum window plus a 10-day lookahead) and uses a same-day cross-sectional median — that is what a label is, and it never enters the feature matrix. **Two real caveats, shared with GET IN and GET OUT and not specific to this head.** (1) The store's HISTORY is in-sample: the model trains on years `< data_max_year` and then scores every day including those years, so 182 of the 213 markers are fitted and only the 31 in the current year are genuinely out-of-sample. The honest record is the walk-forward in `turn_trigger_sweep.json` (9.6% hit / 1.72x), never the marker count on a chart. (2) The threshold is chosen from the model's scores on its own training data — identical to `_frozen_ml_pair`, which does the same for both desk cuts, so the turn head is no weaker than the incumbents but no stronger either. (3) Labels in the last ~31 days of the training span depend on prices just after it — a small, genuine boundary leak, unavoidable without discarding a month of training data |
+| **Known weakness, recorded not hidden** | beats its base rate in **4 of 6 years** | **MEASURED** | 2020 (0.149 vs 0.068), 2021 (0.188 vs 0.072), 2026 (0.176 vs 0.096) and marginally 2019; it **fails in 2022 (0.026 vs 0.061) and 2023 (0.000 vs 0.049)**. The head appears to work when there is euphoria to turn and not otherwise. This is the strongest argument for the context-marker role and against ever promoting it without a re-run on backfilled data |
+
 ## Class 4 — GROUND TRUTH (price side; used only to grade, never to predict)
 
 | Number | Value | Why |

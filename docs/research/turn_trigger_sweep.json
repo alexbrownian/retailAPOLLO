@@ -1,0 +1,163 @@
+{
+ "built": "2026-08-12 07:42 UTC",
+ "label": {
+  "extremum_half_window_d": 21,
+  "move_away_min_excess": 0.08,
+  "lookahead_d": 10,
+  "horizon_d": 21
+ },
+ "base_rate": 0.0557,
+ "adopted": {
+  "config": {
+   "cut": 0.95,
+   "rearm": 0.5,
+   "spacing": 63
+  },
+  "flags": 230,
+  "hit_rate": 0.0956,
+  "lift": 1.715,
+  "by_year": [
+   {
+    "year": 2019,
+    "flags": 64,
+    "hit": 0.031,
+    "base": 0.02
+   },
+   {
+    "year": 2020,
+    "flags": 47,
+    "hit": 0.149,
+    "base": 0.068
+   },
+   {
+    "year": 2021,
+    "flags": 48,
+    "hit": 0.188,
+    "base": 0.072
+   },
+   {
+    "year": 2022,
+    "flags": 38,
+    "hit": 0.026,
+    "base": 0.061
+   },
+   {
+    "year": 2023,
+    "flags": 9,
+    "hit": 0.0,
+    "base": 0.049
+   },
+   {
+    "year": 2024,
+    "flags": 4,
+    "hit": 0.0,
+    "base": 0.0
+   },
+   {
+    "year": 2025,
+    "flags": 3,
+    "hit": 0.0,
+    "base": 0.0
+   },
+   {
+    "year": 2026,
+    "flags": 17,
+    "hit": 0.176,
+    "base": 0.096
+   }
+  ]
+ },
+ "inherited_from_euphoria_heads": {
+  "config": {
+   "cut": 0.97,
+   "rearm": 0.5,
+   "spacing": 21
+  },
+  "flags": 197,
+  "hit_rate": 0.0815,
+  "lift": 1.461,
+  "by_year": [
+   {
+    "year": 2019,
+    "flags": 70,
+    "hit": 0.043,
+    "base": 0.02
+   },
+   {
+    "year": 2020,
+    "flags": 43,
+    "hit": 0.14,
+    "base": 0.068
+   },
+   {
+    "year": 2021,
+    "flags": 38,
+    "hit": 0.132,
+    "base": 0.072
+   },
+   {
+    "year": 2022,
+    "flags": 21,
+    "hit": 0.0,
+    "base": 0.061
+   },
+   {
+    "year": 2023,
+    "flags": 8,
+    "hit": 0.0,
+    "base": 0.049
+   },
+   {
+    "year": 2024,
+    "flags": 4,
+    "hit": 0.0,
+    "base": 0.0
+   },
+   {
+    "year": 2025,
+    "flags": 3,
+    "hit": 0.0,
+    "base": 0.0
+   },
+   {
+    "year": 2026,
+    "flags": 10,
+    "hit": 0.2,
+    "base": 0.096
+   }
+  ]
+ },
+ "sweep": {
+  "grid": {
+   "cut": [
+    0.9,
+    0.95,
+    0.97,
+    0.985,
+    0.995
+   ],
+   "rearm": [
+    0.3,
+    0.5,
+    0.7,
+    0.85
+   ],
+   "spacing": [
+    10,
+    21,
+    42,
+    63
+   ]
+  },
+  "viable_configs": 80,
+  "hit_by_cut": {
+   "0.9": 0.08,
+   "0.9500000000000001": 0.087,
+   "0.97": 0.0769,
+   "0.985": 0.0745,
+   "0.995": 0.0655
+  },
+  "note": "the CUT is the only lever that separates - within cut=0.95 every rearm/spacing lands in 0.088-0.096, which is inside noise at ~250 flags. spacing=63 and rearm=0.50 were therefore chosen to MATCH the euphoria heads rather than to win the sweep"
+ },
+ "caveat": "the cut was selected on pooled out-of-sample results, so it is not itself nested-validated; only its dominance over the other two knobs is claimed, and that is stable across the whole grid. Coverage gap 2023Q2-2025Q4 applies."
+}

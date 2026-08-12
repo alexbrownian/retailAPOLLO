@@ -2825,6 +2825,145 @@ class TestPulseRegister:
             "that is not there")
 
 
+class TestTurnMarker:
+    """The TURN head, integrated 2026-08-12 as a CONTEXT MARKER.
+
+    The desk adopted it knowing the numbers (9.6% hit vs a 5.6% base,
+    no direction), on the explicit condition that it stays furniture:
+    drawn on the price panel, never a call, never in the watchlist, and
+    never able to change GET IN or GET OUT. These tests are the fence
+    around that condition, because every one of those boundaries is a
+    one-line change away from being crossed by accident."""
+
+    @staticmethod
+    def _src(name):
+        from pathlib import Path
+        return (Path(__file__).resolve().parents[1]
+                / name).read_text(encoding="utf-8")
+
+    def test_the_turn_head_cannot_touch_get_in_or_get_out(self):
+        """The whole safety case. If the turn score ever gates, filters
+        or re-scores either call, withdrawing the head stops being free
+        and the record before and after this change stops comparing."""
+        src = self._src("analytics/euphoria_phases.py")
+        body = src[src.index("ds[\"turn_score\"] = np.nan"):]
+        for forbidden in ("get_in", "get_out"):
+            assert f'ds["{forbidden}"] =' not in body, (
+                f"the turn block assigns to {forbidden} - it must not")
+        # and the alert builders must not read the turn columns
+        head = src[:src.index("ds[\"turn_score\"] = np.nan")]
+        assert "turn_score" not in head.split("def _alert_dates")[-1][:1500]
+
+    def test_turn_fires_with_no_phase_gate(self):
+        """GET IN and GET OUT are gated by the 120d boom bar. A reversal
+        is as interesting at the bottom of a bust as at the top of a
+        boom, so gating the turn head would discard half of what it
+        exists to see."""
+        src = self._src("analytics/euphoria_phases.py")
+        fn = src[src.index("def turn_alerts("):src.index("def _day_ints")]
+        assert "gate = [True] * len(dates)" in fn
+
+    def test_the_turn_label_requires_a_real_move_away(self):
+        """Without the move-away test every flat drift containing a
+        local maximum is a 'turning point' and the label is noise."""
+        src = self._src("analytics/euphoria_phases.py")
+        fn = src[src.index("def turn_label_frame("):
+                 src.index("def turn_alerts(")]
+        assert "EUPHORIA_TURN_MIN_MOVE" in fn
+        assert "median(axis=1)" in fn, (
+            "the turn label must use EXCESS over the cross-section, not "
+            "a raw forward return")
+
+    def test_the_turn_threshold_is_frozen_not_recomputed(self):
+        """Same contract as the two desk cuts: research re-opens by
+        being typed. A threshold recomputed every live run leaves
+        nothing on disk explaining how today's marker differs from
+        yesterday's."""
+        src = self._src("analytics/euphoria_phases.py")
+        assert 'if research or "threshold" not in _frozen_turn:' in src
+        assert '_turn_src = "frozen"' in src
+
+    def test_the_turn_features_are_price_free(self):
+        """The head is sold as a CROWD signal. A price feature in its
+        bank would make that untrue."""
+        # aliased `eph`, NOT `ep`: elsewhere in this file `ep` is an
+        # episode row from itertuples(), and verify_deps resolves the
+        # name file-wide - importing the module as `ep` makes every
+        # `ep.peak` in the file look like a missing module attribute.
+        import analytics.euphoria_phases as eph
+        from analytics import ml_detector as mld
+        for f in eph.TURN_EXTRA_FEATURES:
+            assert f not in mld.PRICE_FEATURES
+        src = self._src("analytics/euphoria_phases.py")
+        fn = src[src.index("def turn_features("):
+                 src.index("def turn_label_frame(")]
+        assert "price" not in fn.lower().replace("price-free", "")
+
+    def test_the_marker_is_not_a_call_on_the_dashboard(self):
+        """Drawn as a tick, never as a full-height rule, and absent from
+        the watchlist orderings."""
+        src = self._src("dashboard.py")
+        assert "possible turn" in src
+        # the caveat that MUST survive: the marker has no direction.
+        # (The hit-rate sentence was removed from the hover on desk
+        # instruction 2026-08-12 - it lives in the RUNBOOK and the
+        # parameter register instead, which is where a number that
+        # changes on every research pass belongs.)
+        assert "Direction NOT implied" in src
+        # a store written before 2026-08-12 has no turn columns; the
+        # page must SAY so rather than silently drawing nothing, which
+        # reads identically to "this name has no turns"
+        assert "predates them" in src
+        # THE WATCHLIST CLAIM CHANGED 2026-08-12. The turn head was
+        # originally kept out of the watchlist entirely; the desk then
+        # asked for a "closest to a TURN" ordering, so it now appears
+        # there as a THIRD SIDE. What must remain true is that it is
+        # labelled context wherever it is rendered and that it still
+        # cannot fire, gate or re-score a call.
+        # In the watchlist the turn appears as a COLUMN, not as a
+        # competing sort (desk 2026-08-12: the two "closest to..."
+        # orderings asked one question two ways). What must hold is
+        # that it is labelled context and that it cannot out-rank a
+        # real call.
+        assert "TURN (context)" in src
+        assert "context should" in src
+        assert "closest to a TURN" not in src, (
+            "the second watchlist ordering is back - it produced "
+            "nearly the same table as the first")
+        blk = src[src.index("_turn_gap = dict("):
+                  src.index("_best = _watch.drop_duplicates")]
+        assert "_calls = _watch[~_watch[\"_is_turn\"]]" in blk, (
+            "turn rows are competing for the ranking again")
+        assert "9.6%" not in src, (
+            "a measured hit rate is hard-coded in the dashboard - it "
+            "goes stale silently the first time the head is re-fitted")
+        blk = src[src.index("if turn_alerts:"):
+                  src.index("for d in onset_alerts:")]
+        # THE MARKER RIDES THE DRAWN LINE. It was first placed at
+        # `level.min()` - a euphoria value on an axis that is usually
+        # PRICE - so every diamond landed near y=0, detached from the
+        # series and looking broken. `_carrier` is whatever line is
+        # actually drawn, so this cannot regress when the axis changes.
+        assert "_carrier" in blk, (
+            "the turn marker is not placed on the drawn line - it will "
+            "land on whatever the y-axis happens to mean")
+        assert "level" not in blk
+        assert "add_vline" not in blk, (
+            "the turn marker is drawn as a vertical rule - that is the "
+            "visual language of a CALL")
+
+    def test_the_store_carries_the_columns(self):
+        import os
+        import pandas as pd
+        p = os.path.join("data", "processed", "euphoria_desk.parquet")
+        if not os.path.exists(p):
+            import pytest
+            pytest.skip("no desk store on disk")
+        d = pd.read_parquet(p)
+        assert {"turn", "turn_score"} <= set(d.columns)
+        assert d["turn"].dtype == bool
+
+
 class TestMoodGauge:
     """The mood/bullishness SCORES are gone, and must stay gone.
 

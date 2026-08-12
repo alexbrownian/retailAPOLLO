@@ -1670,29 +1670,45 @@ how_many = st.sidebar.slider("items per section", 3, 60, 15)
 # re-arms at the cut), one call per name per quarter per side, and no
 # GET IN within 21d of a GET OUT in either direction. Evidence:
 # docs/research/alert_shape_sweep.json.
+# RENAMED 2026-08-12 on desk instruction: what was "Strict" is now
+# STANDARD and is the DEFAULT, and what was "Standard" is now RELAXED.
+# The names changed; the cuts did not.
+#
+# READ THIS BEFORE "FIXING" THE SUFFIX BELOW. The stored columns keep
+# their original names - `get_in_strict` / `get_out_strict` are the
+# F0.5 cut and are what STANDARD now serves; the bare `get_in` /
+# `get_out` are the F1 cut and are what RELAXED serves. So the default
+# setting reads the columns whose names say "strict", which looks like
+# an inversion and is not one. Renaming the parquet columns to match
+# the labels would break every stored record, every notebook and the
+# frozen research JSONs, for a cosmetic gain - so the mapping is stated
+# here instead and fenced by a test.
 _sig_mode = st.sidebar.radio(
     "signal setting",
-    ["Standard (balanced)", "Strict (fewer false alarms)"],
+    ["Standard (fewer, higher conviction)", "Relaxed (more calls)"],
     index=0, key="signal_mode",
-    help="Standard balances catching episodes against false alarms "
-         "1:1 (the F1 cut). Strict weights avoiding false alarms twice "
-         "as heavily (the F0.5 cut): roughly half the calls and false "
-         "alarms, fewer caught episodes. Both settings fire at most "
-         "one call per name per quarter per side, GET IN only before "
-         "a boom completes, GET OUT only after. All cuts are chosen "
-         "from past years by the pipeline - never by hand.\n\n"
-         "STRICT is also the better PERFORMING setting, measured "
-         "walk-forward: names it flags underperform the rest of the "
-         "universe by 1.4% over the next month after a GET OUT, and "
-         "outperform by 0.7% after a GET IN (Standard: +0.1% / -0.4%). "
-         "Fewer, higher-conviction calls is where the edge lives.\n\n"
+    help="Standard weights avoiding false alarms twice as heavily as "
+         "catching episodes (the F0.5 cut). Relaxed balances the two "
+         "1:1 (the F1 cut): roughly twice the calls and twice the "
+         "false alarms, and a few more episodes caught. Both settings "
+         "fire at most one call per name per quarter per side, GET IN "
+         "only before a boom completes, GET OUT only after. All cuts "
+         "are chosen from past years by the pipeline - never by "
+         "hand.\n\n"
+         "STANDARD is the default because it is the better PERFORMING "
+         "setting, measured walk-forward: names it flags underperform "
+         "the rest of the universe by 1.4% over the next month after a "
+         "GET OUT, and outperform by 0.7% after a GET IN (Relaxed: "
+         "+0.1% / -0.4%). Fewer, higher-conviction calls is where the "
+         "edge lives.\n\n"
          "NOTE on reading any forward return: the tracked universe "
          "itself drifts about +1% per 21 days, so a RAW move after a "
          "GET OUT looks positive even when the name badly "
          "underperformed - the honest measure is the move MINUS what "
          "everything else did that day.")
-STRICT_SIGNALS = _sig_mode.startswith("Strict")
-_SIG_SUFFIX = "_strict" if STRICT_SIGNALS else ""
+RELAXED_SIGNALS = _sig_mode.startswith("Relaxed")
+# STANDARD -> the strict-named columns. See the note above.
+_SIG_SUFFIX = "" if RELAXED_SIGNALS else "_strict"
 
 
 def sig_col(base, frame):
@@ -1705,7 +1721,7 @@ def sig_col(base, frame):
 def sig_thr(head_rec):
     """The frozen cut for the active signal setting (display lines)."""
     _r = head_rec or {}
-    if STRICT_SIGNALS and _r.get("strict_threshold") is not None:
+    if not RELAXED_SIGNALS and _r.get("strict_threshold") is not None:
         return _r.get("strict_threshold")
     return _r.get("live_threshold")
 
@@ -2598,6 +2614,35 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     f"Fitted on years before "
                     f"{_ins.get('fitted_on_years_before', '?')}; "
                     "recomputed by every research/live pass.")
+                st.markdown("**And how is a TURN made?**")
+                st.caption(
+                    "A different head, on the same crowd measurements "
+                    "plus four it does not share with the two above "
+                    "(how UNSTABLE attention has been, how spread out "
+                    "the mood is, attention x mood, and the change in "
+                    "how many forums carry the name). It is trained on "
+                    "a different question: not *is this the start* or "
+                    "*is this the top*, but **is a REVERSAL about to "
+                    "land**.\n\n"
+                    "A day counts as a reversal when its close is the "
+                    "highest (or lowest) of the 43 days centred on it "
+                    "AND the move away from it over the next month is "
+                    "at least 8% relative to the market - that second "
+                    "test is what separates a real turn from a flat "
+                    "stretch that happens to contain a local high. The "
+                    "head is asked whether such a day falls in the "
+                    "NEXT TEN, so it is allowed to be early rather "
+                    "than exact.\n\n"
+                    "Two deliberate differences from GET IN / GET OUT. "
+                    "It has NO phase gate - a reversal is as "
+                    "interesting at the bottom of a bust as at the top "
+                    "of a boom - and it therefore fires in both "
+                    "directions, which is why it never tells you "
+                    "WHICH way. It is price-free like the other two, "
+                    "walk-forward like the other two, and its cut is "
+                    "frozen from past years like the other two. Full "
+                    "record: PARAMETER_REGISTER Class 3d and "
+                    "docs/research/turn_trigger_sweep.json.")
                 _cols = st.columns(2)
                 for _c, (_hk, _ht) in zip(_cols, (("get_in", "GET IN — "
                                                    "what starts one"),
@@ -2990,6 +3035,18 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     # chart still resolves the date against its OWN level curve (names
     # start and end on different days), but they all resolve the SAME
     # date, so the page is always a single point in time.
+    # TURN MARKERS NEED A REBUILT STORE. `turn` / `turn_score` arrived
+    # 2026-08-12; a parquet written before that has neither, and the
+    # panel's guard then draws nothing. Silent absence is
+    # indistinguishable from "this name simply has no turns", so say
+    # which it is - once per page, not once per name.
+    if (use_desk and dk is not None and len(dk)
+            and "turn" not in dk.columns):
+        st.caption("Turn markers are not in this data yet - the desk "
+                   "store predates them. Run `python -m "
+                   "analytics.run_analytics --what phases` (about 20 "
+                   "seconds, no fetch needed) and reload.")
+
     master_day = None
     if len(ew):
         _mdi = pd.to_datetime(ew["date"]).dropna()
@@ -3064,6 +3121,21 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         w0, w1 = one_i.index.min(), one_i.index.max()
         onset_alerts = [d for d in co if w0 <= d <= w1]
         top_alerts = [d for d in ct if w0 <= d <= w1]
+        # TURN MARKERS (desk 2026-08-12) - CONTEXT, NOT A CALL. Drawn as
+        # a small tick on the axis rather than a full-height rule, so it
+        # can never be mistaken for GET IN / GET OUT at a glance. It is
+        # not in the watchlist, it does not set the state, and nothing
+        # downstream reads it. It fires on tops AND bottoms with no
+        # direction, and its measured hit rate is only modestly above
+        # the base rate - which is exactly why it is furniture and not a
+        # signal. The numbers deliberately live in the RUNBOOK and
+        # PARAMETER_REGISTER Class 3d rather than here: a hard-coded hit
+        # rate in the UI goes stale the first time the head is re-fitted
+        # and nothing would catch it.
+        turn_alerts = []
+        if use_desk and dk is not None and "turn" in dk.columns:
+            _tg = dk[(dk["name"] == name) & dk["turn"].eq(True)]
+            turn_alerts = [d for d in _tg["date"] if w0 <= d <= w1]
         state = _state_of(name, starting, ending)
         dk_i = (dk[dk["name"] == name].set_index("date").sort_index()
                 if (use_desk and dk is not None) else None)
@@ -3853,6 +3925,42 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             fig.add_vline(x=_ms(_as_of_click), line_color=INK_MUTED,
                           line_width=1.2, line_dash="dot", opacity=0.85)
 
+        # TURN (context). ON THE LINE, exactly like the fired dots.
+        # It used to be parked at `level.min()`, which is a EUPHORIA
+        # value (0-100) placed on an axis that is usually PRICE - so
+        # every diamond landed near y=0, detached from the series,
+        # looking like a broken glyph on the axis. `_carrier` is
+        # whatever line is actually drawn (price when there is price,
+        # the level curve when there is not), so this cannot go wrong
+        # again when the axis changes underneath it.
+        if turn_alerts:
+            _tx, _ty, _tt = [], [], []
+            for _d in turn_alerts:
+                _pos = _carrier.index.searchsorted(pd.Timestamp(_d))
+                if _pos < len(_carrier) and pd.notna(_carrier.iloc[_pos]):
+                    _tx.append(_carrier.index[_pos])
+                    _ty.append(float(_carrier.iloc[_pos]))
+                    _tt.append(
+                        f"possible TURN {pd.Timestamp(_d):%d %b %y}<br>"
+                        f"A reversal is more likely than usual in the "
+                        f"next two weeks.<br>"
+                        f"Direction NOT implied - this fires at tops "
+                        f"AND bottoms alike.<br><br>"
+                        f"CONTEXT means: do not act on this on its "
+                        f"own.<br>It is not sized, it is not in the "
+                        f"watchlist, and nothing<br>else on this page "
+                        f"changes because of it. Use it to<br>WEIGH a "
+                        f"call you already have - a GET OUT with a<br>"
+                        f"turn beside it is a more interesting GET OUT "
+                        f"than<br>one without.")
+            if _tx:
+                fig.add_trace(go.Scatter(
+                    x=_tx, y=_ty, mode="markers",
+                    marker=dict(size=9, symbol="diamond-open",
+                                color=INK_MUTED,
+                                line=dict(color=INK_MUTED, width=2)),
+                    name="possible turn (context)", text=_tt,
+                    hovertemplate="%{text}<extra></extra>"))
         for d in onset_alerts:                       # GET IN
             fig.add_vline(x=_ms(d), line_color=TEAL, line_width=1.6,
                           opacity=0.9)
@@ -3869,7 +3977,16 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         _rows_used, _lvl_max = [], 0
         for d, text, colour in marks:
             _dt = pd.Timestamp(d)
-            _wid_days = (len(text) + 9) * 5.4 / 900.0 * _span_days
+            # WIDTH ESTIMATE. The label rendered is "GET OUT 29 Jan 21"
+            # - the date adds ~9 characters that `text` does not contain,
+            # and the packer only ever counted `text`. At ~7.6 px per
+            # character in this font (not 5.4) on a chart that is wider
+            # than the 900 px this was tuned for, consecutive labels
+            # overlapped whenever two alerts fell in the same quarter -
+            # visible as "GET OUT 29 Jan 1GET OUT 09 Jan" on a 9-year
+            # window. Measure the WHOLE rendered string, at the real
+            # per-character width, plus a gap so two labels never touch.
+            _wid_days = ((len(text) + 10 + 6) * 7.6 / 900.0) * _span_days
             _lvl2 = 0
             while _lvl2 < len(_rows_used) and _rows_used[_lvl2] > _dt:
                 _lvl2 += 1
@@ -4044,9 +4161,20 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             _cur = _g.iloc[-1]
             _old = _g[_g["date"] <= _prev]
             _boomed = bool(_cur.get("boomed120", False))
+            # TURN joins the watchlist as a third SIDE (desk
+            # 2026-08-12: "can you also make it like closest to a
+            # turn"). It is always eligible - the turn head has no
+            # phase gate, deliberately - and it stays labelled as
+            # context wherever it is rendered, because a row in a
+            # watchlist is the furthest this signal is allowed to go.
+            _turn_thr = ((desk_report or {}).get("turn") or {}).get(
+                "threshold")
             for _side, _sc_col, _thr, _elig in (
                     ("GET OUT", "out_score", _thr_out_d, _boomed),
-                    ("GET IN", "in_score", _thr_in_d, not _boomed)):
+                    ("GET IN", "in_score", _thr_in_d, not _boomed),
+                    ("TURN (context)", "turn_score", _turn_thr, True)):
+                if _sc_col not in _g.columns:
+                    continue
                 _sc = _cur.get(_sc_col)
                 if _thr is None or _sc is None or pd.isna(_sc):
                     continue
@@ -4067,11 +4195,24 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             # rank: eligible first, then smallest gap to its trigger.
             # A name already OVER its trigger (gap <= 0) is on the
             # verge / just fired - it sorts to the very top.
-            _watch = _watch.sort_values(
-                ["eligible", "gap"], ascending=[False, True])
-            _best = (_watch.sort_values(["eligible", "gap"],
+            # ONE TABLE, ONE ORDERING (desk 2026-08-12: the two
+            # "closest to..." options produced nearly the same table
+            # from the same rows and only differed in which side sorted
+            # first - two ways to ask one question). TURN is now a
+            # COLUMN rather than a competing sort: the ranking stays on
+            # the two real CALLS, and each row also says how close that
+            # name is to a turn. A turn cannot out-rank a call, which
+            # is right - it is context, and context should not decide
+            # what you look at first.
+            _watch["_is_turn"] = _watch["side"].str.startswith("TURN")
+            _turn_gap = dict(zip(_watch.loc[_watch["_is_turn"], "name"],
+                                 _watch.loc[_watch["_is_turn"], "gap"]))
+            _calls = _watch[~_watch["_is_turn"]]
+            if _calls.empty:                     # turn-only store
+                _calls = _watch
+            _watch = _calls.sort_values(["eligible", "gap"],
                                         ascending=[False, True])
-                     .drop_duplicates("name"))
+            _best = _watch.drop_duplicates("name")
 
             def _arrow(v):
                 if v is None or pd.isna(v):
@@ -4097,6 +4238,11 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 "can it fire today?": [
                     "yes" if e else "no - wrong phase"
                     for e in _best["eligible"]],
+                "TURN (context)": [
+                    ("-" if _turn_gap.get(n) is None
+                     else ("AT / OVER" if _turn_gap[n] <= 0
+                           else f"{_turn_gap[n]:.2f} away"))
+                    for n in _best["name"]],
             })
             st.markdown(
                 f"**The watchlist — {kind_label.lower()} ranked by how "
@@ -4104,7 +4250,12 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 f"{pd.Timestamp(_as_of):%d %b %Y}. *Can it fire today* "
                 "is the phase gate: a GET OUT only exists once a name "
                 "has boomed, a GET IN only before it has — so a name "
-                "in the wrong phase cannot fire whatever its score.")
+                "in the wrong phase cannot fire whatever its score. "
+                "The last column is how close that name is to a **TURN "
+                "— context, not a call**: a reversal is more likely "
+                "than usual, in neither direction in particular. It "
+                "does not affect the ranking, because context should "
+                "not decide what you look at first.")
             st.dataframe(_disp.head(max(how_many, 10)), hide_index=True,
                          width="stretch")
         show = [n for n in _best["name"].tolist()][:how_many] \
@@ -6406,11 +6557,26 @@ if active_tab == "AI Pulse":
         st.markdown("### 2 - What all the forums are saying")
         st.info(PULSE_MARKET_SAMPLE)
         st.markdown("### 3 - What retail thinks about a theme")
-        st.caption("These four are HAND-WRITTEN SAMPLES. With a live "
-                   "pulse this dropdown covers EVERY theme the crowd is "
-                   "discussing - 33 of the 34 tradeable themes on the "
-                   "current data - each written from that theme's own "
-                   "posts.")
+        # THE FOUR-THEME DROPDOWN IS NOT A LIMIT (desk 2026-08-12: "why
+        # are there so little themes here"). It is the hand-written
+        # SAMPLE fallback, shown only because no pulse has been
+        # generated on this machine. The old caption said so in grey
+        # body text under a working-looking dropdown, which reads as
+        # "the product covers four themes". Say it loudly, say how many
+        # there really are, and say what to run.
+        _n_tradeable = len(THEME_ETFS)
+        st.warning(
+            f"**No AI Pulse has been generated on this machine, so the "
+            f"four themes below are HAND-WRITTEN PLACEHOLDERS** - they "
+            f"are here to show the format, not the coverage. A live "
+            f"pulse writes a brief for **every theme the crowd is "
+            f"actually discussing** - all {_n_tradeable} tradeable "
+            f"themes on the current data - each one written from that "
+            f"theme's own posts.\n\n"
+            f"Generate one on the desk machine (needs the VPN and "
+            f"dimsum_lite): `python -m analytics.ai_pulse`, or just run "
+            f"`python update_data.py`, which does it at the end of "
+            f"every pass.")
         _seg = list(PULSE_SEGMENTS_SAMPLE.items())
         _lab = st.selectbox("theme", [s for s, _ in _seg],
                             key="pulse_theme_sample")
@@ -6628,17 +6794,57 @@ if active_tab == "[dev] Data Stats":
         _tm_all = load("daily_term_counts.parquet")
         _tot = (_tm_all[_tm_all["term"] == "__TOTAL__"]
                 if _tm_all is not None else None)
-        _k0, _k1, _k2, _k3, _k4 = st.columns(5)
+        # WHAT IS ACTUALLY IN STORAGE, and why the two headline numbers
+        # differ by an order of magnitude (desk 2026-08-12: "change this
+        # to total posts we have in storage too - its like 3 mil or
+        # something right"). Both are true and they count different
+        # things:
+        #   TOTAL POSTS  - one per post, and only since term-tracking
+        #                  began (Aug 2025). The __TOTAL__ row did not
+        #                  exist before that, so there is no honest way
+        #                  to extend it backwards.
+        #   MENTIONS     - one per post PER NAME, across all history
+        #                  back to 2017. A post about semis that names
+        #                  NVDA, AMD and the semiconductor theme is one
+        #                  post and four mentions. This is the ~3m.
+        # Showing only the first invites "why so few?"; showing only the
+        # second invites "we have 3m posts", which we do not.
+        _tk_all = load("daily_ticker_counts.parquet")
+        _men_th = (int(_th_all["mention_count"].sum())
+                   if _th_all is not None else 0)
+        _men_tk = (int(_tk_all["mention_count"].sum())
+                   if _tk_all is not None else 0)
+        _k0, _k1, _k2, _k3, _k4, _k5 = st.columns(6)
         if _tot is not None and len(_tot):
             _t0 = pd.to_datetime(_tot["date"]).min()
             _k0.metric(f"TOTAL posts pulled (since {_t0:%b %Y})",
                        f"{int(_tot['mention_count'].sum()):,}",
                        help="Every post pulled from every source, "
                             "whether or not it names a ticker or theme. "
-                            "Counted since term-tracking began; earlier "
-                            "history only kept per-name counts.")
+                            "ONE PER POST.\n\nIt starts in "
+                            f"{_t0:%b %Y} because that is when the "
+                            "pipeline began storing a daily total; "
+                            "before then only per-name counts were "
+                            "kept, and there is no honest way to "
+                            "reconstruct a post count from those. For "
+                            "the full-history figure see NAME MENTIONS "
+                            "beside this - a much bigger number that "
+                            "counts something different.")
         else:
             _k0.metric("TOTAL posts pulled", "-")
+        _yr0 = (pd.to_datetime(_th_all["date"]).min().year
+                if _th_all is not None and len(_th_all) else "?")
+        _k5.metric(f"name mentions on file (since {_yr0})",
+                   f"{_men_th + _men_tk:,}",
+                   help=f"{_men_th:,} theme mentions + {_men_tk:,} "
+                        "ticker mentions, all the way back.\n\nTHIS "
+                        "IS NOT A POST COUNT. It is one row per post "
+                        "PER NAME: a single post about semis that names "
+                        "NVDA, AMD and the semiconductor theme "
+                        "contributes one post and three mentions. It is "
+                        "the right number for 'how much signal is in "
+                        "the store' and the wrong one for 'how many "
+                        "posts do we have'.")
         _k1.metric("tagged posts (all time)",
                    f"{int(_ts_all['n_posts'].sum()):,}"
                    if _ts_all is not None else "-",

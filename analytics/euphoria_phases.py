@@ -51,7 +51,9 @@ import pandas as pd
 
 from src.config import (EUPHORIA_CRASH_MIN_ETF, EUPHORIA_CRASH_MIN_SINGLE,
                         EUPHORIA_MIN_HISTORY,
-                        EUPHORIA_FA_BUDGET_PER_IY)
+                        EUPHORIA_FA_BUDGET_PER_IY,
+                        EUPHORIA_TURN_ENABLED, EUPHORIA_TURN_CUT_Q,
+                        EUPHORIA_TURN_REARM_Q, EUPHORIA_TURN_SPACING_D)
 from analytics.euphoria import (EuphoriaSeries, ground_truth_peaks,
                                 judgeable_window, trailing_pct_rank,
                                 log_convexity, _mention_share,
@@ -428,6 +430,106 @@ def boomed120_frame(series, pxmap) -> pd.DataFrame:
             "name": es.name, "date": px.index,
             "boomed120": ((px / low120 - 1) >= bar).values}))
     return pd.concat(rows, ignore_index=True)
+
+
+# ---------------------------------------------------------------------------
+# TURN — the reversal context marker (desk 2026-08-12)
+# ---------------------------------------------------------------------------
+# Prototyped in notebook 08, trigger swept in
+# docs/research/turn_trigger_sweep.json, constants and the reason it is a
+# CONTEXT MARKER rather than a call are in src/config.py.
+#
+# The four features below were the only price-free additions that
+# improved anything in notebook 08. They are used by the TURN head ONLY.
+# GET IN and GET OUT keep the shipped bank untouched: changing their
+# inputs is a separate adoption that needs its own research re-freeze,
+# and bundling it into this change would make the turn head impossible
+# to evaluate against the record it is joining.
+TURN_EXTRA_FEATURES = ["att_vol_21", "bull_dispersion", "att_x_mood",
+                       "breadth_chg"]
+
+
+def turn_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add the four TURN-only crowd features. Price-free by design.
+
+    att_vol_21      how UNSTABLE attention has been, not how high
+    bull_dispersion spread of daily mood - disagreement, not direction
+    att_x_mood      the interaction; loud-and-bullish differs from
+                    loud-and-bearish and two additive terms cannot say so
+    breadth_chg     change in how many sources carry the name
+    """
+    d = df.sort_values(["name", "date"]).copy()
+    g = d.groupby("name", sort=False)
+    d["att_vol_21"] = g["hype_raw"].transform(
+        lambda s: s.rolling(21, min_periods=8).std())
+    d["bull_dispersion"] = g["bull_level"].transform(
+        lambda s: s.rolling(21, min_periods=8).std())
+    d["att_x_mood"] = d["e1"] * d["bull_level"]
+    if "source_breadth" in d:
+        d["breadth_chg"] = g["source_breadth"].transform(
+            lambda s: s - s.rolling(21, min_periods=8).mean())
+    else:
+        d["breadth_chg"] = 0.0
+    for c in TURN_EXTRA_FEATURES:
+        d[c] = d[c].fillna(0.0)
+    return d.loc[df.index]
+
+
+def turn_label_frame(series: list, pxmap: dict) -> pd.DataFrame:
+    """name/date/y_turn — is a real reversal about to land?
+
+    A day is an EXTREMUM when its close is the max (or min) of the
+    +/- TURN_WIN_D window AND the excess move away from it over the next
+    TURN_HORIZON_D is at least TURN_MIN_MOVE. The second test is what
+    separates a reversal from a flat drift that happens to contain a
+    local maximum - without it the label is noise.
+
+    Excess, not raw: a raw forward move is contaminated by whatever the
+    whole market did that month, the same control the desk adopted after
+    the max-performance work in August.
+
+    y_turn(t) = 1 when such a day falls in (t, t + TURN_LOOKAHEAD_D],
+    so a signal on day t is allowed to be early rather than exact.
+    """
+    from src.config import (EUPHORIA_TURN_WIN_D, EUPHORIA_TURN_MIN_MOVE,
+                            EUPHORIA_TURN_LOOKAHEAD_D,
+                            EUPHORIA_TURN_HORIZON_D)
+    wide = pd.DataFrame({sym: px for sym, px in pxmap.items()})
+    fwd = wide.shift(-EUPHORIA_TURN_HORIZON_D) / wide - 1.0
+    excess = fwd.sub(fwd.median(axis=1), axis=0)
+    win = 2 * EUPHORIA_TURN_WIN_D + 1
+    out = []
+    for es in series:
+        px = pxmap.get(es.symbol)
+        if px is None:
+            continue
+        px = px.dropna()
+        if len(px) < 260 or es.symbol not in excess.columns:
+            continue
+        hi = px.rolling(win, center=True).max()
+        lo = px.rolling(win, center=True).min()
+        ex = excess[es.symbol].reindex(px.index)
+        is_peak = (px >= hi) & (ex <= -EUPHORIA_TURN_MIN_MOVE)
+        is_trough = (px <= lo) & (ex >= EUPHORIA_TURN_MIN_MOVE)
+        ext = (is_peak | is_trough).fillna(False).astype(bool)
+        fut = (ext.iloc[::-1]
+               .rolling(EUPHORIA_TURN_LOOKAHEAD_D, min_periods=1)
+               .max().iloc[::-1].shift(-1).fillna(0))
+        out.append(pd.DataFrame({"name": es.name, "date": px.index,
+                                 "y_turn": fut.astype(int).values}))
+    return (pd.concat(out, ignore_index=True) if out
+            else pd.DataFrame(columns=["name", "date", "y_turn"]))
+
+
+def turn_alerts(dates, scores, threshold, rearm, spacing):
+    """Upward crossings of `threshold`, re-armed below `rearm`, at most
+    one per `spacing` days. NO PHASE GATE, deliberately: a reversal is
+    exactly as interesting at the bottom of a bust as at the top of a
+    boom, so the gates that gave GET IN and GET OUT their shape would
+    throw away half of what this head exists to see."""
+    gate = [True] * len(dates)
+    return alerts_from_scores_shaped(list(dates), list(scores), gate,
+                                     threshold, rearm, spacing)
 
 
 def _day_ints(x) -> np.ndarray:
@@ -1101,6 +1203,8 @@ def rebuild_phase_files(verbose: bool = True,
             dscore=desk_end_fit(end_live, end_live, TOP_FEATURES))
         onset_scored = onset_live_f.assign(
             dscore=desk_onset_fit(onset_live_f, onset_live_f, ONSET_BANK))
+        # the turn head is an ML head; the rules fallback has none
+        turn_scored, _ttrain_sc = None, None
     else:
         # ML path: candidacy is the coverage gate only - the hype, boom
         # and end-stage doors are FEATURES now, not gates
@@ -1116,6 +1220,34 @@ def rebuild_phase_files(verbose: bool = True,
             dscore=maker("y_top")(train, live_cand, mld.DESK_ML_BANK))
         onset_scored = live_cand.assign(
             dscore=maker("y_onset")(train, live_cand, mld.DESK_ML_BANK))
+        # THE TURN HEAD (desk 2026-08-12) - a third, independent score on
+        # the same candidate frame, price-free bank, fitted the same way
+        # and on the same train years. It reads nothing the other two
+        # write and neither of them reads it back: if this head is ever
+        # withdrawn, GET IN and GET OUT are bit-identical without it.
+        if EUPHORIA_TURN_ENABLED:
+            _tl = turn_label_frame(series, pxmap)
+            _tbank = [c for c in mld.DESK_ML_BANK
+                      if c not in mld.PRICE_FEATURES] + TURN_EXTRA_FEATURES
+            _ttrain = turn_features(train).merge(_tl, on=["name", "date"],
+                                                 how="left")
+            _ttrain = _ttrain[_ttrain["y_turn"].notna()].copy()
+            _ttrain["y_turn"] = _ttrain["y_turn"].astype(int)
+            _tlive = turn_features(live_cand)
+            if len(_ttrain) > 400 and _ttrain["y_turn"].sum() >= 12:
+                turn_scored = _tlive.assign(
+                    tscore=mld.make_ens_fit("y_turn")(_ttrain, _tlive,
+                                                      _tbank))
+                _ttrain_sc = _ttrain.assign(
+                    tscore=mld.make_ens_fit("y_turn")(_ttrain, _ttrain,
+                                                      _tbank))
+            else:
+                turn_scored, _ttrain_sc = None, None
+                if verbose:
+                    print("  turn head skipped: too few labelled train "
+                          "days yet")
+        else:
+            turn_scored, _ttrain_sc = None, None
         # the explainability sidecar the dashboard's "what drives the
         # calls" expander reads: logit weights + GBM permutation
         # importance for the live fit (one computation, every surface -
@@ -1199,6 +1331,59 @@ def rebuild_phase_files(verbose: bool = True,
                        for t in outs):
                     ds.loc[(ds["name"] == _n) & (ds["date"] == d),
                            _gi] = False
+    # TURN COLUMNS. Threshold and re-arm are score values frozen from
+    # the TRAIN years' own distribution, exactly like the two desk cuts -
+    # a percentile taken on the live scores would move every run and the
+    # marker could not be compared week to week.
+    ds["turn_score"] = np.nan
+    ds["turn"] = False
+    if turn_scored is not None and _ttrain_sc is not None:
+        # SAME CONTRACT AS THE TWO DESK CUTS: the threshold is FROZEN on
+        # disk and only re-derived when research is typed. Recomputing it
+        # every live run would leave nothing on disk describing how
+        # today's marker differs from yesterday's, and a threshold nobody
+        # can reconstruct cannot be defended - the reasoning is written
+        # out beside `needs_research`. The bootstrap (no record yet) is
+        # the one exception, exactly as for GET IN and GET OUT.
+        _frozen_turn = (desk_stored or {}).get("turn") or {}
+        if research or "threshold" not in _frozen_turn:
+            _thr_t = float(_ttrain_sc["tscore"].quantile(
+                EUPHORIA_TURN_CUT_Q))
+            _rearm_t = float(_ttrain_sc["tscore"].quantile(
+                EUPHORIA_TURN_REARM_Q))
+            _turn_src = "research" if research else "bootstrap"
+        else:
+            _thr_t = float(_frozen_turn["threshold"])
+            _rearm_t = float(_frozen_turn["rearm"])
+            _turn_src = "frozen"
+        if verbose:
+            print(f"  turn head ({_turn_src}): threshold {_thr_t:.3f} / "
+                  f"re-arm {_rearm_t:.3f}")
+        _tmap = {}
+        for _n, _g in turn_scored.sort_values("date").groupby("name"):
+            _tmap[_n] = set(turn_alerts(_g["date"].tolist(),
+                                        _g["tscore"].tolist(), _thr_t,
+                                        _rearm_t,
+                                        EUPHORIA_TURN_SPACING_D))
+        ds = ds.merge(turn_scored[["name", "date", "tscore"]]
+                      .rename(columns={"tscore": "turn_score_new"}),
+                      on=["name", "date"], how="left")
+        ds["turn_score"] = ds.pop("turn_score_new")
+        ds["turn"] = [d in _tmap.get(n, ())
+                      for n, d in zip(ds["name"], ds["date"])]
+        if isinstance(desk_stored, dict) and _turn_src != "frozen":
+            desk_stored["turn"] = {
+                "threshold": _thr_t, "rearm": _rearm_t,
+                "cut_q": EUPHORIA_TURN_CUT_Q,
+                "rearm_q": EUPHORIA_TURN_REARM_Q,
+                "spacing_d": EUPHORIA_TURN_SPACING_D,
+                "bank": _tbank,
+                "evidence": "docs/research/turn_trigger_sweep.json",
+                "role": ("CONTEXT MARKER - never a call, never in the "
+                         "watchlist, never gates GET IN or GET OUT"),
+                "derived": _turn_src}
+            with open(desk_path, "w") as _f:
+                _json.dump(desk_stored, _f, indent=1, default=str)
     ds = ds.merge(_b120, on=["name", "date"], how="left")
     ds["boomed120"] = ds["boomed120"].eq(True)
     ds["symbol"] = ds["name"].map(sym_by)
@@ -1207,6 +1392,7 @@ def rebuild_phase_files(verbose: bool = True,
         print(f"  saved euphoria_desk.parquet ({len(ds):,} rows, "
               f"{int(ds['get_in'].sum())} GET IN / "
               f"{int(ds['get_out'].sum())} GET OUT alerts all-time, "
+              f"{int(ds['turn'].sum())} TURN markers, "
               f"model {model_name})")
     return stored
 

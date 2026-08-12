@@ -1,0 +1,1239 @@
+{
+ "built": "2026-08-12 05:35 UTC",
+ "sections": {
+  "coverage": [
+   {
+    "year": 2017,
+    "days": 2457,
+    "names": 24,
+    "share_of_days": 0.042
+   },
+   {
+    "year": 2018,
+    "days": 8210,
+    "names": 29,
+    "share_of_days": 0.14
+   },
+   {
+    "year": 2019,
+    "days": 7293,
+    "names": 26,
+    "share_of_days": 0.124
+   },
+   {
+    "year": 2020,
+    "days": 9555,
+    "names": 36,
+    "share_of_days": 0.163
+   },
+   {
+    "year": 2021,
+    "days": 12814,
+    "names": 43,
+    "share_of_days": 0.219
+   },
+   {
+    "year": 2022,
+    "days": 9617,
+    "names": 40,
+    "share_of_days": 0.164
+   },
+   {
+    "year": 2023,
+    "days": 2542,
+    "names": 28,
+    "share_of_days": 0.043
+   },
+   {
+    "year": 2024,
+    "days": 538,
+    "names": 5,
+    "share_of_days": 0.009
+   },
+   {
+    "year": 2025,
+    "days": 337,
+    "names": 5,
+    "share_of_days": 0.006
+   },
+   {
+    "year": 2026,
+    "days": 5267,
+    "names": 46,
+    "share_of_days": 0.09
+   }
+  ],
+  "base_rates": [
+   {
+    "label": "y_onset (GET IN, shipped)",
+    "base_rate": 0.11314755454451453,
+    "positives": 4377,
+    "one_in": 8.8
+   },
+   {
+    "label": "y_top (GET OUT, shipped)",
+    "base_rate": 0.10164409058008479,
+    "positives": 3932,
+    "one_in": 9.8
+   },
+   {
+    "label": "y_move (A: big move either way)",
+    "base_rate": 0.13775721228414847,
+    "positives": 5329,
+    "one_in": 7.3
+   },
+   {
+    "label": "y_turn (B: turning point in 10d)",
+    "base_rate": 0.054234308758142905,
+    "positives": 2098,
+    "one_in": 18.4
+   },
+   {
+    "label": "y_halfdd (C: captures half the drop)",
+    "base_rate": 0.16239272050460138,
+    "positives": 6282,
+    "one_in": 6.2
+   }
+  ],
+  "baseline_crowd": {
+   "y_move": {
+    "n": 37049,
+    "AP": 0.13828924440897067,
+    "AUROC": 0.49179697857636756,
+    "base": 0.1377904936705444,
+    "AP_lift": 1.0036196309711958,
+    "label": "A \u00b7 big move either way"
+   },
+   "y_turn": {
+    "n": 37049,
+    "AP": 0.05926930339848295,
+    "AUROC": 0.5176084295030348,
+    "base": 0.056033901049960866,
+    "AP_lift": 1.0577400874809224,
+    "label": "B \u00b7 turning point in 10d"
+   },
+   "y_halfdd": {
+    "n": 37049,
+    "AP": 0.1997970887567148,
+    "AUROC": 0.5434121734886783,
+    "base": 0.16694107803179573,
+    "AP_lift": 1.1968120196196488,
+    "label": "C \u00b7 captures half the drop"
+   },
+   "y_onset": {
+    "n": 37049,
+    "AP": 0.1423857076985443,
+    "AUROC": 0.557788854051676,
+    "base": 0.11349834003616832,
+    "AP_lift": 1.2545179749163775,
+    "label": "GET IN (shipped grading)"
+   },
+   "y_top": {
+    "n": 37049,
+    "AP": 0.1270826045497261,
+    "AUROC": 0.5495533655356115,
+    "base": 0.1051850252368485,
+    "AP_lift": 1.2081815283455999,
+    "label": "GET OUT (shipped grading)"
+   }
+  },
+  "search": [
+   {
+    "n": 37049,
+    "AP": 0.12529609024497274,
+    "AUROC": 0.46806073213824484,
+    "base": 0.1377904936705444,
+    "AP_lift": 0.9093231826613114,
+    "label": "A \u00b7 big move either way",
+    "label_col": "y_move",
+    "bank": "crowd only (shipped)",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.13802629848408135,
+    "AUROC": 0.5017089928187256,
+    "base": 0.1377904936705444,
+    "AP_lift": 1.0017113286066073,
+    "label": "A \u00b7 big move either way",
+    "label_col": "y_move",
+    "bank": "crowd only (shipped)",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.13828924440897067,
+    "AUROC": 0.49179697857636756,
+    "base": 0.1377904936705444,
+    "AP_lift": 1.0036196309711958,
+    "label": "A \u00b7 big move either way",
+    "label_col": "y_move",
+    "bank": "crowd only (shipped)",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.1256509559022811,
+    "AUROC": 0.4598549359027662,
+    "base": 0.1377904936705444,
+    "AP_lift": 0.9118985828058006,
+    "label": "A \u00b7 big move either way",
+    "label_col": "y_move",
+    "bank": "crowd + price (shipped desk)",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.14155894883487508,
+    "AUROC": 0.5080811596591783,
+    "base": 0.1377904936705444,
+    "AP_lift": 1.0273491665785086,
+    "label": "A \u00b7 big move either way",
+    "label_col": "y_move",
+    "bank": "crowd + price (shipped desk)",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.13319296058290528,
+    "AUROC": 0.4859286807741167,
+    "base": 0.1377904936705444,
+    "AP_lift": 0.9666338876858096,
+    "label": "A \u00b7 big move either way",
+    "label_col": "y_move",
+    "bank": "crowd + price (shipped desk)",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.13093750520018882,
+    "AUROC": 0.474511841609202,
+    "base": 0.1377904936705444,
+    "AP_lift": 0.9502651577202342,
+    "label": "A \u00b7 big move either way",
+    "label_col": "y_move",
+    "bank": "crowd + new",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.14639464690631446,
+    "AUROC": 0.5225973624754192,
+    "base": 0.1377904936705444,
+    "AP_lift": 1.0624437361864925,
+    "label": "A \u00b7 big move either way",
+    "label_col": "y_move",
+    "bank": "crowd + new",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.14363168149694983,
+    "AUROC": 0.5069437106267997,
+    "base": 0.1377904936705444,
+    "AP_lift": 1.042391805637707,
+    "label": "A \u00b7 big move either way",
+    "label_col": "y_move",
+    "bank": "crowd + new",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.13001763713704773,
+    "AUROC": 0.46634340875179947,
+    "base": 0.1377904936705444,
+    "AP_lift": 0.9435893121039141,
+    "label": "A \u00b7 big move either way",
+    "label_col": "y_move",
+    "bank": "crowd + price + new",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.14388177926091528,
+    "AUROC": 0.5188155637448788,
+    "base": 0.1377904936705444,
+    "AP_lift": 1.0442068638271598,
+    "label": "A \u00b7 big move either way",
+    "label_col": "y_move",
+    "bank": "crowd + price + new",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.1401466773488158,
+    "AUROC": 0.5056486890746368,
+    "base": 0.1377904936705444,
+    "AP_lift": 1.0170997549649905,
+    "label": "A \u00b7 big move either way",
+    "label_col": "y_move",
+    "bank": "crowd + price + new",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.0536812714811795,
+    "AUROC": 0.5022920241196801,
+    "base": 0.056033901049960866,
+    "AP_lift": 0.9580141749066566,
+    "label": "B \u00b7 turning point in 10d",
+    "label_col": "y_turn",
+    "bank": "crowd only (shipped)",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.05772260713774324,
+    "AUROC": 0.5362473263850611,
+    "base": 0.056033901049960866,
+    "AP_lift": 1.0301372215059004,
+    "label": "B \u00b7 turning point in 10d",
+    "label_col": "y_turn",
+    "bank": "crowd only (shipped)",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.05926930339848295,
+    "AUROC": 0.5176084295030348,
+    "base": 0.056033901049960866,
+    "AP_lift": 1.0577400874809224,
+    "label": "B \u00b7 turning point in 10d",
+    "label_col": "y_turn",
+    "bank": "crowd only (shipped)",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.07112034610753919,
+    "AUROC": 0.5497023935943539,
+    "base": 0.056033901049960866,
+    "AP_lift": 1.2692378145174465,
+    "label": "B \u00b7 turning point in 10d",
+    "label_col": "y_turn",
+    "bank": "crowd + price (shipped desk)",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.06684934263678341,
+    "AUROC": 0.5599270855078018,
+    "base": 0.056033901049960866,
+    "AP_lift": 1.193016038222634,
+    "label": "B \u00b7 turning point in 10d",
+    "label_col": "y_turn",
+    "bank": "crowd + price (shipped desk)",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.07675391173635242,
+    "AUROC": 0.5577455787941449,
+    "base": 0.056033901049960866,
+    "AP_lift": 1.3697763371484204,
+    "label": "B \u00b7 turning point in 10d",
+    "label_col": "y_turn",
+    "bank": "crowd + price (shipped desk)",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.07322337929981998,
+    "AUROC": 0.5403612624481523,
+    "base": 0.056033901049960866,
+    "AP_lift": 1.306769258034215,
+    "label": "B \u00b7 turning point in 10d",
+    "label_col": "y_turn",
+    "bank": "crowd + new",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.06758157379739191,
+    "AUROC": 0.5708075337721304,
+    "base": 0.056033901049960866,
+    "AP_lift": 1.206083683824457,
+    "label": "B \u00b7 turning point in 10d",
+    "label_col": "y_turn",
+    "bank": "crowd + new",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.07489919599723432,
+    "AUROC": 0.5556894922573632,
+    "base": 0.056033901049960866,
+    "AP_lift": 1.3366764511086389,
+    "label": "B \u00b7 turning point in 10d",
+    "label_col": "y_turn",
+    "bank": "crowd + new",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.07729299319816664,
+    "AUROC": 0.5588712820410262,
+    "base": 0.056033901049960866,
+    "AP_lift": 1.3793969677258553,
+    "label": "B \u00b7 turning point in 10d",
+    "label_col": "y_turn",
+    "bank": "crowd + price + new",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.07238639138058237,
+    "AUROC": 0.5784234694785468,
+    "base": 0.056033901049960866,
+    "AP_lift": 1.291832087793447,
+    "label": "B \u00b7 turning point in 10d",
+    "label_col": "y_turn",
+    "bank": "crowd + price + new",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.08078760993434492,
+    "AUROC": 0.5709098009380977,
+    "base": 0.056033901049960866,
+    "AP_lift": 1.441763083072035,
+    "label": "B \u00b7 turning point in 10d",
+    "label_col": "y_turn",
+    "bank": "crowd + price + new",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.18585947107764256,
+    "AUROC": 0.5441429382949183,
+    "base": 0.16694107803179573,
+    "AP_lift": 1.1133237742854616,
+    "label": "C \u00b7 captures half the drop",
+    "label_col": "y_halfdd",
+    "bank": "crowd only (shipped)",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.18199325673376132,
+    "AUROC": 0.5392879990260555,
+    "base": 0.16694107803179573,
+    "AP_lift": 1.0901646190346197,
+    "label": "C \u00b7 captures half the drop",
+    "label_col": "y_halfdd",
+    "bank": "crowd only (shipped)",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.1997970887567148,
+    "AUROC": 0.5434121734886783,
+    "base": 0.16694107803179573,
+    "AP_lift": 1.1968120196196488,
+    "label": "C \u00b7 captures half the drop",
+    "label_col": "y_halfdd",
+    "bank": "crowd only (shipped)",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.2604248179188262,
+    "AUROC": 0.6552252602807926,
+    "base": 0.16694107803179573,
+    "AP_lift": 1.5599804493249139,
+    "label": "C \u00b7 captures half the drop",
+    "label_col": "y_halfdd",
+    "bank": "crowd + price (shipped desk)",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.2675062763243581,
+    "AUROC": 0.6834399973304535,
+    "base": 0.16694107803179573,
+    "AP_lift": 1.602399358373669,
+    "label": "C \u00b7 captures half the drop",
+    "label_col": "y_halfdd",
+    "bank": "crowd + price (shipped desk)",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.3368236586320418,
+    "AUROC": 0.696241332355198,
+    "base": 0.16694107803179573,
+    "AP_lift": 2.0176200046335517,
+    "label": "C \u00b7 captures half the drop",
+    "label_col": "y_halfdd",
+    "bank": "crowd + price (shipped desk)",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.19114121505112136,
+    "AUROC": 0.5458384670767794,
+    "base": 0.16694107803179573,
+    "AP_lift": 1.1449621465527882,
+    "label": "C \u00b7 captures half the drop",
+    "label_col": "y_halfdd",
+    "bank": "crowd + new",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.199705176187494,
+    "AUROC": 0.5660404678328017,
+    "base": 0.16694107803179573,
+    "AP_lift": 1.1962614506985394,
+    "label": "C \u00b7 captures half the drop",
+    "label_col": "y_halfdd",
+    "bank": "crowd + new",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.21783987903768268,
+    "AUROC": 0.5558256018109333,
+    "base": 0.16694107803179573,
+    "AP_lift": 1.3048908130100414,
+    "label": "C \u00b7 captures half the drop",
+    "label_col": "y_halfdd",
+    "bank": "crowd + new",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.25893869676789233,
+    "AUROC": 0.6532371814616962,
+    "base": 0.16694107803179573,
+    "AP_lift": 1.5510783793942835,
+    "label": "C \u00b7 captures half the drop",
+    "label_col": "y_halfdd",
+    "bank": "crowd + price + new",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.2659316344328504,
+    "AUROC": 0.6857713926232507,
+    "base": 0.16694107803179573,
+    "AP_lift": 1.592967037041661,
+    "label": "C \u00b7 captures half the drop",
+    "label_col": "y_halfdd",
+    "bank": "crowd + price + new",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.33395830822813816,
+    "AUROC": 0.702561565108649,
+    "base": 0.16694107803179573,
+    "AP_lift": 2.000456161931171,
+    "label": "C \u00b7 captures half the drop",
+    "label_col": "y_halfdd",
+    "bank": "crowd + price + new",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.13137442768922947,
+    "AUROC": 0.5487859446110037,
+    "base": 0.11349834003616832,
+    "AP_lift": 1.1575008731173038,
+    "label": "GET IN (shipped grading)",
+    "label_col": "y_onset",
+    "bank": "crowd only (shipped)",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.13052377631660414,
+    "AUROC": 0.5524488480187608,
+    "base": 0.11349834003616832,
+    "AP_lift": 1.150006037753595,
+    "label": "GET IN (shipped grading)",
+    "label_col": "y_onset",
+    "bank": "crowd only (shipped)",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.1423857076985443,
+    "AUROC": 0.557788854051676,
+    "base": 0.11349834003616832,
+    "AP_lift": 1.2545179749163775,
+    "label": "GET IN (shipped grading)",
+    "label_col": "y_onset",
+    "bank": "crowd only (shipped)",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.29158611784882726,
+    "AUROC": 0.7456630747216946,
+    "base": 0.11349834003616832,
+    "AP_lift": 2.569078259258312,
+    "label": "GET IN (shipped grading)",
+    "label_col": "y_onset",
+    "bank": "crowd + price (shipped desk)",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.2688060073705664,
+    "AUROC": 0.737188899754701,
+    "base": 0.11349834003616832,
+    "AP_lift": 2.368369504654486,
+    "label": "GET IN (shipped grading)",
+    "label_col": "y_onset",
+    "bank": "crowd + price (shipped desk)",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.2886195251778992,
+    "AUROC": 0.7482192763369112,
+    "base": 0.11349834003616832,
+    "AP_lift": 2.5429404966268696,
+    "label": "GET IN (shipped grading)",
+    "label_col": "y_onset",
+    "bank": "crowd + price (shipped desk)",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.1712864864115717,
+    "AUROC": 0.5803353032263932,
+    "base": 0.11349834003616832,
+    "AP_lift": 1.5091541105974602,
+    "label": "GET IN (shipped grading)",
+    "label_col": "y_onset",
+    "bank": "crowd + new",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.1426378288040462,
+    "AUROC": 0.5518921537492627,
+    "base": 0.11349834003616832,
+    "AP_lift": 1.2567393387303467,
+    "label": "GET IN (shipped grading)",
+    "label_col": "y_onset",
+    "bank": "crowd + new",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.15898141705011348,
+    "AUROC": 0.5774325130972618,
+    "base": 0.11349834003616832,
+    "AP_lift": 1.4007378169535445,
+    "label": "GET IN (shipped grading)",
+    "label_col": "y_onset",
+    "bank": "crowd + new",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.29410692836336927,
+    "AUROC": 0.7467783422111025,
+    "base": 0.11349834003616832,
+    "AP_lift": 2.5912883683554027,
+    "label": "GET IN (shipped grading)",
+    "label_col": "y_onset",
+    "bank": "crowd + price + new",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.2484935576430343,
+    "AUROC": 0.7234538989560566,
+    "base": 0.11349834003616832,
+    "AP_lift": 2.189402572441564,
+    "label": "GET IN (shipped grading)",
+    "label_col": "y_onset",
+    "bank": "crowd + price + new",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.28431415119845266,
+    "AUROC": 0.7444081458256673,
+    "base": 0.11349834003616832,
+    "AP_lift": 2.5050071314510043,
+    "label": "GET IN (shipped grading)",
+    "label_col": "y_onset",
+    "bank": "crowd + price + new",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.12479413547229677,
+    "AUROC": 0.5702339820230986,
+    "base": 0.1051850252368485,
+    "AP_lift": 1.186424923046734,
+    "label": "GET OUT (shipped grading)",
+    "label_col": "y_top",
+    "bank": "crowd only (shipped)",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.11752766709280131,
+    "AUROC": 0.5553373167583617,
+    "base": 0.1051850252368485,
+    "AP_lift": 1.117342196079342,
+    "label": "GET OUT (shipped grading)",
+    "label_col": "y_top",
+    "bank": "crowd only (shipped)",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.1270826045497261,
+    "AUROC": 0.5495533655356115,
+    "base": 0.1051850252368485,
+    "AP_lift": 1.2081815283455999,
+    "label": "GET OUT (shipped grading)",
+    "label_col": "y_top",
+    "bank": "crowd only (shipped)",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.2073790339957784,
+    "AUROC": 0.6935994318716605,
+    "base": 0.1051850252368485,
+    "AP_lift": 1.971564236723016,
+    "label": "GET OUT (shipped grading)",
+    "label_col": "y_top",
+    "bank": "crowd + price (shipped desk)",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.2169570552548412,
+    "AUROC": 0.718824291752987,
+    "base": 0.1051850252368485,
+    "AP_lift": 2.062623028005289,
+    "label": "GET OUT (shipped grading)",
+    "label_col": "y_top",
+    "bank": "crowd + price (shipped desk)",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.26226670001215324,
+    "AUROC": 0.7220030120127551,
+    "base": 0.1051850252368485,
+    "AP_lift": 2.493384390236147,
+    "label": "GET OUT (shipped grading)",
+    "label_col": "y_top",
+    "bank": "crowd + price (shipped desk)",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.1403972923387395,
+    "AUROC": 0.5739071588703517,
+    "base": 0.1051850252368485,
+    "AP_lift": 1.3347650202355554,
+    "label": "GET OUT (shipped grading)",
+    "label_col": "y_top",
+    "bank": "crowd + new",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.13285445727321335,
+    "AUROC": 0.5761733011570628,
+    "base": 0.1051850252368485,
+    "AP_lift": 1.2630548595112345,
+    "label": "GET OUT (shipped grading)",
+    "label_col": "y_top",
+    "bank": "crowd + new",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.14163336880887495,
+    "AUROC": 0.5618939587166348,
+    "base": 0.1051850252368485,
+    "AP_lift": 1.3465164693353882,
+    "label": "GET OUT (shipped grading)",
+    "label_col": "y_top",
+    "bank": "crowd + new",
+    "family": "ensemble (shipped)"
+   },
+   {
+    "n": 37049,
+    "AP": 0.20112141781759596,
+    "AUROC": 0.6863484623480294,
+    "base": 0.1051850252368485,
+    "AP_lift": 1.9120727248458076,
+    "label": "GET OUT (shipped grading)",
+    "label_col": "y_top",
+    "bank": "crowd + price + new",
+    "family": "logit"
+   },
+   {
+    "n": 37049,
+    "AP": 0.2023378845772255,
+    "AUROC": 0.7101109558709156,
+    "base": 0.1051850252368485,
+    "AP_lift": 1.9236377433157885,
+    "label": "GET OUT (shipped grading)",
+    "label_col": "y_top",
+    "bank": "crowd + price + new",
+    "family": "monotone GBM"
+   },
+   {
+    "n": 37049,
+    "AP": 0.25102702324109444,
+    "AUROC": 0.7150420574298317,
+    "base": 0.1051850252368485,
+    "AP_lift": 2.386528145768362,
+    "label": "GET OUT (shipped grading)",
+    "label_col": "y_top",
+    "bank": "crowd + price + new",
+    "family": "ensemble (shipped)"
+   }
+  ],
+  "best_vs_shipped": [
+   {
+    "label_col": "y_halfdd",
+    "shipped_lift": 1.2,
+    "best_lift": 2.02,
+    "best_bank": "crowd + price (shipped desk)",
+    "best_family": "ensemble (shipped)",
+    "gain": 0.82
+   },
+   {
+    "label_col": "y_move",
+    "shipped_lift": 1.0,
+    "best_lift": 1.06,
+    "best_bank": "crowd + new",
+    "best_family": "monotone GBM",
+    "gain": 0.06
+   },
+   {
+    "label_col": "y_onset",
+    "shipped_lift": 1.25,
+    "best_lift": 2.59,
+    "best_bank": "crowd + price + new",
+    "best_family": "logit",
+    "gain": 1.34
+   },
+   {
+    "label_col": "y_top",
+    "shipped_lift": 1.21,
+    "best_lift": 2.49,
+    "best_bank": "crowd + price (shipped desk)",
+    "best_family": "ensemble (shipped)",
+    "gain": 1.29
+   },
+   {
+    "label_col": "y_turn",
+    "shipped_lift": 1.06,
+    "best_lift": 1.44,
+    "best_bank": "crowd + price + new",
+    "best_family": "ensemble (shipped)",
+    "gain": 0.38
+   }
+  ],
+  "gain_split": [
+   {
+    "label": "A \u00b7 big move either way",
+    "shipped (crowd only)": 1.0,
+    "+ new crowd features": 0.06,
+    "+ price (rule change)": 0.03,
+    "best available": 1.06
+   },
+   {
+    "label": "B \u00b7 turning point in 10d",
+    "shipped (crowd only)": 1.06,
+    "+ new crowd features": 0.28,
+    "+ price (rule change)": 0.31,
+    "best available": 1.44
+   },
+   {
+    "label": "C \u00b7 captures half the drop",
+    "shipped (crowd only)": 1.2,
+    "+ new crowd features": 0.1,
+    "+ price (rule change)": 0.82,
+    "best available": 2.02
+   },
+   {
+    "label": "GET IN (shipped grading)",
+    "shipped (crowd only)": 1.25,
+    "+ new crowd features": 0.26,
+    "+ price (rule change)": 1.32,
+    "best available": 2.59
+   },
+   {
+    "label": "GET OUT (shipped grading)",
+    "shipped (crowd only)": 1.21,
+    "+ new crowd features": 0.14,
+    "+ price (rule change)": 1.28,
+    "best available": 2.49
+   }
+  ],
+  "year_consistency": [
+   {
+    "label": "A \u00b7 big move either way",
+    "year": 2018,
+    "AP_lift": 1.08,
+    "n": 5301
+   },
+   {
+    "label": "A \u00b7 big move either way",
+    "year": 2019,
+    "AP_lift": 1.07,
+    "n": 4870
+   },
+   {
+    "label": "A \u00b7 big move either way",
+    "year": 2020,
+    "AP_lift": 0.98,
+    "n": 6421
+   },
+   {
+    "label": "A \u00b7 big move either way",
+    "year": 2021,
+    "AP_lift": 1.3,
+    "n": 8368
+   },
+   {
+    "label": "A \u00b7 big move either way",
+    "year": 2022,
+    "AP_lift": 1.02,
+    "n": 6373
+   },
+   {
+    "label": "A \u00b7 big move either way",
+    "year": 2023,
+    "AP_lift": 1.04,
+    "n": 1676
+   },
+   {
+    "label": "A \u00b7 big move either way",
+    "year": 2024,
+    "AP_lift": 1.48,
+    "n": 357
+   },
+   {
+    "label": "A \u00b7 big move either way",
+    "year": 2025,
+    "AP_lift": 1.69,
+    "n": 225
+   },
+   {
+    "label": "A \u00b7 big move either way",
+    "year": 2026,
+    "AP_lift": 1.17,
+    "n": 3458
+   },
+   {
+    "label": "B \u00b7 turning point in 10d",
+    "year": 2018,
+    "AP_lift": 1.04,
+    "n": 5301
+   },
+   {
+    "label": "B \u00b7 turning point in 10d",
+    "year": 2019,
+    "AP_lift": 1.69,
+    "n": 4870
+   },
+   {
+    "label": "B \u00b7 turning point in 10d",
+    "year": 2020,
+    "AP_lift": 1.32,
+    "n": 6421
+   },
+   {
+    "label": "B \u00b7 turning point in 10d",
+    "year": 2021,
+    "AP_lift": 2.09,
+    "n": 8368
+   },
+   {
+    "label": "B \u00b7 turning point in 10d",
+    "year": 2022,
+    "AP_lift": 1.05,
+    "n": 6373
+   },
+   {
+    "label": "B \u00b7 turning point in 10d",
+    "year": 2023,
+    "AP_lift": 1.28,
+    "n": 1676
+   },
+   {
+    "label": "B \u00b7 turning point in 10d",
+    "year": 2026,
+    "AP_lift": 1.31,
+    "n": 3458
+   },
+   {
+    "label": "C \u00b7 captures half the drop",
+    "year": 2018,
+    "AP_lift": 2.06,
+    "n": 5301
+   },
+   {
+    "label": "C \u00b7 captures half the drop",
+    "year": 2019,
+    "AP_lift": 1.55,
+    "n": 4870
+   },
+   {
+    "label": "C \u00b7 captures half the drop",
+    "year": 2020,
+    "AP_lift": 1.3,
+    "n": 6421
+   },
+   {
+    "label": "C \u00b7 captures half the drop",
+    "year": 2021,
+    "AP_lift": 2.19,
+    "n": 8368
+   },
+   {
+    "label": "C \u00b7 captures half the drop",
+    "year": 2022,
+    "AP_lift": 2.6,
+    "n": 6373
+   },
+   {
+    "label": "C \u00b7 captures half the drop",
+    "year": 2023,
+    "AP_lift": 1.83,
+    "n": 1676
+   },
+   {
+    "label": "C \u00b7 captures half the drop",
+    "year": 2024,
+    "AP_lift": 5.06,
+    "n": 357
+   },
+   {
+    "label": "C \u00b7 captures half the drop",
+    "year": 2025,
+    "AP_lift": 0.8,
+    "n": 225
+   },
+   {
+    "label": "C \u00b7 captures half the drop",
+    "year": 2026,
+    "AP_lift": 2.13,
+    "n": 3458
+   },
+   {
+    "label": "GET IN (shipped grading)",
+    "year": 2018,
+    "AP_lift": 2.85,
+    "n": 5301
+   },
+   {
+    "label": "GET IN (shipped grading)",
+    "year": 2019,
+    "AP_lift": 2.22,
+    "n": 4870
+   },
+   {
+    "label": "GET IN (shipped grading)",
+    "year": 2020,
+    "AP_lift": 1.89,
+    "n": 6421
+   },
+   {
+    "label": "GET IN (shipped grading)",
+    "year": 2021,
+    "AP_lift": 4.64,
+    "n": 8368
+   },
+   {
+    "label": "GET IN (shipped grading)",
+    "year": 2022,
+    "AP_lift": 1.98,
+    "n": 6373
+   },
+   {
+    "label": "GET IN (shipped grading)",
+    "year": 2023,
+    "AP_lift": 5.04,
+    "n": 1676
+   },
+   {
+    "label": "GET IN (shipped grading)",
+    "year": 2024,
+    "AP_lift": 2.58,
+    "n": 357
+   },
+   {
+    "label": "GET IN (shipped grading)",
+    "year": 2026,
+    "AP_lift": 3.08,
+    "n": 3458
+   },
+   {
+    "label": "GET OUT (shipped grading)",
+    "year": 2018,
+    "AP_lift": 1.94,
+    "n": 5301
+   },
+   {
+    "label": "GET OUT (shipped grading)",
+    "year": 2019,
+    "AP_lift": 1.89,
+    "n": 4870
+   },
+   {
+    "label": "GET OUT (shipped grading)",
+    "year": 2020,
+    "AP_lift": 1.39,
+    "n": 6421
+   },
+   {
+    "label": "GET OUT (shipped grading)",
+    "year": 2021,
+    "AP_lift": 3.38,
+    "n": 8368
+   },
+   {
+    "label": "GET OUT (shipped grading)",
+    "year": 2022,
+    "AP_lift": 2.82,
+    "n": 6373
+   },
+   {
+    "label": "GET OUT (shipped grading)",
+    "year": 2023,
+    "AP_lift": 2.38,
+    "n": 1676
+   },
+   {
+    "label": "GET OUT (shipped grading)",
+    "year": 2024,
+    "AP_lift": 7.1,
+    "n": 357
+   },
+   {
+    "label": "GET OUT (shipped grading)",
+    "year": 2026,
+    "AP_lift": 2.19,
+    "n": 3458
+   }
+  ],
+  "flag_outcomes": [
+   {
+    "cut": "top 10%",
+    "flags": 330,
+    "hit_rate": 0.16363636363636364,
+    "lift_vs_base": 1.1875736799928769,
+    "median_abs_excess": 0.04098804599271777,
+    "mean_abs_excess": 0.07686412376755715,
+    "share_up": 0.5848484848484848
+   },
+   {
+    "cut": "top 5%",
+    "flags": 201,
+    "hit_rate": 0.14427860696517414,
+    "lift_vs_base": 1.047086799109253,
+    "median_abs_excess": 0.045654298348878686,
+    "mean_abs_excess": 0.09696853017656662,
+    "share_up": 0.5870646766169154
+   },
+   {
+    "cut": "top 3%",
+    "flags": 132,
+    "hit_rate": 0.14393939393939395,
+    "lift_vs_base": 1.0446249962900307,
+    "median_abs_excess": 0.04607522148830634,
+    "mean_abs_excess": 0.1138449294197813,
+    "share_up": 0.5909090909090909
+   },
+   {
+    "cut": "top 1%",
+    "flags": 49,
+    "hit_rate": 0.1836734693877551,
+    "lift_vs_base": 1.3329908652981273,
+    "median_abs_excess": 0.08604382898556184,
+    "mean_abs_excess": 0.4790996593733108,
+    "share_up": 0.4897959183673469
+   }
+  ],
+  "direction_model": {
+   "n": 4465,
+   "AP": 0.6981983077518874,
+   "AUROC": 0.5224883680453756,
+   "base": 0.6855543113101904,
+   "AP_lift": 1.0184434642640239
+  },
+  "five_names_compare": [
+   {
+    "head": "GET IN",
+    "bank": "shipped crowd-only",
+    "flags (all names)": 244,
+    "flags (these 5)": 38,
+    "hit rate (these 5)": 0.263,
+    "hit rate (all)": 0.205
+   },
+   {
+    "head": "GET IN",
+    "bank": "adopted (crowd + new)",
+    "flags (all names)": 133,
+    "flags (these 5)": 16,
+    "hit rate (these 5)": 0.312,
+    "hit rate (all)": 0.218
+   },
+   {
+    "head": "GET OUT",
+    "bank": "shipped crowd-only",
+    "flags (all names)": 150,
+    "flags (these 5)": 28,
+    "hit rate (these 5)": 0.321,
+    "hit rate (all)": 0.213
+   },
+   {
+    "head": "GET OUT",
+    "bank": "adopted (crowd + new)",
+    "flags (all names)": 148,
+    "flags (these 5)": 34,
+    "hit rate (these 5)": 0.265,
+    "hit rate (all)": 0.23
+   },
+   {
+    "head": "TURN",
+    "bank": "shipped crowd-only",
+    "flags (all names)": 278,
+    "flags (these 5)": 50,
+    "hit rate (these 5)": 0.08,
+    "hit rate (all)": 0.079
+   },
+   {
+    "head": "TURN",
+    "bank": "adopted (crowd + new)",
+    "flags (all names)": 180,
+    "flags (these 5)": 25,
+    "hit rate (these 5)": 0.04,
+    "hit rate (all)": 0.061
+   }
+  ],
+  "example_card": {
+   "name": "ASTS",
+   "date": "2026-05-28",
+   "numeric": {
+    "score_percentile": 0.999,
+    "direction": "no direction read"
+   },
+   "qualitative": {
+    "summary": "gateway unavailable: LLM unavailable: dimsum_lite not importable (No module named 'dimsum_lite') - the Apollo gateway only exists on the desk machine (JFrog/LEVA install)"
+   },
+   "model": "gpt-4o",
+   "mock": false
+  }
+ },
+ "provisional_because": "2023Q2-2025Q4 coverage gap: tuned on a mania (2021-22) and a recovery (2026) with the flat middle years missing"
+}
