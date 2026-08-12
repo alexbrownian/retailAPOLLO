@@ -406,6 +406,14 @@ def run_ml_tournament(frame: pd.DataFrame, episodes: pd.DataFrame,
 
     entries = [("logit", make_logit_fit), ("gbm", make_gbm_fit),
                ("mlp", make_mlp_fit), ("ens", make_ens_fit)]
+    import time as _time
+    _t_all = _time.time()
+    _done = 0
+    _total = len(entries) * 2 * (2 if cand_px is not None else 1)
+    print(f"  model tournament: {_total} fits to run "
+          f"(4 families x 2 heads x crowd-only/crowd+price). This is "
+          f"the slow stage - typically 10-20 min on a laptop; every "
+          f"fit prints as it starts.", flush=True)
     for head, label, mode in (("get_out", "y_top", "top"),
                               ("get_in", "y_onset", "onset")):
         for mname, maker in entries:
@@ -415,19 +423,30 @@ def run_ml_tournament(frame: pd.DataFrame, episodes: pd.DataFrame,
             for vname, vframe, vbank in variants:
                 import time as _time
                 _t0 = _time.time()
+                # ANNOUNCE BEFORE, not only after (desk 2026-08-11: "it
+                # stopped at [get_in] stuff" - it had not stopped, the
+                # next model was fitting in silence for minutes). The
+                # entry line prints immediately, the timing line
+                # completes it, so a long fit looks like work rather
+                # than a hang.
+                _done += 1
+                print(f"    [{head}] {vname}: fitting "
+                      f"({_done}/{_total}, {len(vframe):,} days) ...",
+                      end="", flush=True)
                 wf = run_tournament_entry(vframe, episodes, vbank, label,
                                           mode, maker(label),
                                           EUPHORIA_FA_BUDGET_PER_IY,
                                           chooser=choose_threshold_f1)
                 _summarise_entry(wf, sym_by, pxmap, mode)
                 results[head][vname] = wf
-                print(f"    [{head}] {vname}: {_time.time() - _t0:.0f}s",
+                print(f" done in {_time.time() - _t0:.0f}s "
+                      f"(elapsed {_time.time() - _t_all:.0f}s)",
                       flush=True)
 
     # the incumbents, unchanged, for the same table
     if series is not None and boom is not None:
         fpx = frame.merge(boom, on=["name", "date"], how="left")
-        fpx["boom_state"] = fpx["boom_state"].fillna(False).astype(bool)
+        fpx["boom_state"] = fpx["boom_state"].eq(True)
         end_f, onset_f = desk_candidacy(fpx)
         for head, cand_f, fit, feats, label, mode in (
                 ("get_out", end_f, desk_end_fit,

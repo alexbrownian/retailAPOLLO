@@ -233,7 +233,8 @@ def main():
         print("\n--- hydrate ABSTRACTED_DATA -> data/processed ---")
         abstracted_data.hydrate()
 
-    print("\ndone. next: re-run notebooks 08/09/10 (update_data.py does this).")
+    print("\ndone. next: recompute the analytics "
+          "(update_data.py does this: python -m analytics.run_analytics)")
     return 0
 
 

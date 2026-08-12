@@ -13,6 +13,8 @@
 #   python ingestion/fetch_reddit_arctic.py                  # fetch_all calls this
 #   python ingestion/fetch_reddit_arctic.py --lookback-days 14
 #   python ingestion/fetch_reddit_arctic.py --test           # one page, writes nothing
+#   python ingestion/fetch_reddit_arctic.py --backfill 2023-04-01 2023-07-01
+#                                                          # fill a HISTORICAL gap
 #
 # OUTPUT: data/raw/RedditLive/reddit_live_arctic_<timestamp>.jsonl.zst
 #   one line per post, raw JSON + "_backend": "official". The same
@@ -134,12 +136,33 @@ def main():
                         "shared fetch knobs don't error)")
     p.add_argument("--test", action="store_true",
                    help="one page from one subreddit, print, write nothing")
+    p.add_argument("--backfill", nargs=2, metavar=("START", "END"),
+                   help="fetch an explicit PAST window (YYYY-MM-DD "
+                        "YYYY-MM-DD) and IGNORE the watermark - the only "
+                        "way to fill a historical gap, because the "
+                        "incremental window is max(lookback, watermark) "
+                        "and therefore cannot walk backwards. The "
+                        "watermark is left untouched by a backfill, so "
+                        "the next ordinary run still resumes from the "
+                        "present. Dedup is by post id, so overlapping "
+                        "an already-fetched span is harmless.")
     args = p.parse_args()
 
     subs = read_subreddits()
     today = datetime.date.today()
-    after = (today - datetime.timedelta(days=args.lookback_days)).isoformat()
-    before = (today + datetime.timedelta(days=1)).isoformat()
+    if args.backfill:
+        after, before = args.backfill
+        try:
+            datetime.date.fromisoformat(after)
+            datetime.date.fromisoformat(before)
+        except ValueError:
+            p.error("--backfill dates must be YYYY-MM-DD")
+        print(f"BACKFILL {after} -> {before} across {len(subs)} "
+              "subreddits (watermark ignored and left unchanged)")
+    else:
+        after = (today
+                 - datetime.timedelta(days=args.lookback_days)).isoformat()
+        before = (today + datetime.timedelta(days=1)).isoformat()
 
     if args.test:
         rows = fetch_page(subs[0], after, before) or []
@@ -166,7 +189,7 @@ def main():
         # already fetched (Arctic archives by creation time, complete).
         sub_after = after
         wm = marks.get(sub)
-        if wm:
+        if wm and not args.backfill:
             sub_after = str(max(lookback_epoch, int(wm) - OVERLAP_S))
         got = 0
         newest_seen = int(wm) if wm else 0
@@ -197,8 +220,10 @@ def main():
             time.sleep(PAUSE_S)
         wm_note = " (incremental)" if wm else ""
         print(f"  r/{sub:<24} {got:>5} new posts{wm_note}")
-        # advance the watermark only on a clean finish with data seen
-        if completed and newest_seen:
+        # advance the watermark only on a clean finish with data seen -
+        # and NEVER on a backfill: the watermark is "how far forward we
+        # have come", and a historical window would drag it backwards
+        if completed and newest_seen and not args.backfill:
             marks[sub] = newest_seen
         total += got
         time.sleep(PAUSE_S)

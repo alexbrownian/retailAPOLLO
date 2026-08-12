@@ -588,10 +588,24 @@ def main():
     # ---- 4b. PRICES: pull Bloomberg closes for the window. Non-fatal:
     #          without a Terminal/blpapi the pull is skipped and the
     #          dashboard's price panels show their 'no prices' hint. ----
+    prices_rc = None
     if not dry and not args.skip_prices:
         log("pulling Bloomberg prices (Terminal must be open)", fh)
-        run([py, "pull_bloomberg_prices.py"], fh, dry, show=True,
-            stage="prices")
+        prices_rc = run([py, "pull_bloomberg_prices.py"], fh, dry,
+                        show=True, stage="prices")
+        if prices_rc != 0:
+            # NOT fatal, but it must not pass silently either: the rest
+            # of the run is valid on the prices already on disk, and the
+            # RUN SUMMARY says how stale they now are (desk 2026-08-11 -
+            # the summary used to print "prices: present" after a failed
+            # pull, which reads as success).
+            log("PRICE PULL FAILED - continuing on the prices already "
+                "on disk. Almost always this is the Bloomberg Terminal "
+                "not being open/logged in on this machine (blpapi "
+                "cannot reach 127.0.0.1:8194). Open the Terminal and "
+                "re-run, or `python update_data.py --skip-prices` to "
+                "stop trying. Everything else in this run is unaffected.",
+                fh)
         if not os.path.exists(PRICES_PATH):
             log("no data/prices/prices.parquet - price overlays will be "
                 "empty. Open the Bloomberg Terminal (and pip install "
@@ -690,7 +704,29 @@ def main():
             if os.path.exists(path_):
                 s = pd.read_parquet(path_)
                 log(f"  {label:<13} : {len(s)} on file", fh)
-        log(f"  prices        : {'present' if os.path.exists(PRICES_PATH) else 'MISSING (run pull_bloomberg_prices.py with the Terminal open)'}", fh)
+        # prices: say how FRESH, not merely whether the file exists -
+        # a stale store after a failed pull is the case that matters
+        if os.path.exists(PRICES_PATH):
+            try:
+                import pandas as pd          # local: keeps startup fast
+                _pxd = pd.read_parquet(PRICES_PATH, columns=["date"])
+                _newest = pd.to_datetime(_pxd["date"]).max()
+                _lag = (pd.Timestamp.now().normalize()
+                        - _newest.normalize()).days
+                _fresh = (f"newest close {_newest:%Y-%m-%d} "
+                          f"({_lag}d old)")
+            except Exception:                            # noqa: BLE001
+                _fresh = "present (could not read the newest date)"
+            if prices_rc not in (None, 0):
+                _msg = f"STALE - PULL FAILED THIS RUN | {_fresh}"
+            elif prices_rc == 0:
+                _msg = f"updated | {_fresh}"
+            else:
+                _msg = f"not pulled this run | {_fresh}"
+        else:
+            _msg = ("MISSING (run pull_bloomberg_prices.py with the "
+                    "Terminal open)")
+        log(f"  prices        : {_msg}", fh)
         # ---- INFLUENCE BOARD + the cadence this run's own timings imply ----
         infl = os.path.join(config.REFERENCE_DIR, "influence", "author_scores.parquet")
         if os.path.exists(infl):

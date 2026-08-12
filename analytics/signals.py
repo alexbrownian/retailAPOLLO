@@ -197,12 +197,12 @@ def make_decisions(names, all_days, az_f, cz_f, dv_f, crowd_f, xrise_f,
         # downcast back to bool that fillna used to do. Stating the dtype
         # keeps the identical result and drops the FutureWarning.
         newly_crowded = (crowd_f[name]
-                         & ~crowd_f[name].shift(1).fillna(False).astype(bool)
+                         & ~crowd_f[name].shift(1).eq(True)
                          if name in crowd_f.columns
                          else pd.Series(False, index=all_days))
         sell_t = crosses_below(cz_f[name], -k) | newly_crowded
 
-        for day in all_days[(buy_t | sell_t).fillna(False).astype(bool)]:
+        for day in all_days[(buy_t | sell_t).eq(True)]:
             az = _val(az_f, day, name)
             cz = _val(cz_f, day, name)
             dv = _val(dv_f, day, name)

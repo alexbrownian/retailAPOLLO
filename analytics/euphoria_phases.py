@@ -882,8 +882,7 @@ def rebuild_phase_files(verbose: bool = True,
     # holding True/False/NaN, and pandas 2.x deprecated silently
     # downcasting that back to bool on fillna. Saying the dtype out loud
     # keeps the behaviour identical and drops the FutureWarning.
-    fpx_live["boom_state"] = (fpx_live["boom_state"]
-                              .fillna(False).astype(bool))
+    fpx_live["boom_state"] = fpx_live["boom_state"].eq(True)
 
     desk_path = _os.path.join(PROCESSED_DIR, "euphoria_desk_report.json")
     desk_stored = None
@@ -958,8 +957,7 @@ def rebuild_phase_files(verbose: bool = True,
 
         if model_name == "rules":
             fpx_j = fj.merge(boom, on=["name", "date"], how="left")
-            fpx_j["boom_state"] = (fpx_j["boom_state"]
-                                   .fillna(False).astype(bool))
+            fpx_j["boom_state"] = fpx_j["boom_state"].eq(True)
             end_j, onset_j = desk_candidacy(fpx_j)
 
             def _frozen(cand, fit, feats, mode):
@@ -1147,7 +1145,7 @@ def rebuild_phase_files(verbose: bool = True,
         cut."""
         by = {}
         sc = scored.merge(_b120, on=["name", "date"], how="left")
-        sc["boomed120"] = sc["boomed120"].fillna(False).astype(bool)
+        sc["boomed120"] = sc["boomed120"].eq(True)
         for name, g in sc.sort_values("date").groupby("name"):
             gate = (g["boomed120"] if gate_boomed
                     else ~g["boomed120"]).tolist()
@@ -1202,7 +1200,7 @@ def rebuild_phase_files(verbose: bool = True,
                     ds.loc[(ds["name"] == _n) & (ds["date"] == d),
                            _gi] = False
     ds = ds.merge(_b120, on=["name", "date"], how="left")
-    ds["boomed120"] = ds["boomed120"].fillna(False).astype(bool)
+    ds["boomed120"] = ds["boomed120"].eq(True)
     ds["symbol"] = ds["name"].map(sym_by)
     _safe_write(ds, _os.path.join(PROCESSED_DIR, "euphoria_desk.parquet"))
     if verbose:

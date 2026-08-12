@@ -69,6 +69,11 @@ desktop.ini
 data/reference/pipeline_stage_times.json
 data/reference/reddit_comments_cost.json
 
+# Backfill progress ledger (tools/backfill_reddit.py): which historical
+# chunks THIS machine has already pulled. Local operational state - the
+# data it describes lands in data/raw, which is never committed either.
+data/reference/reddit_backfill_progress.json
+
 # AI layer: local-only text + operational state (never committed - the
 # same text-free boundary as data/raw)
 data/reference/agentic_samples.jsonl

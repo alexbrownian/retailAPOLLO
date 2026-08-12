@@ -126,7 +126,8 @@ def main():
         print("dry-run: nothing written.")
         return 0
 
-    print("done. next: notebooks 08/09/10 (update_data.py runs them).")
+    print("done. next: the analytics stage "
+          "(update_data.py runs it: python -m analytics.run_analytics)")
     return 0
 
 
