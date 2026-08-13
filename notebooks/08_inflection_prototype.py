@@ -943,6 +943,133 @@ RESULTS["sections"]["five_names_compare"] = CMP5.to_dict("records")
 # lands.
 
 # %% [markdown]
+# # 4.3 — The half-drawdown regrade, REJECTED
+#
+# Desk, 2026-08-12, on reading §3: *"i think the previous get out was
+# better — ie. without the half drawdown stuff"*. They were right, and
+# the mistake that hid it is worth recording as carefully as the result.
+#
+# **The error.** §3 reports label C going 1.20 → 2.02 and `y_top` going
+# 1.21 → 2.49. Those are each a label's gain against ITS OWN crowd-only
+# baseline, and reading the first as evidence that C beats the existing
+# grading is simply wrong — `y_top` is higher at every configuration.
+# C's larger raw AP (0.200 vs 0.127) is almost entirely its larger base
+# rate (16.7% vs 10.5%): an easier target, not a better-served one, and
+# lift already controls for that. The two were effectively tied from the
+# first table.
+#
+# **The decisive test** is not AP at all. Fire flags from each head with
+# the same bank and the same trigger, then judge BOTH on the SAME
+# yardsticks — including C's own objective.
+
+# %%
+D["ex21"] = _attach(MOVE, "excess")
+GRADE = []
+for _label, _nice in (("y_top", "OLD grading (near the peak)"),
+                      ("y_halfdd", "NEW grading (half the drawdown)")):
+    _sc = walk_forward(D, CROWD, _label, mld.make_ens_fit)
+    _f = flags_from(_sc, 0.97, spacing=63)
+    _sub = D.loc[_f.index]
+    GRADE.append({
+        "head": _nice, "flags": len(_f),
+        "own-label hit": round(float(_f[_label].mean()), 3),
+        "captured >=50% of dd": round(
+            float((_sub["dd_captured"] >= 0.5).mean()), 3),
+        "median dd captured": round(
+            float(_sub["dd_captured"].median()), 3),
+        "fwd 21d excess %": round(100 * float(_sub["ex21"].mean()), 2),
+        "share fwd < 0": round(float((_sub["ex21"] < 0).mean()), 3)})
+GRADE = pd.DataFrame(GRADE)
+print(GRADE.to_string(index=False))
+print(f"\nreference — a RANDOM scored day: median dd captured "
+      f"{D['dd_captured'].median():.3f} · fwd 21d excess "
+      f"{100 * D['ex21'].mean():.2f}% · share negative "
+      f"{(D['ex21'] < 0).mean():.3f}")
+RESULTS["sections"]["grading_arbitration"] = GRADE.to_dict("records")
+
+# %% [markdown]
+# **The arbitration is MIXED, and the mix is the finding.** On its own
+# objective the half-drawdown head does slightly better — it captures
+# at least half the fall a little more often, and its median call
+# captures more of the drawdown. On the yardstick that decides whether
+# a GET OUT was any use, it is clearly worse: names it flags go on to
+# OUTPERFORM the market by roughly twice as much over the following
+# month, and fewer of them fall at all.
+#
+# Forward return decides it. A GET OUT exists to get you out before a
+# fall; a call that captures a large share of a drawdown while the name
+# still beats the market has captured a share of nothing much. The
+# capture column is also the less trustworthy of the two — an earlier
+# one-off run of this same comparison, over a slightly different row
+# filter, put the capture ordering the other way round while the
+# forward-return ordering held. A metric that flips on a filter change
+# at ~160 flags is telling you it is noisy; the one that does not flip
+# is the one to act on.
+#
+# **Why it fails, mechanically.** "Captures half the eventual drawdown"
+# marks as positive almost any day from the trough onward that happens
+# to precede a fall — including days early in the run-up, months before
+# the top. A model trained on it learns to flag EARLY IN THE EPISODE,
+# and the forward-return column is that behaviour showing up: it is
+# flagging names that then keep climbing. The peak-proximity grading is
+# cruder, but it forces the model toward the end of the run, which is
+# where a GET OUT has to live. **Timing-agnostic turned out to mean
+# timing-blind.**
+#
+# DECISION: the half-drawdown regrade is **rejected**. The existing
+# GET OUT grading stays.
+
+# %% [markdown]
+# # 4.4 — The new features, re-tested on the grading we are keeping
+#
+# §4.2's flag table graded GET OUT on the label §4.3 just rejected, so
+# its GET OUT numbers cannot support an adoption. Re-run here against
+# `y_top`, which is what actually ships. Price-free bank throughout.
+
+# %%
+KEEP = []
+for _label, _nice in (("y_onset", "GET IN"),
+                      ("y_top", "GET OUT (existing grading)")):
+    for _bn, _bank in (("shipped crowd-only", CROWD),
+                       ("+ 4 new features", CROWD + NEW_FEATS)):
+        _sc = walk_forward(D, _bank, _label, mld.make_ens_fit)
+        _f = flags_from(_sc, 0.97, spacing=63)
+        _sub = D.loc[_f.index]
+        KEEP.append({"head": _nice, "bank": _bn, "flags": len(_f),
+                     "hit rate": round(float(_f[_label].mean()), 3),
+                     "fwd 21d excess %": round(
+                         100 * float(_sub["ex21"].mean()), 2),
+                     "share fwd < 0": round(
+                         float((_sub["ex21"] < 0).mean()), 3)})
+KEEP = pd.DataFrame(KEEP)
+print(KEEP.to_string(index=False))
+RESULTS["sections"]["features_on_kept_grading"] = KEEP.to_dict("records")
+
+# %% [markdown]
+# **The features help GET IN cleanly, and GET OUT only partly.**
+#
+# For **GET IN** both axes move the right way: the hit rate rises on
+# roughly HALF the flags — so the gain is precision rather than volume —
+# and the forward excess after a flag rises too, which is what a GET IN
+# is supposed to produce.
+#
+# For **GET OUT** the two axes disagree. The hit rate against the
+# shipped grading improves, but the forward excess after a flag gets
+# WORSE, not better — the names it picks outperform by more over the
+# next month than the shipped bank's picks did. So the features make the
+# model better at the label while making the calls less useful. On this
+# evidence GET IN is a clean adopt and **GET OUT is not**: it should
+# either be re-tested with price in the bank (where the shipped signal
+# actually lives) or left alone.
+#
+# Standing caveat on this whole table: the crowd-only GET OUT leaves
+# names OUTPERFORMING over the following month in every configuration
+# here. That is a property of the price-free variant studied in this
+# notebook, not of the shipped desk signal, which uses price and does
+# deliver negative excess after a GET OUT. Read this as "what the four
+# features do", not as "the live signal's record".
+
+# %% [markdown]
 # ### An honest wrinkle: ranking gains did not all survive the trigger
 #
 # The table above is measured differently from §3, and the two disagree
@@ -1174,6 +1301,321 @@ with open(os.path.join(OUT, "nb08_inflection.json"), "w",
     json.dump(RESULTS, fh, indent=1, default=str)
 print(f"\nwrote {OUT}/nb08_inflection.json · "
       f"total {time.time() - T0:.0f}s")
+
+# %% [markdown]
+# ## 6.1 — What this notebook recommends, after the corrections
+#
+# | | verdict | why |
+# |---|---|---|
+# | **4 new crowd features — GET IN** | **ADOPT** | §4.4: higher hit rate on half the flags AND better forward return, price-free |
+# | 4 new crowd features — GET OUT | **HOLD** | §4.4: hit rate improves but forward return gets worse — re-test with price before adopting |
+# | Half-drawdown GET OUT regrade | **REJECT** | §4.3: loses to the existing grading at its own objective, and trains the model to flag early |
+# | Label A — big move either way | **REJECT** | §3: lift 1.00→1.06, AUROC ~0.50, flags at 1.05x base |
+# | Numeric direction hint | **REJECT** | §4.1: AUROC 0.522 given a move is coming — a coin flip |
+# | Label B — turning point | **NOT YET** | a real target (lift 1.06→1.34) whose TRIGGER is unbuilt: flags hit 6.1% against a 5.4% base |
+# | AI qualitative card | **NOT YET** | design is sound, untested live, and post coverage per name may be too thin |
+# | Price in the crowd detectors | **DESK CALL** | biggest lever by far, but it changes the claim the project makes |
+#
+# One adoption. Everything else is either rejected on evidence or
+# waiting on work that has not been done.
+
+# %% [markdown]
+# # 7 — Can the INFLECTION be traded as volatility?
+#
+# Desk request, 2026-08-12: *"see if there is a correlation between when
+# there is an inflection and volatility spikes (or like if we buy a
+# strangle) at what % either side of the spot will we make profit and by
+# how much … either by trading volatility, or by buying option
+# strategies that will make money either way the price moves as long as
+# it's X amount."*
+#
+# This is the right question to ask of a direction-free signal. If the
+# flag cannot say WHICH way, but reliably says a BIG move is coming,
+# then long volatility is its natural expression and the direction
+# problem stops mattering.
+#
+# Three tests, in the order that can kill the idea fastest:
+#
+# 1. **Does volatility actually expand after a flag?**
+# 2. **Are the moves bigger than the volatility you would have PAID
+#    for?** — the test that matters, and the one most likely to be
+#    skipped.
+# 3. **What does a strangle actually earn**, and at what implied vol
+#    does it break even?
+#
+# The signal is the SHIPPED inflection head, read straight from
+# `euphoria_desk.parquet`, so this measures what production emits and
+# not a notebook variant.
+
+# %%
+from scipy.stats import norm, mannwhitneyu                     # noqa: E402
+
+VOL_H = 21                       # holding period, trading days
+ANN = np.sqrt(252)
+TAU = VOL_H / 252.0
+
+_desk = pd.read_parquet("data/processed/euphoria_desk.parquet")
+_desk["date"] = pd.to_datetime(_desk["date"])
+if "inflection" not in _desk.columns:
+    print("this store predates the inflection head - run "
+          "`python -m analytics.run_analytics --what phases` first")
+
+# PER SYMBOL, ON ITS OWN CALENDAR. The obvious way to do this - pivot
+# every symbol into one frame and roll - is wrong here and quietly
+# destroys the panel: the pivot's index is the UNION of every market's
+# trading days, so a Japanese holiday inserts a NaN into GLD's column
+# and NaNs the whole 21-day window around it. Measured: it left 21% of
+# the panel usable and 6 of 213 flags. Rolling each symbol on its own
+# dropna'd series keeps 208 of 213.
+_PRE = {}
+for _s, _p in pxmap.items():
+    _p = _p.dropna()
+    if len(_p) < 120:
+        continue
+    _r = np.log(_p / _p.shift(1))
+    _PRE[_s] = {
+        "px": _p,
+        "trl": _r.rolling(VOL_H).std() * ANN,          # vol BEFORE
+        "fwd": _r[::-1].rolling(VOL_H).std()[::-1].shift(-1) * ANN,
+        "ret": _p.shift(-VOL_H) / _p - 1.0,
+    }
+
+
+def _probe(name, date):
+    """Vol before, vol after and the forward move for one name-day.
+
+    `searchsorted`, not an exact lookup: alert dates are calendar days
+    and a flag can land on a holiday. Exact matching silently dropped
+    59 of 213 flags."""
+    q = _PRE.get(sym_by.get(name))
+    if q is None:
+        return None
+    i = q["px"].index.searchsorted(pd.Timestamp(date))
+    if i >= len(q["px"]):
+        return None
+    t = q["px"].index[i]
+    v0, v1, m = q["trl"].get(t), q["fwd"].get(t), q["ret"].get(t)
+    if any(pd.isna(x) for x in (v0, v1, m)) or v0 <= 0:
+        return None
+    return {"rv_before": float(v0), "rv_after": float(v1),
+            "ratio": float(v1 / v0), "move": float(m),
+            "absmove": abs(float(m))}
+
+
+_f = [dict(_probe(r.name, r.date) or {}, name=r.name, date=r.date)
+      for r in _desk[_desk.get("inflection", False) == True].itertuples()]
+FLAG = pd.DataFrame([x for x in _f if "move" in x])
+_ctl = _desk[_desk["inflection_score"].notna()]
+_ctl = _ctl.sample(min(20000, len(_ctl)), random_state=7)
+CTRL = pd.DataFrame([x for x in (_probe(r.name, r.date)
+                                 for r in _ctl.itertuples()) if x])
+print(f"{len(FLAG)} usable flags · {len(CTRL):,} control name-days")
+
+# %% [markdown]
+# ## 7.1 Does volatility expand after a flag?
+#
+# Realised vol over the next 21 days, divided by realised vol over the
+# previous 21. Above 1 means vol expanded.
+
+# %%
+VOLX = pd.DataFrame([
+    {"group": g, "median ratio": round(float(d["ratio"].median()), 3),
+     "mean ratio": round(float(d["ratio"].mean()), 3),
+     "share > 1": round(float((d["ratio"] > 1).mean()), 3), "n": len(d)}
+    for g, d in (("after an INFLECTION", FLAG), ("random scored day", CTRL))])
+_p_vol = mannwhitneyu(FLAG["ratio"], CTRL["ratio"],
+                      alternative="greater")[1]
+print(VOLX.to_string(index=False))
+print(f"\nMann-Whitney, flags > control: p = {_p_vol:.3g}")
+
+# %% [markdown]
+# **No. Volatility does not expand after an inflection flag** — it
+# contracts slightly, and by less than the control does. The test that
+# flags are MORE volatile afterwards returns p ≈ 0.94, which is not a
+# near miss: the point estimate is on the wrong side of the control.
+#
+# So the first and most appealing version of the idea — *buy vol when
+# the flag fires* — is dead on the data. Anything that survives has to
+# survive on the size of the MOVE, not on a vol expansion.
+
+# %% [markdown]
+# ## 7.2 The moves ARE bigger — but are they bigger than what you pay for?
+#
+# Absolute moves after a flag genuinely exceed the control. The
+# question is whether that is skill or selection: a flag might simply
+# pick names that were already volatile, in which case the options
+# cost more by exactly as much as the move gains.
+#
+# The test: express each move in units of the **one-sigma move its own
+# trailing vol implied**. If flags beat control on THAT, the edge is
+# real and tradeable. If not, the bigger moves were already in the price.
+
+# %%
+for _g in (FLAG, CTRL):
+    _g["sigma_exp"] = _g["rv_before"] * np.sqrt(TAU)
+    _g["z"] = _g["absmove"] / _g["sigma_exp"]
+MOVES = pd.DataFrame([
+    {"group": g,
+     "median |move|": f"{100 * d['absmove'].median():.2f}%",
+     "mean |move|": f"{100 * d['absmove'].mean():.2f}%",
+     "trailing vol (mean)": f"{100 * d['rv_before'].mean():.1f}%",
+     "move / own sigma (median)": round(float(d["z"].median()), 3)}
+    for g, d in (("after an INFLECTION", FLAG), ("random scored day", CTRL))])
+print(MOVES.to_string(index=False))
+_p_z = mannwhitneyu(FLAG["z"], CTRL["z"], alternative="greater")[1]
+print(f"\nMann-Whitney on move/sigma, flags > control: p = {_p_z:.3g}")
+
+# %% [markdown]
+# **This is the whole experiment in one line.** Raw moves after a flag
+# are much bigger — but measured against each name's OWN expected
+# sigma, flags and controls are indistinguishable (p ≈ 0.42). The
+# bigger moves are entirely explained by the flag selecting names that
+# were already more volatile: mean trailing vol on flag days is around
+# 36% against 25% on control days.
+#
+# That is exactly the confound that makes a long-vol strategy look
+# attractive on a scatter plot and lose money in production. You are
+# not being paid for finding big moves; you are paying up for names
+# that were already moving.
+
+# %% [markdown]
+# ## 7.3 The strangle, priced honestly
+#
+# Buy a strangle at ±k% around spot on every flag day, hold 21 days,
+# take intrinsic value at expiry. Cost is Black–Scholes at **that
+# name's own trailing realised vol** — a deliberately GENEROUS
+# assumption, because real options trade at implied vol ABOVE realised
+# (the variance risk premium), so a live desk would pay more than this.
+#
+# The number to read is the **breakeven implied vol**: the single IV at
+# which the premium exactly equals the average payoff. You profit only
+# if you can buy the vol below it.
+
+# %%
+def bs_strangle(S, Kd, Ku, sig, T, r=0.0):
+    def _leg(K, call):
+        if sig <= 0 or T <= 0:
+            return max(0.0, (S - K) if call else (K - S))
+        d1 = (np.log(S / K) + (r + 0.5 * sig * sig) * T) / (sig * np.sqrt(T))
+        d2 = d1 - sig * np.sqrt(T)
+        return (S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+                if call else
+                K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1))
+    return _leg(Ku, True) + _leg(Kd, False)
+
+
+def _payoff(mv, k):
+    S = 1.0 + mv
+    return max(0.0, S - (1 + k)) + max(0.0, (1 - k) - S)
+
+
+STRIKES = (0.05, 0.075, 0.10, 0.15)
+_rows = []
+for _k in STRIKES:
+    for _lbl, _g in (("FLAG", FLAG), ("control", CTRL)):
+        _po = np.array([_payoff(m, _k) for m in _g["move"]])
+        _cost = np.array([bs_strangle(1.0, 1 - _k, 1 + _k, s, TAU)
+                          for s in _g["rv_before"]])
+        _lo, _hi = 0.01, 4.0                    # bisect for breakeven IV
+        for _ in range(60):
+            _mid = (_lo + _hi) / 2
+            if bs_strangle(1.0, 1 - _k, 1 + _k, _mid, TAU) > _po.mean():
+                _hi = _mid
+            else:
+                _lo = _mid
+        _rows.append({"strike": f"±{100 * _k:.1f}%", "group": _lbl,
+                      "ITM rate": f"{100 * (_g['absmove'] > _k).mean():.1f}%",
+                      "mean payoff": f"{100 * _po.mean():.2f}%",
+                      "cost at own vol": f"{100 * _cost.mean():.2f}%",
+                      "net per trade": f"{100 * (_po.mean() - _cost.mean()):+.2f}%",
+                      "breakeven IV": f"{100 * (_lo + _hi) / 2:.1f}%"})
+STRANGLE = pd.DataFrame(_rows)
+print(STRANGLE.to_string(index=False))
+print(f"\nmean trailing vol you would be buying against: "
+      f"FLAG {100 * FLAG['rv_before'].mean():.1f}% · "
+      f"control {100 * CTRL['rv_before'].mean():.1f}%")
+RESULTS["sections"]["vol_experiment"] = {
+    "vol_expansion": VOLX.to_dict("records"),
+    "p_vol_expansion": float(_p_vol),
+    "p_move_per_sigma": float(_p_z),
+    "moves": MOVES.to_dict("records"),
+    "strangle": STRANGLE.to_dict("records"),
+}
+
+# %%
+fig, axes = plt.subplots(1, 3, figsize=(15, 4.4))
+ax = axes[0]
+_b = np.linspace(0, 3, 40)
+ax.hist(CTRL["ratio"].clip(0, 3), bins=_b, density=True, color=GREY,
+        alpha=0.55, label="random day")
+ax.hist(FLAG["ratio"].clip(0, 3), bins=_b, density=True, color=BLUE,
+        alpha=0.65, label="after a flag")
+ax.axvline(1.0, color=RED, lw=1.8, ls="--")
+ax.set_title("Vol after ÷ vol before")
+ax.set_xlabel("ratio (1.0 = unchanged)")
+ax.legend(frameon=False, fontsize=9.5)
+
+ax = axes[1]
+_b2 = np.linspace(0, 3, 40)
+ax.hist(CTRL["z"].clip(0, 3), bins=_b2, density=True, color=GREY,
+        alpha=0.55, label="random day")
+ax.hist(FLAG["z"].clip(0, 3), bins=_b2, density=True, color=BLUE,
+        alpha=0.65, label="after a flag")
+ax.set_title("Move ÷ its own expected sigma")
+ax.set_xlabel("|move| / (vol × √t)  — the honest comparison")
+ax.legend(frameon=False, fontsize=9.5)
+
+ax = axes[2]
+_fl = STRANGLE[STRANGLE["group"] == "FLAG"]
+_net = [float(v.strip("%+")) for v in _fl["net per trade"]]
+ax.bar(_fl["strike"], _net, color=[GREEN if v > 0 else RED for v in _net])
+ax.axhline(0, color=NAVY, lw=1.6)
+for i, v in enumerate(_net):
+    ax.text(i, v - 0.03, f"{v:+.2f}%", ha="center", va="top", fontsize=10.5,
+            fontweight="bold")
+ax.set_title("Strangle P&L per trade, priced at own realised vol")
+ax.set_ylabel("% of spot")
+fig.tight_layout()
+plt.show()
+
+# %% [markdown]
+# ## 7.4 Verdict: no tradeable volatility strategy here
+#
+# All three tests point the same way, and the last one prices it.
+#
+# * **Vol does not expand** after a flag (p ≈ 0.94 against).
+# * **Moves are bigger only because the names were already volatile** —
+#   normalised by their own expected sigma, flags and controls are
+#   indistinguishable (p ≈ 0.42).
+# * **A strangle loses at every strike**: roughly −0.5% of spot per
+#   trade at ±5% through ±15%, and that is BEFORE the variance risk
+#   premium, before spreads and before commission. Across 208 flags
+#   that is about −1.0× spot notional in total.
+#
+# The **breakeven implied vol** makes the size of the problem concrete:
+# at ±5% strikes you would need to buy the strangle at roughly 35% IV
+# or cheaper, while the flagged names' own trailing realised vol
+# averages about 36% — and listed options on names like these
+# habitually trade several points ABOVE realised. You would need to buy
+# volatility meaningfully cheaper than it has actually been delivered,
+# on exactly the names where everyone can see it is elevated.
+#
+# **The control group is the sanity check that this is the model and
+# not the arithmetic.** Priced the same way, control days come out at
+# roughly zero (+0.05% to +0.11%), which is what pricing realised
+# outcomes at realised vol should produce. The flags are worse than
+# that, not merely unprofitable in absolute terms.
+#
+# **What would change the answer.** A cheaper expression of the same
+# view — a directional trade taken only when the inflection agrees with
+# a GET IN or GET OUT, so you are not paying for both tails — is not
+# tested here and is not ruled out by it. And the whole section rests
+# on 208 flags in a store still missing 2023–25; it should be re-run
+# after the backfill before the door is closed for good.
+#
+# **What does NOT change the answer:** moving the strikes. The loss is
+# flat across ±5% to ±15%, which is the signature of a mispriced view
+# rather than a badly chosen structure.
 
 # %% [markdown]
 # ## What this notebook does NOT claim

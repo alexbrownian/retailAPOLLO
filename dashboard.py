@@ -588,7 +588,7 @@ html, body, [data-testid="stAppViewContainer"] * {{
     -webkit-font-smoothing: antialiased;
 }}
 /* EXCEPTION: Streamlit's icons are a FONT (Material Symbols) - without
-   this rule the family override above turns every icon into its literal
+   this rule the family override above inflections every icon into its literal
    ligature text, e.g. 'arrow_right' on expanders */
 span[data-testid="stIconMaterial"],
 [data-testid="stExpanderToggleIcon"],
@@ -1402,7 +1402,7 @@ def _mood_mode_control(key):
     Measured on this store: 46% of posts score bullish vs 24% bearish,
     so the raw line is positive on ~82% of theme-days - part real (retail
     is structurally long), part the lexicon reading ordinary market
-    language as upbeat. Subtracting the market's own mood that day turns
+    language as upbeat. Subtracting the market's own mood that day inflections
     an always-positive level into a readable "more or less excited than
     everywhere else"."""
     return st.radio(
@@ -2286,7 +2286,7 @@ against the name's own normal, whether attention growth is itself
 accelerating (the bubble signature), how bullish the mood is, how
 one-sided it has been, whether the mood is turning, plus the price's
 run-up off its 54-day low and its one-month return. A probability model
-({model_words}) turns them into "chance this is the start / the end of
+({model_words}) inflections them into "chance this is the start / the end of
 a euphoria episode", trained ONLY on years before the one being scored.
 
 **Only three numbers survive from the old rule stack, one sentence
@@ -2614,7 +2614,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     f"Fitted on years before "
                     f"{_ins.get('fitted_on_years_before', '?')}; "
                     "recomputed by every research/live pass.")
-                st.markdown("**And how is a TURN made?**")
+                st.markdown("**And how is an INFLECTION made?**")
                 st.caption(
                     "A different head, on the same crowd measurements "
                     "plus four it does not share with the two above "
@@ -2628,7 +2628,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     "highest (or lowest) of the 43 days centred on it "
                     "AND the move away from it over the next month is "
                     "at least 8% relative to the market - that second "
-                    "test is what separates a real turn from a flat "
+                    "test is what separates a real inflection from a flat "
                     "stretch that happens to contain a local high. The "
                     "head is asked whether such a day falls in the "
                     "NEXT TEN, so it is allowed to be early rather "
@@ -2642,7 +2642,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     "walk-forward like the other two, and its cut is "
                     "frozen from past years like the other two. Full "
                     "record: PARAMETER_REGISTER Class 3d and "
-                    "docs/research/turn_trigger_sweep.json.")
+                    "docs/research/inflection_trigger_sweep.json.")
                 _cols = st.columns(2)
                 for _c, (_hk, _ht) in zip(_cols, (("get_in", "GET IN — "
                                                    "what starts one"),
@@ -3035,14 +3035,14 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     # chart still resolves the date against its OWN level curve (names
     # start and end on different days), but they all resolve the SAME
     # date, so the page is always a single point in time.
-    # TURN MARKERS NEED A REBUILT STORE. `turn` / `turn_score` arrived
+    # INFLECTION MARKERS NEED A REBUILT STORE. `inflection` / `inflection_score` arrived
     # 2026-08-12; a parquet written before that has neither, and the
     # panel's guard then draws nothing. Silent absence is
-    # indistinguishable from "this name simply has no turns", so say
+    # indistinguishable from "this name simply has no inflections", so say
     # which it is - once per page, not once per name.
     if (use_desk and dk is not None and len(dk)
-            and "turn" not in dk.columns):
-        st.caption("Turn markers are not in this data yet - the desk "
+            and "inflection" not in dk.columns):
+        st.caption("Inflection markers are not in this data yet - the desk "
                    "store predates them. Run `python -m "
                    "analytics.run_analytics --what phases` (about 20 "
                    "seconds, no fetch needed) and reload.")
@@ -3121,7 +3121,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         w0, w1 = one_i.index.min(), one_i.index.max()
         onset_alerts = [d for d in co if w0 <= d <= w1]
         top_alerts = [d for d in ct if w0 <= d <= w1]
-        # TURN MARKERS (desk 2026-08-12) - CONTEXT, NOT A CALL. Drawn as
+        # INFLECTION MARKERS (desk 2026-08-12) - CONTEXT, NOT A CALL. Drawn as
         # a small tick on the axis rather than a full-height rule, so it
         # can never be mistaken for GET IN / GET OUT at a glance. It is
         # not in the watchlist, it does not set the state, and nothing
@@ -3132,10 +3132,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # PARAMETER_REGISTER Class 3d rather than here: a hard-coded hit
         # rate in the UI goes stale the first time the head is re-fitted
         # and nothing would catch it.
-        turn_alerts = []
-        if use_desk and dk is not None and "turn" in dk.columns:
-            _tg = dk[(dk["name"] == name) & dk["turn"].eq(True)]
-            turn_alerts = [d for d in _tg["date"] if w0 <= d <= w1]
+        inflection_alerts = []
+        if use_desk and dk is not None and "inflection" in dk.columns:
+            _tg = dk[(dk["name"] == name) & dk["inflection"].eq(True)]
+            inflection_alerts = [d for d in _tg["date"] if w0 <= d <= w1]
         state = _state_of(name, starting, ending)
         dk_i = (dk[dk["name"] == name].set_index("date").sort_index()
                 if (use_desk and dk is not None) else None)
@@ -3925,7 +3925,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             fig.add_vline(x=_ms(_as_of_click), line_color=INK_MUTED,
                           line_width=1.2, line_dash="dot", opacity=0.85)
 
-        # TURN (context). ON THE LINE, exactly like the fired dots.
+        # INFLECTION (context). ON THE LINE, exactly like the fired dots.
         # It used to be parked at `level.min()`, which is a EUPHORIA
         # value (0-100) placed on an axis that is usually PRICE - so
         # every diamond landed near y=0, detached from the series,
@@ -3933,15 +3933,15 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # whatever line is actually drawn (price when there is price,
         # the level curve when there is not), so this cannot go wrong
         # again when the axis changes underneath it.
-        if turn_alerts:
+        if inflection_alerts:
             _tx, _ty, _tt = [], [], []
-            for _d in turn_alerts:
+            for _d in inflection_alerts:
                 _pos = _carrier.index.searchsorted(pd.Timestamp(_d))
                 if _pos < len(_carrier) and pd.notna(_carrier.iloc[_pos]):
                     _tx.append(_carrier.index[_pos])
                     _ty.append(float(_carrier.iloc[_pos]))
                     _tt.append(
-                        f"possible TURN {pd.Timestamp(_d):%d %b %y}<br>"
+                        f"possible INFLECTION {pd.Timestamp(_d):%d %b %y}<br>"
                         f"A reversal is more likely than usual in the "
                         f"next two weeks.<br>"
                         f"Direction NOT implied - this fires at tops "
@@ -3951,7 +3951,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                         f"watchlist, and nothing<br>else on this page "
                         f"changes because of it. Use it to<br>WEIGH a "
                         f"call you already have - a GET OUT with a<br>"
-                        f"turn beside it is a more interesting GET OUT "
+                        f"inflection beside it is a more interesting GET OUT "
                         f"than<br>one without.")
             if _tx:
                 fig.add_trace(go.Scatter(
@@ -3959,7 +3959,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     marker=dict(size=9, symbol="diamond-open",
                                 color=INK_MUTED,
                                 line=dict(color=INK_MUTED, width=2)),
-                    name="possible turn (context)", text=_tt,
+                    name="possible inflection (context)", text=_tt,
                     hovertemplate="%{text}<extra></extra>"))
         for d in onset_alerts:                       # GET IN
             fig.add_vline(x=_ms(d), line_color=TEAL, line_width=1.6,
@@ -4161,18 +4161,18 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             _cur = _g.iloc[-1]
             _old = _g[_g["date"] <= _prev]
             _boomed = bool(_cur.get("boomed120", False))
-            # TURN joins the watchlist as a third SIDE (desk
+            # INFLECTION joins the watchlist as a third SIDE (desk
             # 2026-08-12: "can you also make it like closest to a
-            # turn"). It is always eligible - the turn head has no
+            # inflection"). It is always eligible - the inflection head has no
             # phase gate, deliberately - and it stays labelled as
             # context wherever it is rendered, because a row in a
             # watchlist is the furthest this signal is allowed to go.
-            _turn_thr = ((desk_report or {}).get("turn") or {}).get(
+            _infl_thr = ((desk_report or {}).get("inflection") or {}).get(
                 "threshold")
             for _side, _sc_col, _thr, _elig in (
                     ("GET OUT", "out_score", _thr_out_d, _boomed),
                     ("GET IN", "in_score", _thr_in_d, not _boomed),
-                    ("TURN (context)", "turn_score", _turn_thr, True)):
+                    ("INFLECTION (context)", "inflection_score", _infl_thr, True)):
                 if _sc_col not in _g.columns:
                     continue
                 _sc = _cur.get(_sc_col)
@@ -4198,17 +4198,17 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             # ONE TABLE, ONE ORDERING (desk 2026-08-12: the two
             # "closest to..." options produced nearly the same table
             # from the same rows and only differed in which side sorted
-            # first - two ways to ask one question). TURN is now a
+            # first - two ways to ask one question). INFLECTION is now a
             # COLUMN rather than a competing sort: the ranking stays on
             # the two real CALLS, and each row also says how close that
-            # name is to a turn. A turn cannot out-rank a call, which
+            # name is to an inflection. An inflection cannot out-rank a call, which
             # is right - it is context, and context should not decide
             # what you look at first.
-            _watch["_is_turn"] = _watch["side"].str.startswith("TURN")
-            _turn_gap = dict(zip(_watch.loc[_watch["_is_turn"], "name"],
-                                 _watch.loc[_watch["_is_turn"], "gap"]))
-            _calls = _watch[~_watch["_is_turn"]]
-            if _calls.empty:                     # turn-only store
+            _watch["_is_infl"] = _watch["side"].str.startswith("INFLECTION")
+            _infl_gap = dict(zip(_watch.loc[_watch["_is_infl"], "name"],
+                                 _watch.loc[_watch["_is_infl"], "gap"]))
+            _calls = _watch[~_watch["_is_infl"]]
+            if _calls.empty:                     # inflection-only store
                 _calls = _watch
             _watch = _calls.sort_values(["eligible", "gap"],
                                         ascending=[False, True])
@@ -4238,10 +4238,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 "can it fire today?": [
                     "yes" if e else "no - wrong phase"
                     for e in _best["eligible"]],
-                "TURN (context)": [
-                    ("-" if _turn_gap.get(n) is None
-                     else ("AT / OVER" if _turn_gap[n] <= 0
-                           else f"{_turn_gap[n]:.2f} away"))
+                "INFLECTION (context)": [
+                    ("-" if _infl_gap.get(n) is None
+                     else ("AT / OVER" if _infl_gap[n] <= 0
+                           else f"{_infl_gap[n]:.2f} away"))
                     for n in _best["name"]],
             })
             st.markdown(
@@ -4251,7 +4251,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 "is the phase gate: a GET OUT only exists once a name "
                 "has boomed, a GET IN only before it has — so a name "
                 "in the wrong phase cannot fire whatever its score. "
-                "The last column is how close that name is to a **TURN "
+                "The last column is how close that name is to an **INFLECTION "
                 "— context, not a call**: a reversal is more likely "
                 "than usual, in neither direction in particular. It "
                 "does not affect the ranking, because context should "

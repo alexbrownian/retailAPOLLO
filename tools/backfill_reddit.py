@@ -39,6 +39,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -94,14 +95,45 @@ def key_of(a: str, b: str) -> str:
 
 
 def run_chunk(a: str, b: str) -> tuple[bool, int]:
-    """Run the fetcher for one window. Returns (ok, posts_written)."""
-    cmd = [sys.executable, FETCHER, "--backfill", a, b]
+    """Run the fetcher for one window. Returns (ok, posts_written).
+
+    `-u` IS LOAD-BEARING, not a style choice. The fetcher's progress
+    lines use a bare print(), and Python BLOCK-buffers stdout whenever
+    it is a pipe rather than a terminal - about 8 KB. One chunk emits
+    roughly 700 bytes (seventeen short subreddit lines), so the buffer
+    never fills and NOTHING appeared until the child exited ~26 minutes
+    later. Run straight from a terminal the same fetcher prints live,
+    which is why this only showed up under the wrapper and looked
+    exactly like a hang at "[1/30]".
+
+    `bufsize=1` below does NOT fix it: that is line buffering on the
+    PARENT's read side and says nothing about how the child writes.
+    """
+    cmd = [sys.executable, "-u", FETCHER, "--backfill", a, b]
     posts = 0
     gave_up = 0
     proc = subprocess.Popen(cmd, cwd=PROJECT_ROOT, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True,
                             encoding="utf-8", errors="replace", bufsize=1)
+    # HEARTBEAT. Even unbuffered, a single busy subreddit can page for
+    # many minutes without printing anything, and silence on a 13-hour
+    # job is indistinguishable from a hang. A daemon thread says how
+    # long it has been quiet so the operator never has to guess.
+    _last = [time.time()]
+    _stop = threading.Event()
+
+    def _beat():
+        while not _stop.wait(120):
+            _quiet = time.time() - _last[0]
+            if _quiet >= 115:
+                print(f"      ... still working - {_quiet / 60:.0f} min "
+                      f"since the last line (a busy subreddit pages for "
+                      f"a while; Ctrl-C is safe, finished chunks are "
+                      f"kept)", flush=True)
+
+    threading.Thread(target=_beat, daemon=True).start()
     for line in proc.stdout:
+        _last[0] = time.time()
         line = line.rstrip()
         if "giving up this run" in line:
             gave_up += 1
@@ -113,6 +145,7 @@ def run_chunk(a: str, b: str) -> tuple[bool, int]:
         if line.strip():
             print("    " + line, flush=True)
     proc.wait()
+    _stop.set()
     if proc.returncode != 0:
         return False, posts
     if gave_up:

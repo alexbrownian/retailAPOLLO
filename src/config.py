@@ -415,30 +415,30 @@ EUPHORIA_ALERT_SPACING_D = 63   # DESK DECISION 2026-08-09 ("one clear
 
 
 # ---------------------------------------------------------------------------
-# TURN — the reversal CONTEXT marker (desk decision 2026-08-12)
+# INFLECTION — the reversal CONTEXT marker (desk decision 2026-08-12)
 # ---------------------------------------------------------------------------
 # NOT a tradeable call, and the desk chose it that way after seeing the
 # numbers: it fires on tops AND bottoms with no direction, and its
 # measured hit rate is 9.6% against a 5.6% base (lift 1.72x). It exists
-# to CORROBORATE — a GET OUT with a TURN beside it is a more interesting
+# to CORROBORATE — a GET OUT with an INFLECTION beside it is a more interesting
 # GET OUT than one without — and it is drawn on the price panel only. It
 # never enters the watchlist, never orders anything, and never touches
-# GET IN or GET OUT. Evidence: docs/research/turn_trigger_sweep.json,
+# GET IN or GET OUT. Evidence: docs/research/inflection_trigger_sweep.json,
 # prototype in notebook 08.
 #
-# WHAT A "TURN" IS. A day is an extremum when its close is the max (or
+# WHAT A "INFLECTION" IS. A day is an extremum when its close is the max (or
 # min) of the window +/- TURN_WIN_D AND the excess move away from it over
 # the next TURN_HORIZON_D is at least TURN_MIN_MOVE — the second test is
 # what separates a reversal from a flat drift that happens to contain a
 # local maximum. The label is 1 when such a day lands within the next
 # TURN_LOOKAHEAD_D, so the signal has room to be early.
-EUPHORIA_TURN_ENABLED = True
-EUPHORIA_TURN_WIN_D = 21          # half-window for the extremum test
-EUPHORIA_TURN_MIN_MOVE = 0.08     # excess move away that makes it real
-EUPHORIA_TURN_LOOKAHEAD_D = 10    # the label's forward window
-EUPHORIA_TURN_HORIZON_D = 21      # forward window the excess is measured over
+EUPHORIA_INFLECTION_ENABLED = True
+EUPHORIA_INFLECTION_WIN_D = 21          # half-window for the extremum test
+EUPHORIA_INFLECTION_MIN_MOVE = 0.08     # excess move away that makes it real
+EUPHORIA_INFLECTION_LOOKAHEAD_D = 10    # the label's forward window
+EUPHORIA_INFLECTION_HORIZON_D = 21      # forward window the excess is measured over
 
-# THE TRIGGER, SWEPT (docs/research/turn_trigger_sweep.json). 80 viable
+# THE TRIGGER, SWEPT (docs/research/inflection_trigger_sweep.json). 80 viable
 # configs over cut x re-arm x spacing. The CUT is the only lever that
 # separates: 0.95 beats 0.97 and 0.90 at every re-arm and spacing, while
 # within cut=0.95 every combination lands in 0.088-0.096 hit rate, which
@@ -446,9 +446,9 @@ EUPHORIA_TURN_HORIZON_D = 21      # forward window the excess is measured over
 # are CONVENTION — set to match the euphoria heads rather than to win a
 # sweep they cannot meaningfully win. Adopted 0.95/0.50/63 scores 9.6%
 # against the inherited 0.97/0.50/21 at 8.1%.
-EUPHORIA_TURN_CUT_Q = 0.95        # percentile of the train-year scores
-EUPHORIA_TURN_REARM_Q = 0.50      # must fall below this to re-arm
-EUPHORIA_TURN_SPACING_D = 63      # one turn call per name per quarter
+EUPHORIA_INFLECTION_CUT_Q = 0.95        # percentile of the train-year scores
+EUPHORIA_INFLECTION_REARM_Q = 0.50      # must fall below this to re-arm
+EUPHORIA_INFLECTION_SPACING_D = 63      # one inflection call per name per quarter
                                 # ins"): minimum days between two calls
                                 # of the SAME head on the same name -
                                 # one call per name per quarter (3x the

@@ -1,5 +1,5 @@
 {
- "built": "2026-08-12 05:35 UTC",
+ "built": "2026-08-13 01:02 UTC",
  "sections": {
   "coverage": [
    {
@@ -1219,6 +1219,60 @@
     "flags (these 5)": 25,
     "hit rate (these 5)": 0.04,
     "hit rate (all)": 0.061
+   }
+  ],
+  "grading_arbitration": [
+   {
+    "head": "OLD grading (near the peak)",
+    "flags": 168,
+    "own-label hit": 0.161,
+    "captured >=50% of dd": 0.196,
+    "median dd captured": 0.442,
+    "fwd 21d excess %": 2.4,
+    "share fwd < 0": 0.375
+   },
+   {
+    "head": "NEW grading (half the drawdown)",
+    "flags": 150,
+    "own-label hit": 0.213,
+    "captured >=50% of dd": 0.213,
+    "median dd captured": 0.498,
+    "fwd 21d excess %": 4.95,
+    "share fwd < 0": 0.307
+   }
+  ],
+  "features_on_kept_grading": [
+   {
+    "head": "GET IN",
+    "bank": "shipped crowd-only",
+    "flags": 244,
+    "hit rate": 0.205,
+    "fwd 21d excess %": 4.02,
+    "share fwd < 0": 0.385
+   },
+   {
+    "head": "GET IN",
+    "bank": "+ 4 new features",
+    "flags": 133,
+    "hit rate": 0.218,
+    "fwd 21d excess %": 4.63,
+    "share fwd < 0": 0.398
+   },
+   {
+    "head": "GET OUT (existing grading)",
+    "bank": "shipped crowd-only",
+    "flags": 168,
+    "hit rate": 0.161,
+    "fwd 21d excess %": 2.4,
+    "share fwd < 0": 0.375
+   },
+   {
+    "head": "GET OUT (existing grading)",
+    "bank": "+ 4 new features",
+    "flags": 148,
+    "hit rate": 0.176,
+    "fwd 21d excess %": 4.95,
+    "share fwd < 0": 0.365
    }
   ],
   "example_card": {
