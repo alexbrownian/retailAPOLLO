@@ -167,6 +167,26 @@ choices are honoured below. Prototype: notebook 08. Evidence:
 | **Lookahead** | none in the FEATURES; the usual two caveats in the DISPLAY | **AUDITED 2026-08-12** | *Features*: every inflection input is trailing or contemporaneous (`rolling(21)` windows, `e1 x bull_level`) — nothing at day *t* reads a price or a post after *t*. *Label*: `y_inflection` deliberately looks forward ~31 days (a centred 43-day extremum window plus a 10-day lookahead) and uses a same-day cross-sectional median — that is what a label is, and it never enters the feature matrix. **Two real caveats, shared with GET IN and GET OUT and not specific to this head.** (1) The store's HISTORY is in-sample: the model trains on years `< data_max_year` and then scores every day including those years, so 182 of the 213 markers are fitted and only the 31 in the current year are genuinely out-of-sample. The honest record is the walk-forward in `inflection_trigger_sweep.json` (9.6% hit / 1.72x), never the marker count on a chart. (2) The threshold is chosen from the model's scores on its own training data — identical to `_frozen_ml_pair`, which does the same for both desk cuts, so the inflection head is no weaker than the incumbents but no stronger either. (3) Labels in the last ~31 days of the training span depend on prices just after it — a small, genuine boundary leak, unavoidable without discarding a month of training data |
 | **Known weakness, recorded not hidden** | beats its base rate in **4 of 6 years** | **MEASURED** | 2020 (0.149 vs 0.068), 2021 (0.188 vs 0.072), 2026 (0.176 vs 0.096) and marginally 2019; it **fails in 2022 (0.026 vs 0.061) and 2023 (0.000 vs 0.049)**. The head appears to work when there is euphoria to inflection and not otherwise. This is the strongest argument for the context-marker role and against ever promoting it without a re-run on backfilled data |
 
+### Class 3e — THE EXPERIMENTAL PRICE-BLIND TRIGGER (added 2026-08-14)
+
+*Desk: "i dont like how this project uses prices as a feature to predict
+prices (i feel like thats a bit fundamentally wrong) … i want only the
+post factors to predict the price, not price predicting price" — purity
+level chosen: **fully price-blind** (no price features AND no price
+phase gate). Ships as a dashboard MODE, never the default. Research:
+notebook 08 §8. Evidence: `docs/research/nb08_price_blind.json`. Tests:
+`tests/test_pipeline.py::TestPriceBlindTrigger` (4).*
+
+| Number / choice | Value | Class | Why / what the evidence says |
+|---|---|---|---|
+| Role | **experimental dashboard mode, never the default** | DESK DECISION 2026-08-14 | the honest "what can the posts alone see" record. Walk-forward it ranks days at AUROC ~0.57 vs the shipped pair's 0.75 / 0.72, AP lift ~1.4–1.5× over base vs ~2.5× — removing price costs roughly two thirds of the ranking edge, consistent with P05b's noise chart from the other direction. The mode's own help text states this |
+| Feature bank | the 9 crowd features **+ the 4 price-free inflection extras**, no price | MEASURED (nb08 §8) | the extras lift GET IN AP 0.137 → 0.157–0.165 and AUROC 0.551 → ~0.57 for free (they were already in the store). The Class 3d rule that they serve "this head only" is amended by this dated entry: they now also serve the two *experimental* heads — the SHIPPED pair's bank is still untouched |
+| Model family | **logit**, not the shipped ens | MEASURED, by the desk's own selection rule | one family for both heads, combined test AP lift, ties → AUROC: logit 0.298 vs ens 0.294, and logit takes AUROC on both heads (0.575 / 0.574). A near-tie honestly labelled as one |
+| Phase gate | **none** | THE POINT OF THE MODE | the 120d boom bar is a price read; routing IN vs OUT through it would re-admit price by the second door. Both sides are always live; the readiness dial shows whichever is nearer to firing. `test_the_pipeline_never_gates_xp_on_price` |
+| Trigger shape / cuts | shaped crossing (re-arm + 63d spacing), F1 + F0.5 cuts frozen in the desk record's `experimental_price_blind` block | INHERITED | the desk pair's machinery unchanged, so the two modes differ ONLY in what the model may see. Same frozen-threshold contract (research re-derives, bootstrap once); end-stage suppression and the 21d IN/OUT separation are kept — both are crowd-only reads |
+| Store columns | `in_score_xp`, `out_score_xp`, `get_in_xp[_strict]`, `get_out_xp[_strict]` | — | a store written before 2026-08-14 lacks them; the dashboard **warns and falls back to shipped** rather than silently substituting (`test_the_dashboard_cannot_mix_the_two_triggers`) |
+| Known weakness, recorded not hidden | AUROC ~0.57 is measurably better than a coin flip and nowhere near the shipped pair | MEASURED | "relatively good accuracy" is not what the numbers show. The crowd says *that* a name is hot; price says *where in the arc* it stands. Also the standing caveat with extra force: a crowd-only detector is exactly what the 2023–25 coverage gap flatters or damns unfairly — re-run after the backfill |
+
 ## Class 4 — GROUND TRUTH (price side; used only to grade, never to predict)
 
 | Number | Value | Why |

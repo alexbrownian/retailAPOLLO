@@ -1631,3 +1631,210 @@ plt.show()
 #   forbidden from forecasting. If it is adopted it should be measured
 #   on whether readers make better decisions with it, which is not a
 #   quantity this notebook can produce.
+
+# %% [markdown]
+# ---
+# # §8 — Can the posts ALONE call GET IN / GET OUT? (added 2026-08-14)
+#
+# **Desk request.** *"i dont like how this project uses prices as a
+# feature to predict prices (i feel like thats a bit fundamentally
+# wrong). can you investigate for the get in and get out symbols if its
+# possible to use only the post factors to predict with relatively good
+# accuracy?"* — with the purity level set to **fully price-blind**: no
+# price features AND no price-based phase gate. Price appears in exactly
+# one place: the LABELS (an episode is a price event — that is the
+# target, not an input).
+#
+# Price enters the shipped pair at two doors, and this section closes
+# both:
+#
+# | door | shipped pair | this section |
+# |---|---|---|
+# | features | 9 crowd + **2 price** | 13 crowd (9 + the 4 price-free §3 extras), **0 price** |
+# | trigger | phase gate from the 120d boom bar (**price**) routes IN vs OUT | **no gate** — either side may fire any day |
+#
+# **Unlike the rest of this notebook, this section fed a shipped
+# change**: the EXPERIMENTAL "posts only" trigger mode on the dashboard
+# (columns `*_xp` in the desk store, cuts frozen in the desk record's
+# `experimental_price_blind` block, `EUPHORIA_XP_ENABLED` in
+# `src/config.py`). The mode is clearly labelled and never the default —
+# the numbers below are why.
+
+# %%
+from analytics.euphoria_phases import (inflection_features,        # noqa: E402
+                                       INFLECTION_EXTRA_FEATURES,
+                                       run_tournament_entry)
+from src.config import EUPHORIA_FA_BUDGET_PER_IY                   # noqa: E402
+
+# the price-blind candidate frame: coverage gate only, NO
+# attach_price_features (that call also DROPS rows lacking a judgeable
+# price feature - 58,698 days here vs 58,630 with the price pair)
+XPC = inflection_features(mld.candidate_frame(frame))
+XP_BANK = list(mld.ML_BANK) + INFLECTION_EXTRA_FEATURES
+print(f"{len(XPC):,} price-blind name-days · bank {len(mld.ML_BANK)} crowd"
+      f" + {len(INFLECTION_EXTRA_FEATURES)} extras = {len(XP_BANK)}")
+
+XP_RES = {}
+for _hd, _lb, _md in (("get_in", "y_onset", "onset"),
+                      ("get_out", "y_top", "top")):
+    for _tag, _mk, _bk in (("ens_crowd9", mld.make_ens_fit, mld.ML_BANK),
+                           ("ens_xp13", mld.make_ens_fit, XP_BANK),
+                           ("logit_xp13", mld.make_logit_fit, XP_BANK),
+                           ("gbm_xp13", mld.make_gbm_fit, XP_BANK)):
+        _t0 = time.time()
+        _wf = run_tournament_entry(XPC, episodes, _bk, _lb, _md,
+                                   _mk(_lb), EUPHORIA_FA_BUDGET_PER_IY,
+                                   chooser=mld.choose_threshold_f1)
+        mld._summarise_entry(_wf, sym_by, pxmap, _md)
+        XP_RES.setdefault(_hd, {})[_tag] = {
+            k: _wf.get(k) for k in
+            ("ap", "ap_baseline", "auroc", "captured", "detectable",
+             "false_alarms", "precision", "median_lead_days",
+             "forward_returns", "test_years")}
+        _r = XP_RES[_hd][_tag]
+        print(f"[{_hd:8s}] {_tag:11s} AP {_r['ap']:.3f} (base "
+              f"{_r['ap_baseline']:.3f}) AUROC {_r['auroc']:.3f} cap "
+              f"{_r['captured']}/{_r['detectable']} FA "
+              f"{_r['false_alarms']}  ({time.time() - _t0:.0f}s)")
+
+# the shipped reference, read from the stored desk tournament rather
+# than re-fitted - the comparison must be against the record the desk
+# actually froze
+_dkr = json.load(open("data/processed/euphoria_desk_report.json"))
+SHIPPED = {h: _dkr["tournament"][h]["ens"] for h in ("get_in", "get_out")}
+for _hd in ("get_in", "get_out"):
+    _s = SHIPPED[_hd]
+    print(f"[{_hd:8s}] SHIPPED ens  AP {_s['ap']:.3f} (base "
+          f"{_s['ap_baseline']:.3f}) AUROC {_s['auroc']:.3f} cap "
+          f"{_s['captured']}/{_s['detectable']} FA {_s['false_alarms']}"
+          f"   <- crowd + price, phase-gated")
+
+# %% [markdown]
+# ## 8.1 Reading the table
+#
+# Three findings, in the order they matter.
+#
+# **1. The four §3 extras help the price-blind heads — the only free
+# lift on offer.** GET IN AP 0.137 → 0.157–0.165 and AUROC 0.551 →
+# ~0.57 just by letting the IN/OUT heads see the four price-free
+# features built for the inflection head (attention instability, mood
+# dispersion, the attention×mood interaction, source-breadth change).
+# GET OUT moves the same direction. They cost nothing and were already
+# in the store.
+#
+# **2. By the desk's own selection rule, LOGIT wins the price-blind
+# bank.** One family for both heads, combined test AP lift, ties →
+# AUROC: logit 0.165 + 0.133 = 0.298 vs ens 0.157 + 0.137 = 0.294 —
+# a near-tie that AUROC breaks in logit's favour on BOTH heads (0.575 /
+# 0.574). That is the family frozen into the experimental record.
+#
+# **3. But the honest headline is the gap to the shipped pair.** AP
+# lift over base is ~1.4–1.5× price-blind against ~2.5× shipped; AUROC
+# ~0.57 against 0.75 / 0.72. Removing price costs roughly two thirds of
+# the model's ranking edge — which is exactly what P05b's noise chart
+# said from the other direction (the price pair is the single input the
+# model leans on hardest). "Relatively good accuracy" is not what these
+# numbers show; "measurably better than coin-flip, honestly labelled"
+# is.
+
+# %%
+# ---- 8.2 what the experimental trigger actually fires on the five
+# names (from the STORE - these are the very columns the dashboard
+# mode reads, standard setting)
+DK8 = pd.read_parquet("data/processed/euphoria_desk.parquet")
+DK8["date"] = pd.to_datetime(DK8["date"])
+fig, axes = plt.subplots(len(SHOW), 1, figsize=(13.5, 3.05 * len(SHOW)))
+for ax, (nm, sym, nice) in zip(np.atleast_1d(axes), SHOW):
+    px = pxmap.get(sym)
+    if px is None or not len(px.dropna()):
+        ax.text(0.5, 0.5, f"{nice} ({sym}) — no price series",
+                ha="center", va="center", transform=ax.transAxes,
+                color=GREY)
+        continue
+    px = px.dropna().loc["2019-01-01":]
+    ax.plot(px.index, px.values, color=GREY, lw=1.3)
+    g = DK8[DK8["name"] == nm]
+    for col, mark, colr, lab in (
+            ("get_in_strict", "^", BLUE, "shipped GET IN"),
+            ("get_out_strict", "v", NAVY, "shipped GET OUT"),
+            ("get_in_xp_strict", "^", GREEN, "posts-only GET IN"),
+            ("get_out_xp_strict", "v", RED, "posts-only GET OUT")):
+        d = g.loc[g[col].astype(bool), "date"]
+        d = d[(d >= px.index.min()) & (d <= px.index.max())]
+        y = px.reindex(d, method="ffill")
+        filled = "xp" not in col
+        ax.scatter(d, y.values, marker=mark, s=110 if filled else 78,
+                   color=colr if filled else "white",
+                   edgecolor=colr, linewidth=1.6, zorder=5,
+                   label=lab)
+    ax.set_title(f"{nice} ({sym})", loc="left")
+axes[0].legend(loc="upper left", fontsize=9, ncol=4, frameon=False)
+fig.suptitle("Shipped (filled) vs posts-only (hollow) calls — standard "
+             "setting, straight from the store", y=1.005,
+             fontweight="bold", fontsize=14)
+fig.tight_layout()
+plt.show()
+
+# %%
+RESULTS["sections"]["price_blind"] = {
+    "results": XP_RES, "shipped_reference": SHIPPED,
+    "winner": "logit on the 13-feature price-blind bank",
+    "selection_rule": ("desk rule: one family both heads, combined AP "
+                       "lift, ties -> AUROC"),
+}
+with open(os.path.join(OUT, "nb08_price_blind.json"), "w",
+          encoding="utf-8") as fh:
+    json.dump({
+        "question": ("can the posts alone (no price features, no price "
+                     "gate) call GET IN / GET OUT?"),
+        "protocol": ("walk-forward run_tournament_entry on the "
+                     "coverage-only candidate frame WITHOUT "
+                     "attach_price_features; F1 chooser; banks: 9 crowd "
+                     "vs 9 + the 4 price-free inflection extras"),
+        "results": XP_RES, "shipped_reference": SHIPPED,
+        "winner": "logit_xp13",
+        "selection_rule": ("one family for both heads, combined test AP "
+                           "lift, ties -> AUROC"),
+        "verdict": ("AP lift ~1.4-1.5x over base vs ~2.5x shipped; "
+                    "AUROC ~0.57 vs ~0.73-0.75. Shipped only as the "
+                    "clearly-labelled EXPERIMENTAL dashboard mode "
+                    "(*_xp columns), never the default."),
+    }, fh, indent=1, default=str)
+print(f"wrote {OUT}/nb08_price_blind.json")
+
+# %% [markdown]
+# ## 8.3 Verdict, and what shipped
+#
+# **Can the posts alone do it?** They carry real information — every
+# price-blind variant beats its base rate walk-forward, and the §3
+# extras push the ranking to AUROC ≈ 0.57 — but they are nowhere near
+# the shipped pair, and the deficit is structural, not a tuning gap:
+# P04 already showed no single crowd measure beats 0.55 alone, and
+# P05b showed the crowd block as a whole is worth about half the
+# model's edge. The crowd tells you *that* a name is hot; price tells
+# you *where in the arc* you are standing. Remove the second and IN vs
+# OUT becomes genuinely harder to distinguish.
+#
+# **What shipped from this section** (the one part of this notebook
+# that became production):
+#
+# * `euphoria_desk.parquet` gains `in_score_xp`, `out_score_xp`,
+#   `get_in_xp[_strict]`, `get_out_xp[_strict]` — logit on the
+#   13-feature price-blind bank, shaped trigger with NO phase gate,
+#   same F1/F0.5 frozen-cut contract as the desk pair.
+# * The dashboard gains a **trigger** switch: *Shipped (crowd + price)*
+#   vs *Experimental (posts only)*, default shipped. In experimental
+#   mode every score, marker, threshold, watchlist row and the
+#   readiness dial read the `_xp` columns — and with no phase gate the
+#   dial shows whichever side is nearer to firing.
+# * The frozen cuts live in the desk record's
+#   `experimental_price_blind` block (self-healing on the next research
+#   pass, like every other frozen number here); the walk-forward
+#   evidence is `docs/research/nb08_price_blind.json`.
+#
+# **What this section does NOT claim.** Not that the mode should guide
+# money — its calls are research context. And the caveat every section
+# of this notebook carries applies with extra force here: the store is
+# still missing most of 2023–25, and a crowd-only detector is exactly
+# the kind of thing a crowd-coverage gap flatters or damns unfairly.
+# Re-run after the backfill.

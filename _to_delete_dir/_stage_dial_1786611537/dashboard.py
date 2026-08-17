@@ -1031,18 +1031,6 @@ def readiness_now(dk_row, thr_in, thr_out):
     """
     if dk_row is None:
         return None
-    # EXPERIMENTAL trigger (defined later in the sidebar; this function
-    # is only ever CALLED after that): no phase gate, so both sides are
-    # always live - the dial shows whichever is nearer to firing.
-    if globals().get("XP_TRIGGER", False):
-        cands = []
-        for side, col, thr in (("GET OUT", "out_score_xp", thr_out),
-                               ("GET IN", "in_score_xp", thr_in)):
-            sc = dk_row.get(col)
-            if sc is not None and thr not in (None, 0) and pd.notna(sc):
-                cands.append((100.0 * float(sc) / float(thr), side,
-                              float(sc), float(thr)))
-        return max(cands) if cands else None
     boomed = bool(dk_row.get("boomed120", False))
     side, sc, thr = (("GET OUT", dk_row.get("out_score"), thr_out)
                      if boomed else
@@ -1065,20 +1053,6 @@ READY_HELP = (
     "beside it. The level is crowd heat only; the score behind this "
     "dial also sees price, which is why a quiet name that has run hard "
     "can read cold on euphoria and high here."
-)
-
-READY_HELP_XP = (
-    "**100 = the signal fires.** The needle is this name's live "
-    "{side} score divided by that side's frozen trigger, as a "
-    "percentage - so 80 means it is four fifths of the way there and "
-    "100 means it is at the line.\n\n"
-    "EXPERIMENTAL trigger: there is no phase gate, so BOTH sides are "
-    "always live. The dial shows whichever side is nearer to firing "
-    "today.\n\n"
-    "The score behind this dial reads posts ONLY - no price enters "
-    "it anywhere. That is the point of the mode, and also why it is "
-    "the weaker detector (walk-forward AUROC ~0.57 vs the shipped "
-    "~0.73): treat it as research, not a desk signal."
 )
 
 
@@ -1764,41 +1738,6 @@ how_many = st.sidebar.slider("items per section", 3, 60, 15)
 # the labels would break every stored record, every notebook and the
 # frozen research JSONs, for a cosmetic gain - so the mapping is stated
 # here instead and fenced by a test.
-# THE EXPERIMENTAL PRICE-BLIND TRIGGER (desk 2026-08-14: "i want only
-# the post factors to predict the price, not price predicting price").
-# A second, clearly-labelled signal family scored from CROWD FEATURES
-# ONLY - no price features, and no price-based phase gate routing IN vs
-# OUT. It is a MODE, never the default: walk-forward it ranks days at
-# AUROC ~0.57 against the shipped pair's ~0.73 (notebook 08 §8), so it
-# answers "what can the posts alone see", not "what should the desk
-# act on". Columns *_xp in the store; frozen cuts in the desk record's
-# experimental_price_blind block.
-_XP_STORE_OK = desk is not None and "in_score_xp" in desk.columns
-_trig_mode = st.sidebar.radio(
-    "trigger",
-    ["Shipped (crowd + price)", "Experimental (posts only)"],
-    index=0, key="trigger_mode",
-    help="SHIPPED is the desk configuration: the model reads the nine "
-         "crowd measurements plus two price measurements, and a "
-         "price-based phase gate decides whether a name is in GET IN "
-         "or GET OUT territory.\n\n"
-         "EXPERIMENTAL (POSTS ONLY) removes price from BOTH places: "
-         "the model reads thirteen crowd measurements and nothing "
-         "else, and there is no phase gate - either side may fire at "
-         "any time. It exists to answer 'what can the crowd alone "
-         "see'. Measured walk-forward it is the weaker detector "
-         "(AUROC ~0.57 vs ~0.73), so treat its calls as research, "
-         "not desk signals.")
-XP_TRIGGER = _trig_mode.startswith("Experimental")
-if XP_TRIGGER and not _XP_STORE_OK:
-    st.sidebar.warning("The stored signals predate the experimental "
-                       "trigger. Run the pipeline once (python -m "
-                       "analytics.run_analytics --what phases) to "
-                       "compute it; showing the shipped trigger until "
-                       "then.")
-    XP_TRIGGER = False
-_XP_PART = "_xp" if XP_TRIGGER else ""
-
 _sig_mode = st.sidebar.radio(
     "signal setting",
     ["Standard (fewer, higher conviction)", "Relaxed (more calls)"],
@@ -1837,30 +1776,12 @@ RELAXED_SIGNALS = _sig_mode.startswith("Relaxed")
 # STANDARD -> the strict-named columns. See the note above.
 _SIG_SUFFIX = "" if RELAXED_SIGNALS else "_strict"
 
-# The live-score columns for the active trigger. Every surface that
-# reads a score reads THESE, so the experimental mode can never show a
-# shipped score against an experimental cut or vice versa.
-IN_SCORE = f"in_score{_XP_PART}"
-OUT_SCORE = f"out_score{_XP_PART}"
-
 
 def sig_col(base, frame):
-    """The desk-signal column for the active trigger + signal setting -
-    falls back to the shipped standard column if the store predates the
-    extra columns (the experimental case is warned about above, not
-    silently substituted - this fallback only fires mid-render if a
-    frame lacks the column)."""
-    _c = f"{base}{_XP_PART}{_SIG_SUFFIX}"
+    """The desk-signal column for the active signal setting - falls
+    back to standard if the store predates the extra columns."""
+    _c = f"{base}{_SIG_SUFFIX}"
     return _c if frame is not None and _c in frame.columns else base
-
-
-def sig_head(rep, head):
-    """The desk-record block holding this head's frozen cuts under the
-    active trigger ('get_in' / 'get_out')."""
-    _r = rep or {}
-    if XP_TRIGGER:
-        return (_r.get("experimental_price_blind") or {}).get(head)
-    return _r.get(head)
 
 
 def sig_thr(head_rec):
@@ -2407,8 +2328,8 @@ def euphoria_simple_ml(rep):
                "can only RAISE the score",
         "mlp": "a small neural network (16-8 hidden units)",
     }.get(model, model)
-    thr_in = (sig_head(rep, "get_in") or {}).get("live_threshold")
-    thr_out = (sig_head(rep, "get_out") or {}).get("live_threshold")
+    thr_in = (rep.get("get_in") or {}).get("live_threshold")
+    thr_out = (rep.get("get_out") or {}).get("live_threshold")
     return f"""
 **Euphoria, in one sentence.** The crowd has stopped analysing a name and
 started celebrating it. That is a late-stage condition, not a bullish one.
@@ -2884,8 +2805,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
               if (dk is not None and len(dk)) else None)
         return li, oi, di
 
-    _thr_in_d = sig_thr(sig_head(desk_report, "get_in"))
-    _thr_out_d = sig_thr(sig_head(desk_report, "get_out"))
+    _thr_in_d = sig_thr((desk_report or {}).get("get_in"))
+    _thr_out_d = sig_thr((desk_report or {}).get("get_out"))
 
     def _row_at(idx_frame, d):
         """Exact stored row at d, else the latest row at-or-before d
@@ -2930,7 +2851,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 lines.append("gate - price in a confirmed boom: "
                              + ("open" if bool(rd.get("boom_state"))
                                 else "shut"))
-            sc = rd.get(OUT_SCORE) if rd is not None else None
+            sc = rd.get("out_score") if rd is not None else None
             ready = (float(sc) / float(_thr_out_d)
                      if sc is not None and pd.notna(sc) and _thr_out_d
                      else None)
@@ -2951,7 +2872,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         for c in ("attention_accel", "hype_ratio", "bull_inflection",
                   "influx_speed", "attention_convexity"):
             lines.append(f"{PLAIN[c]}: **{_fmt_rank(r.get(c))}**")
-        sc = rd.get(IN_SCORE) if rd is not None else None
+        sc = rd.get("in_score") if rd is not None else None
         ready = (float(sc) / float(_thr_in_d)
                  if sc is not None and pd.notna(sc) and _thr_in_d else None)
         if ready is not None:
@@ -3497,8 +3418,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                                            _thr_in_d, _thr_out_d)
             if _ready is not None:
                 _rd_now, _rd_side, _rd_sc, _rd_cut = _ready
-                _sc_col_r = (OUT_SCORE if _rd_side == "GET OUT"
-                             else IN_SCORE)
+                _sc_col_r = ("out_score" if _rd_side == "GET OUT"
+                             else "in_score")
                 _hist_r = pd.Series(dtype=float)
                 if _sc_col_r in dk_i.columns:
                     _hist_r = (dk_i[_sc_col_r].dropna() / _rd_cut * 100.0)
@@ -3513,8 +3434,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     else _g_now
                 _g_pkd = (_hist_r.idxmax() if len(_hist_r)
                           else _lvl_ok.index[_pos])
-                _g_help = (READY_HELP_XP if XP_TRIGGER
-                           else READY_HELP).format(side=_rd_side)
+                _g_help = READY_HELP.format(side=_rd_side)
                 _g_sub = (f"% of the way to <b>{_rd_side}</b> · "
                           f"100 = fires")
                 _facts_rows = [
@@ -3686,8 +3606,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # axis: same crossings, same eligibility, zero panel height.
         _ready = []
         if dk_i is not None:
-            for _col, _thr, _lab in ((OUT_SCORE, thr_out_d, "GET OUT"),
-                                     (IN_SCORE, thr_in_d, "GET IN")):
+            for _col, _thr, _lab in (("out_score", thr_out_d, "GET OUT"),
+                                     ("in_score", thr_in_d, "GET IN")):
                 if _col not in dk_i.columns or not _thr:
                     continue
                 _s = (pd.to_numeric(dk_i[_col], errors="coerce")
@@ -4366,10 +4286,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             _infl_thr = ((desk_report or {}).get("inflection") or {}).get(
                 "threshold")
             for _side, _sc_col, _thr, _elig in (
-                    ("GET OUT", OUT_SCORE, _thr_out_d,
-                     _boomed or XP_TRIGGER),
-                    ("GET IN", IN_SCORE, _thr_in_d,
-                     (not _boomed) or XP_TRIGGER),
+                    ("GET OUT", "out_score", _thr_out_d, _boomed),
+                    ("GET IN", "in_score", _thr_in_d, not _boomed),
                     ("INFLECTION (context)", "inflection_score", _infl_thr, True)):
                 if _sc_col not in _g.columns:
                     continue
@@ -7124,7 +7042,6 @@ if active_tab == "[dev] Data Stats":
     st.markdown("#### Signal engine")
     _gi_ds = (desk_report or {}).get("get_in") or {}
     _go_ds = (desk_report or {}).get("get_out") or {}
-    _xp_ds = (desk_report or {}).get("experimental_price_blind") or {}
     st.caption(f"Desk model: **{_mdl_ds}** | Standard cuts (F1): GET IN "
                f"{_gi_ds.get('live_threshold', float('nan')):.3f} / "
                f"GET OUT {_go_ds.get('live_threshold', float('nan')):.3f}"
@@ -7137,16 +7054,3 @@ if active_tab == "[dev] Data Stats":
                "euphoria_desk_report.json, desk_model_insight.json, "
                "docs/research/ml_tournament.md, "
                "docs/research/alert_shape_sweep.json")
-    if _xp_ds:
-        _xgi, _xgo = (_xp_ds.get("get_in") or {}), (_xp_ds.get("get_out")
-                                                    or {})
-        st.caption(f"Experimental price-blind trigger: **{_xp_ds.get('model')}** "
-                   f"on {len(_xp_ds.get('bank') or [])} crowd-only "
-                   f"measurements, NO price features, NO phase gate | "
-                   f"Standard cuts: GET IN "
-                   f"{(_xgi.get('strict_threshold') or float('nan')):.3f} / "
-                   f"GET OUT {(_xgo.get('strict_threshold') or float('nan')):.3f}"
-                   f" | Relaxed: "
-                   f"{(_xgi.get('live_threshold') or float('nan')):.3f} / "
-                   f"{(_xgo.get('live_threshold') or float('nan')):.3f} | "
-                   "record: docs/research/nb08_price_blind.json")

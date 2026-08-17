@@ -430,6 +430,151 @@ fig.tight_layout()
 save(fig, "P05_break_one_input.png")
 
 # =====================================================================
+# 5b — the same question asked CONTINUOUSLY: bury one input in noise
+# =====================================================================
+# Desk request 2026-08-14. P05 asks a yes/no question - is the
+# measurement there or not. This asks the dial version of it: keep the
+# measurement, but corrupt it with Gaussian noise of growing size and
+# watch the accuracy fall. Two things it shows that the ablation
+# cannot:
+#   (1) a DEGRADED input is not the same as a MISSING one. The model
+#       still trusts a column it is being lied to through, so noise can
+#       cost more than removal - which is the realistic failure mode
+#       here (a source gets thinner, it does not vanish).
+#   (2) redundancy becomes visible as a SHAPE, not a single number. A
+#       measurement another one already carries stays flat all the way
+#       to 8x its own normal variation; one that is genuinely carrying
+#       something falls from the first notch.
+#
+# PROTOCOL. The model is fitted ONCE per head on the clean train years
+# - exactly the fit P04/P05 use - and then scored on a test year whose
+# chosen column has had N(0, k * sigma) added, sigma being that
+# column's own standard deviation on the train years, so k reads as
+# "multiples of this measurement's normal variation". Five independent
+# noise draws per level are averaged. Nothing is refitted on noise: the
+# question is what the SHIPPED model loses when an input degrades, not
+# what a differently-trained model could have done instead.
+#
+# WHY ONE STACKED SCORING CALL. Every variant is concatenated into one
+# apply frame and scored in a single mld.make_ens_fit() call, because
+# that call refits the pair every time it is invoked - 330 separate
+# calls would refit the same model 330 times for no reason. Checked
+# against per-variant scoring: agrees to ~1e-4 AP, three orders below
+# the effects on the chart. The rank ensemble makes the per-variant
+# numbers depend very slightly on what else is in the frame, so each
+# curve is normalised by ITS OWN clean point from ITS OWN stack, which
+# cancels that out exactly.
+print("5b   noise robustness (fitting models, ~1 min) ...", flush=True)
+# Six notches, not seven: 1/4x was visually indistinguishable from
+# clean on every line and only crowded the axis (desk 2026-08-14:
+# "make this simpler").
+NOISE_LEV = [0.0, 0.5, 1.0, 2.0, 4.0, 8.0]
+NOISE_DRAWS = 5
+_sd = tr[mld.DESK_ML_BANK].std()
+# CROWD ONLY (desk 2026-08-14: "remove the price measurements"). The
+# price pair is still IN the model and still corrupted-by-omission
+# nowhere - it is simply not drawn, the same rule P04 and P05 follow.
+_targets = [(c, [c]) for c in CROWD] + [("__all__", CROWD)]
+noise = {}
+for label, head in (("y_onset", "GET IN"), ("y_top", "GET OUT")):
+    _fit = mld.make_ens_fit(label)
+    base = float(te[label].mean())          # the no-skill AP
+    curves = {}
+    for ti, (tag, cols) in enumerate(_targets):
+        parts = []
+        for li, k in enumerate(NOISE_LEV):
+            for s in range(1 if k == 0 else NOISE_DRAWS):
+                rng = np.random.default_rng([ti, li, s])
+                v = te.copy()
+                for c in cols:
+                    v[c] = v[c].values + rng.normal(0.0, k * _sd[c], len(v))
+                v["_k"] = k
+                parts.append(v)
+        st = pd.concat(parts, ignore_index=True)
+        st["_s"] = _fit(tr, st, mld.DESK_ML_BANK)
+        ap = {k: float(np.mean([
+            average_precision_score(g[label], g["_s"])
+            for _, g in gk.groupby(gk.index // len(te))]))
+            for k, gk in st.groupby("_k")}
+        curves[tag] = ap
+    noise[head] = (base, curves)
+
+# SIMPLIFIED 2026-08-14 (desk: "make this simpler"). The first cut
+# named all nine pale lines down the right-hand edge, which is nine
+# leader lines and nine names to read before the point lands. The point
+# is a COMPARISON between two lines, so only those two are labelled now
+# and the pale band is explained once in the legend. The per-measurement
+# numbers are printed to the console instead - they belong in the log,
+# not on the slide.
+fig, axes = plt.subplots(1, 2, figsize=(15.5, 7.0))
+_xs = np.arange(len(NOISE_LEV))
+_xlab = ["clean", "½×", "1×", "2×", "4×", "8×"]
+_floor = 100.0
+for ax, head, colr in ((axes[0], "GET IN", BLUE),
+                       (axes[1], "GET OUT", NAVY)):
+    base, curves = noise[head]
+
+    def _pct(ap):
+        # share of the model's own edge (AP above the no-skill base
+        # rate) that survives: 100% = untouched, 0% = the corruption has
+        # cost the model everything it knew.
+        return [100.0 * (ap[k] - base) / max(ap[0.0] - base, 1e-9)
+                for k in NOISE_LEV]
+
+    singles = {t: _pct(a) for t, a in curves.items() if t != "__all__"}
+    allnine = _pct(curves["__all__"])
+    worst = min(singles, key=lambda t: singles[t][-1])
+    for t, ys in singles.items():
+        ax.plot(_xs, ys, color=SKY, lw=1.8, zorder=3)
+    ax.plot(_xs, allnine, color=colr, lw=3.6, marker="o", ms=6.5, zorder=5)
+    _floor = min(_floor, min(allnine))
+    ax.annotate(f"all nine at once\n{allnine[-1]:.0f}% left",
+                (_xs[-1], allnine[-1]), (_xs[-1] - 0.62, allnine[-1] - 8),
+                fontsize=13, fontweight="bold", color=colr, ha="center",
+                va="top",
+                arrowprops=dict(arrowstyle="-|>", lw=1.4, color=colr))
+    ax.annotate(f"worst single one\n{singles[worst][-1]:.0f}% left",
+                (_xs[-1], singles[worst][-1]),
+                (_xs[-1] - 0.55, singles[worst][-1] + 9),
+                fontsize=12.5, fontweight="bold", color=GREY, ha="center",
+                arrowprops=dict(arrowstyle="-|>", lw=1.3, color=GREY))
+    ax.set_xticks(_xs, _xlab)
+    ax.set_xlabel("how much noise was added to it", fontsize=12.5)
+    if ax is axes[0]:
+        ax.set_ylabel("% of the model's accuracy still standing")
+    ax.set_title(head, fontsize=16, color=colr, pad=10)
+    despine(ax)
+for ax in axes:
+    ax.set_ylim(_floor - 16, 106)
+handles = [mpatches.Patch(color=SKY, label="one crowd measurement "
+                          "spoiled, the others left alone  (× 9)"),
+           mpatches.Patch(color=NAVY, label="all nine crowd measurements "
+                          "spoiled together")]
+fig.legend(handles=handles, loc="lower center", ncol=2, frameon=False,
+           fontsize=12.5, bbox_to_anchor=(0.5, -0.035))
+fig.suptitle("Feeding the model noise on purpose", fontsize=19,
+             fontweight="bold", y=1.04)
+fig.text(0.5, 0.975, "spoil one measurement with random noise, re-score "
+                     "the same model, and see how much accuracy is left",
+         ha="center", fontsize=13, color=GREY)
+foot(fig, "Spoiling any ONE crowd measurement barely moves the model — "
+          "the others already carry what it was saying. Spoiling all "
+          "nine together costs about half the accuracy.\nThat is the "
+          "case for the crowd block as a whole, and against reading any "
+          "single reading as a signal. Noise is random, sized against "
+          "each measurement's own normal\nvariation, five draws per "
+          "level averaged; the model is never refitted on it, so this is "
+          "what the live model would lose if a data source degraded.",
+     y=-0.085)
+fig.tight_layout()
+save(fig, "P05b_add_noise_on_purpose.png")
+for head, (base, curves) in noise.items():
+    print(f"     {head}: " + ", ".join(
+        f"{SHORT.get(t, t)} {100 * (a[8.0] - base) / (a[0.0] - base):.0f}%"
+        for t, a in sorted(curves.items(),
+                           key=lambda kv: kv[1][8.0])), flush=True)
+
+# =====================================================================
 # 6 — how the measurements relate (Spearman, readable decimals)
 # =====================================================================
 print("6    correlations ...", flush=True)
@@ -1408,6 +1553,200 @@ foot(fig, "Communities are found from REPLY STRUCTURE ALONE — who "
           "tickers printed beside them, not an output of the algorithm.",
      y=0.02)
 save(fig, "P14_the_seven_crowds.png")
+
+# =====================================================================
+# 15 — how the logit decides (desk 2026-08-14: "a diagram of the LOGIT
+# ... like price movement yes and price movement no? a simple one")
+# =====================================================================
+# A SCHEMATIC, deliberately: the readings and weights on the left are
+# ILLUSTRATIVE so the arithmetic stays legible - the real fitted
+# weights live in desk_model_insight.json and are charted in P10. The
+# right panel is the actual logistic curve (the maths is real even
+# though the example day is invented).
+print("15   the logit, drawn simply ...", flush=True)
+fig, (axL, axR) = plt.subplots(1, 2, figsize=(15.5, 6.6),
+                               gridspec_kw={"width_ratios": [1, 1.25]})
+
+# ---- LEFT: step 1, weigh the readings and add them up ---------------
+_ex = [("how loud the crowd is",        0.9,  1.2),
+       ("getting loud FASTER",          0.7,  0.8),
+       ("how bullish they are",         0.8,  0.5),
+       ("bullish for how long",         0.3,  0.4),
+       ("mood turning",                -0.2,  0.6)]
+_contrib = [r * w for _, r, w in _ex]
+_ys = np.arange(len(_ex))[::-1]
+axL.barh(_ys, _contrib, color=[BLUE if c >= 0 else GREY
+                               for c in _contrib], height=0.55)
+for y, (nm, r, w), c in zip(_ys, _ex, _contrib):
+    axL.text(-1.52, y, f"{nm}\nreading {r:+.1f} × weight {w:.1f}",
+             ha="left", va="center", fontsize=10.5, color=NAVY)
+    axL.text(c + (0.03 if c >= 0 else -0.03), y, f"{c:+.2f}",
+             ha="left" if c >= 0 else "right", va="center",
+             fontsize=11, fontweight="bold",
+             color=NAVY if c >= 0 else GREY)
+_score = sum(_contrib)
+axL.axvline(0, color=NAVY, lw=1.6)
+axL.text(0.5, -1.15, f"add them up  →  one number: the score "
+                     f"= {_score:+.2f}",
+         ha="center", fontsize=12.5, fontweight="bold", color=NAVY,
+         transform=axL.transData)
+axL.set_xlim(-1.58, 1.55)
+axL.set_ylim(-1.7, len(_ex) - 0.4)
+axL.set_xticks([])
+axL.set_yticks([])
+axL.set_title("STEP 1 — weigh each crowd reading, add them up",
+              fontsize=13.5, color=BLUE, loc="left")
+for s in axL.spines.values():
+    s.set_visible(False)
+
+# ---- RIGHT: step 2, squash the score into a probability -------------
+_x = np.linspace(-6, 6, 300)
+_p = 100.0 / (1 + np.exp(-_x))
+rng15 = np.random.default_rng(4)
+_yes = rng15.normal(2.1, 1.5, 60)          # days a big move followed
+_no = rng15.normal(-2.1, 1.5, 140)         # days nothing followed
+axR.scatter(_no, rng15.uniform(-1, 5, len(_no)), s=16, color=GREY,
+            alpha=0.55, lw=0)
+axR.scatter(_yes, rng15.uniform(95, 101, len(_yes)), s=16, color=BLUE,
+            alpha=0.65, lw=0)
+axR.text(-5.8, 8.5, "history: days where NO big move followed",
+         fontsize=10.5, color=GREY)
+axR.text(-5.8, 90.5, "history: days where a big move DID follow",
+         fontsize=10.5, color=BLUE)
+axR.plot(_x, _p, color=NAVY, lw=3)
+_cut = 78.0
+axR.axhline(_cut, color=GREEN, lw=1.8, ls="--")
+axR.text(-5.8, _cut + 2, "the frozen cut - above it, the call FIRES",
+         fontsize=10.5, color=GREEN, fontweight="bold")
+for sx, lab, colr, tx, ty in (
+        (-3.2, "quiet day\n4% → NO call", GREY, -3.7, 15),
+        (1.4, "warming day\n80% → fires", BLUE, -0.9, 64),
+        (3.6, "hot day\n97% → fires", NAVY, 4.1, 84)):
+    sp = 100.0 / (1 + np.exp(-sx))
+    axR.scatter([sx], [sp], s=130, color=colr, zorder=6,
+                edgecolor="white", linewidth=1.6)
+    axR.annotate(lab, (sx, sp), (tx, ty), fontsize=10.5, color=colr,
+                 fontweight="bold", ha="center", zorder=6,
+                 arrowprops=dict(arrowstyle="-", lw=0.9, color=LIGHT,
+                                 shrinkA=0, shrinkB=4))
+axR.set_xlabel("the score from step 1  (low = cold crowd, "
+               "high = hot crowd)", fontsize=11.5)
+axR.set_ylabel("chance a big price move follows  (%)")
+axR.set_ylim(-4, 106)
+axR.set_title("STEP 2 — the S-curve turns the score into a probability",
+              fontsize=13.5, color=NAVY, loc="left")
+despine(axR)
+
+fig.suptitle("How the logit decides: two steps from readings to a call",
+             fontsize=18, fontweight="bold", y=1.04)
+fig.text(0.5, 0.975, "fitting = choosing the weights so that "
+                     "yesterday's YES-days score high and NO-days "
+                     "score low; nothing else is learned",
+         ha="center", fontsize=12.5, color=GREY)
+foot(fig, "HOW TO READ IT: every past day is labelled by what price did "
+          "NEXT - a big move followed (YES) or it did not (NO). Fitting "
+          "the logit = sliding the weights until the two piles separate "
+          "on the score.\nScoring a new day is then just step 1 + step "
+          "2: weigh, add, squash. The S-curve keeps every answer "
+          "between 0 and 100%, and the cut is frozen from past years - "
+          "never chosen by eye.\nThe readings and weights above are "
+          "ILLUSTRATIVE so the arithmetic stays visible; the real "
+          "fitted weights are in P10 and desk_model_insight.json. The "
+          "shipped signal averages this\nmodel's ranking with the "
+          "boosted-tree's; the experimental posts-only trigger uses the "
+          "logit alone.", y=-0.09)
+fig.tight_layout()
+save(fig, "P15_how_the_logit_decides.png")
+
+# =====================================================================
+# 16 — the threshold frontier (desk 2026-08-14: "a diagram of the
+# sample frontier used to get the threshold like the 80% and stuff")
+# =====================================================================
+# REAL NUMBERS, recomputed here with the same machinery production
+# uses: fit the shipped ensemble on the TRAIN years, sweep candidate
+# cuts at every 2.5th percentile of the train scores (50th..97.5th -
+# "the 80% and stuff"), and at each cut tally episode-level precision
+# and capture. SIMPLIFIED 2026-08-14 (desk): ONE combined line (the F1
+# balance of the two) and ONE marked cut (the F1 peak), labelled
+# simply "Threshold" - the F0.5/Standard variant runs the identical
+# sweep with precision counted twice and is deliberately not drawn.
+print("16   threshold frontier (fitting, ~1 min) ...", flush=True)
+from analytics.euphoria_phases import _pregroup, _tally    # noqa: E402
+_tr16 = tr
+_yrs16 = sorted(_tr16.year.unique())
+_iny16 = lambda eps: eps.year.isin(_yrs16)                 # noqa: E731
+_pcts = np.arange(50, 100, 2.5)
+fig, axes = plt.subplots(1, 2, figsize=(15.5, 6.8))
+for ax, label, mode, head, colr in (
+        (axes[0], "y_onset", "onset", "GET IN", BLUE),
+        (axes[1], "y_top", "top", "GET OUT", NAVY)):
+    _fit16 = mld.make_ens_fit(label)
+    _trs = _tr16.assign(score=_fit16(_tr16, _tr16, mld.DESK_ML_BANK))
+    _grid = np.percentile(_trs["score"].dropna(), _pcts)
+    _grp = _pregroup(_trs, episodes)
+    rows = []
+    for pct, thr in zip(_pcts, _grid):
+        r = _tally(_grp, episodes, thr, mode, _iny16)
+        P = r["captured"] / max(r["captured"] + r["false_alarms"], 1)
+        R = r["captured"] / max(r["detectable"], 1)
+        f1 = 2 * P * R / (P + R) if P + R else 0.0
+        rows.append((pct, thr, P, R, f1))
+    d = pd.DataFrame(rows, columns=["pct", "thr", "precision",
+                                    "recall", "f1"])
+    ax.plot(d["pct"], d["recall"], color=SKY, lw=2.2)
+    ax.plot(d["pct"], d["precision"], color=GREY, lw=2.2)
+    ax.plot(d["pct"], d["f1"], color=colr, lw=3.4)
+    for col, txt, cc, dy in (("recall", "capture rate\n(episodes "
+                              "caught)", SKY, -0.025),
+                             ("precision", "precision\n(calls that "
+                              "were right)", GREY, 0.045),
+                             ("f1", "COMBINED\n(balance of the two)",
+                              colr, 0.0)):
+        ax.annotate(txt, (97.5, d[col].iloc[-1]),
+                    (98.3, d[col].iloc[-1] + dy), fontsize=10,
+                    color=cc, va="center", fontweight="bold")
+    i = d["f1"].idxmax()
+    ax.axvline(d.loc[i, "pct"], color=GREEN, lw=1.8, alpha=0.9,
+               zorder=1)
+    ax.scatter([d.loc[i, "pct"]], [d.loc[i, "f1"]], s=130, color=GREEN,
+               zorder=6, edgecolor="white", linewidth=1.5)
+    ax.annotate(f"THRESHOLD - the peak\nof the combined line\n"
+                f"score {d.loc[i, 'thr']:.2f}",
+                (d.loc[i, "pct"], d.loc[i, "f1"]),
+                (d.loc[i, "pct"] - 15, d.loc[i, "f1"] + 0.20),
+                fontsize=11, color=GREEN, fontweight="bold",
+                ha="center",
+                arrowprops=dict(arrowstyle="-|>", lw=1.3, color=GREEN))
+    ax.set_xlim(49, 107)
+    ax.set_ylim(0, 1.04)
+    ax.set_xticks([50, 60, 70, 80, 90, 97.5],
+                  ["50%", "60%", "70%", "80%", "90%", "97.5%"])
+    ax.set_xlabel("candidate cut, as a percentile of the train-day "
+                  "scores", fontsize=11.5)
+    if ax is axes[0]:
+        ax.set_ylabel("rate on the TRAIN years (0-1)")
+    ax.set_title(head, fontsize=15, color=colr, pad=10)
+    despine(ax)
+fig.suptitle("How the threshold is chosen: sweep every cut, take the "
+             "peak of the combined line", fontsize=18,
+             fontweight="bold", y=1.03)
+fig.text(0.5, 0.972, "every 2.5th percentile of the train scores is "
+                     "tried as the cut; episodes caught vs calls "
+                     "wasted is tallied at each - on TRAIN years only",
+         ha="center", fontsize=12.5, color=GREY)
+foot(fig, "HOW TO READ IT: move the cut RIGHT and precision rises (the "
+          "calls you still make are increasingly right) while capture "
+          "falls (you make fewer of them) - the trade every alarm "
+          "system lives on.\nThe COMBINED line balances the two (their "
+          "harmonic mean), and its PEAK is the threshold: caught enough, "
+          "wasted little, no human number anywhere. The peak is found "
+          "on the TRAIN\nyears and then FROZEN - the test year never "
+          "votes. The stricter Standard setting is chosen by the "
+          "identical sweep with precision counted twice, and the "
+          "experimental posts-only\ntrigger runs the same sweep on its "
+          "own scores.", y=-0.1)
+fig.tight_layout()
+save(fig, "P16_how_the_cut_is_chosen.png")
 
 print(f"\n{len(SAVED)} figures -> {OUT}/  ({time.time()-T0:.0f}s)")
 for s in SAVED:

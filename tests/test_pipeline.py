@@ -3305,3 +3305,85 @@ class TestMLDetector:
                     for t in outs), (
                     f"{name}: GET IN on {d:%Y-%m-%d} lands inside the "
                     "cooldown after a GET OUT")
+
+
+class TestPriceBlindTrigger:
+    """The EXPERIMENTAL price-blind trigger (desk 2026-08-14: "i want
+    only the post factors to predict the price, not price predicting
+    price").
+
+    The design promise is total: price appears NOWHERE between a post
+    and an experimental call - not as a feature, not as the phase gate
+    that routes IN vs OUT. These tests fence the two ways that promise
+    breaks silently: a price feature drifting into the bank, and the
+    dashboard mixing shipped and experimental quantities (a shipped
+    score against an experimental cut reads plausibly and is wrong)."""
+
+    @staticmethod
+    def _src(name):
+        from pathlib import Path
+        return Path(name).read_text(encoding="utf-8")
+
+    def test_the_bank_is_price_free(self):
+        import analytics.euphoria_phases as eph
+        from analytics import ml_detector as mld
+        xp_bank = list(mld.ML_BANK) + eph.INFLECTION_EXTRA_FEATURES
+        for f in mld.PRICE_FEATURES:
+            assert f not in xp_bank
+        # the pipeline builds the bank from exactly these two lists
+        src = self._src("analytics/euphoria_phases.py")
+        assert "list(mld.ML_BANK) + INFLECTION_EXTRA_FEATURES" in src
+
+    def test_the_pipeline_never_gates_xp_on_price(self):
+        """The xp alert path must pass an all-True gate - the phase
+        gate (boomed120) is the second door price enters by."""
+        src = self._src("analytics/euphoria_phases.py")
+        blk = src[src.index("def _xp_alerts("):
+                  src.index('_rin = _frozen_xp["get_in"]')]
+        assert "[True] * len(" in blk
+        assert "boomed120" not in blk
+        # and the candidate frame is NOT the price-attached one
+        blk2 = src[src.index("if EUPHORIA_XP_ENABLED:"):
+                   src.index("xp_in_scored = xp_live.assign")]
+        assert "attach_price_features" not in blk2
+
+    def test_the_dashboard_cannot_mix_the_two_triggers(self):
+        """Every surface reads columns and cuts through the same
+        trigger-aware indirection - scores via IN_SCORE/OUT_SCORE,
+        alert columns via sig_col, cuts via sig_head."""
+        src = self._src("dashboard.py")
+        assert 'IN_SCORE = f"in_score{_XP_PART}"' in src
+        assert 'OUT_SCORE = f"out_score{_XP_PART}"' in src
+        assert '_c = f"{base}{_XP_PART}{_SIG_SUFFIX}"' in src
+        assert "experimental_price_blind" in src
+        # the store-predates-it case warns rather than silently
+        # substituting the shipped signals
+        assert "predate the experimental" in src
+        # the watchlist keeps both sides eligible in xp mode (no gate)
+        assert "_boomed or XP_TRIGGER" in src
+        assert "(not _boomed) or XP_TRIGGER" in src
+        # the mode is never the default
+        blk = src[src.index('"trigger",'):src.index('XP_TRIGGER = ')]
+        assert "index=0" in blk
+
+    def test_store_columns_when_present(self):
+        """On a machine whose store has been rebuilt since 2026-08-14:
+        the xp columns exist together, the booleans are bool, and the
+        end-stage suppression held."""
+        import os
+        import pandas as pd
+        p = "data/processed/euphoria_desk.parquet"
+        if not os.path.exists(p):
+            import pytest
+            pytest.skip("no local desk store")
+        ds = pd.read_parquet(p)
+        if "in_score_xp" not in ds.columns:
+            import pytest
+            pytest.skip("store predates the experimental trigger")
+        for c in ("get_in_xp", "get_out_xp", "get_in_xp_strict",
+                  "get_out_xp_strict"):
+            assert c in ds.columns
+            assert ds[c].dtype == bool
+        assert ds["in_score_xp"].notna().any()
+        both = ds[ds["get_in_xp"] & ds["end_stage"].astype(bool)]
+        assert both.empty, "a posts-only GET IN fired on an end-stage day"

@@ -53,7 +53,8 @@ from src.config import (EUPHORIA_CRASH_MIN_ETF, EUPHORIA_CRASH_MIN_SINGLE,
                         EUPHORIA_MIN_HISTORY,
                         EUPHORIA_FA_BUDGET_PER_IY,
                         EUPHORIA_INFLECTION_ENABLED, EUPHORIA_INFLECTION_CUT_Q,
-                        EUPHORIA_INFLECTION_REARM_Q, EUPHORIA_INFLECTION_SPACING_D)
+                        EUPHORIA_INFLECTION_REARM_Q, EUPHORIA_INFLECTION_SPACING_D,
+                        EUPHORIA_XP_ENABLED)
 from analytics.euphoria import (EuphoriaSeries, ground_truth_peaks,
                                 judgeable_window, trailing_pct_rank,
                                 log_convexity, _mention_share,
@@ -1203,8 +1204,10 @@ def rebuild_phase_files(verbose: bool = True,
             dscore=desk_end_fit(end_live, end_live, TOP_FEATURES))
         onset_scored = onset_live_f.assign(
             dscore=desk_onset_fit(onset_live_f, onset_live_f, ONSET_BANK))
-        # the inflection head is an ML head; the rules fallback has none
+        # the inflection and price-blind heads are ML heads; the rules
+        # fallback has neither
         inflection_scored, _ttrain_sc = None, None
+        xp_in_scored = xp_out_scored = xp_train = None
     else:
         # ML path: candidacy is the coverage gate only - the hype, boom
         # and end-stage doors are FEATURES now, not gates
@@ -1248,6 +1251,37 @@ def rebuild_phase_files(verbose: bool = True,
                           "days yet")
         else:
             inflection_scored, _ttrain_sc = None, None
+        # THE EXPERIMENTAL PRICE-BLIND PAIR (desk 2026-08-14: "i want
+        # only the post factors to predict the price"). A SECOND GET IN
+        # / GET OUT scoring with price removed from BOTH places it
+        # enters the desk pair: the two price features are dropped from
+        # the bank, and the 120d boom phase gate is dropped from the
+        # trigger (see the alert block below). The bank is the nine
+        # crowd features plus the four price-free inflection extras -
+        # notebook 08 §8 measured that addition worth +0.02 AP on GET
+        # IN with nothing given up. LOGIT, not the ens the desk pair
+        # uses: the desk's own selection rule (combined AP lift, ties
+        # -> AUROC) picks it on the price-blind bank (nb08 §8; frozen
+        # in docs/research/nb08_price_blind.json). Everything else -
+        # train years, F1/F0.5 cuts, re-arm, spacing, coherence sweep -
+        # is the desk pair's machinery unchanged, so the two modes
+        # differ ONLY in what the model is allowed to see.
+        if EUPHORIA_XP_ENABLED:
+            _xp_bank = list(mld.ML_BANK) + INFLECTION_EXTRA_FEATURES
+            xp_cand_j = inflection_features(
+                mld.candidate_frame(_judged_frame()))
+            xp_train = xp_cand_j[xp_cand_j["year"] < data_max_year]
+            if xp_train.empty:
+                xp_train = xp_cand_j
+            xp_live = inflection_features(mld.candidate_frame(fpx_live))
+            xp_in_scored = xp_live.assign(
+                dscore=mld.make_logit_fit("y_onset")(xp_train, xp_live,
+                                                     _xp_bank))
+            xp_out_scored = xp_live.assign(
+                dscore=mld.make_logit_fit("y_top")(xp_train, xp_live,
+                                                   _xp_bank))
+        else:
+            xp_in_scored = xp_out_scored = xp_train = None
         # the explainability sidecar the dashboard's "what drives the
         # calls" expander reads: logit weights + GBM permutation
         # importance for the live fit (one computation, every surface -
@@ -1389,6 +1423,107 @@ def rebuild_phase_files(verbose: bool = True,
                 "derived": _infl_src}
             with open(desk_path, "w") as _f:
                 _json.dump(desk_stored, _f, indent=1, default=str)
+    # EXPERIMENTAL PRICE-BLIND COLUMNS (desk 2026-08-14). Same frozen-
+    # threshold contract as the desk cuts and the inflection head: the
+    # cuts live in the desk record, are re-derived only on research (or
+    # once, on bootstrap), and every live run scores at them. The
+    # trigger is the shaped trigger WITHOUT the phase gate - no price
+    # anywhere between a post and a call. The end-stage suppression and
+    # the 21d IN/OUT separation are kept: both are crowd-only reads
+    # (end_stage_mask is e1/e2/hype - no price term).
+    ds["in_score_xp"] = np.nan
+    ds["out_score_xp"] = np.nan
+    for _c in ("get_in_xp", "get_out_xp",
+               "get_in_xp_strict", "get_out_xp_strict"):
+        ds[_c] = False
+    if xp_in_scored is not None and xp_train is not None:
+        _frozen_xp = (desk_stored or {}).get("experimental_price_blind") \
+            or {}
+        if research or "get_in" not in _frozen_xp:
+            _xp_rec = {"model": "logit", "bank": _xp_bank,
+                       "derived": "research" if research else "bootstrap",
+                       "trigger": "shaped crossing WITHOUT phase gates "
+                                  "(re-arm + 63d spacing only)",
+                       "evidence": "docs/research/nb08_price_blind.json",
+                       "role": ("EXPERIMENTAL dashboard mode - crowd "
+                                "features only, no price features, no "
+                                "price gate. Never the default.")}
+            for _hd, _lab, _md in (("get_in", "y_onset", "onset"),
+                                   ("get_out", "y_top", "top")):
+                _fit_xp = mld.make_logit_fit(_lab)
+                _tr_sc = xp_train.assign(
+                    score=_fit_xp(xp_train, xp_train, _xp_bank))
+                _n_xp = xp_train["name"].nunique()
+                _xp_rec[_hd] = {
+                    "live_threshold": mld.choose_threshold_f1(
+                        _tr_sc, episodes, _md, fa_budget, _n_xp),
+                    "strict_threshold": mld.choose_threshold_strict(
+                        _tr_sc, episodes, _md, fa_budget, _n_xp),
+                    "rearm_level": float(
+                        _tr_sc["score"].dropna().median())}
+            if isinstance(desk_stored, dict):
+                desk_stored["experimental_price_blind"] = _xp_rec
+                with open(desk_path, "w") as _f:
+                    _json.dump(desk_stored, _f, indent=1, default=str)
+            _frozen_xp = _xp_rec
+        if verbose:
+            print(f"  price-blind pair ({_frozen_xp.get('derived')}): "
+                  f"in {_frozen_xp['get_in']['live_threshold']:.3f}/"
+                  f"{_frozen_xp['get_in']['strict_threshold']:.3f} out "
+                  f"{_frozen_xp['get_out']['live_threshold']:.3f}/"
+                  f"{_frozen_xp['get_out']['strict_threshold']:.3f}")
+
+        def _xp_alerts(scored, thr, rearm):
+            """No phase gate, deliberately - price routes nothing."""
+            by = {}
+            for _n, _g in scored.sort_values("date").groupby("name"):
+                by[_n] = set(alerts_from_scores_shaped(
+                    _g["date"].tolist(), _g["dscore"].tolist(),
+                    [True] * len(_g), thr,
+                    rearm if rearm is not None else thr,
+                    EUPHORIA_ALERT_SPACING_D))
+            return by
+
+        _rin = _frozen_xp["get_in"].get("rearm_level")
+        for _sfx, _thr_key in (("", "live_threshold"),
+                               ("_strict", "strict_threshold")):
+            _ia = _xp_alerts(xp_in_scored,
+                             float(_frozen_xp["get_in"][_thr_key]), _rin)
+            _oa = _xp_alerts(xp_out_scored,
+                             float(_frozen_xp["get_out"][_thr_key]), None)
+            ds[f"get_in_xp{_sfx}"] = [d in _ia.get(n, ())
+                                      for n, d in zip(ds["name"],
+                                                      ds["date"])]
+            ds[f"get_out_xp{_sfx}"] = [d in _oa.get(n, ())
+                                       for n, d in zip(ds["name"],
+                                                       ds["date"])]
+        ds = ds.merge(xp_in_scored[["name", "date", "dscore"]]
+                      .rename(columns={"dscore": "in_score_xp_new"}),
+                      on=["name", "date"], how="left")
+        ds["in_score_xp"] = ds.pop("in_score_xp_new")
+        ds = ds.merge(xp_out_scored[["name", "date", "dscore"]]
+                      .rename(columns={"dscore": "out_score_xp_new"}),
+                      on=["name", "date"], how="left")
+        ds["out_score_xp"] = ds.pop("out_score_xp_new")
+        # the same PM-trust sweep as the desk pair (both crowd-only
+        # rules, so nothing here re-admits price)
+        for _sfx in ("_xp", "_xp_strict"):
+            _gi, _go = f"get_in{_sfx}", f"get_out{_sfx}"
+            ds.loc[ds["end_stage"].astype(bool), _gi] = False
+            for _n, _g in ds.groupby("name"):
+                outs = _g.loc[_g[_go], "date"]
+                if not len(outs):
+                    continue
+                for d in _g.loc[_g[_gi], "date"]:
+                    if any(abs((d - t).days) <= EUPHORIA_COOLDOWN_DAYS
+                           for t in outs):
+                        ds.loc[(ds["name"] == _n) & (ds["date"] == d),
+                               _gi] = False
+        if verbose:
+            print(f"  price-blind pair: {int(ds['get_in_xp'].sum())} GET "
+                  f"IN / {int(ds['get_out_xp'].sum())} GET OUT all-time "
+                  f"({int(ds['get_in_xp_strict'].sum())}/"
+                  f"{int(ds['get_out_xp_strict'].sum())} strict)")
     ds = ds.merge(_b120, on=["name", "date"], how="left")
     ds["boomed120"] = ds["boomed120"].eq(True)
     ds["symbol"] = ds["name"].map(sym_by)

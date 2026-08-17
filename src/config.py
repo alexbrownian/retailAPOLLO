@@ -449,6 +449,18 @@ EUPHORIA_INFLECTION_HORIZON_D = 21      # forward window the excess is measured 
 EUPHORIA_INFLECTION_CUT_Q = 0.95        # percentile of the train-year scores
 EUPHORIA_INFLECTION_REARM_Q = 0.50      # must fall below this to re-arm
 EUPHORIA_INFLECTION_SPACING_D = 63      # one inflection call per name per quarter
+
+# THE EXPERIMENTAL PRICE-BLIND TRIGGER (desk 2026-08-14: "i want only
+# the post factors to predict the price, not price predicting price").
+# A second GET IN / GET OUT pair scored from CROWD FEATURES ONLY - no
+# price features AND no price-based phase gate (the desk pair uses the
+# 120d boom bar to route IN vs OUT; this one deliberately does not).
+# It ships as a clearly-labelled dashboard MODE, never the default:
+# measured walk-forward (notebook 08 §8, docs/research/nb08_price_blind
+# .json) it ranks days at AUROC ~0.57 vs the shipped pair's ~0.73, so
+# it is the honest "what can the crowd alone see" record, not a better
+# detector.
+EUPHORIA_XP_ENABLED = True
                                 # ins"): minimum days between two calls
                                 # of the SAME head on the same name -
                                 # one call per name per quarter (3x the
