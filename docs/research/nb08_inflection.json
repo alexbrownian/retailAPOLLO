@@ -1,5 +1,5 @@
 {
- "built": "2026-08-13 01:02 UTC",
+ "built": "2026-08-17 07:32 UTC",
  "sections": {
   "coverage": [
    {
@@ -98,42 +98,42 @@
   "baseline_crowd": {
    "y_move": {
     "n": 37049,
-    "AP": 0.13828924440897067,
-    "AUROC": 0.49179697857636756,
+    "AP": 0.13841992090145777,
+    "AUROC": 0.4922398538774883,
     "base": 0.1377904936705444,
-    "AP_lift": 1.0036196309711958,
+    "AP_lift": 1.0045680018566325,
     "label": "A \u00b7 big move either way"
    },
    "y_turn": {
     "n": 37049,
-    "AP": 0.05926930339848295,
-    "AUROC": 0.5176084295030348,
+    "AP": 0.059457659959029,
+    "AUROC": 0.5177887847090629,
     "base": 0.056033901049960866,
-    "AP_lift": 1.0577400874809224,
+    "AP_lift": 1.0611015625347135,
     "label": "B \u00b7 turning point in 10d"
    },
    "y_halfdd": {
     "n": 37049,
-    "AP": 0.1997970887567148,
-    "AUROC": 0.5434121734886783,
+    "AP": 0.19926592182573383,
+    "AUROC": 0.5433033276505936,
     "base": 0.16694107803179573,
-    "AP_lift": 1.1968120196196488,
+    "AP_lift": 1.193630256705192,
     "label": "C \u00b7 captures half the drop"
    },
    "y_onset": {
     "n": 37049,
-    "AP": 0.1423857076985443,
-    "AUROC": 0.557788854051676,
+    "AP": 0.14188802030149755,
+    "AUROC": 0.5567379306579685,
     "base": 0.11349834003616832,
-    "AP_lift": 1.2545179749163775,
+    "AP_lift": 1.2501329997979032,
     "label": "GET IN (shipped grading)"
    },
    "y_top": {
     "n": 37049,
-    "AP": 0.1270826045497261,
-    "AUROC": 0.5495533655356115,
+    "AP": 0.1270611322522122,
+    "AUROC": 0.5497176154833487,
     "base": 0.1051850252368485,
-    "AP_lift": 1.2081815283455999,
+    "AP_lift": 1.2079773899954347,
     "label": "GET OUT (shipped grading)"
    }
   },
@@ -151,10 +151,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.13802629848408135,
-    "AUROC": 0.5017089928187256,
+    "AP": 0.13813864962403816,
+    "AUROC": 0.5023334481277594,
     "base": 0.1377904936705444,
-    "AP_lift": 1.0017113286066073,
+    "AP_lift": 1.0025267051755122,
     "label": "A \u00b7 big move either way",
     "label_col": "y_move",
     "bank": "crowd only (shipped)",
@@ -162,10 +162,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.13828924440897067,
-    "AUROC": 0.49179697857636756,
+    "AP": 0.13841992090145777,
+    "AUROC": 0.4922398538774883,
     "base": 0.1377904936705444,
-    "AP_lift": 1.0036196309711958,
+    "AP_lift": 1.0045680018566325,
     "label": "A \u00b7 big move either way",
     "label_col": "y_move",
     "bank": "crowd only (shipped)",
@@ -173,10 +173,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.1256509559022811,
-    "AUROC": 0.4598549359027662,
+    "AP": 0.12565095590228106,
+    "AUROC": 0.45985493590276616,
     "base": 0.1377904936705444,
-    "AP_lift": 0.9118985828058006,
+    "AP_lift": 0.9118985828058004,
     "label": "A \u00b7 big move either way",
     "label_col": "y_move",
     "bank": "crowd + price (shipped desk)",
@@ -184,10 +184,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.14155894883487508,
-    "AUROC": 0.5080811596591783,
+    "AP": 0.141572495618145,
+    "AUROC": 0.5083867476948518,
     "base": 0.1377904936705444,
-    "AP_lift": 1.0273491665785086,
+    "AP_lift": 1.0274474809317637,
     "label": "A \u00b7 big move either way",
     "label_col": "y_move",
     "bank": "crowd + price (shipped desk)",
@@ -195,10 +195,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.13319296058290528,
-    "AUROC": 0.4859286807741167,
+    "AP": 0.13328767058616256,
+    "AUROC": 0.4865138257376462,
     "base": 0.1377904936705444,
-    "AP_lift": 0.9666338876858096,
+    "AP_lift": 0.9673212355625341,
     "label": "A \u00b7 big move either way",
     "label_col": "y_move",
     "bank": "crowd + price (shipped desk)",
@@ -217,10 +217,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.14639464690631446,
-    "AUROC": 0.5225973624754192,
+    "AP": 0.1460647772947955,
+    "AUROC": 0.5226622102881806,
     "base": 0.1377904936705444,
-    "AP_lift": 1.0624437361864925,
+    "AP_lift": 1.060049742212513,
     "label": "A \u00b7 big move either way",
     "label_col": "y_move",
     "bank": "crowd + new",
@@ -228,10 +228,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.14363168149694983,
-    "AUROC": 0.5069437106267997,
+    "AP": 0.14351562450061334,
+    "AUROC": 0.5070886201930754,
     "base": 0.1377904936705444,
-    "AP_lift": 1.042391805637707,
+    "AP_lift": 1.0415495342063121,
     "label": "A \u00b7 big move either way",
     "label_col": "y_move",
     "bank": "crowd + new",
@@ -239,10 +239,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.13001763713704773,
+    "AP": 0.13001763713704778,
     "AUROC": 0.46634340875179947,
     "base": 0.1377904936705444,
-    "AP_lift": 0.9435893121039141,
+    "AP_lift": 0.9435893121039145,
     "label": "A \u00b7 big move either way",
     "label_col": "y_move",
     "bank": "crowd + price + new",
@@ -250,10 +250,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.14388177926091528,
-    "AUROC": 0.5188155637448788,
+    "AP": 0.14326453721160692,
+    "AUROC": 0.5190177969379813,
     "base": 0.1377904936705444,
-    "AP_lift": 1.0442068638271598,
+    "AP_lift": 1.0397272946430607,
     "label": "A \u00b7 big move either way",
     "label_col": "y_move",
     "bank": "crowd + price + new",
@@ -261,10 +261,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.1401466773488158,
-    "AUROC": 0.5056486890746368,
+    "AP": 0.14025604265350783,
+    "AUROC": 0.5057311699735065,
     "base": 0.1377904936705444,
-    "AP_lift": 1.0170997549649905,
+    "AP_lift": 1.0178934621488367,
     "label": "A \u00b7 big move either way",
     "label_col": "y_move",
     "bank": "crowd + price + new",
@@ -272,10 +272,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.0536812714811795,
+    "AP": 0.05368127148117951,
     "AUROC": 0.5022920241196801,
     "base": 0.056033901049960866,
-    "AP_lift": 0.9580141749066566,
+    "AP_lift": 0.9580141749066567,
     "label": "B \u00b7 turning point in 10d",
     "label_col": "y_turn",
     "bank": "crowd only (shipped)",
@@ -283,10 +283,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.05772260713774324,
-    "AUROC": 0.5362473263850611,
+    "AP": 0.05763758985111203,
+    "AUROC": 0.5361040903726062,
     "base": 0.056033901049960866,
-    "AP_lift": 1.0301372215059004,
+    "AP_lift": 1.028619974178155,
     "label": "B \u00b7 turning point in 10d",
     "label_col": "y_turn",
     "bank": "crowd only (shipped)",
@@ -294,10 +294,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.05926930339848295,
-    "AUROC": 0.5176084295030348,
+    "AP": 0.059457659959029,
+    "AUROC": 0.5177887847090629,
     "base": 0.056033901049960866,
-    "AP_lift": 1.0577400874809224,
+    "AP_lift": 1.0611015625347135,
     "label": "B \u00b7 turning point in 10d",
     "label_col": "y_turn",
     "bank": "crowd only (shipped)",
@@ -316,10 +316,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.06684934263678341,
-    "AUROC": 0.5599270855078018,
+    "AP": 0.06718683342776115,
+    "AUROC": 0.5605884062943796,
     "base": 0.056033901049960866,
-    "AP_lift": 1.193016038222634,
+    "AP_lift": 1.199039013326167,
     "label": "B \u00b7 turning point in 10d",
     "label_col": "y_turn",
     "bank": "crowd + price (shipped desk)",
@@ -327,10 +327,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.07675391173635242,
-    "AUROC": 0.5577455787941449,
+    "AP": 0.07676510789242859,
+    "AUROC": 0.5576350751614774,
     "base": 0.056033901049960866,
-    "AP_lift": 1.3697763371484204,
+    "AP_lift": 1.3699761475465253,
     "label": "B \u00b7 turning point in 10d",
     "label_col": "y_turn",
     "bank": "crowd + price (shipped desk)",
@@ -349,10 +349,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.06758157379739191,
-    "AUROC": 0.5708075337721304,
+    "AP": 0.06747336951900637,
+    "AUROC": 0.5694424978101742,
     "base": 0.056033901049960866,
-    "AP_lift": 1.206083683824457,
+    "AP_lift": 1.2041526335788377,
     "label": "B \u00b7 turning point in 10d",
     "label_col": "y_turn",
     "bank": "crowd + new",
@@ -360,10 +360,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.07489919599723432,
-    "AUROC": 0.5556894922573632,
+    "AP": 0.07481098331064033,
+    "AUROC": 0.5549235834943852,
     "base": 0.056033901049960866,
-    "AP_lift": 1.3366764511086389,
+    "AP_lift": 1.3351021775895537,
     "label": "B \u00b7 turning point in 10d",
     "label_col": "y_turn",
     "bank": "crowd + new",
@@ -371,10 +371,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.07729299319816664,
+    "AP": 0.07729299319816665,
     "AUROC": 0.5588712820410262,
     "base": 0.056033901049960866,
-    "AP_lift": 1.3793969677258553,
+    "AP_lift": 1.3793969677258555,
     "label": "B \u00b7 turning point in 10d",
     "label_col": "y_turn",
     "bank": "crowd + price + new",
@@ -382,10 +382,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.07238639138058237,
-    "AUROC": 0.5784234694785468,
+    "AP": 0.0754677378038563,
+    "AUROC": 0.5775690462452538,
     "base": 0.056033901049960866,
-    "AP_lift": 1.291832087793447,
+    "AP_lift": 1.346822840989919,
     "label": "B \u00b7 turning point in 10d",
     "label_col": "y_turn",
     "bank": "crowd + price + new",
@@ -393,10 +393,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.08078760993434492,
-    "AUROC": 0.5709098009380977,
+    "AP": 0.08082937007308053,
+    "AUROC": 0.5702285156724535,
     "base": 0.056033901049960866,
-    "AP_lift": 1.441763083072035,
+    "AP_lift": 1.442508348669345,
     "label": "B \u00b7 turning point in 10d",
     "label_col": "y_turn",
     "bank": "crowd + price + new",
@@ -415,10 +415,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.18199325673376132,
-    "AUROC": 0.5392879990260555,
+    "AP": 0.18148947026943188,
+    "AUROC": 0.5387464702894551,
     "base": 0.16694107803179573,
-    "AP_lift": 1.0901646190346197,
+    "AP_lift": 1.0871468688782833,
     "label": "C \u00b7 captures half the drop",
     "label_col": "y_halfdd",
     "bank": "crowd only (shipped)",
@@ -426,10 +426,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.1997970887567148,
-    "AUROC": 0.5434121734886783,
+    "AP": 0.19926592182573383,
+    "AUROC": 0.5433033276505936,
     "base": 0.16694107803179573,
-    "AP_lift": 1.1968120196196488,
+    "AP_lift": 1.193630256705192,
     "label": "C \u00b7 captures half the drop",
     "label_col": "y_halfdd",
     "bank": "crowd only (shipped)",
@@ -448,10 +448,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.2675062763243581,
-    "AUROC": 0.6834399973304535,
+    "AP": 0.2678787916420269,
+    "AUROC": 0.6840382565513901,
     "base": 0.16694107803179573,
-    "AP_lift": 1.602399358373669,
+    "AP_lift": 1.6046307763210113,
     "label": "C \u00b7 captures half the drop",
     "label_col": "y_halfdd",
     "bank": "crowd + price (shipped desk)",
@@ -459,10 +459,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.3368236586320418,
-    "AUROC": 0.696241332355198,
+    "AP": 0.336880327432468,
+    "AUROC": 0.6965072655042195,
     "base": 0.16694107803179573,
-    "AP_lift": 2.0176200046335517,
+    "AP_lift": 2.017959458536056,
     "label": "C \u00b7 captures half the drop",
     "label_col": "y_halfdd",
     "bank": "crowd + price (shipped desk)",
@@ -481,10 +481,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.199705176187494,
-    "AUROC": 0.5660404678328017,
+    "AP": 0.19997560502573233,
+    "AUROC": 0.5661899592988437,
     "base": 0.16694107803179573,
-    "AP_lift": 1.1962614506985394,
+    "AP_lift": 1.1978813566044233,
     "label": "C \u00b7 captures half the drop",
     "label_col": "y_halfdd",
     "bank": "crowd + new",
@@ -492,10 +492,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.21783987903768268,
-    "AUROC": 0.5558256018109333,
+    "AP": 0.2177746403075561,
+    "AUROC": 0.5558920471189641,
     "base": 0.16694107803179573,
-    "AP_lift": 1.3048908130100414,
+    "AP_lift": 1.3045000240508726,
     "label": "C \u00b7 captures half the drop",
     "label_col": "y_halfdd",
     "bank": "crowd + new",
@@ -503,10 +503,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.25893869676789233,
+    "AP": 0.2589386967678924,
     "AUROC": 0.6532371814616962,
     "base": 0.16694107803179573,
-    "AP_lift": 1.5510783793942835,
+    "AP_lift": 1.5510783793942837,
     "label": "C \u00b7 captures half the drop",
     "label_col": "y_halfdd",
     "bank": "crowd + price + new",
@@ -514,10 +514,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.2659316344328504,
-    "AUROC": 0.6857713926232507,
+    "AP": 0.2655289666461524,
+    "AUROC": 0.6856395523291898,
     "base": 0.16694107803179573,
-    "AP_lift": 1.592967037041661,
+    "AP_lift": 1.5905550016610024,
     "label": "C \u00b7 captures half the drop",
     "label_col": "y_halfdd",
     "bank": "crowd + price + new",
@@ -525,10 +525,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.33395830822813816,
-    "AUROC": 0.702561565108649,
+    "AP": 0.3338088254573394,
+    "AUROC": 0.7024290438078044,
     "base": 0.16694107803179573,
-    "AP_lift": 2.000456161931171,
+    "AP_lift": 1.999560739590779,
     "label": "C \u00b7 captures half the drop",
     "label_col": "y_halfdd",
     "bank": "crowd + price + new",
@@ -547,10 +547,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.13052377631660414,
-    "AUROC": 0.5524488480187608,
+    "AP": 0.1302666432179476,
+    "AUROC": 0.5510287090589739,
     "base": 0.11349834003616832,
-    "AP_lift": 1.150006037753595,
+    "AP_lift": 1.1477405147637907,
     "label": "GET IN (shipped grading)",
     "label_col": "y_onset",
     "bank": "crowd only (shipped)",
@@ -558,10 +558,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.1423857076985443,
-    "AUROC": 0.557788854051676,
+    "AP": 0.14188802030149755,
+    "AUROC": 0.5567379306579685,
     "base": 0.11349834003616832,
-    "AP_lift": 1.2545179749163775,
+    "AP_lift": 1.2501329997979032,
     "label": "GET IN (shipped grading)",
     "label_col": "y_onset",
     "bank": "crowd only (shipped)",
@@ -580,10 +580,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.2688060073705664,
-    "AUROC": 0.737188899754701,
+    "AP": 0.26879929714966655,
+    "AUROC": 0.7371468061970174,
     "base": 0.11349834003616832,
-    "AP_lift": 2.368369504654486,
+    "AP_lift": 2.368310382900831,
     "label": "GET IN (shipped grading)",
     "label_col": "y_onset",
     "bank": "crowd + price (shipped desk)",
@@ -591,10 +591,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.2886195251778992,
-    "AUROC": 0.7482192763369112,
+    "AP": 0.28867887118997043,
+    "AUROC": 0.7483147661173759,
     "base": 0.11349834003616832,
-    "AP_lift": 2.5429404966268696,
+    "AP_lift": 2.5434633766271615,
     "label": "GET IN (shipped grading)",
     "label_col": "y_onset",
     "bank": "crowd + price (shipped desk)",
@@ -602,10 +602,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.1712864864115717,
+    "AP": 0.17128648641157168,
     "AUROC": 0.5803353032263932,
     "base": 0.11349834003616832,
-    "AP_lift": 1.5091541105974602,
+    "AP_lift": 1.50915411059746,
     "label": "GET IN (shipped grading)",
     "label_col": "y_onset",
     "bank": "crowd + new",
@@ -613,10 +613,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.1426378288040462,
-    "AUROC": 0.5518921537492627,
+    "AP": 0.14282100847077386,
+    "AUROC": 0.5517127338967434,
     "base": 0.11349834003616832,
-    "AP_lift": 1.2567393387303467,
+    "AP_lift": 1.2583532801031392,
     "label": "GET IN (shipped grading)",
     "label_col": "y_onset",
     "bank": "crowd + new",
@@ -624,10 +624,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.15898141705011348,
-    "AUROC": 0.5774325130972618,
+    "AP": 0.15872998502275723,
+    "AUROC": 0.5771872937770466,
     "base": 0.11349834003616832,
-    "AP_lift": 1.4007378169535445,
+    "AP_lift": 1.3985225244014583,
     "label": "GET IN (shipped grading)",
     "label_col": "y_onset",
     "bank": "crowd + new",
@@ -646,10 +646,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.2484935576430343,
-    "AUROC": 0.7234538989560566,
+    "AP": 0.24765034658477705,
+    "AUROC": 0.7225151441955059,
     "base": 0.11349834003616832,
-    "AP_lift": 2.189402572441564,
+    "AP_lift": 2.1819732914671595,
     "label": "GET IN (shipped grading)",
     "label_col": "y_onset",
     "bank": "crowd + price + new",
@@ -657,10 +657,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.28431415119845266,
-    "AUROC": 0.7444081458256673,
+    "AP": 0.2833870006170689,
+    "AUROC": 0.7443290018276866,
     "base": 0.11349834003616832,
-    "AP_lift": 2.5050071314510043,
+    "AP_lift": 2.4968382843904364,
     "label": "GET IN (shipped grading)",
     "label_col": "y_onset",
     "bank": "crowd + price + new",
@@ -679,10 +679,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.11752766709280131,
-    "AUROC": 0.5553373167583617,
+    "AP": 0.11749843376380945,
+    "AUROC": 0.5553807361778638,
     "base": 0.1051850252368485,
-    "AP_lift": 1.117342196079342,
+    "AP_lift": 1.1170642731627858,
     "label": "GET OUT (shipped grading)",
     "label_col": "y_top",
     "bank": "crowd only (shipped)",
@@ -690,10 +690,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.1270826045497261,
-    "AUROC": 0.5495533655356115,
+    "AP": 0.1270611322522122,
+    "AUROC": 0.5497176154833487,
     "base": 0.1051850252368485,
-    "AP_lift": 1.2081815283455999,
+    "AP_lift": 1.2079773899954347,
     "label": "GET OUT (shipped grading)",
     "label_col": "y_top",
     "bank": "crowd only (shipped)",
@@ -712,10 +712,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.2169570552548412,
-    "AUROC": 0.718824291752987,
+    "AP": 0.21735361992231694,
+    "AUROC": 0.7188653697205949,
     "base": 0.1051850252368485,
-    "AP_lift": 2.062623028005289,
+    "AP_lift": 2.066393190788278,
     "label": "GET OUT (shipped grading)",
     "label_col": "y_top",
     "bank": "crowd + price (shipped desk)",
@@ -723,10 +723,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.26226670001215324,
-    "AUROC": 0.7220030120127551,
+    "AP": 0.26255481230081207,
+    "AUROC": 0.7218736903350068,
     "base": 0.1051850252368485,
-    "AP_lift": 2.493384390236147,
+    "AP_lift": 2.4961234901033578,
     "label": "GET OUT (shipped grading)",
     "label_col": "y_top",
     "bank": "crowd + price (shipped desk)",
@@ -745,10 +745,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.13285445727321335,
-    "AUROC": 0.5761733011570628,
+    "AP": 0.1326131640932811,
+    "AUROC": 0.5756174249967553,
     "base": 0.1051850252368485,
-    "AP_lift": 1.2630548595112345,
+    "AP_lift": 1.2607608715658125,
     "label": "GET OUT (shipped grading)",
     "label_col": "y_top",
     "bank": "crowd + new",
@@ -756,10 +756,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.14163336880887495,
-    "AUROC": 0.5618939587166348,
+    "AP": 0.1414857030624329,
+    "AUROC": 0.5615568360859209,
     "base": 0.1051850252368485,
-    "AP_lift": 1.3465164693353882,
+    "AP_lift": 1.3451126027097964,
     "label": "GET OUT (shipped grading)",
     "label_col": "y_top",
     "bank": "crowd + new",
@@ -778,10 +778,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.2023378845772255,
-    "AUROC": 0.7101109558709156,
+    "AP": 0.20256784887201623,
+    "AUROC": 0.7097754200092538,
     "base": 0.1051850252368485,
-    "AP_lift": 1.9236377433157885,
+    "AP_lift": 1.9258240269077058,
     "label": "GET OUT (shipped grading)",
     "label_col": "y_top",
     "bank": "crowd + price + new",
@@ -789,10 +789,10 @@
    },
    {
     "n": 37049,
-    "AP": 0.25102702324109444,
-    "AUROC": 0.7150420574298317,
+    "AP": 0.251728829042219,
+    "AUROC": 0.7148599040829844,
     "base": 0.1051850252368485,
-    "AP_lift": 2.386528145768362,
+    "AP_lift": 2.393200253319264,
     "label": "GET OUT (shipped grading)",
     "label_col": "y_top",
     "bank": "crowd + price + new",
@@ -802,7 +802,7 @@
   "best_vs_shipped": [
    {
     "label_col": "y_halfdd",
-    "shipped_lift": 1.2,
+    "shipped_lift": 1.19,
     "best_lift": 2.02,
     "best_bank": "crowd + price (shipped desk)",
     "best_family": "ensemble (shipped)",
@@ -827,7 +827,7 @@
    {
     "label_col": "y_top",
     "shipped_lift": 1.21,
-    "best_lift": 2.49,
+    "best_lift": 2.5,
     "best_bank": "crowd + price (shipped desk)",
     "best_family": "ensemble (shipped)",
     "gain": 1.29
@@ -858,9 +858,9 @@
    },
    {
     "label": "C \u00b7 captures half the drop",
-    "shipped (crowd only)": 1.2,
-    "+ new crowd features": 0.1,
-    "+ price (rule change)": 0.82,
+    "shipped (crowd only)": 1.19,
+    "+ new crowd features": 0.11,
+    "+ price (rule change)": 0.83,
     "best available": 2.02
    },
    {
@@ -874,8 +874,8 @@
     "label": "GET OUT (shipped grading)",
     "shipped (crowd only)": 1.21,
     "+ new crowd features": 0.14,
-    "+ price (rule change)": 1.28,
-    "best available": 2.49
+    "+ price (rule change)": 1.29,
+    "best available": 2.5
    }
   ],
   "year_consistency": [
@@ -918,19 +918,19 @@
    {
     "label": "A \u00b7 big move either way",
     "year": 2024,
-    "AP_lift": 1.48,
+    "AP_lift": 1.46,
     "n": 357
    },
    {
     "label": "A \u00b7 big move either way",
     "year": 2025,
-    "AP_lift": 1.69,
+    "AP_lift": 1.61,
     "n": 225
    },
    {
     "label": "A \u00b7 big move either way",
     "year": 2026,
-    "AP_lift": 1.17,
+    "AP_lift": 1.16,
     "n": 3458
    },
    {
@@ -954,25 +954,25 @@
    {
     "label": "B \u00b7 turning point in 10d",
     "year": 2021,
-    "AP_lift": 2.09,
+    "AP_lift": 2.1,
     "n": 8368
    },
    {
     "label": "B \u00b7 turning point in 10d",
     "year": 2022,
-    "AP_lift": 1.05,
+    "AP_lift": 1.06,
     "n": 6373
    },
    {
     "label": "B \u00b7 turning point in 10d",
     "year": 2023,
-    "AP_lift": 1.28,
+    "AP_lift": 1.29,
     "n": 1676
    },
    {
     "label": "B \u00b7 turning point in 10d",
     "year": 2026,
-    "AP_lift": 1.31,
+    "AP_lift": 1.32,
     "n": 3458
    },
    {
@@ -1002,25 +1002,25 @@
    {
     "label": "C \u00b7 captures half the drop",
     "year": 2022,
-    "AP_lift": 2.6,
+    "AP_lift": 2.61,
     "n": 6373
    },
    {
     "label": "C \u00b7 captures half the drop",
     "year": 2023,
-    "AP_lift": 1.83,
+    "AP_lift": 1.84,
     "n": 1676
    },
    {
     "label": "C \u00b7 captures half the drop",
     "year": 2024,
-    "AP_lift": 5.06,
+    "AP_lift": 5.15,
     "n": 357
    },
    {
     "label": "C \u00b7 captures half the drop",
     "year": 2025,
-    "AP_lift": 0.8,
+    "AP_lift": 0.81,
     "n": 225
    },
    {
@@ -1098,7 +1098,7 @@
    {
     "label": "GET OUT (shipped grading)",
     "year": 2021,
-    "AP_lift": 3.38,
+    "AP_lift": 3.39,
     "n": 8368
    },
    {
@@ -1110,58 +1110,58 @@
    {
     "label": "GET OUT (shipped grading)",
     "year": 2023,
-    "AP_lift": 2.38,
+    "AP_lift": 2.36,
     "n": 1676
    },
    {
     "label": "GET OUT (shipped grading)",
     "year": 2024,
-    "AP_lift": 7.1,
+    "AP_lift": 6.91,
     "n": 357
    },
    {
     "label": "GET OUT (shipped grading)",
     "year": 2026,
-    "AP_lift": 2.19,
+    "AP_lift": 2.2,
     "n": 3458
    }
   ],
   "flag_outcomes": [
    {
     "cut": "top 10%",
-    "flags": 330,
-    "hit_rate": 0.16363636363636364,
-    "lift_vs_base": 1.1875736799928769,
-    "median_abs_excess": 0.04098804599271777,
-    "mean_abs_excess": 0.07686412376755715,
-    "share_up": 0.5848484848484848
+    "flags": 327,
+    "hit_rate": 0.15902140672782875,
+    "lift_vs_base": 1.154081116133071,
+    "median_abs_excess": 0.03994704119473491,
+    "mean_abs_excess": 0.07720794919041393,
+    "share_up": 0.581039755351682
    },
    {
     "cut": "top 5%",
-    "flags": 201,
-    "hit_rate": 0.14427860696517414,
-    "lift_vs_base": 1.047086799109253,
-    "median_abs_excess": 0.045654298348878686,
-    "mean_abs_excess": 0.09696853017656662,
-    "share_up": 0.5870646766169154
+    "flags": 196,
+    "hit_rate": 0.15306122448979592,
+    "lift_vs_base": 1.1108257210817727,
+    "median_abs_excess": 0.04382664297283517,
+    "mean_abs_excess": 0.09758674812501944,
+    "share_up": 0.6122448979591837
    },
    {
     "cut": "top 3%",
-    "flags": 132,
-    "hit_rate": 0.14393939393939395,
-    "lift_vs_base": 1.0446249962900307,
-    "median_abs_excess": 0.04607522148830634,
-    "mean_abs_excess": 0.1138449294197813,
-    "share_up": 0.5909090909090909
+    "flags": 135,
+    "hit_rate": 0.14074074074074075,
+    "lift_vs_base": 1.0214111074835854,
+    "median_abs_excess": 0.04442460149466654,
+    "mean_abs_excess": 0.11448611962696754,
+    "share_up": 0.5925925925925926
    },
    {
     "cut": "top 1%",
-    "flags": 49,
-    "hit_rate": 0.1836734693877551,
-    "lift_vs_base": 1.3329908652981273,
-    "median_abs_excess": 0.08604382898556184,
-    "mean_abs_excess": 0.4790996593733108,
-    "share_up": 0.4897959183673469
+    "flags": 52,
+    "hit_rate": 0.17307692307692307,
+    "lift_vs_base": 1.2560875461463121,
+    "median_abs_excess": 0.08162626101003378,
+    "mean_abs_excess": 0.4605052203756005,
+    "share_up": 0.46153846153846156
    }
   ],
   "direction_model": {
@@ -1175,111 +1175,111 @@
    {
     "head": "GET IN",
     "bank": "shipped crowd-only",
-    "flags (all names)": 244,
+    "flags (all names)": 239,
     "flags (these 5)": 38,
     "hit rate (these 5)": 0.263,
-    "hit rate (all)": 0.205
+    "hit rate (all)": 0.201
    },
    {
     "head": "GET IN",
     "bank": "adopted (crowd + new)",
-    "flags (all names)": 133,
+    "flags (all names)": 131,
     "flags (these 5)": 16,
-    "hit rate (these 5)": 0.312,
-    "hit rate (all)": 0.218
+    "hit rate (these 5)": 0.375,
+    "hit rate (all)": 0.229
    },
    {
     "head": "GET OUT",
     "bank": "shipped crowd-only",
-    "flags (all names)": 150,
-    "flags (these 5)": 28,
-    "hit rate (these 5)": 0.321,
-    "hit rate (all)": 0.213
+    "flags (all names)": 149,
+    "flags (these 5)": 27,
+    "hit rate (these 5)": 0.296,
+    "hit rate (all)": 0.195
    },
    {
     "head": "GET OUT",
     "bank": "adopted (crowd + new)",
-    "flags (all names)": 148,
+    "flags (all names)": 147,
     "flags (these 5)": 34,
     "hit rate (these 5)": 0.265,
-    "hit rate (all)": 0.23
+    "hit rate (all)": 0.231
    },
    {
     "head": "TURN",
     "bank": "shipped crowd-only",
-    "flags (all names)": 278,
-    "flags (these 5)": 50,
-    "hit rate (these 5)": 0.08,
-    "hit rate (all)": 0.079
+    "flags (all names)": 273,
+    "flags (these 5)": 48,
+    "hit rate (these 5)": 0.062,
+    "hit rate (all)": 0.07
    },
    {
     "head": "TURN",
     "bank": "adopted (crowd + new)",
-    "flags (all names)": 180,
-    "flags (these 5)": 25,
-    "hit rate (these 5)": 0.04,
-    "hit rate (all)": 0.061
+    "flags (all names)": 182,
+    "flags (these 5)": 26,
+    "hit rate (these 5)": 0.038,
+    "hit rate (all)": 0.06
    }
   ],
   "grading_arbitration": [
    {
     "head": "OLD grading (near the peak)",
-    "flags": 168,
-    "own-label hit": 0.161,
-    "captured >=50% of dd": 0.196,
-    "median dd captured": 0.442,
-    "fwd 21d excess %": 2.4,
-    "share fwd < 0": 0.375
+    "flags": 175,
+    "own-label hit": 0.154,
+    "captured >=50% of dd": 0.189,
+    "median dd captured": 0.44,
+    "fwd 21d excess %": 2.37,
+    "share fwd < 0": 0.377
    },
    {
     "head": "NEW grading (half the drawdown)",
-    "flags": 150,
-    "own-label hit": 0.213,
-    "captured >=50% of dd": 0.213,
-    "median dd captured": 0.498,
-    "fwd 21d excess %": 4.95,
-    "share fwd < 0": 0.307
+    "flags": 149,
+    "own-label hit": 0.195,
+    "captured >=50% of dd": 0.195,
+    "median dd captured": 0.47,
+    "fwd 21d excess %": 4.96,
+    "share fwd < 0": 0.309
    }
   ],
   "features_on_kept_grading": [
    {
     "head": "GET IN",
     "bank": "shipped crowd-only",
-    "flags": 244,
-    "hit rate": 0.205,
-    "fwd 21d excess %": 4.02,
-    "share fwd < 0": 0.385
+    "flags": 239,
+    "hit rate": 0.201,
+    "fwd 21d excess %": 4.0,
+    "share fwd < 0": 0.381
    },
    {
     "head": "GET IN",
     "bank": "+ 4 new features",
-    "flags": 133,
-    "hit rate": 0.218,
-    "fwd 21d excess %": 4.63,
-    "share fwd < 0": 0.398
+    "flags": 131,
+    "hit rate": 0.229,
+    "fwd 21d excess %": 4.39,
+    "share fwd < 0": 0.42
    },
    {
     "head": "GET OUT (existing grading)",
     "bank": "shipped crowd-only",
-    "flags": 168,
-    "hit rate": 0.161,
-    "fwd 21d excess %": 2.4,
-    "share fwd < 0": 0.375
+    "flags": 175,
+    "hit rate": 0.154,
+    "fwd 21d excess %": 2.37,
+    "share fwd < 0": 0.377
    },
    {
     "head": "GET OUT (existing grading)",
     "bank": "+ 4 new features",
-    "flags": 148,
-    "hit rate": 0.176,
-    "fwd 21d excess %": 4.95,
-    "share fwd < 0": 0.365
+    "flags": 147,
+    "hit rate": 0.177,
+    "fwd 21d excess %": 5.18,
+    "share fwd < 0": 0.354
    }
   ],
   "example_card": {
    "name": "ASTS",
    "date": "2026-05-28",
    "numeric": {
-    "score_percentile": 0.999,
+    "score_percentile": 0.998,
     "direction": "no direction read"
    },
    "qualitative": {

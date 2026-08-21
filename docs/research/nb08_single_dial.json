@@ -1,0 +1,591 @@
+{
+ "contradiction": {
+  "corr": 0.754,
+  "both80_share": 0.154,
+  "latest_both80": 8,
+  "names": 55
+ },
+ "separability": [
+  {
+   "feature": "e2",
+   "auroc_top_vs_onset": 0.589
+  },
+  {
+   "feature": "bull_level",
+   "auroc_top_vs_onset": 0.586
+  },
+  {
+   "feature": "att_sat",
+   "auroc_top_vs_onset": 0.567
+  },
+  {
+   "feature": "price_ret21",
+   "auroc_top_vs_onset": 0.536
+  },
+  {
+   "feature": "att_age",
+   "auroc_top_vs_onset": 0.527
+  },
+  {
+   "feature": "price_runup",
+   "auroc_top_vs_onset": 0.526
+  },
+  {
+   "feature": "e1",
+   "auroc_top_vs_onset": 0.508
+  },
+  {
+   "feature": "hype_ratio",
+   "auroc_top_vs_onset": 0.496
+  },
+  {
+   "feature": "att_fade60",
+   "auroc_top_vs_onset": 0.479
+  },
+  {
+   "feature": "e5",
+   "auroc_top_vs_onset": 0.471
+  }
+ ],
+ "architectures": [
+  {
+   "architecture": "two heads (shipped shape)",
+   "IN AUROC": 0.745,
+   "IN AP": 0.271,
+   "OUT AUROC": 0.709,
+   "OUT AP": 0.215,
+   "corr(in,out)": 0.649,
+   "both-high days": "14.2%"
+  },
+  {
+   "architecture": "softmax 3-class",
+   "IN AUROC": 0.708,
+   "IN AP": 0.227,
+   "OUT AUROC": 0.67,
+   "OUT AP": 0.172,
+   "corr(in,out)": 0.07,
+   "both-high days": "3.2%"
+  },
+  {
+   "architecture": "softmax 4-class",
+   "IN AUROC": 0.696,
+   "IN AP": 0.221,
+   "OUT AUROC": 0.668,
+   "OUT AP": 0.172,
+   "corr(in,out)": 0.031,
+   "both-high days": "3.4%"
+  },
+  {
+   "architecture": "hierarchical",
+   "IN AUROC": 0.734,
+   "IN AP": 0.257,
+   "OUT AUROC": 0.685,
+   "OUT AP": 0.186,
+   "corr(in,out)": 0.223,
+   "both-high days": "5.3%"
+  },
+  {
+   "architecture": "stacked",
+   "IN AUROC": 0.731,
+   "IN AP": 0.252,
+   "OUT AUROC": 0.704,
+   "OUT AP": 0.245,
+   "corr(in,out)": 0.814,
+   "both-high days": "23.9%"
+  }
+ ],
+ "direction_oos": {
+  "2019": 0.459,
+  "2020": 0.634,
+  "2021": 0.534,
+  "2022": 0.502,
+  "2023": 0.715,
+  "2026": 0.535
+ },
+ "gate_experiment": [
+  {
+   "system": "two heads (shipped shape)",
+   "head": "GET IN",
+   "trigger": "gated (shipped routing)",
+   "captured": 28,
+   "detectable": 198,
+   "false_alarms": 63,
+   "utility": -35
+  },
+  {
+   "system": "two heads (shipped shape)",
+   "head": "GET IN",
+   "trigger": "ungated",
+   "captured": 116,
+   "detectable": 198,
+   "false_alarms": 115,
+   "utility": 1
+  },
+  {
+   "system": "two heads (shipped shape)",
+   "head": "GET OUT",
+   "trigger": "gated (shipped routing)",
+   "captured": 78,
+   "detectable": 218,
+   "false_alarms": 81,
+   "utility": -3
+  },
+  {
+   "system": "two heads (shipped shape)",
+   "head": "GET OUT",
+   "trigger": "ungated",
+   "captured": 92,
+   "detectable": 218,
+   "false_alarms": 181,
+   "utility": -89
+  },
+  {
+   "system": "hierarchical (best one-model)",
+   "head": "GET IN",
+   "trigger": "gated (shipped routing)",
+   "captured": 31,
+   "detectable": 198,
+   "false_alarms": 90,
+   "utility": -59
+  },
+  {
+   "system": "hierarchical (best one-model)",
+   "head": "GET IN",
+   "trigger": "ungated",
+   "captured": 105,
+   "detectable": 198,
+   "false_alarms": 163,
+   "utility": -58
+  },
+  {
+   "system": "hierarchical (best one-model)",
+   "head": "GET OUT",
+   "trigger": "gated (shipped routing)",
+   "captured": 48,
+   "detectable": 218,
+   "false_alarms": 112,
+   "utility": -64
+  },
+  {
+   "system": "hierarchical (best one-model)",
+   "head": "GET OUT",
+   "trigger": "ungated",
+   "captured": 58,
+   "detectable": 218,
+   "false_alarms": 166,
+   "utility": -108
+  }
+ ],
+ "radar_mock": [
+  {
+   "name": "NBIS",
+   "ticker": "NBIS",
+   "side live": "GET OUT",
+   "signed readiness %": -94
+  },
+  {
+   "name": "cloud_saas",
+   "ticker": "IGV",
+   "side live": "GET OUT",
+   "signed readiness %": -92
+  },
+  {
+   "name": "IBKR",
+   "ticker": "IBKR",
+   "side live": "GET OUT",
+   "signed readiness %": -85
+  },
+  {
+   "name": "RDDT",
+   "ticker": "RDDT",
+   "side live": "GET OUT",
+   "signed readiness %": -82
+  },
+  {
+   "name": "GOOG",
+   "ticker": "GOOG",
+   "side live": "GET OUT",
+   "signed readiness %": -80
+  },
+  {
+   "name": "travel_airlines",
+   "ticker": "JETS",
+   "side live": "GET OUT",
+   "signed readiness %": -77
+  },
+  {
+   "name": "ai",
+   "ticker": "IYW",
+   "side live": "GET OUT",
+   "signed readiness %": -62
+  },
+  {
+   "name": "cybersecurity",
+   "ticker": "CIBR",
+   "side live": "GET OUT",
+   "signed readiness %": -60
+  },
+  {
+   "name": "semiconductors",
+   "ticker": "SMH",
+   "side live": "GET OUT",
+   "signed readiness %": -58
+  },
+  {
+   "name": "INTC",
+   "ticker": "INTC",
+   "side live": "GET OUT",
+   "signed readiness %": -49
+  },
+  {
+   "name": "quantum_computing",
+   "ticker": "IYW",
+   "side live": "GET OUT",
+   "signed readiness %": -48
+  },
+  {
+   "name": "MU",
+   "ticker": "MU",
+   "side live": "GET OUT",
+   "signed readiness %": -45
+  },
+  {
+   "name": "SNDK",
+   "ticker": "SNDK",
+   "side live": "GET OUT",
+   "signed readiness %": -40
+  },
+  {
+   "name": "memory",
+   "ticker": "SMH",
+   "side live": "GET OUT",
+   "signed readiness %": -38
+  },
+  {
+   "name": "SPCE",
+   "ticker": "SPCE",
+   "side live": "GET OUT",
+   "signed readiness %": -1
+  },
+  {
+   "name": "COIN",
+   "ticker": "COIN",
+   "side live": "GET IN",
+   "signed readiness %": 2
+  },
+  {
+   "name": "AMD",
+   "ticker": "AMD",
+   "side live": "GET IN",
+   "signed readiness %": 7
+  },
+  {
+   "name": "solar",
+   "ticker": "LIT",
+   "side live": "GET IN",
+   "signed readiness %": 15
+  },
+  {
+   "name": "AMC",
+   "ticker": "AMC",
+   "side live": "GET IN",
+   "signed readiness %": 23
+  },
+  {
+   "name": "shipping_logistics",
+   "ticker": "IYT",
+   "side live": "GET IN",
+   "signed readiness %": 28
+  },
+  {
+   "name": "meme_stocks",
+   "ticker": "ARKK",
+   "side live": "GET IN",
+   "signed readiness %": 31
+  },
+  {
+   "name": "media_streaming",
+   "ticker": "XLC",
+   "side live": "GET IN",
+   "signed readiness %": 31
+  },
+  {
+   "name": "utilities_power",
+   "ticker": "XLU",
+   "side live": "GET IN",
+   "signed readiness %": 31
+  },
+  {
+   "name": "agriculture_food",
+   "ticker": "MOO",
+   "side live": "GET IN",
+   "signed readiness %": 33
+  },
+  {
+   "name": "gold_metals",
+   "ticker": "GLD",
+   "side live": "GET IN",
+   "signed readiness %": 35
+  },
+  {
+   "name": "robotics_automation",
+   "ticker": "XLI",
+   "side live": "GET IN",
+   "signed readiness %": 41
+  },
+  {
+   "name": "fintech_payments",
+   "ticker": "XLF",
+   "side live": "GET IN",
+   "signed readiness %": 44
+  },
+  {
+   "name": "gaming_esports",
+   "ticker": "SOCL",
+   "side live": "GET IN",
+   "signed readiness %": 49
+  },
+  {
+   "name": "ev_clean_energy",
+   "ticker": "LIT",
+   "side live": "GET IN",
+   "signed readiness %": 49
+  },
+  {
+   "name": "financials",
+   "ticker": "XLF",
+   "side live": "GET IN",
+   "signed readiness %": 52
+  },
+  {
+   "name": "datacenters",
+   "ticker": "DTCR",
+   "side live": "GET IN",
+   "signed readiness %": 53
+  },
+  {
+   "name": "AAPL",
+   "ticker": "AAPL",
+   "side live": "GET IN",
+   "signed readiness %": 56
+  },
+  {
+   "name": "short_squeeze",
+   "ticker": "ARKK",
+   "side live": "GET IN",
+   "signed readiness %": 56
+  },
+  {
+   "name": "uranium_nuclear",
+   "ticker": "URA",
+   "side live": "GET IN",
+   "signed readiness %": 57
+  },
+  {
+   "name": "infrastructure",
+   "ticker": "XLI",
+   "side live": "GET IN",
+   "signed readiness %": 57
+  },
+  {
+   "name": "TSLA",
+   "ticker": "TSLA",
+   "side live": "GET IN",
+   "signed readiness %": 57
+  },
+  {
+   "name": "japan",
+   "ticker": "1622 JT",
+   "side live": "GET IN",
+   "signed readiness %": 59
+  },
+  {
+   "name": "consumer_retail",
+   "ticker": "XRT",
+   "side live": "GET IN",
+   "signed readiness %": 60
+  },
+  {
+   "name": "ai_megacap",
+   "ticker": "QQQ",
+   "side live": "GET IN",
+   "signed readiness %": 61
+  },
+  {
+   "name": "biotech_pharma",
+   "ticker": "XBI",
+   "side live": "GET IN",
+   "signed readiness %": 63
+  },
+  {
+   "name": "NVDA",
+   "ticker": "NVDA",
+   "side live": "GET IN",
+   "signed readiness %": 67
+  },
+  {
+   "name": "space",
+   "ticker": "ITA",
+   "side live": "GET IN",
+   "signed readiness %": 68
+  },
+  {
+   "name": "defense_aerospace",
+   "ticker": "ITA",
+   "side live": "GET IN",
+   "signed readiness %": 70
+  },
+  {
+   "name": "MSTR",
+   "ticker": "MSTR",
+   "side live": "GET IN",
+   "signed readiness %": 72
+  },
+  {
+   "name": "AVGO",
+   "ticker": "AVGO",
+   "side live": "GET IN",
+   "signed readiness %": 76
+  },
+  {
+   "name": "energy",
+   "ticker": "XLE",
+   "side live": "GET IN",
+   "signed readiness %": 77
+  },
+  {
+   "name": "PLTR",
+   "ticker": "PLTR",
+   "side live": "GET IN",
+   "signed readiness %": 78
+  },
+  {
+   "name": "ASTS",
+   "ticker": "ASTS",
+   "side live": "GET IN",
+   "signed readiness %": 85
+  },
+  {
+   "name": "SMCI",
+   "ticker": "SMCI",
+   "side live": "GET IN",
+   "signed readiness %": 86
+  },
+  {
+   "name": "china_geopolitics",
+   "ticker": "FXI",
+   "side live": "GET IN",
+   "signed readiness %": 86
+  },
+  {
+   "name": "GOOGL",
+   "ticker": "GOOGL",
+   "side live": "GET IN",
+   "signed readiness %": 88
+  },
+  {
+   "name": "GME",
+   "ticker": "GME",
+   "side live": "GET IN",
+   "signed readiness %": 89
+  },
+  {
+   "name": "RKLB",
+   "ticker": "RKLB",
+   "side live": "GET IN",
+   "signed readiness %": 89
+  },
+  {
+   "name": "AMZN",
+   "ticker": "AMZN",
+   "side live": "GET IN",
+   "signed readiness %": 98
+  },
+  {
+   "name": "MSFT",
+   "ticker": "MSFT",
+   "side live": "GET IN",
+   "signed readiness %": 100
+  }
+ ],
+ "inversion_sweep": [
+  {
+   "beta": 0.0,
+   "era": "2019-22 (pick)",
+   "onset days green": "51%",
+   "top days red": "36%",
+   "balanced": 0.438
+  },
+  {
+   "beta": 0.0,
+   "era": "2023-26 (judge)",
+   "onset days green": "54%",
+   "top days red": "66%",
+   "balanced": 0.599
+  },
+  {
+   "beta": 0.5,
+   "era": "2019-22 (pick)",
+   "onset days green": "51%",
+   "top days red": "36%",
+   "balanced": 0.438
+  },
+  {
+   "beta": 0.5,
+   "era": "2023-26 (judge)",
+   "onset days green": "54%",
+   "top days red": "66%",
+   "balanced": 0.599
+  },
+  {
+   "beta": 1.0,
+   "era": "2019-22 (pick)",
+   "onset days green": "28%",
+   "top days red": "36%",
+   "balanced": 0.323
+  },
+  {
+   "beta": 1.0,
+   "era": "2023-26 (judge)",
+   "onset days green": "24%",
+   "top days red": "66%",
+   "balanced": 0.448
+  },
+  {
+   "beta": 1.5,
+   "era": "2019-22 (pick)",
+   "onset days green": "28%",
+   "top days red": "77%",
+   "balanced": 0.527
+  },
+  {
+   "beta": 1.5,
+   "era": "2023-26 (judge)",
+   "onset days green": "24%",
+   "top days red": "84%",
+   "balanced": 0.54
+  },
+  {
+   "beta": 2.0,
+   "era": "2019-22 (pick)",
+   "onset days green": "28%",
+   "top days red": "77%",
+   "balanced": 0.527
+  },
+  {
+   "beta": 2.0,
+   "era": "2023-26 (judge)",
+   "onset days green": "24%",
+   "top days red": "84%",
+   "balanced": 0.54
+  }
+ ],
+ "built": "2026-08-17 06:15 UTC",
+ "verdict": {
+  "single learned scale as the call engine": "REJECT - every coherent architecture loses accuracy and the direction leg is ~0.55 OOS",
+  "signed readiness (routing-based, one number)": "PROPOSE - kills the contradiction with zero model change",
+  "drop gate on GET IN": "PROPOSE - captures roughly quadruple at less than double the FA; gate misroutes chained re-onsets",
+  "keep gate on GET OUT": "CONFIRM - ungated FA roughly doubles",
+  "dial": "keep \u00a79 gauge, green/red by sign; boom regime shades the background, not the line; inversion swept and recorded"
+ }
+}

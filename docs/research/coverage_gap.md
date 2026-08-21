@@ -74,12 +74,55 @@ empty forever unless it is explicitly backfilled.
 
 ## Fixing it
 
-    python tools/backfill_reddit.py --estimate   # runtime, measured here
-    python tools/backfill_reddit.py              # resumable, 33 chunks
-    python update_data.py --skip-fetch
+**THE INSTRUCTIONS BELOW THIS LINE WERE WRONG AND COST 45 HOURS.**
+Corrected 2026-08-18 after the desk ran the backfill and nothing moved.
+
+`tools/backfill_reddit.py` pulls the raw posts correctly - 904k of them,
+16 chunks, 45.7 h - but on THIS machine (the internal one, no
+posts.parquet) they could never reach the aggregates. The only fold-in
+path, `ingestion/append_live_abstracted.py`, keeps candidates dated
+>= LIVE_START and drops everything older BY DESIGN, which is every
+backfilled post. `update_data.py --full` cannot rescue it either: it
+rebuilds from posts.parquet, which only exists on the external machine.
+The posts sat unused in data/raw/RedditLive for a week.
+
+The working sequence is:
+
+    python tools/backfill_reddit.py            # pull raw (or download dumps)
+    python tools/fold_historical.py --arctic   # THE MISSING STEP
     python -m analytics.run_analytics --what phases --research
 
-The last step is not optional: a backfill rewrites the history the
+`tools/fold_historical.py` is the deliberate second door: it aggregates
+historical posts straight into ABSTRACTED_DATA (text-free, same
+`aggregate_posts` the live path uses), with a per-(file, month) ledger
+so re-running cannot double count, and a hard refusal to touch days at
+or after LIVE_START.
+
+MEASURED RESULT of the first fold (2026-08-18, 962,715 posts, 18 blocks
+covering 2023-04 -> 2024-07):
+
+| quarter | before | after |
+|---|---|---|
+| 2023Q2 | 0 | 10,253 |
+| 2023Q3 | 554 | 10,557 |
+| 2023Q4 | 380 | 10,027 |
+| 2024Q1 | 1,073 | 14,231 |
+| 2024Q2 | 1,066 | 13,024 |
+| 2024Q3 | 1,096 | 5,194 (July only) |
+
+Density matches the healthy quarters either side (2023Q1 11,138;
+2026Q1 13,937), and the one block overlapping already-committed days
+added +60 rows - i.e. the dedup held.
+
+STILL OPEN: 2024-08 -> 2025-12 (17 months). Either continue the backfill
+runner (~49 h at the measured pace) or download per-subreddit torrent
+archives and fold them with `--dumps`. Ranked by how much coverage each
+subreddit restores (measured on the healthy 2026 window, share of
+covered name-days retained): wallstreetbets alone 24%, +valueinvesting
++stocks 59%, +dividends +bogleheads 76%, +personalfinance +pennystocks
++daytrading 90%.
+
+The last step is not optional: a fold rewrites the history the
 thresholds were chosen on, so scoring new history against thresholds
 fitted on the old history would be a silent lookahead
 (PARAMETER_REGISTER, "Two explicit ways to re-open research").

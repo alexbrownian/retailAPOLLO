@@ -9,27 +9,27 @@
     "auroc": 0.551,
     "captured": 70,
     "detectable": 198,
-    "false_alarms": 235,
-    "precision": 0.23,
+    "false_alarms": 232,
+    "precision": 0.232,
     "median_lead_days": 20,
     "forward_returns": {
      "fwd_5d": {
-      "n": 353,
-      "median_pct": 0.52,
-      "mean_pct": 1.05,
-      "pct_positive": 56.9
+      "n": 349,
+      "median_pct": 0.5,
+      "mean_pct": 1.06,
+      "pct_positive": 56.2
      },
      "fwd_21d": {
-      "n": 353,
-      "median_pct": 1.97,
-      "mean_pct": 2.06,
-      "pct_positive": 61.5
+      "n": 349,
+      "median_pct": 1.96,
+      "mean_pct": 2.12,
+      "pct_positive": 61.6
      },
      "fwd_84d": {
-      "n": 343,
-      "median_pct": 1.2,
-      "mean_pct": 6.09,
-      "pct_positive": 55.4
+      "n": 339,
+      "median_pct": 1.17,
+      "mean_pct": 5.73,
+      "pct_positive": 54.9
      }
     },
     "test_years": [
@@ -47,30 +47,30 @@
    "ens_xp13": {
     "ap": 0.157,
     "ap_baseline": 0.111,
-    "auroc": 0.571,
-    "captured": 74,
+    "auroc": 0.572,
+    "captured": 72,
     "detectable": 198,
-    "false_alarms": 288,
-    "precision": 0.204,
+    "false_alarms": 256,
+    "precision": 0.22,
     "median_lead_days": 19,
     "forward_returns": {
      "fwd_5d": {
-      "n": 445,
-      "median_pct": 0.54,
-      "mean_pct": 2.2,
-      "pct_positive": 56.2
+      "n": 400,
+      "median_pct": 0.66,
+      "mean_pct": 2.44,
+      "pct_positive": 58.2
      },
      "fwd_21d": {
-      "n": 445,
-      "median_pct": 1.71,
-      "mean_pct": 3.03,
-      "pct_positive": 59.1
+      "n": 400,
+      "median_pct": 1.79,
+      "mean_pct": 3.04,
+      "pct_positive": 59.5
      },
      "fwd_84d": {
-      "n": 436,
-      "median_pct": 2.17,
-      "mean_pct": 12.85,
-      "pct_positive": 56.2
+      "n": 391,
+      "median_pct": 2.52,
+      "mean_pct": 13.68,
+      "pct_positive": 57.5
      }
     },
     "test_years": [
@@ -127,32 +127,32 @@
     ]
    },
    "gbm_xp13": {
-    "ap": 0.137,
+    "ap": 0.136,
     "ap_baseline": 0.111,
-    "auroc": 0.547,
-    "captured": 75,
+    "auroc": 0.548,
+    "captured": 73,
     "detectable": 198,
-    "false_alarms": 265,
-    "precision": 0.221,
+    "false_alarms": 266,
+    "precision": 0.215,
     "median_lead_days": 20,
     "forward_returns": {
      "fwd_5d": {
-      "n": 409,
-      "median_pct": 0.58,
-      "mean_pct": 2.34,
-      "pct_positive": 58.9
+      "n": 408,
+      "median_pct": 0.61,
+      "mean_pct": 2.25,
+      "pct_positive": 58.8
      },
      "fwd_21d": {
-      "n": 409,
-      "median_pct": 1.38,
-      "mean_pct": 2.39,
-      "pct_positive": 55.3
+      "n": 408,
+      "median_pct": 1.25,
+      "mean_pct": 2.16,
+      "pct_positive": 54.4
      },
      "fwd_84d": {
-      "n": 399,
-      "median_pct": 0.37,
-      "mean_pct": 10.82,
-      "pct_positive": 51.1
+      "n": 398,
+      "median_pct": 0.12,
+      "mean_pct": 10.65,
+      "pct_positive": 50.8
      }
     },
     "test_years": [
@@ -173,29 +173,29 @@
     "ap": 0.124,
     "ap_baseline": 0.104,
     "auroc": 0.549,
-    "captured": 81,
+    "captured": 82,
     "detectable": 218,
-    "false_alarms": 531,
+    "false_alarms": 537,
     "precision": 0.132,
     "median_lead_days": 16,
     "forward_returns": {
      "fwd_5d": {
-      "n": 670,
-      "median_pct": 0.49,
-      "mean_pct": 1.2,
-      "pct_positive": 56.6
+      "n": 676,
+      "median_pct": 0.42,
+      "mean_pct": 1.08,
+      "pct_positive": 55.8
      },
      "fwd_21d": {
-      "n": 670,
-      "median_pct": 0.87,
-      "mean_pct": 1.25,
-      "pct_positive": 56.4
+      "n": 676,
+      "median_pct": 0.89,
+      "mean_pct": 1.2,
+      "pct_positive": 55.9
      },
      "fwd_84d": {
-      "n": 653,
-      "median_pct": 1.77,
-      "mean_pct": 4.81,
-      "pct_positive": 56.2
+      "n": 659,
+      "median_pct": 1.88,
+      "mean_pct": 4.85,
+      "pct_positive": 56.3
      }
     },
     "test_years": [
@@ -213,30 +213,30 @@
    "ens_xp13": {
     "ap": 0.137,
     "ap_baseline": 0.104,
-    "auroc": 0.56,
-    "captured": 46,
+    "auroc": 0.561,
+    "captured": 56,
     "detectable": 218,
-    "false_alarms": 299,
-    "precision": 0.133,
-    "median_lead_days": 16,
+    "false_alarms": 319,
+    "precision": 0.149,
+    "median_lead_days": 13,
     "forward_returns": {
      "fwd_5d": {
-      "n": 377,
+      "n": 408,
       "median_pct": 0.33,
-      "mean_pct": 1.8,
-      "pct_positive": 57.3
+      "mean_pct": 1.67,
+      "pct_positive": 57.6
      },
      "fwd_21d": {
-      "n": 377,
-      "median_pct": 0.03,
-      "mean_pct": 0.8,
-      "pct_positive": 50.9
+      "n": 408,
+      "median_pct": 0.59,
+      "mean_pct": 0.99,
+      "pct_positive": 53.9
      },
      "fwd_84d": {
-      "n": 361,
-      "median_pct": 0.86,
-      "mean_pct": 6.26,
-      "pct_positive": 53.7
+      "n": 391,
+      "median_pct": 1.13,
+      "mean_pct": 6.32,
+      "pct_positive": 56.3
      }
     },
     "test_years": [
@@ -293,32 +293,32 @@
     ]
    },
    "gbm_xp13": {
-    "ap": 0.126,
+    "ap": 0.127,
     "ap_baseline": 0.104,
-    "auroc": 0.562,
-    "captured": 51,
+    "auroc": 0.565,
+    "captured": 53,
     "detectable": 218,
-    "false_alarms": 288,
-    "precision": 0.15,
-    "median_lead_days": 15,
+    "false_alarms": 303,
+    "precision": 0.149,
+    "median_lead_days": 16,
     "forward_returns": {
      "fwd_5d": {
-      "n": 360,
-      "median_pct": 0.39,
-      "mean_pct": 2.26,
-      "pct_positive": 56.1
+      "n": 377,
+      "median_pct": 0.44,
+      "mean_pct": 2.09,
+      "pct_positive": 56.5
      },
      "fwd_21d": {
-      "n": 360,
-      "median_pct": 1.31,
-      "mean_pct": 2.58,
-      "pct_positive": 58.9
+      "n": 377,
+      "median_pct": 1.08,
+      "mean_pct": 2.27,
+      "pct_positive": 57.0
      },
      "fwd_84d": {
-      "n": 353,
-      "median_pct": 2.98,
-      "mean_pct": 8.08,
-      "pct_positive": 57.2
+      "n": 372,
+      "median_pct": 2.67,
+      "mean_pct": 7.43,
+      "pct_positive": 56.5
      }
     },
     "test_years": [
@@ -343,30 +343,30 @@
    "captured": 112,
    "detectable": 198,
    "capture_rate": 0.566,
-   "late": 102,
-   "false_alarms": 112,
-   "fa_per_iy": 0.235,
-   "precision": 0.5,
-   "median_lead_days": 17,
-   "n_alerts": 341,
+   "late": 101,
+   "false_alarms": 114,
+   "fa_per_iy": 0.239,
+   "precision": 0.496,
+   "median_lead_days": 18,
+   "n_alerts": 343,
    "forward_returns": {
     "fwd_5d": {
-     "n": 341,
-     "median_pct": 0.04,
-     "mean_pct": 3.37,
-     "pct_positive": 50.7
+     "n": 343,
+     "median_pct": 0.02,
+     "mean_pct": 3.3,
+     "pct_positive": 50.4
     },
     "fwd_21d": {
-     "n": 341,
+     "n": 343,
      "median_pct": 0.63,
-     "mean_pct": 3.6,
-     "pct_positive": 52.5
+     "mean_pct": 3.55,
+     "pct_positive": 51.9
     },
     "fwd_84d": {
-     "n": 326,
-     "median_pct": 1.26,
-     "mean_pct": 16.33,
-     "pct_positive": 51.8
+     "n": 327,
+     "median_pct": 1.21,
+     "mean_pct": 16.26,
+     "pct_positive": 51.4
     }
    },
    "test_years": [
@@ -385,33 +385,33 @@
    "auroc": 0.717,
    "ap": 0.255,
    "ap_baseline": 0.104,
-   "captured": 92,
+   "captured": 84,
    "detectable": 218,
-   "capture_rate": 0.422,
+   "capture_rate": 0.385,
    "late": 0,
-   "false_alarms": 165,
-   "fa_per_iy": 0.346,
-   "precision": 0.358,
-   "median_lead_days": 16,
-   "n_alerts": 305,
+   "false_alarms": 147,
+   "fa_per_iy": 0.308,
+   "precision": 0.364,
+   "median_lead_days": 13,
+   "n_alerts": 269,
    "forward_returns": {
     "fwd_5d": {
-     "n": 305,
-     "median_pct": -0.05,
-     "mean_pct": 3.42,
-     "pct_positive": 49.5
+     "n": 269,
+     "median_pct": -0.21,
+     "mean_pct": 3.74,
+     "pct_positive": 48.3
     },
     "fwd_21d": {
-     "n": 305,
-     "median_pct": -0.19,
-     "mean_pct": 2.86,
-     "pct_positive": 48.2
+     "n": 269,
+     "median_pct": -0.45,
+     "mean_pct": 2.65,
+     "pct_positive": 48.3
     },
     "fwd_84d": {
-     "n": 295,
-     "median_pct": -2.64,
-     "mean_pct": 10.34,
-     "pct_positive": 42.4
+     "n": 259,
+     "median_pct": -2.7,
+     "mean_pct": 10.66,
+     "pct_positive": 40.9
     }
    },
    "test_years": [

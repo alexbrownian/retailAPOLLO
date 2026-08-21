@@ -27,9 +27,28 @@ WHY THIS EXISTS
 LEDGER: data/reference/reddit_backfill_progress.json
     {"chunks": {"2024-03-01_2024-04-01": {"posts": 41230, "done_utc": ...}}}
 
-AFTER IT FINISHES, fold and re-score as usual:
-    python update_data.py --skip-fetch
-    python -m analytics.run_analytics --what phases --research
+AFTER IT FINISHES - AND THE RIGHT COMMAND DEPENDS ON THE MACHINE:
+
+  INTERNAL machine (no data/processed/posts.parquet - the desk laptop):
+      python tools/fold_historical.py --arctic
+      python -m analytics.run_analytics --what phases --research
+
+  EXTERNAL machine (posts.parquet present):
+      python update_data.py --skip-fetch
+      python -m analytics.run_analytics --what phases --research
+
+  DO NOT run `update_data.py --skip-fetch` on the internal machine after a
+  backfill. It calls ingestion/append_live_abstracted.py, which keeps only
+  posts dated >= LIVE_START and drops everything older BY DESIGN. Every
+  backfilled post is older than LIVE_START, so it reads all of them, spends
+  a long time doing it, and folds in NONE. That is the failure documented in
+  docs/research/coverage_gap.md - "THE INSTRUCTIONS BELOW THIS LINE WERE
+  WRONG AND COST 45 HOURS". These lines used to give exactly that wrong
+  advice; corrected 2026-08-21 after it sent the desk down the same hole a
+  second time.
+
+  print_next_steps() below picks the right pair automatically, so the
+  message printed at the end of a run is always the one for THIS machine.
 """
 from __future__ import annotations
 
@@ -90,8 +109,40 @@ def make_chunks(start: str, end: str, chunk_days: int):
     return out
 
 
+# Which subreddits this run covers. Part of the ledger key - see below.
+SUBS_TAG = "all"
+
+
 def key_of(a: str, b: str) -> str:
-    return f"{a}_{b}"
+    """Ledger key = window PLUS the subreddit set.
+
+    THE BUG THIS FIXES (desk 2026-08-21). The key used to be the dates
+    alone. So: backfill 2024-09 -> 2026-01 with
+    `--subreddits wallstreetbets,stocks,valueinvesting`, decide the
+    speed work makes the other fourteen affordable, re-run with all of
+    them - and every chunk is already "done". The run finishes in
+    seconds, reports success, and fetches nothing. Silent, and exactly
+    the shape of the mistake that cost 45 hours in August.
+
+    A chunk is only done for the SUBREDDITS IT ACTUALLY FETCHED, so the
+    set belongs in the key. Adding subreddits later now correctly shows
+    the window as outstanding, and re-running the SAME set still skips.
+    Dedup is by post id all the way down, so any overlap is harmless.
+    """
+    return f"{a}_{b}" if SUBS_TAG == "all" else f"{a}_{b}#{SUBS_TAG}"
+
+
+def subs_tag(spec: str) -> str:
+    """Stable tag for a subreddit set: sorted, so the order typed on the
+    command line cannot create a second, spurious ledger entry."""
+    if not spec.strip():
+        return "all"
+    subs = sorted({x.strip().lower() for x in spec.split(",") if x.strip()})
+    return "+".join(subs) if subs else "all"
+
+
+# Extra flags handed to every fetcher subprocess (set in main()).
+FETCH_OPTS: list = []
 
 
 def run_chunk(a: str, b: str) -> tuple[bool, int]:
@@ -110,6 +161,8 @@ def run_chunk(a: str, b: str) -> tuple[bool, int]:
     PARENT's read side and says nothing about how the child writes.
     """
     cmd = [sys.executable, "-u", FETCHER, "--backfill", a, b]
+    if FETCH_OPTS:
+        cmd += FETCH_OPTS
     posts = 0
     gave_up = 0
     proc = subprocess.Popen(cmd, cwd=PROJECT_ROOT, stdout=subprocess.PIPE,
@@ -157,6 +210,26 @@ def run_chunk(a: str, b: str) -> tuple[bool, int]:
     return True, posts
 
 
+def print_next_steps(header: str) -> None:
+    """The correct follow-up for THIS machine, decided by the same test
+    update_data.py uses: does posts.parquet exist?"""
+    posts = os.path.join(PROJECT_ROOT, "data", "processed", "posts.parquet")
+    internal = not os.path.exists(posts)
+    print(header)
+    if internal:
+        print("  python tools/fold_historical.py --arctic")
+        print("  python -m analytics.run_analytics --what phases --research")
+        print("\n  (INTERNAL machine - no posts.parquet. fold_historical is")
+        print("   the door for historical posts. `update_data.py --skip-fetch`")
+        print("   would drop every one of them: append_live_abstracted keeps")
+        print("   only dates >= LIVE_START. See docs/research/coverage_gap.md.)")
+    else:
+        print("  python update_data.py --skip-fetch")
+        print("  python -m analytics.run_analytics --what phases --research")
+        print("\n  (EXTERNAL machine - posts.parquet present, so the ordinary")
+        print("   rebuild path sees the backfilled posts.)")
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Resumable Reddit backfill.")
     p.add_argument("--start", default=DEFAULT_START)
@@ -170,6 +243,24 @@ def main() -> int:
                         "next run fetches it again")
     p.add_argument("--max-chunks", type=int, default=0,
                    help="stop after N chunks this run (0 = all)")
+    p.add_argument("--workers", type=int, default=4,
+                   help="subreddits fetched concurrently INSIDE each chunk "
+                        "(default 4). Subreddits are independent; pages "
+                        "within one stay sequential because each page's "
+                        "cursor comes from the previous page.")
+    p.add_argument("--subreddits", default="",
+                   help="comma-separated subset instead of all 17. Coverage "
+                        "measured on the healthy 2026 window (share of "
+                        "covered name-days retained): wallstreetbets 24%%, "
+                        "+valueinvesting+stocks 59%%, +dividends+bogleheads "
+                        "76%%, +personalfinance+pennystocks+daytrading 90%%. "
+                        "Fewer subreddits is the single biggest lever if "
+                        "you want SOME history rather than all of it.")
+    p.add_argument("--no-fast", action="store_true",
+                   help="disable limit=auto + minimal fields (the 2026-08-21 "
+                        "speed work). Only for comparing against the old "
+                        "behaviour - it is strictly slower and returns "
+                        "identical posts.")
     p.add_argument("--estimate", action="store_true",
                    help="pull ONE probe day, measure it, and print a "
                         "runtime for the whole window from THIS machine's "
@@ -177,6 +268,16 @@ def main() -> int:
     args = p.parse_args()
 
     led = load_ledger()
+    global FETCH_OPTS, SUBS_TAG
+    SUBS_TAG = subs_tag(args.subreddits)
+    FETCH_OPTS = []
+    if args.no_fast:
+        FETCH_OPTS.append("--no-fast")
+    if args.workers and args.workers != 1:
+        FETCH_OPTS += ["--workers", str(args.workers)]
+    if args.subreddits:
+        FETCH_OPTS += ["--subreddits", args.subreddits]
+
     chunks = make_chunks(args.start, args.end, args.chunk_days)
 
     if args.estimate:
@@ -207,16 +308,30 @@ def main() -> int:
 
     if args.redo:
         hits = [k for k in led["chunks"] if k.startswith(args.redo + "_")]
+        # --redo forgets the window for EVERY subreddit set, which is
+        # what "run this window again" should mean.
         for k in hits:
             led["chunks"].pop(k)
         save_ledger(led)
         print(f"forgot {len(hits)} chunk(s) starting {args.redo}")
         return 0
 
+    # Legacy entries (written before the key carried the subreddit set)
+    # are ambiguous: we cannot tell which subreddits they covered. Say
+    # so rather than guessing either way.
+    _legacy = [k for k in led["chunks"] if "#" not in k]
+    if _legacy and SUBS_TAG != "all":
+        print(f"  NOTE: {len(_legacy)} chunk(s) in the ledger predate "
+              f"per-subreddit tracking.\n        They are treated as "
+              f"NOT done for the set '{SUBS_TAG}', which may re-fetch "
+              f"some\n        posts. That is harmless - dedup is by post "
+              f"id - but it costs time.\n        `--status` lists them.")
+
     todo = [c for c in chunks if key_of(*c) not in led["chunks"]]
     done = len(chunks) - len(todo)
     got = sum(v.get("posts", 0) for v in led["chunks"].values())
 
+    print(f"  subreddits: {SUBS_TAG}")
     print(f"BACKFILL {args.start} -> {args.end}: {len(chunks)} chunks, "
           f"{done} done ({got:,} posts so far), {len(todo)} to go")
     if args.status:
@@ -226,9 +341,7 @@ def main() -> int:
             print(f"  {a} -> {b}   {mark}")
         return 0
     if not todo:
-        print("nothing left to fetch. Now run:\n"
-              "  python update_data.py --skip-fetch\n"
-              "  python -m analytics.run_analytics --what phases --research")
+        print_next_steps("nothing left to fetch. Now run:")
         return 0
 
     t_run = time.time()
@@ -265,9 +378,7 @@ def main() -> int:
           f"{total:,} posts pulled, {(time.time() - t_run)/60:.1f} min "
           f"this run")
     if not left:
-        print("ALL CHUNKS DONE. Now fold and re-score:\n"
-              "  python update_data.py --skip-fetch\n"
-              "  python -m analytics.run_analytics --what phases --research")
+        print_next_steps("ALL CHUNKS DONE. Now fold and re-score:")
     return 0
 
 

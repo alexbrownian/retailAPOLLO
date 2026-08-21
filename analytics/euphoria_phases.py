@@ -1051,10 +1051,23 @@ def rebuild_phase_files(verbose: bool = True,
                 float(np.percentile(train_scored["score"].dropna(), 50)))
 
     if desk_research:
+        from src.config import DESK_MODEL_FAMILY
         fj = _judged_frame()
+        _fams = [DESK_MODEL_FAMILY] if DESK_MODEL_FAMILY else None
         tournament = mld.run_ml_tournament(fj, episodes, pxmap, sym_by,
-                                           series=series, boom=boom)
+                                           series=series, boom=boom,
+                                           families=_fams)
+        # With a family pinned there is exactly one candidate, so
+        # pick_winner is a formality - but it still runs, so the pinned
+        # path and the tournament path adopt through the SAME code and
+        # cannot drift apart.
         model_name = mld.pick_winner(tournament)
+        if DESK_MODEL_FAMILY and model_name != DESK_MODEL_FAMILY:
+            raise RuntimeError(
+                "pinned family %r did not survive selection (got %r) - "
+                "this means the pinned family errored during its fit; "
+                "check the tournament output above."
+                % (DESK_MODEL_FAMILY, model_name))
         wf_out = tournament["get_out"][model_name]
         wf_in = tournament["get_in"][model_name]
 
@@ -1329,6 +1342,34 @@ def rebuild_phase_files(verbose: bool = True,
     out_alerts_s = (_alert_dates(end_scored, thr_out_strict, None, True)
                     if thr_out_strict is not None else {})
 
+    # UNGATED GET IN (desk adoption 2026-08-17; evidence notebook 08
+    # §10.4, docs/research/nb08_single_dial.json). The 120d phase gate
+    # was measured throwing away roughly three quarters of the GET IN
+    # calls the model earns (captured episodes 28 -> 116 ungated, at
+    # under double the false alarms): episodes chain, so a re-onset
+    # routinely arrives while the name is still past the boom bar and
+    # the IN side is dark. These columns are the SAME scores at the
+    # SAME frozen cuts with the SAME shaped trigger - only the phase
+    # gate is dropped. The dashboard shows them by DEFAULT; its
+    # "stricter threshold (price gate)" checkbox switches back to the
+    # gated columns above. GET OUT keeps its gate everywhere: removing
+    # it doubles false alarms for a handful of captures (§10.4), so no
+    # ungated OUT variant exists on purpose.
+    def _alert_dates_nogate(scored, thr, rearm):
+        by = {}
+        for name, g in scored.sort_values("date").groupby("name"):
+            by[name] = set(alerts_from_scores_shaped(
+                g["date"].tolist(), g["dscore"].tolist(),
+                [True] * len(g), thr,
+                rearm if rearm is not None else thr,
+                EUPHORIA_ALERT_SPACING_D))
+        return by
+
+    in_alerts_ng = _alert_dates_nogate(onset_scored, thr_in, rearm_in)
+    in_alerts_ng_s = (_alert_dates_nogate(onset_scored, thr_in_strict,
+                                          rearm_in)
+                      if thr_in_strict is not None else {})
+
     ds = fpx_live[["date", "name", "kind", "hype_raw",
                    "boom_state"]].copy()
     ds["end_stage"] = end_stage_mask(fpx_live).values
@@ -1345,15 +1386,24 @@ def rebuild_phase_files(verbose: bool = True,
         ds[f"get_out{_suffix}"] = [d in _oa.get(n, ())
                                    for n, d in zip(ds["name"],
                                                    ds["date"])]
+    for _suffix, _ia in (("_nogate", in_alerts_ng),
+                         ("_nogate_strict", in_alerts_ng_s)):
+        ds[f"get_in{_suffix}"] = [d in _ia.get(n, ())
+                                  for n, d in zip(ds["name"], ds["date"])]
     # PM-TRUST COHERENCE (desk order 2026-08-09: "we CANNOT have a GET
     # IN and a GET OUT so close together"): a START is never shown on
     # an end-stage day, and never within one cooldown of an END call IN
     # EITHER DIRECTION. GET OUT is never suppressed - it is the risk
     # signal. The phase gates make same-day contradiction structurally
-    # impossible; this rule sweeps the boundary cases. Applied to BOTH
-    # the standard and the strict variant.
-    for _suffix in ("", "_strict"):
-        _gi, _go = f"get_in{_suffix}", f"get_out{_suffix}"
+    # impossible; this rule sweeps the boundary cases. Applied to every
+    # GET IN variant, including the ungated pair - coherence is a
+    # display promise, not a gate, so dropping the gate does not lift
+    # it (the ungated IN is judged against the GATED OUT, the only OUT
+    # that exists).
+    for _suffix, _go_suffix in (("", ""), ("_strict", "_strict"),
+                                ("_nogate", ""),
+                                ("_nogate_strict", "_strict")):
+        _gi, _go = f"get_in{_suffix}", f"get_out{_go_suffix}"
         ds.loc[ds["end_stage"].astype(bool), _gi] = False
         for _n, _g in ds.groupby("name"):
             outs = _g.loc[_g[_go], "date"]
@@ -1527,6 +1577,24 @@ def rebuild_phase_files(verbose: bool = True,
     ds = ds.merge(_b120, on=["name", "date"], how="left")
     ds["boomed120"] = ds["boomed120"].eq(True)
     ds["symbol"] = ds["name"].map(sym_by)
+    # THE RETAIL-FLOW DIAL (desk adoption 2026-08-17; notebook 08 §9,
+    # record docs/research/nb08_retail_flow.json). Failure-isolated: the
+    # desk store must never be lost to a dial bug, so a dial error
+    # degrades to missing columns and one printed line, never a crash.
+    # Adds roughly 2-4 minutes to a phases run - it refits the §9
+    # walk-forward (deterministic, random_state=0) rather than caching
+    # a model, the same recompute-from-stores policy every other
+    # derived column follows.
+    try:
+        from analytics.retail_flow import attach_retail_flow
+        if verbose:
+            print("  retail-flow dial (notebook 08 §9, ~2-4 min):",
+                  flush=True)
+        ds = attach_retail_flow(ds, fpx_live, prices, sym_by,
+                                verbose=verbose)
+    except Exception as _rf_e:                            # noqa: BLE001
+        if verbose:
+            print(f"  (retail-flow dial skipped: {_rf_e})")
     _safe_write(ds, _os.path.join(PROCESSED_DIR, "euphoria_desk.parquet"))
     if verbose:
         print(f"  saved euphoria_desk.parquet ({len(ds):,} rows, "
@@ -1534,6 +1602,60 @@ def rebuild_phase_files(verbose: bool = True,
               f"{int(ds['get_out'].sum())} GET OUT alerts all-time, "
               f"{int(ds['inflection'].sum())} inflection markers, "
               f"model {model_name})")
+    # READINESS ALERTS (desk request 2026-08-17: "a scheduled check that
+    # pings you when any name crosses ±90% signed readiness"). Computed
+    # here so the alert file always matches the store it was cut from;
+    # the dashboard banners it, and the pipeline run prints it - the two
+    # places the desk actually looks. Signed readiness = the §10.5
+    # display convention: the phase-routed side's score over its frozen
+    # strict cut, negative for GET OUT.
+    try:
+        _al_rows = []
+        if thr_in_strict and thr_out_strict:
+            # THEMES ONLY (desk 2026-08-17: "i want the alerts to be
+            # only for themes please, not single name tickers"). The
+            # bands and the radar still show every name; the ALERT - the
+            # thing that interrupts - is reserved for the tradeable
+            # theme ETFs.
+            _dsr = ds[ds["kind"] == "theme"].dropna(
+                subset=["in_score", "out_score"])
+            _fresh_bar = ds["date"].max() - pd.Timedelta(days=60)
+            for _n, _g in _dsr.groupby("name"):
+                _c = _g.sort_values("date").iloc[-1]
+                # STALE ROWS DO NOT ALERT: a name whose last scored day
+                # is months old (it left the scored universe) would
+                # otherwise ping forever on a frozen reading - the same
+                # 60-day rule the ETF radar sorts by.
+                if pd.Timestamp(_c["date"]) < _fresh_bar:
+                    continue
+                _sr = (-float(_c["out_score"]) / float(thr_out_strict)
+                       if bool(_c.get("boomed120", False))
+                       else float(_c["in_score"]) / float(thr_in_strict))
+                if abs(_sr) >= 0.90:
+                    _al_rows.append({
+                        "name": _n, "symbol": _c.get("symbol"),
+                        "signed_readiness": round(float(_sr), 3),
+                        "side": ("GET OUT" if _sr < 0 else "GET IN"),
+                        "as_of": str(pd.Timestamp(_c["date"]).date())})
+        _al_rows.sort(key=lambda r: r["signed_readiness"])
+        with open(_os.path.join(PROCESSED_DIR,
+                                "readiness_alerts.json"), "w",
+                  encoding="utf-8") as _fh:
+            _json.dump({"threshold": 0.90, "built":
+                        pd.Timestamp.utcnow().strftime("%Y-%m-%d %H:%M"),
+                        "alerts": _al_rows}, _fh, indent=1)
+        if verbose and _al_rows:
+            print("  READINESS ALERTS (|signed readiness| >= 90% of the "
+                  "cut):")
+            for _r in _al_rows:
+                print(f"    {_r['name']:<20} {_r['side']:<8} "
+                      f"{100 * _r['signed_readiness']:+.0f}%  "
+                      f"(as of {_r['as_of']})")
+        elif verbose:
+            print("  readiness alerts: none at the ±90% line")
+    except Exception as _ra_e:                            # noqa: BLE001
+        if verbose:
+            print(f"  (readiness alerts skipped: {_ra_e})")
     return stored
 
 

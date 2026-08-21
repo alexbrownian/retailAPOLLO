@@ -3354,7 +3354,10 @@ class TestPriceBlindTrigger:
         src = self._src("dashboard.py")
         assert 'IN_SCORE = f"in_score{_XP_PART}"' in src
         assert 'OUT_SCORE = f"out_score{_XP_PART}"' in src
-        assert '_c = f"{base}{_XP_PART}{_SIG_SUFFIX}"' in src
+        # 2026-08-17: sig_col grew the GET IN gate routing; the fence
+        # follows - the column is still built through the SAME
+        # trigger-aware parts, never assembled ad hoc at a call site.
+        assert '_c = f"{base}{_XP_PART}{_gate_part}{_SIG_SUFFIX}"' in src
         assert "experimental_price_blind" in src
         # the store-predates-it case warns rather than silently
         # substituting the shipped signals
@@ -3387,3 +3390,224 @@ class TestPriceBlindTrigger:
         assert ds["in_score_xp"].notna().any()
         both = ds[ds["get_in_xp"] & ds["end_stage"].astype(bool)]
         assert both.empty, "a posts-only GET IN fired on an end-stage day"
+
+
+class TestSignedReadinessAndUngatedGetIn:
+    """The 2026-08-17 adoptions (notebook 08 §10, record
+    docs/research/nb08_single_dial.json): the ungated GET IN, the one
+    SIGNED readiness, and the retirement of the Relaxed setting.
+
+    The contradiction these changes killed - a name reading 100% of the
+    way to GET IN and to GET OUT at once - came from displaying two
+    heads whose scores correlate at +0.75. The fences below hold the
+    two structural promises: GET OUT never loses its phase gate (§10.4:
+    ungated its false alarms double), and the signed readiness is
+    routed so exactly ONE side exists per name-day."""
+
+    @staticmethod
+    def _src(name):
+        from pathlib import Path
+        return (Path(__file__).resolve().parents[1]
+                / name).read_text(encoding="utf-8")
+
+    def test_no_ungated_get_out_anywhere(self):
+        """§10.4's asymmetry is the whole safety case: the gate IS the
+        OUT side's direction knowledge. An ungated GET OUT column or
+        code path is a one-line change away and must never appear."""
+        for fname in ("analytics/euphoria_phases.py", "dashboard.py"):
+            assert "get_out_nogate" not in self._src(fname), (
+                f"{fname} references an ungated GET OUT - §10.4 refutes "
+                "that variant (false alarms double)")
+
+    def test_dashboard_reroutes_only_get_in(self):
+        """The gate routing may touch GET IN and nothing else. The
+        checkbox that briefly exposed the gated variant was removed
+        2026-08-17 (GET IN is ungated, full stop) - the one-sided
+        routing it guarded still has to hold."""
+        src = self._src("dashboard.py")
+        i = src.index("def sig_col(")
+        body = src[i:i + 1200]
+        assert 'base == "get_in"' in body
+        assert 'base == "get_out"' not in body.replace(
+            "GET OUT never does", "")
+
+    def test_ungated_get_in_exists_and_respects_coherence(self):
+        """The ungated columns are real columns with the PM-trust rule
+        still applied: no GET IN on an end-stage day, none within one
+        cooldown of a (gated) GET OUT. Dropping the gate widens WHEN a
+        start may be called, never the coherence promise."""
+        from src.config import EUPHORIA_COOLDOWN_DAYS
+        path = os.path.join(ROOT, "data", "processed",
+                            "euphoria_desk.parquet")
+        if not os.path.exists(path):
+            pytest.skip("no desk store on this machine")
+        ds = pd.read_parquet(path)
+        if "get_in_nogate_strict" not in ds.columns:
+            pytest.skip("store predates the ungated GET IN - run "
+                        "run_analytics --what phases")
+        ds["date"] = pd.to_datetime(ds["date"])
+        bad_end = ds[ds["get_in_nogate_strict"].astype(bool)
+                     & ds["end_stage"].astype(bool)]
+        assert bad_end.empty, "an ungated GET IN fired on an end-stage day"
+        for name, g in ds.groupby("name"):
+            outs = g.loc[g["get_out_strict"].astype(bool), "date"]
+            if not len(outs):
+                continue
+            for d in g.loc[g["get_in_nogate_strict"].astype(bool), "date"]:
+                assert not any(abs((d - t).days) <= EUPHORIA_COOLDOWN_DAYS
+                               for t in outs), (
+                    f"{name}: ungated GET IN within one cooldown of a "
+                    f"GET OUT ({d.date()})")
+
+    def test_signed_readiness_is_one_sided_by_construction(self):
+        """Recompute the §10.5 signed readiness from the store exactly
+        as the dashboard does: the phase routing must give every scored
+        name-day exactly one live side, so the both-at-100% state is
+        impossible, not just unobserved."""
+        path = os.path.join(ROOT, "data", "processed",
+                            "euphoria_desk.parquet")
+        if not os.path.exists(path):
+            pytest.skip("no desk store on this machine")
+        ds = pd.read_parquet(path).dropna(subset=["in_score", "out_score"])
+        if not len(ds):
+            pytest.skip("no scored rows")
+        assert "boomed120" in ds.columns
+        boomed = ds["boomed120"].eq(True)
+        # one side per row: the routed reading is IN xor OUT, never both
+        side_in = ~boomed
+        side_out = boomed
+        assert not (side_in & side_out).any()
+        assert (side_in | side_out).all()
+
+    def test_relaxed_setting_is_gone_from_the_interface(self):
+        """Desk 2026-08-17: Standard only. The F1 columns stay in the
+        store (recorded numbers must reproduce); the CONTROL must not
+        return."""
+        src = self._src("dashboard.py")
+        assert '"signal setting"' not in src
+        assert "RELAXED_SIGNALS = False" in src
+
+
+class TestRetailFlowDial:
+    """The continuous retail-flow dial (2026-08-17 adoption, notebook 08
+    §9). Adopted as the trend/context layer on the same explicit
+    condition as the inflection marker: it is FURNITURE. It never
+    fires, gates, filters or re-scores a call, and its smoothness comes
+    from model structure (state-space filter, slow features), never
+    from a lookout into the future."""
+
+    @staticmethod
+    def _src(name):
+        from pathlib import Path
+        return (Path(__file__).resolve().parents[1]
+                / name).read_text(encoding="utf-8")
+
+    def test_the_dial_cannot_touch_the_calls(self):
+        """retail_flow.py must never read or assign the call columns -
+        the dial is display, the calls are the signal."""
+        src = self._src("analytics/retail_flow.py")
+        for forbidden in ('"get_in', '"get_out', "'get_in", "'get_out"):
+            assert forbidden not in src, (
+                "retail_flow.py references a call column - the dial "
+                "must stay furniture")
+
+    def test_the_dial_is_failure_isolated(self):
+        """A dial bug must degrade to missing columns, never take the
+        desk store down with it."""
+        src = self._src("analytics/euphoria_phases.py")
+        i = src.index("attach_retail_flow")
+        block = src[max(0, i - 600):i]
+        assert "try:" in block, (
+            "the retail-flow attach is not wrapped - a dial error "
+            "would kill the desk store write")
+
+    def test_the_dial_filter_is_causal(self):
+        """The Kalman recursion may only ever fold in the CURRENT
+        observation - no centred windows, no backward pass."""
+        from analytics.retail_flow import _kalman
+        names = ["a"] * 10
+        vals = [0.0] * 5 + [1.0] * 5
+        out = _kalman(np.array(names), np.array(vals), 0.2)
+        assert (out[:5] == 0).all(), "the filter saw the future"
+        assert out[5] == pytest.approx(0.2), "gain arithmetic drifted"
+
+    def test_dial_columns_bounded_and_present_when_fresh(self):
+        path = os.path.join(ROOT, "data", "processed",
+                            "euphoria_desk.parquet")
+        if not os.path.exists(path):
+            pytest.skip("no desk store on this machine")
+        ds = pd.read_parquet(path)
+        if "retail_flow_disp" not in ds.columns:
+            pytest.skip("store predates the dial - run "
+                        "run_analytics --what phases")
+        v = ds["retail_flow_disp"].dropna()
+        assert len(v), "dial column exists but is empty"
+        assert float(v.min()) >= -1.0 - 1e-9
+        assert float(v.max()) <= 1.0 + 1e-9
+
+
+class TestPinnedModelFamily:
+    """DESK_MODEL_FAMILY must skip the tournament without weakening the
+    validation that follows it (desk 2026-08-21)."""
+
+    def _spy(self):
+        import analytics.ml_detector as mld
+        calls = []
+
+        def spy(vframe, episodes, vbank, label, mode, fit, budget,
+                chooser=None):
+            calls.append((label, mode, getattr(fit, "__name__", "?"),
+                          len(vbank)))
+            return {"ap": 0.2, "ap_baseline": 0.05, "auroc": 0.7,
+                    "alerts_by_name": {}, "threshold": 0.9}
+
+        return mld, calls, spy
+
+    def _run(self, families):
+        import pandas as pd
+        mld, calls, spy = self._spy()
+        orig = (mld.run_tournament_entry, mld._summarise_entry,
+                mld.attach_price_features, mld.candidate_frame)
+        mld.run_tournament_entry = spy
+        mld._summarise_entry = lambda *a, **k: None
+        mld.attach_price_features = lambda c, s, p: c
+        mld.candidate_frame = lambda f: f
+        try:
+            frame = pd.DataFrame({"name": ["a"] * 5, "year": [2024] * 5})
+            res = mld.run_ml_tournament(frame, pd.DataFrame(), {}, {},
+                                        series=object(), boom=None,
+                                        families=families)
+        finally:
+            (mld.run_tournament_entry, mld._summarise_entry,
+             mld.attach_price_features, mld.candidate_frame) = orig
+        return res, calls, mld
+
+    def test_pinned_fits_two_models_not_sixteen(self):
+        res, calls, mld = self._run(["ens"])
+        assert len(calls) == 2, "pinned mode must fit one family per head"
+        assert {c[2] for c in calls} == {"ens_y_top", "ens_y_onset"}
+        # both heads present, and the winner is the pinned family
+        assert sorted(res["get_out"]) == ["ens"]
+        assert sorted(res["get_in"]) == ["ens"]
+        assert mld.pick_winner(res) == "ens"
+
+    def test_pinned_uses_the_deployable_bank_not_the_crowd_control(self):
+        _res, calls, mld = self._run(["ens"])
+        # DESK_ML_BANK is the crowd+price bank; ML_BANK is the crowd-only
+        # control that pick_winner refuses to adopt anyway.
+        assert all(c[3] == len(mld.DESK_ML_BANK) for c in calls), (
+            "pinned mode must fit the deployable configuration, "
+            "never the *_crowd control")
+
+    def test_unpinned_still_runs_the_full_tournament(self):
+        res, calls, _mld = self._run(None)
+        assert len(calls) == 16
+        assert "ens_crowd" in res["get_out"]
+
+    def test_unknown_family_is_refused_loudly(self):
+        with pytest.raises(ValueError):
+            self._run(["definitely_not_a_family"])
+
+    def test_config_default_is_the_logit_gbm_ensemble(self):
+        from src.config import DESK_MODEL_FAMILY
+        assert DESK_MODEL_FAMILY == "ens"

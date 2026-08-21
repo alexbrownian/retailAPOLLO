@@ -1,0 +1,144 @@
+{
+ "agreement": [
+  {
+   "pair": "GET IN vs up-crossing",
+   "calls": 23,
+   "median gap (d)": 15.0,
+   "within \u00b121d": "17%",
+   "crossing came FIRST": "48%"
+  },
+  {
+   "pair": "GET OUT vs down-crossing",
+   "calls": 94,
+   "median gap (d)": 14.5,
+   "within \u00b121d": "39%",
+   "crossing came FIRST": "32%"
+  }
+ ],
+ "regimes": {
+  "pooled": [
+   {
+    "state": "GREEN (dial > +0.15)",
+    "days": 21358,
+    "ex10 %": 0.92,
+    "ex21 %": 1.86,
+    "ex42 %": 3.08
+   },
+   {
+    "state": "RED (dial < -0.15)",
+    "days": 19995,
+    "ex10 %": 0.7,
+    "ex21 %": 1.23,
+    "ex42 %": 2.08
+   },
+   {
+    "state": "neutral",
+    "days": 6047,
+    "ex10 %": 0.38,
+    "ex21 %": 0.98,
+    "ex42 %": 2.55
+   }
+  ],
+  "yearly_spread": {
+   "2019": 0.46,
+   "2020": -1.09,
+   "2021": 3.62,
+   "2022": -0.03,
+   "2023": -0.03,
+   "2026": -0.7
+  }
+ },
+ "crossings_judged": [
+  {
+   "trigger": "dial zero-cross",
+   "side": "GET IN",
+   "alerts": 387,
+   "captured": 36,
+   "detectable": 171,
+   "false_alarms": 300,
+   "utility": -264,
+   "median_lead": 75.0
+  },
+  {
+   "trigger": "dial zero-cross",
+   "side": "GET OUT",
+   "alerts": 392,
+   "captured": 40,
+   "detectable": 184,
+   "false_alarms": 332,
+   "utility": -292,
+   "median_lead": 15.0
+  },
+  {
+   "trigger": "dial zero-cross, 5d hold",
+   "side": "GET IN",
+   "alerts": 366,
+   "captured": 38,
+   "detectable": 171,
+   "false_alarms": 279,
+   "utility": -241,
+   "median_lead": 69.5
+  },
+  {
+   "trigger": "dial zero-cross, 5d hold",
+   "side": "GET OUT",
+   "alerts": 362,
+   "captured": 42,
+   "detectable": 184,
+   "false_alarms": 308,
+   "utility": -266,
+   "median_lead": 16.0
+  },
+  {
+   "trigger": "dial \u00b10.25 cross, 5d hold",
+   "side": "GET IN",
+   "alerts": 352,
+   "captured": 34,
+   "detectable": 171,
+   "false_alarms": 276,
+   "utility": -242,
+   "median_lead": 75.0
+  },
+  {
+   "trigger": "dial \u00b10.25 cross, 5d hold",
+   "side": "GET OUT",
+   "alerts": 333,
+   "captured": 42,
+   "detectable": 184,
+   "false_alarms": 274,
+   "utility": -232,
+   "median_lead": 12.5
+  },
+  {
+   "trigger": "shipped ungated",
+   "side": "GET IN",
+   "alerts": 23,
+   "captured": 13,
+   "detectable": 171,
+   "false_alarms": 8,
+   "utility": 5,
+   "median_lead": 59.0
+  },
+  {
+   "trigger": "shipped gated",
+   "side": "GET IN",
+   "alerts": 12,
+   "captured": 5,
+   "detectable": 171,
+   "false_alarms": 7,
+   "utility": -2,
+   "median_lead": 23.0
+  },
+  {
+   "trigger": "shipped",
+   "side": "GET OUT",
+   "alerts": 95,
+   "captured": 35,
+   "detectable": 184,
+   "false_alarms": 54,
+   "utility": -19,
+   "median_lead": 5.0
+  }
+ ],
+ "built": "2026-08-17 07:49 UTC"
+}

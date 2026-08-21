@@ -1751,15 +1751,16 @@ how_many = st.sidebar.slider("items per section", 3, 60, 15)
 # re-arms at the cut), one call per name per quarter per side, and no
 # GET IN within 21d of a GET OUT in either direction. Evidence:
 # docs/research/alert_shape_sweep.json.
-# RENAMED 2026-08-12 on desk instruction: what was "Strict" is now
-# STANDARD and is the DEFAULT, and what was "Standard" is now RELAXED.
-# The names changed; the cuts did not.
+# RENAMED 2026-08-12, RETIRED 2026-08-17 on desk instruction ("remove
+# the standard and relaxed stuff, just use the standard"): the
+# interface serves STANDARD only. The cuts did not change.
 #
 # READ THIS BEFORE "FIXING" THE SUFFIX BELOW. The stored columns keep
 # their original names - `get_in_strict` / `get_out_strict` are the
-# F0.5 cut and are what STANDARD now serves; the bare `get_in` /
-# `get_out` are the F1 cut and are what RELAXED serves. So the default
-# setting reads the columns whose names say "strict", which looks like
+# F0.5 cut and are what STANDARD (the only setting) serves; the bare
+# `get_in` / `get_out` are the retired Relaxed F1 cut, still written by
+# the pipeline so every stored record and notebook reproduces. The
+# display reads the columns whose names say "strict", which looks like
 # an inversion and is not one. Renaming the parquet columns to match
 # the labels would break every stored record, every notebook and the
 # frozen research JSONs, for a cosmetic gain - so the mapping is stated
@@ -1799,43 +1800,56 @@ if XP_TRIGGER and not _XP_STORE_OK:
     XP_TRIGGER = False
 _XP_PART = "_xp" if XP_TRIGGER else ""
 
-_sig_mode = st.sidebar.radio(
-    "signal setting",
-    ["Standard (fewer, higher conviction)", "Relaxed (more calls)"],
-    index=0, key="signal_mode",
-    help="Standard weights avoiding false alarms twice as heavily as "
-         "catching episodes (the F0.5 cut). Relaxed balances the two "
-         "1:1 (the F1 cut): roughly twice the calls and twice the "
-         "false alarms, and a few more episodes caught. Both settings "
-         "fire at most one call per name per quarter per side, GET IN "
-         "only before a boom completes, GET OUT only after. All cuts "
-         "are chosen from past years by the pipeline - never by "
-         "hand.\n\n"
-         "STANDARD is the default because it is the better PERFORMING "
-         "setting, measured walk-forward: names it flags underperform "
-         "the rest of the universe by 1.4% over the next month after a "
-         "GET OUT, and outperform by 0.7% after a GET IN (Relaxed: "
-         "+0.1% / -0.4%). Fewer, higher-conviction calls is where the "
-         "edge lives.\n\n"
-         "NOTE on reading any forward return: the tracked universe "
-         "itself drifts about +1% per 21 days, so a RAW move after a "
-         "GET OUT looks positive even when the name badly "
-         "underperformed - the honest measure is the move MINUS what "
-         "everything else did that day.")
-_dial_mode = st.sidebar.radio(
-    "what the dial shows",
-    ["how close to a signal", "euphoria level"],
-    index=0, key="dial_mode",
-    help="HOW CLOSE TO A SIGNAL puts the needle on this name's live "
-         "score as a percentage of its own trigger - 100 means it "
-         "fires, for every name and both sides. EUPHORIA LEVEL is the "
-         "older reading: crowd heat on a 0-100 scale, which does not "
-         "line up with the trigger and never did.")
-READINESS_DIAL = _dial_mode.startswith("how close")
+# SIGNAL SETTING RETIRED (desk 2026-08-17: "remove the standard and
+# relaxed stuff (just use the standard)"). The interface now serves the
+# F0.5 *_strict columns only - the better-performing setting measured
+# walk-forward (post-GET-OUT excess -1.4%/21d, post-GET-IN +0.7%,
+# against Relaxed's +0.1%/-0.4%). The F1 columns stay in the store so
+# every recorded number and notebook still reproduces; only the control
+# is gone.
+# GET IN IS UNGATED, FULL STOP (desk 2026-08-17 v2: "remove the
+# stricter threshold stuff. Just keep get in as no price-gate as
+# default"). The switch that briefly offered the price-gated variant is
+# gone: nb08 §10.4 measured the 120d phase gate throwing away roughly
+# three quarters of the GET IN calls the model earns (captured episodes
+# 28 -> 116 ungated, at under double the false alarms), because chained
+# episodes re-onset while a name still counts as boomed. GET OUT keeps
+# its gate everywhere - ungated its false alarms double (same section),
+# which is why no switch ever existed for that side.
+# THE DIAL ALWAYS SHOWS % OF SIGNAL (desk 2026-08-17: "remove the
+# euphoria stuff, we use % of signal always now"). The choice used to be
+# a sidebar radio; it is gone because the two readings answer different
+# questions and only one of them is the signal. % OF SIGNAL is the live
+# model score over that side's frozen cut, so 100 = the call fires, and
+# it means the same thing for every name and both sides. EUPHORIA LEVEL
+# (100 x the mean of e1/e2/e3/e5) is crowd heat only - no price, no
+# model, no threshold - so it never lined up with the firing line, and
+# offering it beside a readiness needle invited exactly the misreading
+# the signed band was built to end.
+#
+# Euphoria survives in ONE place, as automatic degradation rather than a
+# choice: if a name has no score to be a percentage OF (no stored row,
+# or no frozen cut yet) the gauge falls back to the euphoria reading
+# below rather than showing an empty dial - and the facts panel keeps
+# "euphoria today" as a descriptive row either way.
+READINESS_DIAL = True
 
-RELAXED_SIGNALS = _sig_mode.startswith("Relaxed")
+RELAXED_SIGNALS = False          # retired 2026-08-17; Standard only
 # STANDARD -> the strict-named columns. See the note above.
-_SIG_SUFFIX = "" if RELAXED_SIGNALS else "_strict"
+_SIG_SUFFIX = "_strict"
+# UNGATED GET IN is the default (desk 2026-08-17, notebook 08 §10.4);
+# the checkbox above switches back to the price-gated variant. A store
+# written before the pipeline change lacks the *_nogate columns - warn
+# and fall back to gated rather than silently showing the wrong thing.
+_NOGATE_STORE_OK = desk is not None and "get_in_nogate_strict" in desk.columns
+GATED_GET_IN = XP_TRIGGER
+if not GATED_GET_IN and not _NOGATE_STORE_OK:
+    st.sidebar.warning("The stored signals predate the ungated GET IN. "
+                       "Run the pipeline once (python -m "
+                       "analytics.run_analytics --what phases) to "
+                       "compute it; falling back to the price-gated "
+                       "GET IN until then.")
+    GATED_GET_IN = True
 
 # The live-score columns for the active trigger. Every surface that
 # reads a score reads THESE, so the experimental mode can never show a
@@ -1845,13 +1859,22 @@ OUT_SCORE = f"out_score{_XP_PART}"
 
 
 def sig_col(base, frame):
-    """The desk-signal column for the active trigger + signal setting -
+    """The desk-signal column for the active trigger + gate setting -
     falls back to the shipped standard column if the store predates the
     extra columns (the experimental case is warned about above, not
     silently substituted - this fallback only fires mid-render if a
-    frame lacks the column)."""
-    _c = f"{base}{_XP_PART}{_SIG_SUFFIX}"
-    return _c if frame is not None and _c in frame.columns else base
+    frame lacks the column). GET IN routes through the ungated variant
+    (nb08 §10.4: the phase gate blocks ~3/4 of its correct calls);
+    GET OUT never does - its gate is load-bearing, ungated its false
+    alarms double."""
+    _gate_part = ("_nogate" if (base == "get_in" and not GATED_GET_IN
+                                and not XP_TRIGGER) else "")
+    _c = f"{base}{_XP_PART}{_gate_part}{_SIG_SUFFIX}"
+    if frame is not None and _c in frame.columns:
+        return _c
+    _fallback = f"{base}{_XP_PART}{_SIG_SUFFIX}"
+    return (_fallback if frame is not None and _fallback in frame.columns
+            else base)
 
 
 def sig_head(rep, head):
@@ -2255,11 +2278,43 @@ _m5.metric("priced symbols", len(priced))
 # written - only the display went); "[dev] Data Stats" added - the
 # snapshot of the data behind everything (freshness, volumes, sources,
 # ingestion status).
-_TAB_NAMES = ["EUPHORIA: Themes", "EUPHORIA: Singles", "Influence tracker",
-              "Top trends", "Emerging trends", "AI Pulse",
-              "[dev] Data Stats"]
+_TAB_NAMES = ["EUPHORIA: Themes", "EUPHORIA: Singles", "ETF radar",
+              "Influence tracker", "Top trends", "Emerging trends",
+              "AI Pulse", "[dev] Data Stats"]
 active_tab = st.radio("view", _TAB_NAMES, horizontal=True,
                       key="active_tab", label_visibility="collapsed")
+
+# ---- READINESS ALERTS BANNER (desk request 2026-08-17: "pings you
+# when any name crosses ±90% signed readiness"). Written by every
+# pipeline run beside the store it was cut from, so the banner and the
+# bands can never disagree; stale-scored names are excluded at source
+# (60-day rule). One line, dismissible only by the numbers changing -
+# an alert that can be clicked away is an alert that gets clicked away.
+_ra_path = os.path.join(PROCESSED_DIR, "readiness_alerts.json")
+if os.path.exists(_ra_path):
+    try:
+        _ra = _read_json(_ra_path, _mtime(_ra_path))
+        _ra_alerts = _ra.get("alerts") or []
+        # THEMES ONLY, enforced at display too (desk 2026-08-17): an
+        # alerts file written before the pipeline's themes-only filter
+        # still carries single names - never banner them.
+        if desk is not None and "kind" in desk.columns:
+            _theme_names = set(desk.loc[desk["kind"] == "theme", "name"]
+                               .unique())
+            _ra_alerts = [a for a in _ra_alerts
+                          if a.get("name") in _theme_names]
+        if _ra_alerts:
+            _ra_bits = [
+                (f"**{a['name']}** ({a.get('symbol') or '-'}) "
+                 f"{100 * a['signed_readiness']:+.0f}% toward "
+                 f"{a['side']}")
+                for a in _ra_alerts]
+            st.warning("**At the line (±90% signed readiness):** "
+                       + " · ".join(_ra_bits)
+                       + f"  — as of the last pipeline run "
+                         f"({_ra.get('built', '?')} UTC)")
+    except Exception:                                     # noqa: BLE001
+        pass
 
 tc = clip_window(theme_counts, "date", lo, hi)
 # TRADEABLE UNIVERSE ONLY, everywhere: every list/rank/picker on this
@@ -4131,11 +4186,16 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # again when the axis changes underneath it.
         if inflection_alerts:
             _tx, _ty, _tt = [], [], []
+            # NB: scratch index variable is NOT named _pos - that name
+            # carries the master-day position into _lvl_ok, and
+            # clobbering it here sent the WHY panel indexing past the
+            # end of that shorter series (IndexError, desk bug report
+            # 2026-08-17)
             for _d in inflection_alerts:
-                _pos = _carrier.index.searchsorted(pd.Timestamp(_d))
-                if _pos < len(_carrier) and pd.notna(_carrier.iloc[_pos]):
-                    _tx.append(_carrier.index[_pos])
-                    _ty.append(float(_carrier.iloc[_pos]))
+                _ipos = _carrier.index.searchsorted(pd.Timestamp(_d))
+                if _ipos < len(_carrier) and pd.notna(_carrier.iloc[_ipos]):
+                    _tx.append(_carrier.index[_ipos])
+                    _ty.append(float(_carrier.iloc[_ipos]))
                     _tt.append(
                         f"possible INFLECTION {pd.Timestamp(_d):%d %b %y}<br>"
                         f"A reversal is more likely than usual in the "
@@ -4220,6 +4280,135 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                          type="log" if _log_scale else "linear")
         _axes_fidelity(_theme(fig))
         st.plotly_chart(fig, width="stretch", key=key)
+        # ---- THE COMBINED BAND (desk 2026-08-17 v2, notebook 08 §11.4:
+        # "combine the get out and get in chart with this +1 to -1 one
+        # ... make the chart clearer"). ONE panel, three layers, one
+        # [-1, +1] axis:
+        #   FILL  - the signed readiness (§10.5): green above zero, the
+        #           IN side is live and this close to its frozen cut;
+        #           red below, the OUT side likewise; dashed lines at
+        #           ±1 = a signal fires. The phase routing supplies the
+        #           sign, so the fill can never point both ways.
+        #   LINE  - the retail-flow dial (§9): the slow posts-only tide
+        #           that leads price by 1-3 weeks. Drawn as a LINE, not
+        #           a fill, so it stays legible near zero - the
+        #           visibility complaint this layout answers.
+        #   MARKS - the calls that actually fired, on the band edges.
+        # §11.3 is why the dial stays a line and not a trigger: its
+        # crossings, judged like everything else, fire 7-30x the false
+        # alarms of the shipped calls (utility ~-250 vs -19/+5).
+        if (dk_i is not None and len(dk_i) and IN_SCORE in dk_i.columns
+                and OUT_SCORE in dk_i.columns
+                and _thr_in_d and _thr_out_d):
+            _srg = dk_i.loc[(dk_i.index >= w0) & (dk_i.index <= w1)]
+            # PER-SIDE coverage (desk bug report 2026-08-17: "why do we
+            # have missing data?"): only the LIVE side's score is needed
+            # for the reading, so a day scored on one side still draws -
+            # requiring both scores was punching holes wherever the
+            # other head had no candidate row that day.
+            if len(_srg):
+                _rin = _srg[IN_SCORE] / float(_thr_in_d)
+                _rout = _srg[OUT_SCORE] / float(_thr_out_d)
+                if XP_TRIGGER:
+                    # no phase gate in the experimental trigger: the
+                    # nearer side carries the sign (readiness_now's own
+                    # convention)
+                    _sr = _rin.where(_rin.fillna(-9) >= _rout.fillna(-9),
+                                     -_rout)
+                else:
+                    _bmk = _srg["boomed120"].fillna(False).astype(bool)
+                    _sr = _rin.where(~_bmk, -_rout)
+                _sr = (_sr.dropna().clip(-1.15, 1.15)
+                       [lambda s: ~s.index.duplicated()])
+            if len(_srg) and len(_sr):
+                # daily calendar; SHORT scoring holes (<=7d - weekends,
+                # a missed pull) carry the last reading forward, LONG
+                # gaps stay blank - an unscored month must look
+                # unscored, never invented
+                _sr = _sr.reindex(
+                    pd.date_range(_sr.index.min(),
+                                  _sr.index.max())).ffill(limit=7)
+                _fb = go.Figure()
+                _fb.add_scatter(x=_sr.index, y=_sr.clip(lower=0),
+                                name="LEADING — toward GET IN",
+                                mode="lines",
+                                line=dict(width=0.8, color=TEAL),
+                                fill="tozeroy",
+                                fillcolor="rgba(46,110,126,0.35)",
+                                hovertemplate="%{x|%d %b %y} · "
+                                              "%{y:+.2f}<extra>toward "
+                                              "GET IN</extra>")
+                _fb.add_scatter(x=_sr.index, y=_sr.clip(upper=0),
+                                name="LEADING — toward GET OUT",
+                                mode="lines",
+                                line=dict(width=0.8, color=BEAR),
+                                fill="tozeroy",
+                                fillcolor="rgba(166,61,44,0.35)",
+                                hovertemplate="%{x|%d %b %y} · "
+                                              "%{y:+.2f}<extra>toward "
+                                              "GET OUT</extra>")
+                if "retail_flow_disp" in _srg.columns:
+                    _rfs = _srg["retail_flow_disp"].dropna()
+                    _rfs = _rfs[~_rfs.index.duplicated()]
+                    if len(_rfs) > 5:
+                        _rfs = _rfs.reindex(pd.date_range(
+                            _rfs.index.min(), _rfs.index.max()))
+                        _fb.add_scatter(
+                            x=_rfs.index, y=_rfs.values,
+                            name="RAW retail flow (live)",
+                            mode="lines",
+                            line=dict(width=2.0, color=INK),
+                            hovertemplate="%{x|%d %b %y} · "
+                                          "%{y:+.2f}<extra>retail "
+                                          "flow</extra>")
+                # the fired calls, on the band itself
+                for _col_b, _mk_b, _cc_b, _yy_b, _nm_b in (
+                        (sig_col("get_in", _srg), "triangle-up", TEAL,
+                         1.05, "GET IN fired"),
+                        (sig_col("get_out", _srg), "triangle-down", BEAR,
+                         -1.05, "GET OUT fired")):
+                    if _col_b in _srg.columns:
+                        _dd_b = _srg.index[_srg[_col_b].astype(bool)]
+                        if len(_dd_b):
+                            _fb.add_scatter(
+                                x=_dd_b, y=[_yy_b] * len(_dd_b),
+                                name=_nm_b, mode="markers",
+                                marker=dict(symbol=_mk_b, size=11,
+                                            color=_cc_b,
+                                            line=dict(width=1.2,
+                                                      color="white")),
+                                hovertemplate="%{x|%d %b %y}"
+                                              f"<extra>{_nm_b}</extra>")
+                for _yv, _cc in ((1.0, TEAL), (-1.0, BEAR)):
+                    _fb.add_hline(y=_yv, line_dash="dash", line_width=1,
+                                  line_color=_cc, opacity=0.7)
+                _fb.add_hline(y=0, line_width=1, line_color=INK_MUTED)
+                _fb.update_layout(
+                    title=dict(text=""), height=185, showlegend=True,
+                    legend=dict(orientation="h", yref="container",
+                                yanchor="bottom", y=0.0,
+                                xref="container", xanchor="center",
+                                x=0.5, font=dict(size=10)),
+                    margin=dict(l=10, r=10, t=4, b=34),
+                    hovermode="x unified",
+                    yaxis=dict(range=[-1.3, 1.3],
+                               tickvals=[-1, 0, 1],
+                               ticktext=["at GET OUT", "", "at GET IN"],
+                               tickfont=dict(size=10)))
+                _fb.update_xaxes(range=[w0, w1])
+                _axes_fidelity(_theme(_fb))
+                st.plotly_chart(_fb, width="stretch",
+                                key=f"{key}_srband")
+                st.caption(
+                    "**The black line is the raw signal.** The red and "
+                    "blue aim to PREDICT the black signal's changes — "
+                    "at the dashed line the call fires (▲▼ = it fired). "
+                    "Empty means not enough posts to be conclusive.")
+                if "retail_flow_disp" not in _srg.columns:
+                    st.caption("retail-flow dial not in this store yet "
+                               "- run `python -m analytics."
+                               "run_analytics --what phases` once to "
+                               "compute it")
         # ---- THE FULL REASONS, OUTSIDE THE CHART (desk request
         # 2026-07-31).  Streamlit surfaces no hover events, so the panel
         # follows the tab's master "read every dial on" slider - the
@@ -4365,11 +4554,14 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             # watchlist is the furthest this signal is allowed to go.
             _infl_thr = ((desk_report or {}).get("inflection") or {}).get(
                 "threshold")
+            # GET IN eligibility follows the gate checkbox (2026-08-17:
+            # ungated by default, so a boomed name's GET IN CAN fire
+            # unless the stricter price-gated variant is ticked)
             for _side, _sc_col, _thr, _elig in (
                     ("GET OUT", OUT_SCORE, _thr_out_d,
                      _boomed or XP_TRIGGER),
                     ("GET IN", IN_SCORE, _thr_in_d,
-                     (not _boomed) or XP_TRIGGER),
+                     (not _boomed) or XP_TRIGGER or not GATED_GET_IN),
                     ("INFLECTION (context)", "inflection_score", _infl_thr, True)):
                 if _sc_col not in _g.columns:
                     continue
@@ -4589,6 +4781,154 @@ if active_tab == "EUPHORIA: Themes":
     render_euphoria_tab("theme", "Themes", "euphth")
 if active_tab == "EUPHORIA: Singles":
     render_euphoria_tab("single", "Single names", "euphsg")
+
+# ---- ETF RADAR (desk request 2026-08-17: "add to the dashboard a table
+# (tab) of all the ETFs we have and their score currently (even better
+# if its the continuous graph over time) of the retail attention. order
+# it by whats the closest to a get out") ----
+# One row per tracked name, EVERY name in the desk store - no alert
+# filter, no window filter: the whole point of this table is the names
+# that have NOT called yet. Reads the same stored scores and the same
+# frozen cuts the alerts use (respecting the trigger switch in the
+# sidebar); computes nothing new. The attention sparkline is hype_raw -
+# the mentions-based heat the euphoria measurements are built from - so
+# the "graph over time" column and the score column come from the same
+# store and can never disagree about what the crowd was doing.
+if active_tab == "ETF radar":
+    _as_of_r = desk["date"].max() if hi is None else min(
+        hi, desk["date"].max())
+    st.subheader("ETF radar — every tradeable theme ETF, ranked by how "
+                 "close it is to a GET OUT")
+    _thr_out_r = sig_thr(sig_head(desk_report, "get_out"))
+    _thr_in_r = sig_thr(sig_head(desk_report, "get_in"))
+    st.caption(
+        f"As of **{pd.Timestamp(_as_of_r):%d %b %Y}** · trigger: "
+        f"**{'experimental (posts only)' if XP_TRIGGER else 'shipped (crowd + price)'}**. "
+        "One SIGNED readiness per name - red negative means the name "
+        "has boomed and GET OUT is the live side (-100% = at the "
+        "trigger), green positive means GET IN is the live side. Most "
+        "bearish sorts first, so the top of the table is what to look "
+        "at; names whose last scoring run is over 60 days old sort "
+        "last and are marked *stale*. *Retail attention* is the crowd "
+        "heat the scores are built from: the bar is today against the "
+        "name's own last year; the sparkline is the last six months.")
+    # THEME ETFs ONLY (desk 2026-08-17: "etf radar should also only be
+    # etfs not single names") - the tab exists to rank the tradeable
+    # theme instruments; single names keep their own EUPHORIA: Singles
+    # tab and their per-name bands.
+    _dkr = desk[(desk["date"] <= _as_of_r) & (desk["kind"] == "theme")]
+    _rows_r = []
+    for _n, _g in _dkr.groupby("name"):
+        _g = _g.sort_values("date")
+        _cur = _g.iloc[-1]
+        # the latest SCORED row: live ingestion appends heat days ahead
+        # of the scoring pass, so the newest row can hold NaN scores -
+        # a blank cell would read as "no signal" when the truth is
+        # "signal as of the last scoring run".
+        _gs = _g.dropna(subset=[OUT_SCORE]) if OUT_SCORE in _g else _g.iloc[:0]
+        _out_sc = float(_gs.iloc[-1][OUT_SCORE]) if len(_gs) else None
+        _out_day = _gs.iloc[-1]["date"] if len(_gs) else None
+        _gi = _g.dropna(subset=[IN_SCORE]) if IN_SCORE in _g else _g.iloc[:0]
+        _in_sc = float(_gi.iloc[-1][IN_SCORE]) if len(_gi) else None
+        _h = _g.set_index("date")["hype_raw"].dropna()
+        if not len(_h):
+            continue
+        _h1y = _h.loc[_h.index >= _h.index.max() - pd.Timedelta(days=365)]
+        _att_pct = float((_h1y <= _h1y.iloc[-1]).mean()) if len(_h1y) else None
+        _h6m = _h.loc[_h.index >= _h.index.max() - pd.Timedelta(days=183)]
+        _spark = (_h6m.resample("3D").mean().dropna().round(3).tolist()
+                  if len(_h6m) > 3 else None)
+        _boomed = bool(_cur.get("boomed120", False))
+        _elig = _boomed or XP_TRIGGER
+        # FRESHNESS OUTRANKS SIZE. Some names' newest scored row is
+        # years old (a name can drop out of the scored universe and
+        # keep ingesting heat); ranking a 2021 score above today's
+        # would put the stalest data at the top of a table whose whole
+        # job is "what should I look at NOW". Stale = last scoring run
+        # for this name is more than 60 days behind the as-of day.
+        _fresh = (_out_day is not None
+                  and (pd.Timestamp(_as_of_r)
+                       - pd.Timestamp(_out_day)).days <= 60)
+        # ONE SIGNED NUMBER PER NAME (desk 2026-08-17, notebook 08
+        # §10.5, replacing the two % columns this table shipped with -
+        # which could and did read 100%/100% on the same name). The
+        # phase routing supplies the sign, so the reading can never
+        # point both ways: negative red = the OUT side is live and this
+        # is how close it stands to its cut, positive green = the IN
+        # side likewise. -100 = at the GET OUT trigger.
+        if _boomed:
+            _sgn = (-100.0 * _out_sc / _thr_out_r
+                    if (_out_sc is not None and _thr_out_r) else None)
+        else:
+            _sgn = (100.0 * _in_sc / _thr_in_r
+                    if (_in_sc is not None and _thr_in_r) else None)
+        _rows_r.append({
+            "name": _n, "ticker": _cur.get("symbol") or "-",
+            "kind": _cur.get("kind", "-"),
+            "att_pct": None if _att_pct is None else round(100 * _att_pct),
+            "spark": _spark,
+            "signed": (None if _sgn is None
+                       else round(max(-100.0, min(100.0, _sgn)))),
+            "side": "GET OUT" if _boomed else "GET IN",
+            "fresh": _fresh,
+            "scored": ("-" if _out_day is None
+                       else (f"{pd.Timestamp(_out_day):%d %b %Y} (stale)"
+                             if not _fresh
+                             else f"{pd.Timestamp(_out_day):%d %b}")),
+        })
+    _radar = pd.DataFrame(_rows_r)
+    if _radar.empty:
+        st.info("no scored names as of this day")
+    else:
+        _radar = _radar.sort_values(
+            ["fresh", "signed", "att_pct"],
+            ascending=[False, True, False], na_position="last")
+        _disp_r = pd.DataFrame({
+            "name": _radar["name"], "ticker": _radar["ticker"],
+            "signed readiness": _radar["signed"],
+            "side live today": _radar["side"],
+            "retail attention (vs own year)": _radar["att_pct"],
+            "attention, last 6 months": _radar["spark"],
+            "scored as of": _radar["scored"],
+        })
+        st.dataframe(
+            _disp_r, hide_index=True, width="stretch",
+            height=min(38 * (len(_disp_r) + 1) + 4, 1200),
+            column_config={
+                "signed readiness": st.column_config.ProgressColumn(
+                    "signed readiness", format="%d%%",
+                    min_value=-100, max_value=100,
+                    help="One number per name. NEGATIVE: the name has "
+                         "boomed, so GET OUT is the side that can "
+                         "fire, and this is how close its score "
+                         "stands to the frozen cut (-100 = at the "
+                         "GET OUT trigger). POSITIVE: the same "
+                         "reading for GET IN. The sign comes from the "
+                         "phase routing, so a name can never read "
+                         "toward-GET-IN and toward-GET-OUT at once. "
+                         "Most bearish sorts first."),
+                "retail attention (vs own year)":
+                    st.column_config.ProgressColumn(
+                        "retail attention (vs own year)", format="%d%%",
+                        min_value=0, max_value=100,
+                        help="Today's mentions-based heat as a "
+                             "percentile of this name's own trailing "
+                             "year - 90% = louder than 90% of its own "
+                             "last twelve months."),
+                "attention, last 6 months":
+                    st.column_config.LineChartColumn(
+                        "attention, last 6 months",
+                        help="hype_raw, 3-day means - the continuous "
+                             "view of the same heat the bar "
+                             "summarises."),
+            })
+        st.caption(
+            "Most bearish first: the top of the table is the names "
+            "closest to a GET OUT. Scores update on the analytics "
+            "pass (*scored as of*), attention updates with live "
+            "ingestion - a hot sparkline with a stale score means the "
+            "pipeline should be re-run, and the [dev] Data Stats tab "
+            "will say so.")
 
 # ---- INFLUENCE TRACKER (committed text-free store, extended live) ----
 # INFORMATION ONLY. Nothing on this tab feeds the euphoria level or the
@@ -7146,7 +7486,7 @@ if active_tab == "[dev] Data Stats":
                    f"Standard cuts: GET IN "
                    f"{(_xgi.get('strict_threshold') or float('nan')):.3f} / "
                    f"GET OUT {(_xgo.get('strict_threshold') or float('nan')):.3f}"
-                   f" | Relaxed: "
+                   f" | F1 cuts: "
                    f"{(_xgi.get('live_threshold') or float('nan')):.3f} / "
                    f"{(_xgo.get('live_threshold') or float('nan')):.3f} | "
                    "record: docs/research/nb08_price_blind.json")

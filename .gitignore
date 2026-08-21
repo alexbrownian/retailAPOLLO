@@ -96,3 +96,32 @@ data/reference/nb10_sample_texts.jsonl
 # It never was - the only matching pattern was `env/`, the virtualenv
 # DIRECTORY, which never matched a file called `.env`. The claim is
 # corrected there.
+
+# ---- new_ice_data/ : A VENDOR DELIVERY UNDER EVALUATION ----
+# Desk instruction 2026-08-20: "make sure this whole thing dosnt get
+# commited". Ignored for two reasons, and the second matters more than
+# the first:
+#
+#   1. SIZE. The delivery is a 2.6 GB zip plus a 2.8 GB split archive
+#      unpacked beside it. Nothing that large belongs in git history,
+#      where it can never be truly deleted.
+#   2. RAW TEXT. It is unaggregated Reddit posts. This project's
+#      standing rule is that only TEXT-FREE aggregates are committable
+#      (see ABSTRACTED_DATA and the verify_abstracted safety check in
+#      update_data.py) - raw post text is precisely what must never
+#      reach the repository. A vendor sample is no exception.
+#
+# The notebook that evaluates the delivery IS tracked (it is code, and
+# it is how the assessment is reproduced); everything it reads and
+# everything it writes is not.
+# Both spellings are listed on purpose. The folder on the desk machine
+# is "New_ICE_data"; gitignore matching follows core.ignorecase, which
+# is true on Windows and FALSE on Linux, so a single lowercase rule
+# would silently stop protecting this folder the day the repo is cloned
+# anywhere else. Two rules cost nothing and cannot fail that way.
+new_ice_data/*
+!new_ice_data/explore_ice_source.py
+!new_ice_data/explore_ice_source.ipynb
+New_ICE_data/*
+!New_ICE_data/explore_ice_source.py
+!New_ICE_data/explore_ice_source.ipynb

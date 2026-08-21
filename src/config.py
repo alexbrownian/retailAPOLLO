@@ -606,6 +606,30 @@ EUPHORIA_FA_PENALTY = 1.0       # (overrides above) a false alarm costs a
 # `--what phases --research` and compare the stored record before
 # trusting any threshold selected under the old, moving value.
 EUPHORIA_FA_BUDGET_PER_IY = 0.23
+
+# THE DESK MODEL FAMILY IS PINNED (desk decision 2026-08-21).
+#
+# From 2026-08-07 until now, every `--what phases --research` pass ran a
+# full 16-fit tournament (logit / gbm / mlp / ens x two heads x
+# crowd-only / crowd+price) and adopted the winner. It picked `ens` -
+# the logit + monotone-GBM rank ensemble - every time. The desk has
+# settled on that pair, so re-deciding it on every fold spends ~24 of
+# the ~27 minutes of a run re-deriving a conclusion already reached.
+#
+# Set to a family name to pin: "ens", "logit", "gbm", "mlp", "rules".
+# Set to None (or DESK_MODEL_FAMILY="" in the environment) to re-open
+# the tournament - which IS the honest thing to do if the feature bank,
+# the label definitions or the universe change, because the pinned
+# family was selected under the old ones.
+#
+# Pinning does not skip validation. The chosen family is still fitted
+# walk-forward, still judged against the episode ledger, and still
+# reports capture / false alarms / AP exactly as before. What is skipped
+# is fitting three families the desk will not adopt, their crowd-only
+# control variants, and the two incumbent-rule fits kept only for the
+# comparison table.
+DESK_MODEL_FAMILY = os.environ.get("DESK_MODEL_FAMILY", "ens") or None
+
 # themes OUTSIDE the euphoria universe - the desk trades equities and
 # retail commodities only (gold/silver via GLD+fallbacks, oil via XLE,
 # uranium via URA all remain through their theme anchors)

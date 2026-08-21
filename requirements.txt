@@ -17,15 +17,37 @@ fsspec
 # sentiment
 vaderSentiment
 finvader           # optional financial lexicons; engine degrades gracefully without
-joblib             # parallel scoring across CPU cores
+joblib             # parallel scoring across CPU cores; ALSO scikit-learn's
+                   # own parallel backend - see the note on the
+                   # scikit-learn line before upgrading either alone
 
 # extraction
 wordfreq           # word-ticker screening fallback signal
 
-# influence research (notebook 05 only - the live pipeline and the dashboard
-# both run without it, so a machine that only serves the dashboard can skip
-# this line; analytics/influence_ml.py needs it for the model tournament)
+# modelling - NOW A LIVE PIPELINE DEPENDENCY, not research-only.
+#
+# This line used to say "notebook 05 only".  That stopped being true on
+# 2026-08-07, when the desk GET IN / GET OUT pair became the logit+GBM
+# ensemble (analytics/ml_detector.py), and again on 2026-08-17 with the
+# retail-flow dial (analytics/retail_flow.py).  Both run inside
+# `python -m analytics.run_analytics --what phases`, so the ordinary
+# `python update_data.py` refresh needs scikit-learn.  Every sklearn
+# import in the package is function-level, which is why a machine that
+# ONLY serves the dashboard can still skip this line - dashboard.py
+# imports sklearn nowhere and reads the stored parquet columns instead.
+# analytics/influence_ml.py (notebook 05) also needs it.
+#
+# INSTALL scikit-learn AND joblib TOGETHER, and upgrade them together.
+# A mismatched pair makes sklearn's own fit paths emit hundreds of
+# "sklearn.utils.parallel.delayed should be used with
+# sklearn.utils.parallel.Parallel" UserWarnings per walk-forward, which
+# drowns the pipeline's progress lines (desk log 2026-08-17).  The
+# warning is cosmetic - the numbers are unaffected - and
+# analytics/retail_flow.py filters that one message narrowly so a
+# mismatched machine still reads its own logs.
 scikit-learn
+# scipy is in the core block above; the dial uses it for the rank
+# correlations that choose each fold's filter gain.
 
 # re-running the notebooks (research only; skip on a dashboard-only machine).
 # NOTE the invocation: always `python -m jupyter nbconvert ...`, never bare

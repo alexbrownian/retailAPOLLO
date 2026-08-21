@@ -390,7 +390,7 @@ def candidate_frame(frame: pd.DataFrame) -> pd.DataFrame:
 
 def run_ml_tournament(frame: pd.DataFrame, episodes: pd.DataFrame,
                       pxmap: dict, sym_by: dict,
-                      series=None, boom=None) -> dict:
+                      series=None, boom=None, families=None) -> dict:
     """Every model through both heads; returns the full comparison table
     (the deck's Table 1). The incumbent rules run on their OWN candidacy
     (gates and budget intact - that IS the incumbent); the learners run
@@ -406,20 +406,50 @@ def run_ml_tournament(frame: pd.DataFrame, episodes: pd.DataFrame,
 
     entries = [("logit", make_logit_fit), ("gbm", make_gbm_fit),
                ("mlp", make_mlp_fit), ("ens", make_ens_fit)]
+
+    # PINNED MODE (src.config.DESK_MODEL_FAMILY). Fit only the family
+    # the desk has settled on, and only in its deployable crowd+price
+    # form - the *_crowd variants exist as the clean-claim control for
+    # the tournament and pick_winner already refuses to adopt them, so
+    # fitting them when nothing is being chosen is pure cost.
+    pinned = None
+    if families:
+        want = {f for f in families if f != "rules"}
+        entries = [e for e in entries if e[0] in want]
+        pinned = sorted(want)
+        if not entries and "rules" not in set(families):
+            raise ValueError(
+                "DESK_MODEL_FAMILY=%r matches no known family; expected "
+                "one of logit / gbm / mlp / ens / rules" % (families,))
+
     import time as _time
     _t_all = _time.time()
     _done = 0
-    _total = len(entries) * 2 * (2 if cand_px is not None else 1)
-    print(f"  model tournament: {_total} fits to run "
-          f"(4 families x 2 heads x crowd-only/crowd+price). This is "
-          f"the slow stage - typically 10-20 min on a laptop; every "
-          f"fit prints as it starts.", flush=True)
+    _crowd_too = cand_px is not None and not pinned
+    _total = len(entries) * 2 * (2 if cand_px is not None and not pinned
+                                 else 1)
+    if pinned:
+        print(f"  model family PINNED to {'+'.join(pinned)} "
+              f"(src/config.py DESK_MODEL_FAMILY) - {_total} fits, not "
+              f"16. No tournament: the family is not being re-chosen, "
+              f"only re-fitted and re-judged.", flush=True)
+    else:
+        print(f"  model tournament: {_total} fits to run "
+              f"(4 families x 2 heads x crowd-only/crowd+price). This is "
+              f"the slow stage - typically 10-20 min on a laptop; every "
+              f"fit prints as it starts.", flush=True)
     for head, label, mode in (("get_out", "y_top", "top"),
                               ("get_in", "y_onset", "onset")):
         for mname, maker in entries:
-            variants = [(mname + "_crowd", cand, ML_BANK)]
-            if cand_px is not None:
-                variants.append((mname, cand_px, DESK_ML_BANK))
+            if pinned:
+                # deployable configuration only
+                variants = ([(mname, cand_px, DESK_ML_BANK)]
+                            if cand_px is not None
+                            else [(mname, cand, ML_BANK)])
+            else:
+                variants = [(mname + "_crowd", cand, ML_BANK)]
+                if cand_px is not None:
+                    variants.append((mname, cand_px, DESK_ML_BANK))
             for vname, vframe, vbank in variants:
                 import time as _time
                 _t0 = _time.time()
@@ -443,8 +473,11 @@ def run_ml_tournament(frame: pd.DataFrame, episodes: pd.DataFrame,
                       f"(elapsed {_time.time() - _t_all:.0f}s)",
                       flush=True)
 
-    # the incumbents, unchanged, for the same table
-    if series is not None and boom is not None:
+    # The incumbent rules exist for the COMPARISON TABLE. With a family
+    # pinned there is no comparison to draw, so skip them unless "rules"
+    # was the pinned family itself.
+    _want_rules = (not pinned) or ("rules" in set(families or ()))
+    if _want_rules and series is not None and boom is not None:
         fpx = frame.merge(boom, on=["name", "date"], how="left")
         fpx["boom_state"] = fpx["boom_state"].eq(True)
         end_f, onset_f = desk_candidacy(fpx)

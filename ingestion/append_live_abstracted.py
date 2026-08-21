@@ -66,20 +66,84 @@ LEGACY_META = os.path.join(PROJECT_ROOT, "data", "reference",
                            "gic_live_meta.json")   # pre-rename ledger location
 MAX_SEEN = 300_000            # ledger cap; newest ids kept (plenty for dedup)
 
+# ---------------------------------------------------------------------
+# THE PER-FILE SKIP LEDGER (2026-08-21).
+#
+# collect_reddit_live() globs EVERY raw file and reads all of them into
+# one list, every run. That was fine when data/raw/RedditLive held a
+# handful of daily pulls. After the 2026-08-21 backfill it holds 83
+# files and ~600 MB compressed - roughly 1.9 M posts - and the ordinary
+# `python update_data.py` sat at this step for many minutes, re-reading
+# and re-normalising all of it to then DROP nearly all of it at the
+# LIVE_START filter. And it gets worse with every backfill.
+#
+# The insight that makes skipping exact rather than approximate: a file
+# whose NEWEST post is older than LIVE_START can never contribute a
+# single row, no matter what the seen-id ledger contains, because the
+# LIVE_START filter removes all of it by construction. So we record each
+# file's max date once and skip it forever after - unless the file
+# changes on disk (size or mtime), or LIVE_START itself moves.
+#
+# We deliberately do NOT skip on "we saw these ids before": seen_ids is
+# capped at MAX_SEEN, so an old id can be evicted, and skipping on that
+# basis could drop rows that should be folded.
+FILE_LEDGER_KEY = "files_scanned"
+
 # The columns aggregate_posts needs from a post.
 NEEDED = ["id", "date", "title", "selftext", "source"]
 
 
 # ---------------- collect candidate posts from the raw live files ----------
-def collect_reddit_live():
+def _stat_key(path):
+    st = os.stat(path)
+    return f"{st.st_size}:{int(st.st_mtime)}"
+
+
+def _can_skip(path, ledger, live_start):
+    """True when this file provably cannot contribute a single row."""
+    rec = ledger.get(os.path.basename(path))
+    if not rec or rec.get("stat") != _stat_key(path):
+        return False                       # new or changed on disk
+    if rec.get("live_start") != live_start:
+        return False                       # the window moved; re-check it
+    return rec.get("max_date", "9999") < live_start
+
+
+def _note_file(path, ledger, live_start, max_date):
+    ledger[os.path.basename(path)] = {"stat": _stat_key(path),
+                                      "live_start": live_start,
+                                      "max_date": max_date}
+
+
+def collect_reddit_live(ledger=None, live_start=None):
     files = sorted(glob.glob(os.path.join(RAW_ROOT, "RedditLive", "*.jsonl.zst")))
-    records = []
+    ledger = {} if ledger is None else ledger
+    frames, skipped, read_n = [], 0, 0
     for path in files:
-        records.extend(read_json_lines(path))
-    if not records:
+        if live_start and _can_skip(path, ledger, live_start):
+            skipped += 1
+            continue
+        recs = read_json_lines(path)
+        read_n += 1
+        if not recs:
+            if live_start:
+                _note_file(path, ledger, live_start, "0000-00-00")
+            continue
+        d = normalise_reddit_live_records(recs)
+        if len(d) and live_start:
+            _note_file(path, ledger, live_start, str(d["date"].max())[:10])
+        if len(d):
+            frames.append(d)
+        del recs
+    if skipped:
+        print(f"[reddit ] skipped {skipped} raw file(s) entirely - every post "
+              f"in them predates LIVE_START, so they cannot contribute "
+              f"(see FILE_LEDGER_KEY note)")
+    if not frames:
         return pd.DataFrame(columns=NEEDED)
-    df = normalise_reddit_live_records(records)
-    print(f"[reddit ] {len(df):,} posts from {len(files)} raw file(s)")
+    df = pd.concat(frames, ignore_index=True)
+    print(f"[reddit ] {len(df):,} posts from {read_n} raw file(s) read "
+          f"of {len(files)} present")
     return df
 
 
@@ -106,8 +170,9 @@ def collect_x_live():
     return df
 
 
-def collect_candidates():
-    parts = [collect_reddit_live(), collect_stocktwits(), collect_x_live()]
+def collect_candidates(ledger=None, live_start=None):
+    parts = [collect_reddit_live(ledger, live_start), collect_stocktwits(),
+             collect_x_live()]
     parts = [p for p in parts if len(p)]
     if not parts:
         return pd.DataFrame(columns=NEEDED)
@@ -188,13 +253,22 @@ def main():
     args = p.parse_args()
 
     # ---- 1. gather + 2. filter
-    cand = collect_candidates()
-    if cand.empty:
-        print("no live raw posts found - nothing to fold.")
-        return 0
-
+    #
+    # The ledger and LIVE_START are resolved BEFORE reading anything, so
+    # collect_* can skip files that cannot possibly contribute. This used
+    # to happen after the read, which is why the read was unconditional.
     meta = load_meta()
     live_start = resolve_live_start(meta)
+    file_ledger = meta.get(FILE_LEDGER_KEY, {})
+
+    cand = collect_candidates(file_ledger, live_start)
+    meta[FILE_LEDGER_KEY] = file_ledger
+    if cand.empty:
+        print("no NEW live raw posts to consider - nothing to fold.")
+        if not args.dry_run:
+            save_meta(meta)        # keep the skip ledger even on a no-op
+        return 0
+
     seen = set(meta.get("seen_ids", []))
 
     in_window = cand[cand["date"] >= live_start]
@@ -211,6 +285,12 @@ def main():
 
     if fresh.empty:
         print("nothing new to fold - ABSTRACTED_DATA already up to date.")
+        # Persist the skip ledger anyway. Without this the very common
+        # "nothing new" run would learn nothing, and the next run would
+        # re-read every file all over again - which is exactly the cost
+        # this ledger exists to remove.
+        if not args.dry_run:
+            save_meta(meta)
         return 0
 
     if args.dry_run:

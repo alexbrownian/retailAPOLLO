@@ -1,0 +1,396 @@
+{
+ "feature_ic": [
+  {
+   "feature": "breadth_level",
+   "ex21": 0.0214,
+   "ex42": 0.0499,
+   "ex63": 0.0616,
+   "ex63_boom": 0.1267
+  },
+  {
+   "feature": "xname_rank",
+   "ex21": 0.0209,
+   "ex42": 0.0197,
+   "ex63": 0.0255,
+   "ex63_boom": 0.0211
+  },
+  {
+   "feature": "att_sat",
+   "ex21": 0.0079,
+   "ex42": 0.0105,
+   "ex63": 0.0213,
+   "ex63_boom": -0.025
+  },
+  {
+   "feature": "bull_level",
+   "ex21": 0.017,
+   "ex42": 0.0022,
+   "ex63": 0.0115,
+   "ex63_boom": -0.0196
+  },
+  {
+   "feature": "e1",
+   "ex21": 0.0194,
+   "ex42": 0.0176,
+   "ex63": 0.0104,
+   "ex63_boom": 0.0677
+  },
+  {
+   "feature": "att_age",
+   "ex21": 0.0208,
+   "ex42": 0.0049,
+   "ex63": 0.0087,
+   "ex63_boom": -0.0461
+  },
+  {
+   "feature": "att_vol_21",
+   "ex21": 0.0225,
+   "ex42": 0.0158,
+   "ex63": 0.008,
+   "ex63_boom": -0.0273
+  },
+  {
+   "feature": "bull_dispersion",
+   "ex21": 0.0113,
+   "ex42": -0.0077,
+   "ex63": 0.005,
+   "ex63_boom": -0.0591
+  },
+  {
+   "feature": "bull_inflection",
+   "ex21": 0.0211,
+   "ex42": 0.0169,
+   "ex63": 0.005,
+   "ex63_boom": -0.0234
+  },
+  {
+   "feature": "att_x_mood",
+   "ex21": 0.0236,
+   "ex42": 0.0068,
+   "ex63": 0.0049,
+   "ex63_boom": 0.0157
+  },
+  {
+   "feature": "att_fade60",
+   "ex21": 0.0041,
+   "ex42": -0.0004,
+   "ex63": 0.0048,
+   "ex63_boom": 0.002
+  },
+  {
+   "feature": "xname_rank_chg21",
+   "ex21": 0.0194,
+   "ex42": -0.0,
+   "ex63": 0.0007,
+   "ex63_boom": -0.0235
+  },
+  {
+   "feature": "e2",
+   "ex21": 0.0116,
+   "ex42": -0.0043,
+   "ex63": -0.0004,
+   "ex63_boom": 0.0086
+  },
+  {
+   "feature": "hype_ratio",
+   "ex21": 0.0111,
+   "ex42": -0.0048,
+   "ex63": -0.0016,
+   "ex63_boom": -0.0195
+  },
+  {
+   "feature": "attention_accel",
+   "ex21": 0.0091,
+   "ex42": -0.0012,
+   "ex63": -0.0042,
+   "ex63_boom": -0.019
+  },
+  {
+   "feature": "e5",
+   "ex21": 0.0193,
+   "ex42": -0.0069,
+   "ex63": -0.0047,
+   "ex63_boom": -0.0244
+  },
+  {
+   "feature": "attention_convexity",
+   "ex21": 0.0193,
+   "ex42": -0.0069,
+   "ex63": -0.0047,
+   "ex63_boom": -0.0244
+  },
+  {
+   "feature": "influx_speed",
+   "ex21": 0.0107,
+   "ex42": -0.0006,
+   "ex63": -0.0051,
+   "ex63_boom": -0.0148
+  },
+  {
+   "feature": "e3",
+   "ex21": 0.0181,
+   "ex42": 0.0009,
+   "ex63": -0.0063,
+   "ex63_boom": -0.0435
+  },
+  {
+   "feature": "fade",
+   "ex21": 0.0068,
+   "ex42": -0.0056,
+   "ex63": -0.0077,
+   "ex63_boom": 0.0485
+  },
+  {
+   "feature": "mood_slope10",
+   "ex21": 0.0192,
+   "ex42": 0.0098,
+   "ex63": -0.0095,
+   "ex63_boom": -0.0289
+  },
+  {
+   "feature": "breadth_chg",
+   "ex21": 0.0006,
+   "ex42": -0.0265,
+   "ex63": -0.0124,
+   "ex63_boom": -0.0804
+  },
+  {
+   "feature": "bull_persist",
+   "ex21": 0.0008,
+   "ex42": -0.0116,
+   "ex63": -0.0149,
+   "ex63_boom": -0.0332
+  },
+  {
+   "feature": "bull_age",
+   "ex21": 0.0005,
+   "ex42": -0.025,
+   "ex63": -0.0178,
+   "ex63_boom": -0.0888
+  }
+ ],
+ "heads": [
+  {
+   "bank": "xp13 (shipped experimental)",
+   "head": "GET IN",
+   "AUROC": 0.5553792941443794,
+   "AP": 0.15744272147164892,
+   "AP_lift": 1.2875703312174627
+  },
+  {
+   "bank": "xp13 (shipped experimental)",
+   "head": "GET OUT",
+   "AUROC": 0.5492403639001919,
+   "AP": 0.13270354775603166,
+   "AP_lift": 1.1818986660534878
+  },
+  {
+   "bank": "xp13 + 11 new (price-free)",
+   "head": "GET IN",
+   "AUROC": 0.5396944133291042,
+   "AP": 0.13669837788820183,
+   "AP_lift": 1.117922594637671
+  },
+  {
+   "bank": "xp13 + 11 new (price-free)",
+   "head": "GET OUT",
+   "AUROC": 0.557063551925522,
+   "AP": 0.12974271820169198,
+   "AP_lift": 1.1555286061729542
+  }
+ ],
+ "folds": [
+  {
+   "year": 2019,
+   "gain": 0.05,
+   "train_ic42": 0.3348
+  },
+  {
+   "year": 2020,
+   "gain": 0.05,
+   "train_ic42": 0.2559
+  },
+  {
+   "year": 2021,
+   "gain": 0.05,
+   "train_ic42": 0.0967
+  },
+  {
+   "year": 2022,
+   "gain": 0.1,
+   "train_ic42": 0.125
+  },
+  {
+   "year": 2023,
+   "gain": 0.2,
+   "train_ic42": 0.1004
+  },
+  {
+   "year": 2024,
+   "gain": 0.1,
+   "train_ic42": 0.0943
+  },
+  {
+   "year": 2025,
+   "gain": 0.1,
+   "train_ic42": 0.0931
+  },
+  {
+   "year": 2026,
+   "gain": 0.1,
+   "train_ic42": 0.0975
+  }
+ ],
+ "ic": {
+  "g_posts": {
+   "pooled": {
+    "ex21": 0.0111,
+    "ex42": 0.0064,
+    "ex63": -0.0105
+   },
+   "boom": {
+    "ex21": -0.0785,
+    "ex42": -0.0366,
+    "ex63": -0.04
+   },
+   "yearly_ex42": {
+    "2019": 0.074,
+    "2020": -0.032,
+    "2021": 0.079,
+    "2022": -0.099,
+    "2023": 0.01,
+    "2024": 0.249,
+    "2025": -0.246,
+    "2026": 0.043
+   }
+  },
+  "g_px": {
+   "pooled": {
+    "ex21": -0.0182,
+    "ex42": -0.0199,
+    "ex63": -0.0327
+   },
+   "boom": {
+    "ex21": -0.1331,
+    "ex42": -0.1154,
+    "ex63": -0.0777
+   },
+   "yearly_ex42": {
+    "2019": 0.068,
+    "2020": -0.028,
+    "2021": -0.023,
+    "2022": -0.064,
+    "2023": -0.024,
+    "2024": 0.231,
+    "2025": -0.105,
+    "2026": -0.015
+   }
+  }
+ },
+ "lead_lag": {
+  "-42": -0.0522,
+  "-21": -0.0412,
+  "-10": -0.014,
+  "-5": -0.0037,
+  "0": 0.0034,
+  "5": 0.0083,
+  "10": 0.0115,
+  "21": 0.0053,
+  "42": -0.0052,
+  "63": -0.0177
+ },
+ "smoothness": {
+  "g_posts_disp": {
+   "median_daily_move": 0.0219,
+   "p95_daily_move": 0.1254,
+   "share_5d_swing_gt_half_range": 0.00394,
+   "share_21d_swing_gt_half_range": 0.1425
+  },
+  "g_px_disp": {
+   "median_daily_move": 0.0219,
+   "p95_daily_move": 0.1198,
+   "share_5d_swing_gt_half_range": 0.0051,
+   "share_21d_swing_gt_half_range": 0.1233
+  }
+ },
+ "boom_quartiles": [
+  {
+   "gq": "coldest",
+   "median_ex21": 1.67,
+   "mean_ex21": 1.98,
+   "share_neg": 0.39,
+   "p90_ex21": 12.77,
+   "n": 1394
+  },
+  {
+   "gq": "cool",
+   "median_ex21": 1.23,
+   "mean_ex21": 8.25,
+   "share_neg": 0.422,
+   "p90_ex21": 12.16,
+   "n": 1394
+  },
+  {
+   "gq": "warm",
+   "median_ex21": 0.84,
+   "mean_ex21": 4.85,
+   "share_neg": 0.468,
+   "p90_ex21": 15.3,
+   "n": 1393
+  },
+  {
+   "gq": "hottest",
+   "median_ex21": -0.42,
+   "mean_ex21": 8.15,
+   "share_neg": 0.527,
+   "p90_ex21": 26.49,
+   "n": 1394
+  }
+ ],
+ "built": "2026-08-17 07:36 UTC",
+ "spec": {
+  "gauge": "0.5*(cdf P(onset) - cdf P(top)) + 0.5*tanh(slow63 tilt)",
+  "bank_heads": [
+   "attention_accel",
+   "hype_ratio",
+   "bull_inflection",
+   "influx_speed",
+   "attention_convexity",
+   "e1",
+   "e3",
+   "bull_level",
+   "bull_persist",
+   "att_vol_21",
+   "bull_dispersion",
+   "att_x_mood",
+   "breadth_chg",
+   "att_age",
+   "att_sat",
+   "att_fade60",
+   "mood_slope10",
+   "bull_age",
+   "xname_rank",
+   "xname_rank_chg21",
+   "breadth_level",
+   "e2",
+   "e5",
+   "fade"
+  ],
+  "bank_slow": [
+   "e1",
+   "bull_level",
+   "bull_persist",
+   "att_age",
+   "att_sat",
+   "att_fade60",
+   "bull_age",
+   "xname_rank",
+   "breadth_level",
+   "e2",
+   "att_vol_21"
+  ],
+  "filter": "steady-state Kalman, gain per fold from {0.05,0.1,0.2} by train-year IC vs ex42",
+  "display": "trailing 365d per-name rank -> [-1,1]",
+  "anchors": "unchanged: y_onset (GET IN), y_top (GET OUT)"
+ }
+}
