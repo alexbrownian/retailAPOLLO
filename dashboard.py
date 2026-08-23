@@ -1775,29 +1775,20 @@ how_many = st.sidebar.slider("items per section", 3, 60, 15)
 # act on". Columns *_xp in the store; frozen cuts in the desk record's
 # experimental_price_blind block.
 _XP_STORE_OK = desk is not None and "in_score_xp" in desk.columns
-_trig_mode = st.sidebar.radio(
-    "trigger",
-    ["Shipped (crowd + price)", "Experimental (posts only)"],
-    index=0, key="trigger_mode",
-    help="SHIPPED is the desk configuration: the model reads the nine "
-         "crowd measurements plus two price measurements, and a "
-         "price-based phase gate decides whether a name is in GET IN "
-         "or GET OUT territory.\n\n"
-         "EXPERIMENTAL (POSTS ONLY) removes price from BOTH places: "
-         "the model reads thirteen crowd measurements and nothing "
-         "else, and there is no phase gate - either side may fire at "
-         "any time. It exists to answer 'what can the crowd alone "
-         "see'. Measured walk-forward it is the weaker detector "
-         "(AUROC ~0.57 vs ~0.73), so treat its calls as research, "
-         "not desk signals.")
-XP_TRIGGER = _trig_mode.startswith("Experimental")
-if XP_TRIGGER and not _XP_STORE_OK:
-    st.sidebar.warning("The stored signals predate the experimental "
-                       "trigger. Run the pipeline once (python -m "
-                       "analytics.run_analytics --what phases) to "
-                       "compute it; showing the shipped trigger until "
-                       "then.")
-    XP_TRIGGER = False
+# HARDWIRED TO SHIPPED (desk 2026-08-23: "we just automatically use the
+# shipped and the wider as default. do not even show this selection").
+#
+# The experimental posts-only pair is the WEAKER detector - walk-forward
+# AUROC ~0.57 against the shipped pair's ~0.73 (notebook 08 §8) - so it
+# was never the thing to act on, only the answer to "what can the crowd
+# alone see". Its *_xp columns are still written on every run and the
+# research record still quotes them; the dashboard simply no longer
+# offers a way to put a research mode in front of the desk by accident.
+#
+# To look at it again, set XP_TRIGGER = True here. Nothing else changes:
+# every surface reads the trigger through sig_col()/sig_head(), so the
+# routing follows this one flag.
+XP_TRIGGER = False
 _XP_PART = "_xp" if XP_TRIGGER else ""
 
 # SIGNAL SETTING RETIRED (desk 2026-08-17: "remove the standard and
@@ -1834,14 +1825,63 @@ _XP_PART = "_xp" if XP_TRIGGER else ""
 # "euphoria today" as a descriptive row either way.
 READINESS_DIAL = True
 
-RELAXED_SIGNALS = False          # retired 2026-08-17; Standard only
-# STANDARD -> the strict-named columns. See the note above.
-_SIG_SUFFIX = "_strict"
-# UNGATED GET IN is the default (desk 2026-08-17, notebook 08 §10.4);
-# the checkbox above switches back to the price-gated variant. A store
-# written before the pipeline change lacks the *_nogate columns - warn
-# and fall back to gated rather than silently showing the wrong thing.
-_NOGATE_STORE_OK = desk is not None and "get_in_nogate_strict" in desk.columns
+# THE SIGNAL SETTING IS A CHOICE AGAIN (desk 2026-08-23).
+#
+# It was retired to Standard-only on 2026-08-17. What that hid: BOTH cuts
+# are computed and stored on every run, and the wider one catches calls
+# the tighter one declines by a hundredth of probability. gold_metals is
+# the case that made it obvious - out_score 0.958 into its 2026-01-29
+# peak against a Standard cut of 0.970, so `get_out` fires 2026-01-28
+# (one day early) and `get_out_strict` never fires at all. The call was
+# in the store the whole time; the dashboard simply was not drawing it.
+#
+# This is NOT a threshold change. Nothing is refitted, no frozen cut
+# moves, and the operating-point sweep (tools/sweep_operating_point.py)
+# still says Standard is the right DEFAULT under the pre-stated
+# false-alarm budget. It only lets the desk read the wider column that
+# already exists - with the cost stated, so nobody mistakes it for free.
+#
+# MEASURED COST of the wider cut, walk-forward (sweep, 2026-08-23):
+#   GET OUT  capture 34% -> 45%,  precision 37% -> 32%,  FA/iy 0.35 -> 0.58
+#   GET IN   capture 39% -> 57%,  precision 58% -> 46%,  FA/iy 0.17 -> 0.40
+# More calls, more of them wrong. That is the trade, and it is the whole
+# reason Standard remains the default.
+# DEFAULT = WIDER (desk decision 2026-08-23). The desk's instruction was
+# that a top it can see on the chart should produce a call on the chart:
+# a detector that declines gold's 2026 peak by 0.012 of probability is
+# not useful at the screen, whatever it does to a precision statistic.
+# Standard remains one click away and remains what the research pack
+# quotes.
+# HARDWIRED TO WIDER (same desk instruction). Standard is the
+# precision-weighted cut and is what the research pack quotes; Wider is
+# what the desk reads, because a top visible on the chart should produce
+# a call on the chart - gold's 2026-01-29 peak is the case that settled
+# it (out_score 0.958 against a Standard cut of 0.970, so the call
+# existed in the store and was simply not drawn).
+#
+# THE TRADE, measured walk-forward (tools/sweep_operating_point.py,
+# 2026-08-23) - Wider against Standard:
+#   GET OUT  capture 34% -> 45%,  precision 37% -> 32%,  FA/iy 0.35 -> 0.58
+#   GET IN   capture 39% -> 57%,  precision 58% -> 46%,  FA/iy 0.17 -> 0.40
+# More calls, a larger share of them wrong. NO threshold is refitted by
+# this: both cuts are computed on every run and this only selects which
+# stored column every surface reads.
+#
+# MIND THE MISMATCH: the deck and RESEARCH_REPORT quote STANDARD. A
+# capture rate read off this screen is not the number in the pack. Set
+# RELAXED_SIGNALS = False here to put the two back in agreement.
+RELAXED_SIGNALS = True
+# STANDARD -> the strict-named columns; WIDER -> the bare F1 columns.
+_SIG_SUFFIX = "" if RELAXED_SIGNALS else "_strict"
+
+# UNGATED GET IN (desk 2026-08-17, notebook 08 §10.4): the 120d phase
+# gate was measured blocking ~3/4 of the correct GET IN calls, so the
+# desk view routes GET IN through the *_nogate columns. GET OUT keeps
+# its gate always - ungated, its false alarms double. A store written
+# before that change lacks the *_nogate columns, so warn and fall back
+# to the gated variant rather than silently showing the wrong thing.
+_NOGATE_STORE_OK = (desk is not None
+                    and f"get_in_nogate{_SIG_SUFFIX}" in desk.columns)
 GATED_GET_IN = XP_TRIGGER
 if not GATED_GET_IN and not _NOGATE_STORE_OK:
     st.sidebar.warning("The stored signals predate the ungated GET IN. "

@@ -304,9 +304,17 @@ def choose_threshold_strict(train_scored: pd.DataFrame,
                             n_instruments: int) -> float:
     """The STRICT operating point (desk request 2026-08-09: 'a stricter
     setting with fewer false alarms'): identical machinery, F0.5 - the
-    standard precision-weighted F-measure, no new constant beyond the
-    textbook beta=0.5. Same walk-forward convention, same grid."""
-    return _choose_threshold_fbeta(train_scored, episodes, mode, beta=0.5)
+    standard precision-weighted F-measure. Same walk-forward convention,
+    same grid.
+
+    beta moved out to src/config.EUPHORIA_STRICT_BETA on 2026-08-23. It
+    is still 0.5 by default, so nothing changes unless it is set - but it
+    is now a NAMED, documented choice that a sweep can move, rather than
+    a literal buried in a function body. See the config note for why, and
+    for the rule that it must be chosen by a pre-stated criterion."""
+    from src.config import EUPHORIA_STRICT_BETA
+    return _choose_threshold_fbeta(train_scored, episodes, mode,
+                                   beta=EUPHORIA_STRICT_BETA)
 
 
 # ---------------------------------------------------------------------------

@@ -1,786 +1,786 @@
 theme,keyword
-semiconductors,semiconductor
-semiconductors,semis
-semiconductors,chipmaker
-semiconductors,chips
-semiconductors,chip
-semiconductors,fab
-semiconductors,wafer
-semiconductors,foundry
-semiconductors,lithography
-semiconductors,EUV
-semiconductors,TSMC
-semiconductors,Intel
-semiconductors,Broadcom
-semiconductors,Qualcomm
-semiconductors,Texas Instruments
-semiconductors,Marvell
-semiconductors,ON Semiconductor
-semiconductors,Microchip
-semiconductors,ASML
-semiconductors,silicon
-semiconductors,process node
-semiconductors,3nm
-semiconductors,5nm
-semiconductors,7nm
-semiconductors,2nm
-semiconductors,advanced packaging
-semiconductors,CoWoS
-semiconductors,chiplet
-semiconductors,chiplets
-semiconductors,Tokyo Electron
-semiconductors,Advantest
-semiconductors,Lasertec
-semiconductors,Disco Corp
-semiconductors,SUMCO
-semiconductors,photoresist
-semiconductors,wafer fab equipment
-semiconductors,tape out
-memory,memory
-memory,DRAM
-memory,HBM
-memory,HBM2
-memory,HBM3
-memory,HBM4
-memory,NAND
-memory,flash storage
-memory,DDR4
-memory,DDR5
-memory,Micron
-memory,Samsung
-memory,SK Hynix
-memory,Hynix
-memory,bandwidth memory
-memory,high bandwidth
-memory,memory chip
-memory,storage chip
-memory,solid state
-memory,SSD
-ai,AI
-ai,artificial intelligence
-ai,machine learning
-ai,deep learning
-ai,LLM
-ai,large language model
-ai,GPT
-ai,ChatGPT
-ai,generative AI
-ai,neural network
-ai,AI training
-ai,AI chip
-ai,data center AI
-ai,Nvidia AI
-ai,CUDA
-ai,transformer
-ai,foundation model
-ai,AGI
-ai,OpenAI
-ai,Anthropic
-ai,inference
-ai,AI agent
-ai,AI agents
+agriculture_food,agriculture
+agriculture_food,bayer
+agriculture_food,bayry
+agriculture_food,corn prices
+agriculture_food,crop
+agriculture_food,crops
+agriculture_food,farmland
+agriculture_food,fertilizer
+agriculture_food,food prices
+agriculture_food,grain
+agriculture_food,harvest
+agriculture_food,wheat
 ai,agentic
+ai,agi
+ai,ai
+ai,ai agent
+ai,ai agents
+ai,ai bubble
+ai,ai capex
+ai,ai chip
+ai,ai spending
+ai,ai training
+ai,anthropic
+ai,artificial intelligence
+ai,chatgpt
+ai,claude
 ai,copilot
-ai,Gemini
-ai,Claude
-ai,DeepSeek
-ai,Mistral
-ai,xAI
-ai,Grok
-ai,AI capex
-ai,AI bubble
-ai,AI spending
-ai,GPU
-ai,GPUs
-datacenters,data center
-datacenters,datacenter
-datacenters,data centre
-datacenters,datacenters
-datacenters,colocation
-datacenters,server farm
-datacenters,hyperscale
-datacenters,GPU cluster
-datacenters,server rack
-datacenters,compute capacity
-datacenters,cloud infrastructure
-datacenters,liquid cooling
-datacenters,immersion cooling
-datacenters,power density
-datacenters,data center power
-datacenters,gigawatt
-datacenters,transformers shortage
-datacenters,Stargate
-datacenters,CoreWeave
-datacenters,neocloud
-ai_megacap,Nvidia
-ai_megacap,Microsoft
-ai_megacap,Google
-ai_megacap,Alphabet
-ai_megacap,Facebook
-ai_megacap,Meta Platforms
-ai_megacap,Apple
-ai_megacap,Amazon
-ai_megacap,Tesla
-ai_megacap,mag7
-ai_megacap,magnificent seven
+ai,cuda
+ai,data center ai
+ai,deep learning
+ai,deepseek
+ai,foundation model
+ai,gemini
+ai,generative ai
+ai,gpt
+ai,gpu
+ai,gpus
+ai,grok
+ai,inference
+ai,large language model
+ai,llm
+ai,machine learning
+ai,mistral
+ai,neural network
+ai,nvidia ai
+ai,openai
+ai,transformer
+ai,xai
+ai_megacap,alphabet
+ai_megacap,amazon
+ai_megacap,apple
 ai_megacap,big tech
+ai_megacap,facebook
+ai_megacap,google
 ai_megacap,hyperscaler
 ai_megacap,hyperscalers
-crypto,bitcoin
-crypto,BTC
-crypto,ethereum
-crypto,ETH
-crypto,crypto
-crypto,cryptocurrency
-crypto,defi
-crypto,blockchain
-crypto,altcoin
-crypto,NFT
-crypto,web3
-crypto,Coinbase
-crypto,MicroStrategy
-crypto,stablecoin
-crypto,halving
-crypto,mining rig
-crypto,hash rate
-crypto,XRP
-crypto,Ripple
-crypto,Solana
-crypto,dogecoin
-crypto,memecoin
-crypto,memecoins
-crypto,Tether
-crypto,USDC
-crypto,spot ETF
-crypto,onchain
-crypto,on-chain
-crypto,staking
-crypto,airdrop
-crypto,tokenized
-crypto,tokenization
-gold_metals,gold
-gold_metals,silver
-gold_metals,precious metal
-gold_metals,metals
-gold_metals,Newmont
-gold_metals,Barrick
-gold_metals,Agnico
-gold_metals,Freeport
-gold_metals,copper
-gold_metals,platinum
-gold_metals,palladium
-gold_metals,commodity
-gold_metals,commodities
-gold_metals,inflation hedge
-gold_metals,rare earth
-gold_metals,rare earths
-gold_metals,neodymium
-gold_metals,lithium miner
-gold_metals,gold miner
-gold_metals,gold miners
-gold_metals,bullion
-gold_metals,central bank buying
-gold_metals,cobalt
-gold_metals,nickel
-gold_metals,antimony
-gold_metals,gallium
-gold_metals,germanium
-energy,oil
-energy,crude
-energy,WTI
-energy,Brent
-energy,natural gas
-energy,LNG
-energy,energy stock
-energy,oil stock
-energy,Exxon
-energy,Chevron
-energy,shell oil
-energy,ConocoPhillips
-energy,refinery
-energy,pipeline
-energy,OPEC
-energy,oilfield
-energy,shale
-energy,fracking
-ev_clean_energy,electric vehicle
-ev_clean_energy,EV
-ev_clean_energy,Tesla
-ev_clean_energy,Rivian
-ev_clean_energy,Lucid
-ev_clean_energy,NIO
-ev_clean_energy,Xpeng
-ev_clean_energy,Li Auto
-ev_clean_energy,battery
-ev_clean_energy,lithium
-ev_clean_energy,lithium ion
-ev_clean_energy,charging station
-ev_clean_energy,solar
-ev_clean_energy,wind energy
-ev_clean_energy,renewable
-ev_clean_energy,clean energy
-ev_clean_energy,Enphase
-ev_clean_energy,First Solar
-ev_clean_energy,BYD
-ev_clean_energy,CATL
-ev_clean_energy,solid state battery
-ev_clean_energy,solid-state battery
-ev_clean_energy,battery maker
-ev_clean_energy,gigafactory
-ev_clean_energy,cathode
-ev_clean_energy,anode
-ev_clean_energy,LFP
-ev_clean_energy,Panasonic battery
-ev_clean_energy,EV sales
-ev_clean_energy,EV demand
-uranium_nuclear,uranium
-uranium_nuclear,nuclear
-uranium_nuclear,nuclear power
-uranium_nuclear,nuclear energy
-uranium_nuclear,reactor
-uranium_nuclear,reactors
-uranium_nuclear,SMR
-uranium_nuclear,small modular reactor
-uranium_nuclear,enrichment
-uranium_nuclear,Cameco
-uranium_nuclear,Kazatomprom
-uranium_nuclear,fission
-uranium_nuclear,nuclear renaissance
-uranium_nuclear,yellowcake
-defense_aerospace,defense stock
-defense_aerospace,defence stock
-defense_aerospace,defense budget
-defense_aerospace,military spending
-defense_aerospace,Lockheed
-defense_aerospace,Raytheon
-defense_aerospace,Northrop
-defense_aerospace,General Dynamics
-defense_aerospace,Pentagon
-defense_aerospace,missile
-defense_aerospace,missiles
-defense_aerospace,artillery
-defense_aerospace,munitions
-defense_aerospace,air defense
-defense_aerospace,military contract
-defense_aerospace,defense contractor
-defense_aerospace,drone
-defense_aerospace,drones
-defense_aerospace,counter-drone
-defense_aerospace,drone warfare
-defense_aerospace,UAV
-defense_aerospace,Anduril
-defense_aerospace,Palantir defense
-defense_aerospace,hypersonic
-defense_aerospace,golden dome
-europe_defense,Rheinmetall
-europe_defense,BAE Systems
-europe_defense,Thales
-europe_defense,Saab
-europe_defense,European defense
-europe_defense,European defence
-europe_defense,EU defense
-europe_defense,rearmament
-europe_defense,rearm
-europe_defense,German defense
-europe_defense,NATO spending
-europe_defense,NATO target
-europe_defense,defense procurement
-europe_defense,Leonardo
-europe_defense,Hensoldt
-europe_defense,Kongsberg
-europe_defense,Renk
-europe_defense,Dassault
-europe_defense,Airbus defence
-europe_defense,MBDA
-europe_defense,Eurofighter
-europe_defense,Gripen
-short_squeeze,short squeeze
-short_squeeze,gamma squeeze
-short_squeeze,squeeze
-short_squeeze,short interest
-short_squeeze,days to cover
-short_squeeze,float
-short_squeeze,low float
-short_squeeze,heavily shorted
-short_squeeze,short seller
-short_squeeze,short position
-short_squeeze,naked short
-short_squeeze,MOASS
-short_squeeze,mother of all short squeezes
-short_squeeze,cover shorts
-short_squeeze,covering
-short_squeeze,borrow rate
-meme_stocks,meme stock
-meme_stocks,meme stocks
-meme_stocks,GameStop
-meme_stocks,BlackBerry
-meme_stocks,Bed Bath
-meme_stocks,reddit rally
-meme_stocks,WSB
-meme_stocks,wallstreetbets
-meme_stocks,retail investor
-meme_stocks,apes
-meme_stocks,yolo
-meme_stocks,diamond hands
-meme_stocks,paper hands
-meme_stocks,tendies
-meme_stocks,to the moon
+ai_megacap,mag7
+ai_megacap,magnificent seven
+ai_megacap,meta platforms
+ai_megacap,microsoft
+ai_megacap,nvidia
+ai_megacap,tesla
+biotech_pharma,antibody
+biotech_pharma,astrazeneca
 biotech_pharma,biotech
+biotech_pharma,cancer drug
+biotech_pharma,clinical trial
+biotech_pharma,crispr
+biotech_pharma,drug approval
+biotech_pharma,eli lilly
+biotech_pharma,fda
+biotech_pharma,fda approval
+biotech_pharma,gene therapy
+biotech_pharma,glp-1
+biotech_pharma,merck
+biotech_pharma,moderna
+biotech_pharma,oncology
+biotech_pharma,ozempic
+biotech_pharma,pfizer
 biotech_pharma,pharma
 biotech_pharma,pharmaceutical
-biotech_pharma,FDA
-biotech_pharma,FDA approval
-biotech_pharma,clinical trial
 biotech_pharma,phase 1
 biotech_pharma,phase 2
 biotech_pharma,phase 3
-biotech_pharma,drug approval
-biotech_pharma,cancer drug
-biotech_pharma,oncology
-biotech_pharma,Moderna
-biotech_pharma,Pfizer
-biotech_pharma,Merck
-biotech_pharma,AstraZeneca
-biotech_pharma,Eli Lilly
-biotech_pharma,weight loss drug
-biotech_pharma,GLP-1
-biotech_pharma,ozempic
 biotech_pharma,semaglutide
-biotech_pharma,gene therapy
-biotech_pharma,CRISPR
-biotech_pharma,antibody
-rates_bonds,interest rate
-rates_bonds,federal reserve
-rates_bonds,Fed
-rates_bonds,FOMC
-rates_bonds,rate hike
-rates_bonds,rate cut
-rates_bonds,inflation
-rates_bonds,CPI
-rates_bonds,PPI
-rates_bonds,recession
-rates_bonds,soft landing
-rates_bonds,hard landing
-rates_bonds,yield curve
-rates_bonds,bond yield
-rates_bonds,treasury
-rates_bonds,10-year
-rates_bonds,stagflation
-rates_bonds,tightening
-rates_bonds,pivot
-real_estate,real estate
-real_estate,REIT
-real_estate,housing market
-real_estate,home price
-real_estate,mortgage rate
-real_estate,30-year mortgage
-real_estate,refinancing
-real_estate,commercial real estate
-real_estate,office space
-real_estate,multifamily
-real_estate,Simon Property
-real_estate,Realty Income
-real_estate,landlord
-real_estate,rent
-real_estate,eviction
-cloud_saas,cloud
-cloud_saas,SaaS
-cloud_saas,software as a service
-cloud_saas,AWS
-cloud_saas,Azure
-cloud_saas,Google Cloud
-cloud_saas,GCP
-cloud_saas,cloud computing
-cloud_saas,subscription revenue
-cloud_saas,ARR
-cloud_saas,annual recurring revenue
-cloud_saas,churn
-cloud_saas,Salesforce
-cloud_saas,Snowflake
-cloud_saas,Palantir
-cloud_saas,Datadog
-cloud_saas,MongoDB
-cloud_saas,Cloudflare
-china_geopolitics,China
-china_geopolitics,Chinese
-china_geopolitics,tariff
-china_geopolitics,trade war
-china_geopolitics,sanctions
-china_geopolitics,Taiwan
-china_geopolitics,geopolitical
+biotech_pharma,weight loss drug
+cannabis,cannabis
+cannabis,dispensary
+cannabis,legalization
+cannabis,marijuana
+cannabis,rescheduling
+cannabis,weed stock
+cannabis,weed stocks
+china_geopolitics,acgby
+china_geopolitics,agricultural bank of china
+china_geopolitics,alibaba
+china_geopolitics,bachy
+china_geopolitics,baidu
+china_geopolitics,bank of china
+china_geopolitics,byd
+china_geopolitics,byddy
+china_geopolitics,china
+china_geopolitics,china construction bank
+china_geopolitics,china merchants bank
+china_geopolitics,chinese
+china_geopolitics,cichy
+china_geopolitics,cihky
 china_geopolitics,decoupling
-china_geopolitics,supply chain
 china_geopolitics,export control
-china_geopolitics,Alibaba
-china_geopolitics,JD.com
-china_geopolitics,Tencent
-china_geopolitics,Baidu
-china_geopolitics,Huawei
-financials,bank
-financials,banking
-financials,JPMorgan
-financials,Goldman Sachs
-financials,Morgan Stanley
-financials,Bank of America
-financials,Wells Fargo
-financials,Citigroup
-financials,credit card
-financials,regional bank
-financials,Silicon Valley Bank
-financials,credit default swap
+china_geopolitics,geopolitical
+china_geopolitics,huawei
+china_geopolitics,icbc
+china_geopolitics,idcby
+china_geopolitics,jd.com
+china_geopolitics,meituan
+china_geopolitics,mpngy
+china_geopolitics,ping an
+china_geopolitics,pngay
+china_geopolitics,sanctions
+china_geopolitics,supply chain
+china_geopolitics,taiwan
+china_geopolitics,tariff
+china_geopolitics,tcehy
+china_geopolitics,tencent
+china_geopolitics,trade war
+china_geopolitics,xiacy
+china_geopolitics,xiaomi
+cloud_saas,annual recurring revenue
+cloud_saas,arr
+cloud_saas,aws
+cloud_saas,azure
+cloud_saas,churn
+cloud_saas,cloud
+cloud_saas,cloud computing
+cloud_saas,cloudflare
+cloud_saas,datadog
+cloud_saas,gcp
+cloud_saas,google cloud
+cloud_saas,mongodb
+cloud_saas,oracle
+cloud_saas,palantir
+cloud_saas,saas
+cloud_saas,salesforce
+cloud_saas,snowflake
+cloud_saas,software as a service
+cloud_saas,subscription revenue
+consumer_retail,amazon
+consumer_retail,back to school
+consumer_retail,black friday
 consumer_retail,consumer
-consumer_retail,retail
-consumer_retail,spending
-consumer_retail,Walmart
-consumer_retail,Amazon
-consumer_retail,Target
-consumer_retail,Costco
 consumer_retail,consumer sentiment
+consumer_retail,costco
 consumer_retail,discretionary
 consumer_retail,e-commerce
 consumer_retail,holiday sales
-consumer_retail,Black Friday
-consumer_retail,back to school
-cybersecurity,cybersecurity
+consumer_retail,retail
+consumer_retail,spending
+consumer_retail,target
+consumer_retail,walmart
+crypto,airdrop
+crypto,altcoin
+crypto,bitcoin
+crypto,blockchain
+crypto,btc
+crypto,coinbase
+crypto,crypto
+crypto,cryptocurrency
+crypto,defi
+crypto,dogecoin
+crypto,eth
+crypto,ethereum
+crypto,halving
+crypto,hash rate
+crypto,memecoin
+crypto,memecoins
+crypto,microstrategy
+crypto,mining rig
+crypto,nft
+crypto,on-chain
+crypto,onchain
+crypto,ripple
+crypto,solana
+crypto,spot etf
+crypto,stablecoin
+crypto,staking
+crypto,tether
+crypto,tokenization
+crypto,tokenized
+crypto,usdc
+crypto,web3
+crypto,xrp
+cybersecurity,crowdstrike
 cybersecurity,cyber attack
 cybersecurity,cyberattack
-cybersecurity,ransomware
+cybersecurity,cybersecurity
 cybersecurity,data breach
+cybersecurity,fortinet
 cybersecurity,hacked
 cybersecurity,hackers
+cybersecurity,palo alto
+cybersecurity,palo alto networks
 cybersecurity,phishing
+cybersecurity,ransomware
+cybersecurity,thales
+cybersecurity,thlly
 cybersecurity,zero-day
-cybersecurity,CrowdStrike
-cybersecurity,Palo Alto
-cybersecurity,Fortinet
-cybersecurity,Zscaler
-fintech_payments,fintech
-fintech_payments,payments
-fintech_payments,digital wallet
+cybersecurity,zscaler
+datacenters,cloud infrastructure
+datacenters,colocation
+datacenters,compute capacity
+datacenters,coreweave
+datacenters,data center
+datacenters,data center buildout
+datacenters,data center power
+datacenters,data centre
+datacenters,datacenter
+datacenters,datacenters
+datacenters,gigawatt
+datacenters,gpu cluster
+datacenters,hyperscale
+datacenters,hyperscaler
+datacenters,immersion cooling
+datacenters,liquid cooling
+datacenters,neocloud
+datacenters,power density
+datacenters,server farm
+datacenters,server rack
+datacenters,stargate
+datacenters,transformers shortage
+defense_aerospace,air defense
+defense_aerospace,anduril
+defense_aerospace,artillery
+defense_aerospace,counter-drone
+defense_aerospace,defence stock
+defense_aerospace,defense budget
+defense_aerospace,defense contractor
+defense_aerospace,defense stock
+defense_aerospace,drone
+defense_aerospace,drone warfare
+defense_aerospace,drones
+defense_aerospace,general dynamics
+defense_aerospace,golden dome
+defense_aerospace,hei.a
+defense_aerospace,heico
+defense_aerospace,hypersonic
+defense_aerospace,lockheed
+defense_aerospace,military contract
+defense_aerospace,military spending
+defense_aerospace,missile
+defense_aerospace,missiles
+defense_aerospace,mog.a
+defense_aerospace,moog
+defense_aerospace,munitions
+defense_aerospace,northrop
+defense_aerospace,palantir defense
+defense_aerospace,pentagon
+defense_aerospace,raytheon
+defense_aerospace,uav
+energy,brent
+energy,chevron
+energy,conocophillips
+energy,crude
+energy,energy stock
+energy,exxon
+energy,fracking
+energy,lng
+energy,natural gas
+energy,oil
+energy,oil stock
+energy,oilfield
+energy,opec
+energy,pipeline
+energy,refinery
+energy,shale
+energy,shell oil
+energy,wti
+europe_defense,airbus
+europe_defense,airbus defence
+europe_defense,babcock
+europe_defense,bae systems
+europe_defense,baesy
+europe_defense,bckiy
+europe_defense,dassault
+europe_defense,defence spending
+europe_defense,defense procurement
+europe_defense,eadsy
+europe_defense,eu defense
+europe_defense,eu rearmament
+europe_defense,eurofighter
+europe_defense,europe defence
+europe_defense,europe defense
+europe_defense,european defence
+europe_defense,european defense
+europe_defense,european defense stocks
+europe_defense,european rearmament
+europe_defense,finmy
+europe_defense,german defense
+europe_defense,german rearmament
+europe_defense,gripen
+europe_defense,haghy
+europe_defense,hei.a
+europe_defense,heico
+europe_defense,hensoldt
+europe_defense,kongsberg
+europe_defense,leonardo
+europe_defense,mbda
+europe_defense,mog.a
+europe_defense,moog
+europe_defense,mtu aero
+europe_defense,mtuay
+europe_defense,nato budget
+europe_defense,nato spending
+europe_defense,nato target
+europe_defense,qinetiq
+europe_defense,qntqy
+europe_defense,rearm
+europe_defense,rearmament
+europe_defense,renk
+europe_defense,rheinmetall
+europe_defense,rnmby
+europe_defense,rolls royce
+europe_defense,rolls-royce
+europe_defense,rycey
+europe_defense,saab
+europe_defense,saaby
+europe_defense,safran
+europe_defense,safry
+europe_defense,thales
+europe_defense,thlly
+ev_clean_energy,anode
+ev_clean_energy,battery
+ev_clean_energy,battery maker
+ev_clean_energy,byd
+ev_clean_energy,byddy
+ev_clean_energy,cathode
+ev_clean_energy,catl
+ev_clean_energy,charging station
+ev_clean_energy,clean energy
+ev_clean_energy,electric vehicle
+ev_clean_energy,enphase
+ev_clean_energy,ev
+ev_clean_energy,ev demand
+ev_clean_energy,ev sales
+ev_clean_energy,first solar
+ev_clean_energy,gigafactory
+ev_clean_energy,lfp
+ev_clean_energy,li auto
+ev_clean_energy,lithium
+ev_clean_energy,lithium ion
+ev_clean_energy,lucid
+ev_clean_energy,nio
+ev_clean_energy,panasonic
+ev_clean_energy,panasonic battery
+ev_clean_energy,pcrfy
+ev_clean_energy,renewable
+ev_clean_energy,rivian
+ev_clean_energy,solar
+ev_clean_energy,solid state battery
+ev_clean_energy,solid-state battery
+ev_clean_energy,tdk
+ev_clean_energy,tesla
+ev_clean_energy,ttdky
+ev_clean_energy,wind energy
+ev_clean_energy,xpeng
+financials,bank
+financials,bank of america
+financials,banking
+financials,berkshire
+financials,berkshire hathaway
+financials,brk.b
+financials,citigroup
+financials,credit card
+financials,credit default swap
+financials,goldman sachs
+financials,jpmorgan
+financials,morgan stanley
+financials,regional bank
+financials,silicon valley bank
+financials,wells fargo
+fintech_payments,berkshire
+fintech_payments,berkshire hathaway
+fintech_payments,brk.b
 fintech_payments,buy now pay later
-fintech_payments,PayPal
-fintech_payments,Visa
-fintech_payments,Mastercard
-fintech_payments,Stripe
+fintech_payments,digital wallet
+fintech_payments,fintech
+fintech_payments,interchange
+fintech_payments,mastercard
 fintech_payments,neobank
 fintech_payments,payment processing
-fintech_payments,interchange
-gaming_esports,gaming
-gaming_esports,video game
-gaming_esports,video games
-gaming_esports,esports
+fintech_payments,payments
+fintech_payments,paypal
+fintech_payments,stripe
+fintech_payments,visa
 gaming_esports,console
-gaming_esports,playstation
-gaming_esports,xbox
-gaming_esports,nintendo
+gaming_esports,esports
 gaming_esports,game pass
-gaming_esports,steam deck
 gaming_esports,gamer
 gaming_esports,gamers
+gaming_esports,gaming
+gaming_esports,nintendo
+gaming_esports,ntdoy
+gaming_esports,playstation
+gaming_esports,steam deck
+gaming_esports,tcehy
+gaming_esports,tencent
+gaming_esports,video game
+gaming_esports,video games
+gaming_esports,xbox
+gold_metals,agnico
+gold_metals,antimony
+gold_metals,barrick
+gold_metals,bullion
+gold_metals,central bank buying
+gold_metals,cobalt
+gold_metals,commodities
+gold_metals,commodity
+gold_metals,copper
+gold_metals,freeport
+gold_metals,gallium
+gold_metals,germanium
+gold_metals,gold
+gold_metals,gold miner
+gold_metals,gold miners
+gold_metals,inflation hedge
+gold_metals,lithium miner
+gold_metals,metals
+gold_metals,neodymium
+gold_metals,newmont
+gold_metals,nickel
+gold_metals,palladium
+gold_metals,platinum
+gold_metals,precious metal
+gold_metals,rare earth
+gold_metals,rare earths
+gold_metals,silver
+housing_builders,home construction
+housing_builders,homebuilder
+housing_builders,homebuilders
+housing_builders,housing shortage
+housing_builders,housing starts
+housing_builders,housing supply
+housing_builders,mortgage applications
+housing_builders,new homes
+infrastructure,caterpillar
+infrastructure,construction spending
+infrastructure,data center construction
+infrastructure,grid upgrade
+infrastructure,infrastructure
+infrastructure,infrastructure bill
+infrastructure,megaproject
+infrastructure,roads and bridges
+japan,bank of japan
+japan,berkshire japan
+japan,boj
+japan,carry trade
+japan,japan inc
+japan,japan stocks
+japan,japanese equities
+japan,japanese stocks
+japan,jgb
+japan,mitsubishi heavy
+japan,nikkei
+japan,softbank
+japan,sogo shosha
+japan,sony
+japan,topix
+japan,toyota
+japan,trading houses
+japan,yen
+japan,yen carry
+japan,yen intervention
+media_streaming,ad tier
+media_streaming,box office
+media_streaming,cord cutting
+media_streaming,disney
+media_streaming,netflix
+media_streaming,streaming
+media_streaming,streaming wars
+media_streaming,subscribers
+media_streaming,tcehy
+media_streaming,tencent
+meme_stocks,apes
+meme_stocks,bed bath
+meme_stocks,blackberry
+meme_stocks,diamond hands
+meme_stocks,gamestop
+meme_stocks,meme stock
+meme_stocks,meme stocks
+meme_stocks,paper hands
+meme_stocks,reddit rally
+meme_stocks,retail investor
+meme_stocks,tendies
+meme_stocks,to the moon
+meme_stocks,wallstreetbets
+meme_stocks,wsb
+meme_stocks,yolo
+memory,bandwidth memory
+memory,ddr4
+memory,ddr5
+memory,dram
+memory,flash storage
+memory,hbm
+memory,hbm2
+memory,hbm3
+memory,hbm4
+memory,high bandwidth
+memory,hynix
+memory,kioxia
+memory,memory
+memory,memory chip
+memory,micron
+memory,nand
+memory,samsung
+memory,sandisk
+memory,seagate
+memory,sk hynix
+memory,solid state
+memory,solidigm
+memory,ssd
+memory,storage chip
+memory,western digital
+quantum_computing,error correction
+quantum_computing,majorana
+quantum_computing,post-quantum
+quantum_computing,quantum advantage
+quantum_computing,quantum annealing
+quantum_computing,quantum chip
+quantum_computing,quantum computer
+quantum_computing,quantum computing
+quantum_computing,quantum stocks
+quantum_computing,quantum supremacy
+quantum_computing,qubit
+quantum_computing,qubits
+quantum_computing,superconducting qubit
+quantum_computing,trapped ion
+quantum_computing,willow chip
+rates_bonds,10-year
+rates_bonds,bond yield
+rates_bonds,cpi
+rates_bonds,fed
+rates_bonds,federal reserve
+rates_bonds,fomc
+rates_bonds,hard landing
+rates_bonds,inflation
+rates_bonds,interest rate
+rates_bonds,pivot
+rates_bonds,ppi
+rates_bonds,rate cut
+rates_bonds,rate hike
+rates_bonds,recession
+rates_bonds,soft landing
+rates_bonds,stagflation
+rates_bonds,tightening
+rates_bonds,treasury
+rates_bonds,yield curve
+real_estate,30-year mortgage
+real_estate,commercial real estate
+real_estate,eviction
+real_estate,home price
+real_estate,housing market
+real_estate,landlord
+real_estate,mortgage rate
+real_estate,multifamily
+real_estate,office space
+real_estate,real estate
+real_estate,realty income
+real_estate,refinancing
+real_estate,reit
+real_estate,rent
+real_estate,simon property
+robotics_automation,abb robotics
+robotics_automation,actuator
+robotics_automation,actuators
+robotics_automation,agility robotics
+robotics_automation,automation
+robotics_automation,autonomous vehicle
+robotics_automation,ball bearing
+robotics_automation,ball bearings
+robotics_automation,ball screw
+robotics_automation,bearings
+robotics_automation,boston dynamics
+robotics_automation,cobot
+robotics_automation,cobots
+robotics_automation,end effector
+robotics_automation,fanuc
+robotics_automation,figure ai
+robotics_automation,force sensor
+robotics_automation,gearbox
+robotics_automation,gripper
+robotics_automation,grippers
+robotics_automation,harmonic drive
+robotics_automation,harmonic drive systems
+robotics_automation,humanoid
+robotics_automation,humanoids
+robotics_automation,industrial automation
+robotics_automation,keyence
+robotics_automation,kuka
+robotics_automation,lidar
+robotics_automation,linear guide
+robotics_automation,machine vision
+robotics_automation,motion control
+robotics_automation,nabtesco
+robotics_automation,nsk
+robotics_automation,optimus
+robotics_automation,planetary gear
+robotics_automation,rbc bearings
+robotics_automation,reducer
+robotics_automation,reducers
+robotics_automation,regal rexnord
+robotics_automation,rexnord
+robotics_automation,robotaxi
+robotics_automation,robotics
+robotics_automation,robots
+robotics_automation,schaeffler
+robotics_automation,self-driving
+robotics_automation,servo
+robotics_automation,servos
+robotics_automation,skf
+robotics_automation,strain wave
+robotics_automation,teleoperation
+robotics_automation,thk
+robotics_automation,timken
+robotics_automation,torque sensor
+robotics_automation,unitree
+robotics_automation,universal robots
+robotics_automation,yaskawa
+semiconductors,2nm
+semiconductors,3nm
+semiconductors,5nm
+semiconductors,7nm
+semiconductors,advanced packaging
+semiconductors,advantest
+semiconductors,analog devices
+semiconductors,applied materials
+semiconductors,arm holdings
+semiconductors,asml
+semiconductors,broadcom
+semiconductors,chip
+semiconductors,chiplet
+semiconductors,chiplets
+semiconductors,chipmaker
+semiconductors,chips
+semiconductors,cowos
+semiconductors,disco corp
+semiconductors,euv
+semiconductors,fab
+semiconductors,foundry
+semiconductors,foxconn
+semiconductors,global foundries
+semiconductors,intel
+semiconductors,kla corp
+semiconductors,lam research
+semiconductors,lasertec
+semiconductors,lithography
+semiconductors,marvell
+semiconductors,microchip
+semiconductors,on semiconductor
+semiconductors,photoresist
+semiconductors,process node
+semiconductors,qualcomm
+semiconductors,semiconductor
+semiconductors,semis
+semiconductors,silicon
+semiconductors,sumco
+semiconductors,taiwan semiconductor
+semiconductors,tape out
+semiconductors,texas instruments
+semiconductors,tokyo electron
+semiconductors,tsmc
+semiconductors,wafer
+semiconductors,wafer fab equipment
+shipping_logistics,container rates
+shipping_logistics,freight
+shipping_logistics,logistics
+shipping_logistics,port congestion
+shipping_logistics,railroad
+shipping_logistics,railroads
+shipping_logistics,red sea
+shipping_logistics,shipping
+shipping_logistics,supply chain
+shipping_logistics,trucking
+shipping_logistics,u-haul
+shipping_logistics,uhal.b
+shipping_logistics,uhaul
+short_squeeze,borrow rate
+short_squeeze,cover shorts
+short_squeeze,covering
+short_squeeze,days to cover
+short_squeeze,float
+short_squeeze,gamma squeeze
+short_squeeze,heavily shorted
+short_squeeze,low float
+short_squeeze,moass
+short_squeeze,mother of all short squeezes
+short_squeeze,naked short
+short_squeeze,short interest
+short_squeeze,short position
+short_squeeze,short seller
+short_squeeze,short squeeze
+short_squeeze,squeeze
+small_caps,microcap
+small_caps,microcaps
+small_caps,russell 2000
+small_caps,small cap
+small_caps,small caps
+small_caps,small-cap rotation
+solar,byd
+solar,byddy
+solar,net metering
+solar,panasonic
+solar,pcrfy
+solar,photovoltaic
+solar,rooftop solar
+solar,solar
+solar,solar farm
+solar,solar panel
+solar,solar panels
+solar,tdk
+solar,ttdky
+space,hei.a
+space,heico
+space,kuiper
+space,launch cadence
+space,lunar lander
+space,mog.a
+space,moog
+space,moon landing
+space,orbital
+space,reusable rocket
+space,rocket launch
+space,satellite
+space,satellite constellation
+space,satellites
+space,smallsat
+space,space economy
+space,space force
+space,space launch
+space,space station
+space,spacex
+space,starlink
+space,starship
+travel_airlines,air travel
+travel_airlines,airbus
+travel_airlines,airfare
 travel_airlines,airline
 travel_airlines,airlines
-travel_airlines,travel demand
 travel_airlines,bookings
 travel_airlines,cruise
 travel_airlines,cruise line
+travel_airlines,eadsy
 travel_airlines,hotel occupancy
 travel_airlines,revenge travel
-travel_airlines,air travel
-travel_airlines,airfare
-housing_builders,homebuilder
-housing_builders,homebuilders
-housing_builders,housing starts
-housing_builders,new homes
-housing_builders,home construction
-housing_builders,housing supply
-housing_builders,mortgage applications
-housing_builders,housing shortage
-robotics_automation,robotics
-robotics_automation,robots
-robotics_automation,humanoid
-robotics_automation,humanoids
-robotics_automation,automation
-robotics_automation,industrial automation
-robotics_automation,robotaxi
-robotics_automation,self-driving
-robotics_automation,autonomous vehicle
-robotics_automation,bearings
-robotics_automation,ball bearing
-robotics_automation,ball bearings
-robotics_automation,actuator
-robotics_automation,actuators
-robotics_automation,servo
-robotics_automation,servos
-robotics_automation,harmonic drive
-robotics_automation,strain wave
-robotics_automation,gearbox
-robotics_automation,reducer
-robotics_automation,reducers
-robotics_automation,planetary gear
-robotics_automation,linear guide
-robotics_automation,ball screw
-robotics_automation,motion control
-robotics_automation,end effector
-robotics_automation,gripper
-robotics_automation,grippers
-robotics_automation,torque sensor
-robotics_automation,force sensor
-robotics_automation,lidar
-robotics_automation,machine vision
-robotics_automation,Fanuc
-robotics_automation,Yaskawa
-robotics_automation,Keyence
-robotics_automation,Kuka
-robotics_automation,ABB robotics
-robotics_automation,Universal Robots
-robotics_automation,cobot
-robotics_automation,cobots
-robotics_automation,Optimus
-robotics_automation,Figure AI
-robotics_automation,Unitree
-robotics_automation,Agility Robotics
-robotics_automation,Boston Dynamics
-robotics_automation,teleoperation
-robotics_automation,THK
-robotics_automation,Nabtesco
-robotics_automation,Harmonic Drive Systems
-robotics_automation,SKF
-robotics_automation,Schaeffler
-robotics_automation,NSK
-robotics_automation,Timken
-robotics_automation,RBC Bearings
-robotics_automation,Regal Rexnord
-robotics_automation,Rexnord
-space,space launch
-space,rocket launch
-space,satellite
-space,satellites
-space,SpaceX
-space,Starlink
-space,orbital
-space,space station
-space,moon landing
-space,space economy
-space,Starship
-space,Kuiper
-space,launch cadence
-space,reusable rocket
-space,smallsat
-space,space force
-space,lunar lander
-space,satellite constellation
-quantum_computing,quantum computing
-quantum_computing,quantum computer
-quantum_computing,qubit
-quantum_computing,qubits
-quantum_computing,quantum chip
-quantum_computing,quantum supremacy
-quantum_computing,error correction
-quantum_computing,Willow chip
-quantum_computing,Majorana
-quantum_computing,quantum advantage
-quantum_computing,post-quantum
-quantum_computing,quantum annealing
-quantum_computing,trapped ion
-quantum_computing,superconducting qubit
-weight_loss_glp1,GLP-1
-weight_loss_glp1,ozempic
-weight_loss_glp1,wegovy
+travel_airlines,travel demand
+uranium_nuclear,cameco
+uranium_nuclear,enrichment
+uranium_nuclear,fission
+uranium_nuclear,kazatomprom
+uranium_nuclear,nuclear
+uranium_nuclear,nuclear energy
+uranium_nuclear,nuclear power
+uranium_nuclear,nuclear renaissance
+uranium_nuclear,reactor
+uranium_nuclear,reactors
+uranium_nuclear,small modular reactor
+uranium_nuclear,smr
+uranium_nuclear,uranium
+uranium_nuclear,yellowcake
+utilities_power,electricity demand
+utilities_power,electricity prices
+utilities_power,ge vernova
+utilities_power,grid buildout
+utilities_power,power grid
+utilities_power,power plant
+utilities_power,power purchase agreement
+utilities_power,utilities
+weight_loss_glp1,eli lilly
+weight_loss_glp1,glp-1
 weight_loss_glp1,mounjaro
-weight_loss_glp1,zepbound
+weight_loss_glp1,obesity drug
+weight_loss_glp1,ozempic
 weight_loss_glp1,semaglutide
 weight_loss_glp1,tirzepatide
+weight_loss_glp1,wegovy
 weight_loss_glp1,weight loss drug
-weight_loss_glp1,obesity drug
-cannabis,cannabis
-cannabis,marijuana
-cannabis,weed stock
-cannabis,weed stocks
-cannabis,dispensary
-cannabis,rescheduling
-cannabis,legalization
-solar,solar
-solar,solar panel
-solar,solar panels
-solar,rooftop solar
-solar,photovoltaic
-solar,net metering
-solar,solar farm
-agriculture_food,agriculture
-agriculture_food,farmland
-agriculture_food,fertilizer
-agriculture_food,crop
-agriculture_food,crops
-agriculture_food,grain
-agriculture_food,wheat
-agriculture_food,corn prices
-agriculture_food,food prices
-agriculture_food,harvest
-shipping_logistics,shipping
-shipping_logistics,freight
-shipping_logistics,container rates
-shipping_logistics,supply chain
-shipping_logistics,trucking
-shipping_logistics,railroad
-shipping_logistics,railroads
-shipping_logistics,logistics
-shipping_logistics,port congestion
-shipping_logistics,red sea
-small_caps,small caps
-small_caps,small cap
-small_caps,russell 2000
-small_caps,microcap
-small_caps,microcaps
-small_caps,small-cap rotation
-japan,nikkei
-japan,yen
-japan,bank of japan
-japan,carry trade
-japan,japanese stocks
-japan,japan stocks
-japan,topix
-japan,BOJ
-japan,JGB
-japan,yen intervention
-japan,Japan Inc
-japan,Softbank
-japan,Sony
-japan,Toyota
-japan,Mitsubishi Heavy
-japan,trading houses
-japan,sogo shosha
-japan,Berkshire Japan
-utilities_power,utilities
-utilities_power,power grid
-utilities_power,electricity demand
-utilities_power,power plant
-utilities_power,grid buildout
-utilities_power,electricity prices
-utilities_power,power purchase agreement
-media_streaming,streaming
-media_streaming,subscribers
-media_streaming,box office
-media_streaming,netflix
-media_streaming,disney
-media_streaming,ad tier
-media_streaming,streaming wars
-media_streaming,cord cutting
-infrastructure,infrastructure
-infrastructure,construction spending
-infrastructure,roads and bridges
-infrastructure,grid upgrade
-infrastructure,data center construction
-infrastructure,megaproject
-infrastructure,infrastructure bill
-memory,sandisk
-memory,seagate
-memory,western digital
-memory,kioxia
-memory,solidigm
-semiconductors,lam research
-semiconductors,applied materials
-semiconductors,taiwan semiconductor
-semiconductors,arm holdings
-semiconductors,kla corp
-semiconductors,analog devices
-semiconductors,global foundries
-semiconductors,foxconn
-utilities_power,ge vernova
-infrastructure,caterpillar
-cybersecurity,palo alto networks
-cloud_saas,oracle
-weight_loss_glp1,eli lilly
-china_geopolitics,agricultural bank of china
-china_geopolitics,bank of china
-agriculture_food,bayer
-europe_defense,babcock
-financials,berkshire
-financials,berkshire hathaway
-fintech_payments,berkshire
-fintech_payments,berkshire hathaway
-china_geopolitics,byd
-solar,byd
-china_geopolitics,china construction bank
-china_geopolitics,china merchants bank
-europe_defense,airbus
-travel_airlines,airbus
-defense_aerospace,heico
-europe_defense,heico
-space,heico
-china_geopolitics,icbc
-defense_aerospace,moog
-europe_defense,moog
-space,moog
-china_geopolitics,meituan
-europe_defense,mtu aero
-ev_clean_energy,panasonic
-solar,panasonic
-china_geopolitics,ping an
-europe_defense,qinetiq
-europe_defense,rolls royce
-europe_defense,rolls-royce
-europe_defense,safran
-gaming_esports,tencent
-media_streaming,tencent
-cybersecurity,thales
-ev_clean_energy,tdk
-solar,tdk
-shipping_logistics,u-haul
-shipping_logistics,uhaul
-china_geopolitics,xiaomi
-china_geopolitics,acgby
-china_geopolitics,bachy
-europe_defense,baesy
-agriculture_food,bayry
-europe_defense,bckiy
-financials,brk.b
-fintech_payments,brk.b
-china_geopolitics,byddy
-ev_clean_energy,byddy
-solar,byddy
-china_geopolitics,cichy
-china_geopolitics,cihky
-europe_defense,eadsy
-travel_airlines,eadsy
-europe_defense,finmy
-europe_defense,haghy
-defense_aerospace,hei.a
-europe_defense,hei.a
-space,hei.a
-china_geopolitics,idcby
-defense_aerospace,mog.a
-europe_defense,mog.a
-space,mog.a
-china_geopolitics,mpngy
-europe_defense,mtuay
-gaming_esports,ntdoy
-ev_clean_energy,pcrfy
-solar,pcrfy
-china_geopolitics,pngay
-europe_defense,qntqy
-europe_defense,rnmby
-europe_defense,rycey
-europe_defense,saaby
-europe_defense,safry
-china_geopolitics,tcehy
-gaming_esports,tcehy
-media_streaming,tcehy
-cybersecurity,thlly
-europe_defense,thlly
-ev_clean_energy,ttdky
-solar,ttdky
-shipping_logistics,uhal.b
-china_geopolitics,xiacy
-europe_defense,europe defense
-europe_defense,europe defence
-europe_defense,european rearmament
-europe_defense,eu rearmament
-europe_defense,defence spending
-europe_defense,european defense stocks
-europe_defense,german rearmament
-europe_defense,nato budget
-quantum_computing,quantum stocks
-japan,japanese equities
-japan,yen carry
-datacenters,data center buildout
-datacenters,hyperscaler
+weight_loss_glp1,zepbound

@@ -630,6 +630,37 @@ EUPHORIA_FA_BUDGET_PER_IY = 0.23
 # comparison table.
 DESK_MODEL_FAMILY = os.environ.get("DESK_MODEL_FAMILY", "ens") or None
 
+# THE "STANDARD" OPERATING POINT ON THE DASHBOARD (desk decision 2026-08-23).
+#
+# The dashboard serves the `*_strict` columns and labels them "Standard".
+# That cut is chosen by maximising episode-level F-beta on the TRAIN years,
+# and beta has been 0.5 since 2026-08-09 - precision weighted twice as
+# heavily as recall, because the desk asked for "fewer false alarms".
+#
+# WHY THIS IS NOW A KNOB. Beta 0.5 is a genuine choice, not a law, and it
+# is currently tight enough that themes which run without a mania never
+# clear it: gold_metals peaked at 0.958 against a 0.970 cut into its
+# 2026-01-29 top - the F1 cut called it a day early, Standard declined it.
+# An approximate sweep over the stored scores put the cost of loosening at
+# roughly FLAT precision down to a ~0.96 cut (43.0% -> 42.6%) for about
+# twenty more captured episodes, which says the operating point, not the
+# model, is what is binding.
+#
+#   beta < 1  favours PRECISION (0.5 = the historical setting)
+#   beta = 1  balances the two  (this is what the F1 / non-strict cut is)
+#   beta > 1  favours RECALL
+#
+# CHOOSE IT WITH tools/sweep_operating_point.py, NOT by eye. That runs the
+# real walk-forward judge over a grid of beta and prints capture, precision
+# and false alarms per instrument-year for each. Pick by a criterion stated
+# BEFORE looking - otherwise this constant becomes a way to fit the answer
+# you already know, which is exactly what it must not be.
+#
+# Changing this is a RE-VALIDATION EVENT: re-run
+#   python -m analytics.run_analytics --what phases --research
+# and record the before/after in docs/PARAMETER_REGISTER.md.
+EUPHORIA_STRICT_BETA = float(os.environ.get("EUPHORIA_STRICT_BETA", "0.5"))
+
 # themes OUTSIDE the euphoria universe - the desk trades equities and
 # retail commodities only (gold/silver via GLD+fallbacks, oil via XLE,
 # uranium via URA all remain through their theme anchors)
