@@ -1,0 +1,238 @@
+{
+ "as_of": "2026-07-29",
+ "generated_at": "2026-08-04 14:11 UTC",
+ "model": "gpt-4o",
+ "mock": true,
+ "evidence": {
+  "as_of": "2026-07-29",
+  "theme_mention_share_7d": {
+   "ai": {
+    "share": 0.1437,
+    "vs_4w_avg": 1.05
+   },
+   "consumer_retail": {
+    "share": 0.1169,
+    "vs_4w_avg": 1.25
+   },
+   "ai_megacap": {
+    "share": 0.1041,
+    "vs_4w_avg": 1.4
+   },
+   "financials": {
+    "share": 0.0758,
+    "vs_4w_avg": 1.21
+   },
+   "semiconductors": {
+    "share": 0.0485,
+    "vs_4w_avg": 0.86
+   },
+   "gold_metals": {
+    "share": 0.0434,
+    "vs_4w_avg": 1.05
+   },
+   "china_geopolitics": {
+    "share": 0.0402,
+    "vs_4w_avg": 1.05
+   },
+   "ev_clean_energy": {
+    "share": 0.0387,
+    "vs_4w_avg": 1.4
+   },
+   "fintech_payments": {
+    "share": 0.0371,
+    "vs_4w_avg": 1.23
+   },
+   "memory": {
+    "share": 0.0362,
+    "vs_4w_avg": 0.83
+   },
+   "meme_stocks": {
+    "share": 0.036,
+    "vs_4w_avg": 0.89
+   },
+   "energy": {
+    "share": 0.0326,
+    "vs_4w_avg": 1.16
+   },
+   "infrastructure": {
+    "share": 0.0273,
+    "vs_4w_avg": 1.05
+   },
+   "cloud_saas": {
+    "share": 0.0273,
+    "vs_4w_avg": 1.19
+   },
+   "short_squeeze": {
+    "share": 0.027,
+    "vs_4w_avg": 0.89
+   },
+   "space": {
+    "share": 0.0244,
+    "vs_4w_avg": 1.17
+   },
+   "datacenters": {
+    "share": 0.0235,
+    "vs_4w_avg": 0.97
+   },
+   "biotech_pharma": {
+    "share": 0.0177,
+    "vs_4w_avg": 0.99
+   },
+   "utilities_power": {
+    "share": 0.0152,
+    "vs_4w_avg": 1.55
+   },
+   "shipping_logistics": {
+    "share": 0.0134,
+    "vs_4w_avg": 1.08
+   },
+   "robotics_automation": {
+    "share": 0.0132,
+    "vs_4w_avg": 0.83
+   },
+   "defense_aerospace": {
+    "share": 0.013,
+    "vs_4w_avg": 0.96
+   },
+   "uranium_nuclear": {
+    "share": 0.0089,
+    "vs_4w_avg": 0.98
+   },
+   "japan": {
+    "share": 0.0078,
+    "vs_4w_avg": 0.91
+   },
+   "media_streaming": {
+    "share": 0.0065,
+    "vs_4w_avg": 0.62
+   },
+   "gaming_esports": {
+    "share": 0.0049,
+    "vs_4w_avg": 1.05
+   },
+   "cybersecurity": {
+    "share": 0.0038,
+    "vs_4w_avg": 0.99
+   },
+   "travel_airlines": {
+    "share": 0.0034,
+    "vs_4w_avg": 0.86
+   },
+   "europe_defense": {
+    "share": 0.0027,
+    "vs_4w_avg": 1.33
+   },
+   "agriculture_food": {
+    "share": 0.0022,
+    "vs_4w_avg": 1.03
+   },
+   "solar": {
+    "share": 0.002,
+    "vs_4w_avg": 0.52
+   },
+   "quantum_computing": {
+    "share": 0.0016,
+    "vs_4w_avg": 0.7
+   },
+   "weight_loss_glp1": {
+    "share": 0.0011,
+    "vs_4w_avg": 0.41
+   }
+  },
+  "conviction_z": {
+   "europe_defense": 0.92,
+   "cloud_saas": 0.54,
+   "defense_aerospace": 0.25,
+   "housing_builders": 0.21,
+   "travel_airlines": 0.11,
+   "solar": -2.01,
+   "ev_clean_energy": -1.4,
+   "japan": -1.31
+  },
+  "live_flags": [
+   {
+    "name": "AAPL",
+    "flag": "GET IN",
+    "date": "2026-07-21"
+   },
+   {
+    "name": "PLTR",
+    "flag": "GET IN",
+    "date": "2026-07-15"
+   }
+  ],
+  "euphoria_top5": {
+   "europe_defense": 90,
+   "GME": 85,
+   "AMC": 82,
+   "TSLA": 78,
+   "PLTR": 77
+  },
+  "forums_7d": {
+   "wallstreetbets": {
+    "share": 0.148
+   },
+   "personalfinance": {
+    "share": 0.143
+   },
+   "valueinvesting": {
+    "share": 0.13
+   },
+   "dividends": {
+    "share": 0.128
+   },
+   "stocks": {
+    "share": 0.092
+   },
+   "pennystocks": {
+    "share": 0.079
+   },
+   "investing": {
+    "share": 0.063
+   },
+   "bogleheads": {
+    "share": 0.056
+   },
+   "daytrading": {
+    "share": 0.052
+   },
+   "thetagang": {
+    "share": 0.038
+   }
+  },
+  "agentic_28d": {
+   "per_10k_posts": 6.7,
+   "by_category": {
+    "ask_ai": 125,
+    "auto_trade": 6,
+    "skeptic": 13
+   },
+   "top_themes": {
+    "ai_megacap": 9,
+    "china_geopolitics": 6,
+    "ai": 5,
+    "consumer_retail": 3,
+    "energy": 3
+   }
+  }
+ },
+ "market_vibe": {
+  "bullets": [
+   "[MOCK] Offline placeholder vibe line."
+  ],
+  "one_liner": "[MOCK] placeholder line - no gateway.",
+  "one_liner_why": "[MOCK] Placeholder."
+ },
+ "mood_gauge": {
+  "score": 50,
+  "why": "[MOCK] Placeholder."
+ },
+ "market_pulse": "[MOCK] Offline placeholder pulse - run on the desk machine (VPN + dimsum_lite) for the real one.",
+ "talk_of_the_town": "[MOCK] Placeholder.",
+ "theme_briefs": [],
+ "catalyst_watch": [],
+ "divergences": [],
+ "agentic": {
+  "mock": true
+ }
+}

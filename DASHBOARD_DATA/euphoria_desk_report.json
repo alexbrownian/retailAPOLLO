@@ -1,0 +1,318 @@
+{
+ "model": "ens",
+ "get_out": {
+  "live_threshold": 0.9445587408985555,
+  "strict_threshold": 0.9698796326645284,
+  "walk_forward": {
+   "test_years": [
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025,
+    2026
+   ],
+   "thresholds": {
+    "2018": 0.933048433048433,
+    "2019": 0.9630812318365052,
+    "2020": 0.9660425129375104,
+    "2021": 0.9065784322651129,
+    "2022": 0.9160001993173384,
+    "2023": 0.9451803869956598,
+    "2024": 0.920766604962383,
+    "2025": 0.9225864306949348,
+    "2026": 0.9445587408985555
+   },
+   "captured": 137,
+   "detectable": 308,
+   "capture_rate": 0.445,
+   "late": 0,
+   "false_alarms": 295,
+   "fa_per_iy": 0.575,
+   "auroc": 0.731,
+   "ap": 0.26,
+   "ap_baseline": 0.095,
+   "forward_returns": {
+    "fwd_5d": {
+     "n": 506,
+     "median_pct": 0.05,
+     "mean_pct": 2.58,
+     "pct_positive": 51.0
+    },
+    "fwd_21d": {
+     "n": 506,
+     "median_pct": 0.31,
+     "mean_pct": 2.91,
+     "pct_positive": 51.2
+    },
+    "fwd_84d": {
+     "n": 501,
+     "median_pct": 1.48,
+     "mean_pct": 11.36,
+     "pct_positive": 51.9
+    }
+   },
+   "n_alerts": 506,
+   "median_lead_days": 14,
+   "precision": 0.317
+  }
+ },
+ "get_in": {
+  "live_threshold": 0.9453291445227449,
+  "strict_threshold": 0.9713110616205839,
+  "rearm_level": 0.49411771591787046,
+  "walk_forward": {
+   "test_years": [
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025,
+    2026
+   ],
+   "thresholds": {
+    "2018": 0.9563695563695563,
+    "2019": 0.9293568950970278,
+    "2020": 0.9127065828278893,
+    "2021": 0.9222403040786599,
+    "2022": 0.9241398211126891,
+    "2023": 0.8966966725606816,
+    "2024": 0.9426910143844573,
+    "2025": 0.919623640906109,
+    "2026": 0.9453291445227449
+   },
+   "captured": 173,
+   "detectable": 304,
+   "capture_rate": 0.569,
+   "late": 150,
+   "false_alarms": 207,
+   "fa_per_iy": 0.404,
+   "auroc": 0.734,
+   "ap": 0.257,
+   "ap_baseline": 0.105,
+   "forward_returns": {
+    "fwd_5d": {
+     "n": 548,
+     "median_pct": 0.27,
+     "mean_pct": 2.39,
+     "pct_positive": 50.9
+    },
+    "fwd_21d": {
+     "n": 548,
+     "median_pct": 1.6,
+     "mean_pct": 4.0,
+     "pct_positive": 55.3
+    },
+    "fwd_84d": {
+     "n": 544,
+     "median_pct": 3.99,
+     "mean_pct": 13.76,
+     "pct_positive": 55.9
+    }
+   },
+   "n_alerts": 548,
+   "median_lead_days": 19,
+   "precision": 0.455
+  }
+ },
+ "conditioning": {
+  "version": 2,
+  "trigger": "shaped crossing (phase gates + re-arm + 63d spacing)",
+  "get_out": "only after the 120d G2 boom bar; re-arms at the cut",
+  "get_in": "only before the boom completes; re-arms at the train-median score",
+  "separation": "no GET IN within 21d of a GET OUT, either direction",
+  "standard": "F1 cut",
+  "strict": "F0.5 cut (precision weighted 2x)",
+  "evidence": "docs/research/alert_shape_sweep.json",
+  "decided": "2026-08-09"
+ },
+ "tournament": {
+  "get_out": {
+   "ens": {
+    "auroc": 0.731,
+    "ap": 0.26,
+    "ap_baseline": 0.095,
+    "captured": 137,
+    "detectable": 308,
+    "capture_rate": 0.445,
+    "late": 0,
+    "false_alarms": 295,
+    "fa_per_iy": 0.575,
+    "precision": 0.317,
+    "median_lead_days": 14,
+    "n_alerts": 506,
+    "forward_returns": {
+     "fwd_5d": {
+      "n": 506,
+      "median_pct": 0.05,
+      "mean_pct": 2.58,
+      "pct_positive": 51.0
+     },
+     "fwd_21d": {
+      "n": 506,
+      "median_pct": 0.31,
+      "mean_pct": 2.91,
+      "pct_positive": 51.2
+     },
+     "fwd_84d": {
+      "n": 501,
+      "median_pct": 1.48,
+      "mean_pct": 11.36,
+      "pct_positive": 51.9
+     }
+    },
+    "test_years": [
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ]
+   }
+  },
+  "get_in": {
+   "ens": {
+    "auroc": 0.734,
+    "ap": 0.257,
+    "ap_baseline": 0.105,
+    "captured": 173,
+    "detectable": 304,
+    "capture_rate": 0.569,
+    "late": 150,
+    "false_alarms": 207,
+    "fa_per_iy": 0.404,
+    "precision": 0.455,
+    "median_lead_days": 19,
+    "n_alerts": 548,
+    "forward_returns": {
+     "fwd_5d": {
+      "n": 548,
+      "median_pct": 0.27,
+      "mean_pct": 2.39,
+      "pct_positive": 50.9
+     },
+     "fwd_21d": {
+      "n": 548,
+      "median_pct": 1.6,
+      "mean_pct": 4.0,
+      "pct_positive": 55.3
+     },
+     "fwd_84d": {
+      "n": 544,
+      "median_pct": 3.99,
+      "mean_pct": 13.76,
+      "pct_positive": 55.9
+     }
+    },
+    "test_years": [
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ]
+   }
+  }
+ },
+ "selection_rule": "one family for both heads; combined test AP lift; ties AUROC then fewer false alarms",
+ "operating_point_rule": "probability cut maximising episode-level F1 on train years",
+ "fa_budget_per_iy": 0.23,
+ "smooth_days": 7,
+ "bank_get_out": [
+  "attention_accel",
+  "hype_ratio",
+  "bull_inflection",
+  "influx_speed",
+  "attention_convexity",
+  "e1",
+  "e3",
+  "bull_level",
+  "bull_persist",
+  "price_runup",
+  "price_ret21"
+ ],
+ "bank_get_in": [
+  "attention_accel",
+  "hype_ratio",
+  "bull_inflection",
+  "influx_speed",
+  "attention_convexity",
+  "e1",
+  "e3",
+  "bull_level",
+  "bull_persist",
+  "price_runup",
+  "price_ret21"
+ ],
+ "inflection": {
+  "threshold": 0.8687043464518999,
+  "rearm": 0.4999180577341793,
+  "cut_q": 0.95,
+  "rearm_q": 0.5,
+  "spacing_d": 63,
+  "bank": [
+   "attention_accel",
+   "hype_ratio",
+   "bull_inflection",
+   "influx_speed",
+   "attention_convexity",
+   "e1",
+   "e3",
+   "bull_level",
+   "bull_persist",
+   "att_vol_21",
+   "bull_dispersion",
+   "att_x_mood",
+   "breadth_chg"
+  ],
+  "evidence": "docs/research/inflection_trigger_sweep.json",
+  "role": "CONTEXT MARKER - never a call, never in the watchlist, never gates GET IN or GET OUT",
+  "derived": "research"
+ },
+ "experimental_price_blind": {
+  "model": "logit",
+  "bank": [
+   "attention_accel",
+   "hype_ratio",
+   "bull_inflection",
+   "influx_speed",
+   "attention_convexity",
+   "e1",
+   "e3",
+   "bull_level",
+   "bull_persist",
+   "att_vol_21",
+   "bull_dispersion",
+   "att_x_mood",
+   "breadth_chg"
+  ],
+  "derived": "research",
+  "trigger": "shaped crossing WITHOUT phase gates (re-arm + 63d spacing only)",
+  "evidence": "docs/research/nb08_price_blind.json",
+  "role": "EXPERIMENTAL dashboard mode - crowd features only, no price features, no price gate. Never the default.",
+  "get_in": {
+   "live_threshold": 0.580575704890431,
+   "strict_threshold": 0.6251800364529387,
+   "rearm_level": 0.4836600262753113
+  },
+  "get_out": {
+   "live_threshold": 0.6187472755546753,
+   "strict_threshold": 0.665626456173935,
+   "rearm_level": 0.4780926725863472
+  }
+ }
+}

@@ -1,0 +1,281 @@
+{
+ "thresholds": {
+  "2018": 85,
+  "2019": 85,
+  "2020": 85,
+  "2021": 85,
+  "2022": 85,
+  "2023": 85,
+  "2024": 85,
+  "2025": 85,
+  "2026": 85
+ },
+ "overall": {
+  "peaks": 489,
+  "detectable_peaks": 218,
+  "captured": 30,
+  "capture_rate_all": 0.061,
+  "capture_rate_detectable": 0.138,
+  "false_alarms": 94,
+  "fa_per_instrument_year": 0.18,
+  "median_lead_days": 8.5,
+  "instruments": 59,
+  "years": [
+   2018,
+   2019,
+   2020,
+   2021,
+   2022,
+   2023,
+   2024,
+   2025,
+   2026
+  ]
+ },
+ "per_year": {
+  "2018": {
+   "threshold": 85,
+   "peaks": 23,
+   "detectable": 16,
+   "captured": 1,
+   "false_alarms": 13
+  },
+  "2019": {
+   "threshold": 85,
+   "peaks": 19,
+   "detectable": 13,
+   "captured": 2,
+   "false_alarms": 13
+  },
+  "2020": {
+   "threshold": 85,
+   "peaks": 56,
+   "detectable": 37,
+   "captured": 7,
+   "false_alarms": 31
+  },
+  "2021": {
+   "threshold": 85,
+   "peaks": 67,
+   "detectable": 53,
+   "captured": 9,
+   "false_alarms": 7
+  },
+  "2022": {
+   "threshold": 85,
+   "peaks": 76,
+   "detectable": 40,
+   "captured": 2,
+   "false_alarms": 16
+  },
+  "2023": {
+   "threshold": 85,
+   "peaks": 63,
+   "detectable": 16,
+   "captured": 0,
+   "false_alarms": 6
+  },
+  "2024": {
+   "threshold": 85,
+   "peaks": 65,
+   "detectable": 1,
+   "captured": 0,
+   "false_alarms": 1
+  },
+  "2025": {
+   "threshold": 85,
+   "peaks": 53,
+   "detectable": 0,
+   "captured": 0,
+   "false_alarms": 0
+  },
+  "2026": {
+   "threshold": 85,
+   "peaks": 67,
+   "detectable": 42,
+   "captured": 9,
+   "false_alarms": 7
+  }
+ },
+ "ablation": [
+  {
+   "variant": "FULL (all rules)",
+   "capture_detectable": 0.138,
+   "captured": 30,
+   "false_alarms": 94,
+   "fa_per_iy": 0.18,
+   "median_lead": 8.5,
+   "d_capture": 0.0,
+   "d_fa": 0
+  },
+  {
+   "variant": "- E1 attention (level)",
+   "capture_detectable": 0.096,
+   "captured": 21,
+   "false_alarms": 58,
+   "fa_per_iy": 0.11,
+   "median_lead": 8.0,
+   "d_capture": -0.042,
+   "d_fa": -36
+  },
+  {
+   "variant": "- E2 sustained bull (level)",
+   "capture_detectable": 0.179,
+   "captured": 39,
+   "false_alarms": 133,
+   "fa_per_iy": 0.25,
+   "median_lead": 8.0,
+   "d_capture": 0.041,
+   "d_fa": 39
+  },
+  {
+   "variant": "- E3 crowd influx (level)",
+   "capture_detectable": 0.096,
+   "captured": 21,
+   "false_alarms": 58,
+   "fa_per_iy": 0.11,
+   "median_lead": 8.0,
+   "d_capture": -0.042,
+   "d_fa": -36
+  },
+  {
+   "variant": "- E5 super-exp attention (level)",
+   "capture_detectable": 0.128,
+   "captured": 28,
+   "false_alarms": 93,
+   "fa_per_iy": 0.18,
+   "median_lead": 8.0,
+   "d_capture": -0.01,
+   "d_fa": -1
+  },
+  {
+   "variant": "- hype gate A1",
+   "capture_detectable": 0.22,
+   "captured": 48,
+   "false_alarms": 291,
+   "fa_per_iy": 0.55,
+   "median_lead": 15.0,
+   "d_capture": 0.082,
+   "d_fa": 197
+  },
+  {
+   "variant": "- attention gate A2",
+   "capture_detectable": 0.138,
+   "captured": 30,
+   "false_alarms": 95,
+   "fa_per_iy": 0.18,
+   "median_lead": 9.0,
+   "d_capture": 0.0,
+   "d_fa": 1
+  },
+  {
+   "variant": "- sustained-bull gate A2b",
+   "capture_detectable": 0.156,
+   "captured": 34,
+   "false_alarms": 104,
+   "fa_per_iy": 0.2,
+   "median_lead": 8.0,
+   "d_capture": 0.018,
+   "d_fa": 10
+  },
+  {
+   "variant": "- fade trigger E4",
+   "capture_detectable": 0.078,
+   "captured": 17,
+   "false_alarms": 47,
+   "fa_per_iy": 0.09,
+   "median_lead": 8.0,
+   "d_capture": -0.06,
+   "d_fa": -47
+  }
+ ],
+ "ml_test": {
+  "overall": {
+   "detectable_peaks": 202,
+   "captured": 7,
+   "capture_rate_detectable": 0.035,
+   "false_alarms": 23,
+   "fa_per_instrument_year": 0.04,
+   "median_lead_days": 5.0,
+   "last_model_coefficients": {
+    "e1": 2.226,
+    "e2": 1.966,
+    "e3": -1.581,
+    "e5": 0.522,
+    "fade": -0.264
+   }
+  },
+  "per_year": {
+   "2018": {
+    "skipped": "under 3 training peaks"
+   },
+   "2019": {
+    "prob_threshold": 0.77,
+    "detectable": 13,
+    "captured": 0,
+    "false_alarms": 4
+   },
+   "2020": {
+    "prob_threshold": 0.795,
+    "detectable": 37,
+    "captured": 0,
+    "false_alarms": 9
+   },
+   "2021": {
+    "prob_threshold": 0.746,
+    "detectable": 53,
+    "captured": 5,
+    "false_alarms": 7
+   },
+   "2022": {
+    "prob_threshold": 0.771,
+    "detectable": 40,
+    "captured": 0,
+    "false_alarms": 0
+   },
+   "2023": {
+    "prob_threshold": 0.766,
+    "detectable": 16,
+    "captured": 0,
+    "false_alarms": 3
+   },
+   "2024": {
+    "prob_threshold": 0.761,
+    "detectable": 1,
+    "captured": 0,
+    "false_alarms": 0
+   },
+   "2025": {
+    "prob_threshold": 0.759,
+    "detectable": 0,
+    "captured": 0,
+    "false_alarms": 0
+   },
+   "2026": {
+    "prob_threshold": 0.762,
+    "detectable": 42,
+    "captured": 2,
+    "false_alarms": 0
+   }
+  },
+  "matched_comparison": {
+   "years": [
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025,
+    2026
+   ],
+   "rules_utility": -52.0,
+   "ml_utility": -16.0,
+   "rules_captured": 29,
+   "ml_captured": 7,
+   "rules_recent_captured": 9,
+   "ml_recent_captured": 2
+  }
+ },
+ "adopted": "rules"
+}
