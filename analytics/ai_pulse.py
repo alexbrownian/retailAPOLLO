@@ -799,7 +799,7 @@ def generate(log=print, as_of=None) -> tuple[bool, str]:
     log(f"AI PULSE: {len(posts)} posts across "
         f"{len({p['sub'] for p in posts})} forums, "
         f"{len(by_theme)} themes; "
-        f"model {ai.MODEL}, generating (4 calls, posts only)")
+        f"model {ai.active_model() or ai.MODEL}, generating (4 calls, posts only)")
     try:
         log("AI PULSE: call 1 - the whole-market read (vibe, forums)")
         pulse = ai.chat(_market_prompt(posts), system=_PULSE_SYSTEM,
@@ -840,7 +840,7 @@ def generate(log=print, as_of=None) -> tuple[bool, str]:
         "as_of": ev.get("as_of"),
         "generated_at": datetime.now(timezone.utc)
         .strftime("%Y-%m-%d %H:%M UTC"),
-        "model": ai.MODEL,
+        "model": ai.active_model() or ai.MODEL,
         "mock": ai.MOCK,
         "evidence": ev,
     }

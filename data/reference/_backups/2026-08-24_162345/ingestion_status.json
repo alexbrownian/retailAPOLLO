@@ -1,0 +1,82 @@
+{
+ "aggregates_newest": "2026-08-21",
+ "aggregates_lag_days": 3,
+ "prices_newest": "2026-08-21",
+ "prices_lag_days": 3,
+ "sources": {
+  "reddit": {
+   "first": "2017-01-01",
+   "last": "2026-08-21",
+   "days": 3520,
+   "span": 3520,
+   "dense_pct": 100.0
+  },
+  "stocktwits": {
+   "first": "2023-12-03",
+   "last": "2026-08-21",
+   "days": 183,
+   "span": 993,
+   "dense_pct": 18.4
+  },
+  "x": {
+   "first": "2025-09-15",
+   "last": "2026-08-21",
+   "days": 48,
+   "span": 341,
+   "dense_pct": 14.1
+  }
+ },
+ "live_start": "2026-07-19",
+ "seen_ids_parquet": 0,
+ "seen_ids_legacy_json": 46205,
+ "unparseable_ledgers": [],
+ "backups": 0,
+ "raw_gib": 1.21,
+ "dead_tmp_files": 2,
+ "suspect_double_count_months": [
+  {
+   "month": "2021-01",
+   "total": 77105,
+   "neighbour_median": 15189,
+   "ratio": 5.08
+  },
+  {
+   "month": "2021-02",
+   "total": 65954,
+   "neighbour_median": 15189,
+   "ratio": 4.34
+  },
+  {
+   "month": "2021-03",
+   "total": 27206,
+   "neighbour_median": 15189,
+   "ratio": 1.79
+  },
+  {
+   "month": "2021-06",
+   "total": 36322,
+   "neighbour_median": 14556,
+   "ratio": 2.5
+  },
+  {
+   "month": "2022-08",
+   "total": 20409,
+   "neighbour_median": 6221,
+   "ratio": 3.28
+  },
+  {
+   "month": "2026-07",
+   "total": 34781,
+   "neighbour_median": 10334,
+   "ratio": 3.37
+  },
+  {
+   "month": "2026-08",
+   "total": 17233,
+   "neighbour_median": 9674,
+   "ratio": 1.78
+  }
+ ],
+ "overall": "warn",
+ "checked_utc": "2026-08-24T00:51:57"
+}

@@ -108,7 +108,7 @@ def run(log=print) -> tuple[bool, str]:
         return False, "config/ai_poll_prompts.csv is empty"
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     log(f"AI POLL: asking {len(prompts)} retail prompts "
-        f"(model {ai.MODEL}, T={POLL_TEMPERATURE})")
+        f"(model {ai.active_model() or ai.MODEL}, T={POLL_TEMPERATURE})")
     rows, answers = [], []
     for _i, p in enumerate(prompts, 1):
         log(f"AI POLL: [{_i}/{len(prompts)}] asking: "
@@ -126,7 +126,7 @@ def run(log=print) -> tuple[bool, str]:
             f"{len(parsed.get('themes', []) or [])} themes")
         answers.append({"run_date": today, "prompt_id": p["prompt_id"],
                         "prompt": p["prompt"], "answer": str(text),
-                        "model": ai.MODEL, "mock": ai.MOCK})
+                        "model": ai.active_model() or ai.MODEL, "mock": ai.MOCK})
         for rank, t in enumerate(parsed.get("tickers", []) or [], 1):
             sym = str(t.get("symbol", "")).strip().upper()
             if not sym or len(sym) > 10:
@@ -136,7 +136,7 @@ def run(log=print) -> tuple[bool, str]:
                          "kind": "ticker", "name": sym,
                          "direction": str(t.get("direction", "buy")),
                          "conviction": str(t.get("conviction", "")),
-                         "rank": rank, "model": ai.MODEL,
+                         "rank": rank, "model": ai.active_model() or ai.MODEL,
                          "mock": ai.MOCK})
         for rank, th in enumerate(parsed.get("themes", []) or [], 1):
             rows.append({"run_date": today, "prompt_id": p["prompt_id"],
@@ -144,7 +144,7 @@ def run(log=print) -> tuple[bool, str]:
                          "kind": "theme",
                          "name": str(th).strip().lower()[:40],
                          "direction": "buy", "conviction": "",
-                         "rank": rank, "model": ai.MODEL,
+                         "rank": rank, "model": ai.active_model() or ai.MODEL,
                          "mock": ai.MOCK})
     if not rows:
         return False, "no structured recommendations parsed"

@@ -1,0 +1,208 @@
+{
+ "blocks": {
+  "reddit_live_arctic_2026-07-19_092220.jsonl.zst:2026-07": {
+   "posts": 7497,
+   "folded_utc": "2026-08-18T01:21:45"
+  },
+  "reddit_live_arctic_2026-08-11_170618.jsonl.zst:2023-04": {
+   "posts": 60994,
+   "folded_utc": "2026-08-18T01:22:59"
+  },
+  "reddit_live_arctic_2026-08-11_172952.jsonl.zst:2023-05": {
+   "posts": 59537,
+   "folded_utc": "2026-08-18T01:24:08"
+  },
+  "reddit_live_arctic_2026-08-11_180306.jsonl.zst:2023-06": {
+   "posts": 52817,
+   "folded_utc": "2026-08-18T01:25:17"
+  },
+  "reddit_live_arctic_2026-08-11_182537.jsonl.zst:2023-07": {
+   "posts": 51192,
+   "folded_utc": "2026-08-18T01:26:02"
+  },
+  "reddit_live_arctic_2026-08-13_201632.jsonl.zst:2023-07": {
+   "posts": 16397,
+   "folded_utc": "2026-08-18T01:26:27"
+  },
+  "reddit_live_arctic_2026-08-13_203845.jsonl.zst:2023-08": {
+   "posts": 62028,
+   "folded_utc": "2026-08-18T01:27:19"
+  },
+  "reddit_live_arctic_2026-08-13_212304.jsonl.zst:2023-09": {
+   "posts": 51304,
+   "folded_utc": "2026-08-18T01:28:03"
+  },
+  "reddit_live_arctic_2026-08-13_215008.jsonl.zst:2023-10": {
+   "posts": 47688,
+   "folded_utc": "2026-08-18T01:28:42"
+  },
+  "reddit_live_arctic_2026-08-13_221549.jsonl.zst:2023-11": {
+   "posts": 47511,
+   "folded_utc": "2026-08-18T01:29:20"
+  },
+  "reddit_live_arctic_2026-08-14_021659.jsonl.zst:2023-12": {
+   "posts": 54873,
+   "folded_utc": "2026-08-18T01:30:06"
+  },
+  "reddit_live_arctic_2026-08-14_024100.jsonl.zst:2024-01": {
+   "posts": 64224,
+   "folded_utc": "2026-08-18T01:31:00"
+  },
+  "reddit_live_arctic_2026-08-15_115542.jsonl.zst:2024-02": {
+   "posts": 70023,
+   "folded_utc": "2026-08-18T01:31:51"
+  },
+  "reddit_live_arctic_2026-08-15_122611.jsonl.zst:2024-03": {
+   "posts": 83432,
+   "folded_utc": "2026-08-18T01:32:50"
+  },
+  "reddit_live_arctic_2026-08-15_130545.jsonl.zst:2024-04": {
+   "posts": 61027,
+   "folded_utc": "2026-08-18T01:33:39"
+  },
+  "reddit_live_arctic_2026-08-15_140239.jsonl.zst:2024-05": {
+   "posts": 62267,
+   "folded_utc": "2026-08-18T01:34:42"
+  },
+  "reddit_live_arctic_2026-08-15_151841.jsonl.zst:2024-06": {
+   "posts": 55434,
+   "folded_utc": "2026-08-18T01:35:43"
+  },
+  "reddit_live_arctic_2026-08-16_082302.jsonl.zst:2024-07": {
+   "posts": 54470,
+   "folded_utc": "2026-08-18T01:36:34"
+  },
+  "reddit_live_arctic_2026-08-20_211902.jsonl.zst:2024-08": {
+   "posts": 53116,
+   "folded_utc": "2026-08-21T01:13:35"
+  },
+  "reddit_live_arctic_2026-08-21_101825.jsonl.zst:2024-09": {
+   "posts": 12237,
+   "folded_utc": "2026-08-21T07:43:08"
+  },
+  "reddit_live_arctic_2026-08-21_101929.jsonl.zst:2024-10": {
+   "posts": 14400,
+   "folded_utc": "2026-08-21T07:43:23"
+  },
+  "reddit_live_arctic_2026-08-21_102052.jsonl.zst:2024-11": {
+   "posts": 18980,
+   "folded_utc": "2026-08-21T07:43:39"
+  },
+  "reddit_live_arctic_2026-08-21_102213.jsonl.zst:2024-12": {
+   "posts": 18318,
+   "folded_utc": "2026-08-21T07:43:56"
+  },
+  "reddit_live_arctic_2026-08-21_102325.jsonl.zst:2025-01": {
+   "posts": 17930,
+   "folded_utc": "2026-08-21T07:44:13"
+  },
+  "reddit_live_arctic_2026-08-21_102436.jsonl.zst:2025-02": {
+   "posts": 15649,
+   "folded_utc": "2026-08-21T07:44:29"
+  },
+  "reddit_live_arctic_2026-08-21_102534.jsonl.zst:2025-03": {
+   "posts": 13816,
+   "folded_utc": "2026-08-21T07:44:45"
+  },
+  "reddit_live_arctic_2026-08-21_102611.jsonl.zst:2025-04": {
+   "posts": 21360,
+   "folded_utc": "2026-08-21T07:45:04"
+  },
+  "reddit_live_arctic_2026-08-21_102714.jsonl.zst:2025-05": {
+   "posts": 14236,
+   "folded_utc": "2026-08-21T07:45:21"
+  },
+  "reddit_live_arctic_2026-08-21_102758.jsonl.zst:2025-06": {
+   "posts": 13003,
+   "folded_utc": "2026-08-21T07:45:37"
+  },
+  "reddit_live_arctic_2026-08-21_102847.jsonl.zst:2025-07": {
+   "posts": 20986,
+   "folded_utc": "2026-08-21T07:45:55"
+  },
+  "reddit_live_arctic_2026-08-21_102955.jsonl.zst:2025-08": {
+   "posts": 14787,
+   "folded_utc": "2026-08-21T07:46:11"
+  },
+  "reddit_live_arctic_2026-08-21_103049.jsonl.zst:2025-09": {
+   "posts": 14198,
+   "folded_utc": "2026-08-21T07:46:26"
+  },
+  "reddit_live_arctic_2026-08-21_103135.jsonl.zst:2025-10": {
+   "posts": 20195,
+   "folded_utc": "2026-08-21T07:46:44"
+  },
+  "reddit_live_arctic_2026-08-21_103305.jsonl.zst:2025-11": {
+   "posts": 13519,
+   "folded_utc": "2026-08-21T07:46:59"
+  },
+  "reddit_live_arctic_2026-08-21_103359.jsonl.zst:2025-12": {
+   "posts": 10321,
+   "folded_utc": "2026-08-21T07:47:14"
+  },
+  "reddit_live_arctic_2026-08-21_113545.jsonl.zst:2024-09": {
+   "posts": 35524,
+   "folded_utc": "2026-08-21T07:47:45"
+  },
+  "reddit_live_arctic_2026-08-21_113650.jsonl.zst:2024-10": {
+   "posts": 37228,
+   "folded_utc": "2026-08-21T07:48:15"
+  },
+  "reddit_live_arctic_2026-08-21_113805.jsonl.zst:2024-11": {
+   "posts": 44553,
+   "folded_utc": "2026-08-21T07:48:47"
+  },
+  "reddit_live_arctic_2026-08-21_113945.jsonl.zst:2024-12": {
+   "posts": 57133,
+   "folded_utc": "2026-08-21T07:49:26"
+  },
+  "reddit_live_arctic_2026-08-21_114122.jsonl.zst:2025-01": {
+   "posts": 58648,
+   "folded_utc": "2026-08-21T07:50:08"
+  },
+  "reddit_live_arctic_2026-08-21_114305.jsonl.zst:2025-02": {
+   "posts": 46197,
+   "folded_utc": "2026-08-21T07:50:43"
+  },
+  "reddit_live_arctic_2026-08-21_114423.jsonl.zst:2025-03": {
+   "posts": 41649,
+   "folded_utc": "2026-08-21T07:51:16"
+  },
+  "reddit_live_arctic_2026-08-21_114546.jsonl.zst:2025-04": {
+   "posts": 42433,
+   "folded_utc": "2026-08-21T07:51:52"
+  },
+  "reddit_live_arctic_2026-08-21_114705.jsonl.zst:2025-05": {
+   "posts": 38607,
+   "folded_utc": "2026-08-21T07:52:30"
+  },
+  "reddit_live_arctic_2026-08-21_114808.jsonl.zst:2025-06": {
+   "posts": 34818,
+   "folded_utc": "2026-08-21T07:53:04"
+  },
+  "reddit_live_arctic_2026-08-21_114913.jsonl.zst:2025-07": {
+   "posts": 44229,
+   "folded_utc": "2026-08-21T07:53:43"
+  },
+  "reddit_live_arctic_2026-08-21_115029.jsonl.zst:2025-08": {
+   "posts": 40731,
+   "folded_utc": "2026-08-21T07:54:22"
+  },
+  "reddit_live_arctic_2026-08-21_115133.jsonl.zst:2025-09": {
+   "posts": 36034,
+   "folded_utc": "2026-08-21T07:54:54"
+  },
+  "reddit_live_arctic_2026-08-21_115226.jsonl.zst:2025-10": {
+   "posts": 39480,
+   "folded_utc": "2026-08-21T07:55:29"
+  },
+  "reddit_live_arctic_2026-08-21_115344.jsonl.zst:2025-11": {
+   "posts": 35045,
+   "folded_utc": "2026-08-21T07:56:06"
+  },
+  "reddit_live_arctic_2026-08-21_115441.jsonl.zst:2025-12": {
+   "posts": 31694,
+   "folded_utc": "2026-08-21T07:56:48"
+  }
+ }
+}

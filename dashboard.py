@@ -171,6 +171,93 @@ from analytics.overlays import (mention_share_series,              # noqa: E402
 st.set_page_config(page_title="RetailRadar", layout="wide",
                    initial_sidebar_state="expanded")
 
+# ---------------------------------------------------------------------------
+# Hosted-deployment bootstrap.
+#
+# On a workstation the pipeline has already written data/processed and the
+# two calls below are no-ops. On a hosted clone (Streamlit Community Cloud)
+# data/processed and data/prices are gitignored and therefore absent, so the
+# committed bundles are copied into place once per container: ABSTRACTED_DATA
+# (the text-free aggregates) and DASHBOARD_DATA (the finished display frames,
+# staged by tools/publish_dashboard.py).
+#
+# Copy, never recompute: analytics.run_analytics needs prices, forks a process
+# pool, and auto-opens a full walk-forward research pass when the frozen
+# record is missing - which is precisely the state of a fresh clone. The host
+# draws published frames; it does not derive them.
+# ---------------------------------------------------------------------------
+BUNDLE_DIR = os.path.join(ROOT, "DASHBOARD_DATA")
+
+
+def _bootstrap_from_bundles():
+    """Populates data/processed from the committed bundles when absent.
+
+    A file is copied only when the destination is missing or older than
+    the published copy, so a workstation whose pipeline output is newer
+    is never overwritten.
+    """
+    import shutil
+
+    from src import abstracted_data
+    from src.config import PRICES_DIR
+
+    def _place(src, dst):
+        if not os.path.exists(src):
+            return
+        if (os.path.exists(dst)
+                and os.path.getmtime(dst) >= os.path.getmtime(src)):
+            return
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy2(src, dst)
+
+    # The five text-free aggregates travel in ABSTRACTED_DATA already.
+    abstracted_data.hydrate(verbose=False)
+
+    if not os.path.isdir(BUNDLE_DIR):
+        return
+    for name in sorted(os.listdir(BUNDLE_DIR)):
+        src = os.path.join(BUNDLE_DIR, name)
+        if name == "prices.parquet":
+            _place(src, os.path.join(PRICES_DIR, name))
+        elif name in ("nasdaqlisted.txt", "otherlisted.txt"):
+            _place(src, os.path.join(ROOT, "data", "reference", name))
+        elif name == "nb05_influence.json":
+            _place(src, os.path.join(ROOT, "docs", "research", name))
+        elif name == "signal_snapshots" and os.path.isdir(src):
+            for snap in os.listdir(src):
+                _place(os.path.join(src, snap),
+                       os.path.join(PROCESSED_DIR, "signal_snapshots", snap))
+        elif name == "influence" and os.path.isdir(src):
+            for infl in os.listdir(src):
+                _place(os.path.join(src, infl),
+                       os.path.join(ROOT, "data", "reference", "influence",
+                                    infl))
+        elif os.path.isfile(src):
+            _place(src, os.path.join(PROCESSED_DIR, name))
+
+
+@st.cache_resource(show_spinner="Preparing the published data...")
+def _bootstrap_once():
+    """Runs the bootstrap a single time per server process.
+
+    cache_resource (not cache_data): the work is a filesystem side
+    effect, not a value, and every session in the container shares it.
+    """
+    from src.config import ensure_dirs
+    ensure_dirs()
+    _bootstrap_from_bundles()
+    return True
+
+
+_bootstrap_once()
+
+# Pipeline controls (fetch, price pull, comment catch-up) are workstation-only.
+# The marker file is gitignored, so it exists on a machine that has run
+# tools/publish_dashboard.py and never on a hosted clone - a public viewer is
+# not offered buttons that spend API credit or call a Bloomberg Terminal.
+LOCAL_CONTROLS = (os.path.exists(os.path.join(ROOT, ".local_controls"))
+                  or os.environ.get("RETAILAPOLLO_CONTROLS") == "1")
+
 
 def flag_label(name, kind):
     """The ONE way this app spells an instrument on screen.
@@ -2095,7 +2182,8 @@ win_env = {"PIPELINE_START_DATE": start_s, "PIPELINE_END_DATE": end_s}
 #     ever worked on the machine that holds posts.parquet, so on this
 #     terminal it was a button that could not do its job.  The capability
 #     is unchanged from a shell:  python update_data.py --full
-if st.sidebar.button("QUICK UPDATE - Bloomberg prices + signals  (~1-3 min)",
+if LOCAL_CONTROLS and st.sidebar.button(
+                     "QUICK UPDATE - Bloomberg prices + signals  (~1-3 min)",
                      disabled=_pipe_running,
                      help="No post fetching. Pull Bloomberg prices for the "
                           "chosen window (already-covered spans are "
@@ -2106,7 +2194,8 @@ if st.sidebar.button("QUICK UPDATE - Bloomberg prices + signals  (~1-3 min)",
                       "--skip-prices"], None)],
                    f"quick update {start_s} -> {end_s or 'LIVE'}",
                    plan="window")
-if st.sidebar.button("FULL UPDATE - live pull  (~10 min)",
+if LOCAL_CONTROLS and st.sidebar.button(
+                     "FULL UPDATE - live pull  (~10 min)",
                      disabled=_pipe_running,
                      help="Everything: fetch new posts AND comments from all "
                           "three sources, fold them in, recompute signals, "
@@ -2120,16 +2209,19 @@ if st.sidebar.button("FULL UPDATE - live pull  (~10 min)",
 # the CATCH-UP button, for when the pipeline has been idle long enough that
 # one budgeted run cannot close the gap. Its estimate is computed from the
 # watermarks and this machine's measured throughput, not bracketed by hand.
-try:
-    from update_comments import estimate as _comment_estimate
+_c_est = ""
+if LOCAL_CONTROLS:
+    try:
+        from update_comments import estimate as _comment_estimate
 
-    from ingestion.fetch_reddit_comments import (default_lookback_days
-                                                 as _c_lookback)
-    _c_est = _comment_estimate(_c_lookback(), None)
-except Exception:                                     # noqa: BLE001
-    _c_est = ("estimate unavailable on this machine - the runner prints one "
-              "before it starts")
-if st.sidebar.button("EXTRA - catch up comments  (no page budget)",
+        from ingestion.fetch_reddit_comments import (default_lookback_days
+                                                     as _c_lookback)
+        _c_est = _comment_estimate(_c_lookback(), None)
+    except Exception:                                 # noqa: BLE001
+        _c_est = ("estimate unavailable on this machine - the runner prints "
+                  "one before it starts")
+if LOCAL_CONTROLS and st.sidebar.button(
+                     "EXTRA - catch up comments  (no page budget)",
                      disabled=_pipe_running,
                      help="NOT needed for the ordinary refresh - the full "
                           "update already fetches comments and rescores "
@@ -2142,12 +2234,16 @@ if st.sidebar.button("EXTRA - catch up comments  (no page budget)",
     start_pipeline([(["update_comments.py"], None)],
                    "comments catch-up", plan="comments")
 
-with st.sidebar:
-    pipeline_panel()
+if LOCAL_CONTROLS:
+    with st.sidebar:
+        pipeline_panel()
 
-if prices is None:
+if prices is None and LOCAL_CONTROLS:
     st.sidebar.warning("prices.parquet missing - run pull_bloomberg_prices.py "
                        "(Terminal open) or use the rebuild button")
+elif prices is None:
+    st.sidebar.warning("Price history is not in the published bundle; "
+                       "price-linked panels are unavailable.")
 
 # ---------------------------------------------------------------------------
 # topline metric strip

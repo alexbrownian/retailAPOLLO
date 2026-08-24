@@ -325,6 +325,9 @@ def main():
     #     command lines printed in the RUNBOOK, the research report and any
     #     scheduled task the desk already created keep working instead of
     #     dying on an unrecognised argument.
+    p.add_argument("--skip-publish", action="store_true",
+                   help="do not stage the hosted dashboard's display "
+                        "bundle (DASHBOARD_DATA/) at the end of the run")
     p.add_argument("--skip-panel-review", action="store_true",
                    help="skip the monthly dynamic-panel review (subreddit "
                         "discovery; it is watermarked and only actually "
@@ -679,6 +682,26 @@ def main():
     safe = True
     if not dry:
         safe = verify_abstracted(fh)
+
+    # ---- 6b. PUBLISH the hosted dashboard's display bundle ----
+    # Deliberately AFTER the safety check and gated on it: the bundle is
+    # committed and served publicly, so it must never be staged from a
+    # tree that just failed the text-free rule. Non-fatal like the AI
+    # stage - a bundle problem must not fail a data refresh that already
+    # succeeded. tools/publish_dashboard.py runs its own per-file guard
+    # on top of this one.
+    if not dry and not args.skip_publish:
+        if not safe:
+            log("dashboard bundle NOT published - the text-free check "
+                "failed; resolve that first", fh)
+        else:
+            try:
+                from tools.publish_dashboard import publish as _publish
+                _publish(log=lambda m: log(m, fh), per_file=False)
+            except SystemExit as e:            # the guard refused a file
+                log(f"dashboard bundle NOT published - {e}", fh)
+            except Exception as e:             # noqa: BLE001
+                log(f"dashboard bundle skipped: {type(e).__name__}: {e}", fh)
 
     # ---- 7. RUN SUMMARY: the key facts in one glance ----
     if not dry:

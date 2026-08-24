@@ -52,6 +52,83 @@ The sidebar shows the build time and the serving port.
 `config/theme_etfs.csv` is the exception: it re-reads on its own
 mtime, so a rerun is enough.
 
+## Hosted dashboard
+
+The hosted dashboard (Streamlit Community Cloud) is a **view**: it never
+fetches, never recomputes, and never reaches a Terminal. It renders the
+bundle in `DASHBOARD_DATA/`, published from either machine.
+
+`python update_data.py` stages the bundle itself as its last step, so
+the routine refresh needs no second command — only a commit:
+
+    python update_data.py
+    git add ABSTRACTED_DATA DASHBOARD_DATA
+    git commit -m "publish dashboard"
+    git push
+
+| Task | Command |
+|---|---|
+| Stage the bundle on its own | `python tools/publish_dashboard.py` (`--dry-run` to preview) |
+| Refresh without touching the bundle | `python update_data.py --skip-publish` |
+
+The push is the deployment: Streamlit Cloud redeploys within a minute or
+two. Publishing works identically on both machines — the external one
+publishes what it rebuilt from the raw store, the internal one what it
+folded from `ABSTRACTED_DATA`.
+
+The bundle step runs **after** the text-free safety check and only when
+it passes: the bundle is served publicly, so it is never staged from a
+tree that just failed that rule. Like the AI stage it is non-fatal — a
+bundle problem is logged, never a reason to fail a refresh that already
+succeeded.
+
+**Deployment settings**: main file `dashboard.py`, branch `main`, Python
+3.12 (matching the workstation interpreter; 3.13+ has no wheel for parts
+of the stack). No secrets: nothing on the host reads a credential.
+
+**Two safeguards, both automatic**:
+
+- `tools/publish_dashboard.py` refuses to publish any frame carrying an
+  identity column (post text, author, id, subreddit), the same rule that
+  protects `ABSTRACTED_DATA/`. The influence board is opt-in
+  (`--with-influence`) because it is keyed by author handle.
+- The sidebar pipeline controls are workstation-only, gated on the
+  gitignored `.local_controls` marker that `publish_dashboard.py`
+  creates. A hosted clone cannot have it, so a public viewer is never
+  offered a button that spends API credit or calls a Terminal.
+
+On first load the host copies the bundle into `data/processed`
+(`_bootstrap_once` in `dashboard.py`) — a copy, never a recompute:
+`analytics.run_analytics` would auto-open a full walk-forward research
+pass on a clone with no frozen record.
+
+## AI layer
+
+Two providers behind one interface (`src/ai.py`); `AI_PROVIDER` selects.
+
+| Value | Behaviour |
+|---|---|
+| `auto` (default) | Apollo first, Anthropic if it does not resolve |
+| `apollo` | Firm gateway only — never falls back |
+| `anthropic` | Claude API only — skips Apollo entirely |
+
+Apollo needs the VPN and the JFrog-installed `dimsum_lite`, so it
+resolves on the desk machine alone. Anthropic needs only
+`ANTHROPIC_API_KEY` in `.env`, which is what makes a personal machine a
+complete environment: the AI Pulse and the agentic digest regenerate off
+the VPN instead of degrading to PENDING banners. Neither reachable means
+`available()` is False and callers degrade as before — no crash.
+
+    python -m src.ai --selftest     # prints the resolved provider + model
+
+Model ids: `AI_MODEL` for Apollo (deployment name, default `gpt-4o`),
+`ANTHROPIC_MODEL` for Claude (default `claude-sonnet-5`). The
+`AI_MAX_CALLS` budget is shared and enforced per process regardless of
+which provider answers.
+
+The hosted dashboard never calls a provider: it renders the
+`ai_pulse.json` published in the bundle.
+
 ## Research and re-validation
 
 | Task | Command |

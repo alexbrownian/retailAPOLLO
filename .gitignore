@@ -80,13 +80,19 @@ data/reference/agentic_samples.jsonl
 data/reference/agentic_scan_ledger.json
 data/reference/nb10_sample_texts.jsonl
 
-# ---- .env is tracked on purpose (recorded decision) ----
-# The credentials it holds travel with the repository. Consequences:
-#   * the repository must remain private: read access includes the
-#     FetchLayer key and the gateway password;
-#   * key rotation is a commit, so superseded values remain in history.
-#     Treat any key that has ever appeared here as burned once the
-#     repository leaves controlled distribution.
+# ---- .env is NOT tracked (supersedes the earlier decision) ----
+# It was previously committed so that credentials travelled with the
+# repository to the second machine. Hosting the dashboard ends that: a
+# deploy clones the repository onto third-party infrastructure, and the
+# file holds the FetchLayer key, the Reddit account password, the X
+# bearer token, and the gateway credentials. Distribution now has to be
+# manual - copy .env between machines out of band; a fresh clone starts
+# from example.env.
+#
+# The superseded values remain readable in the history that already
+# exists, so treat every key that has ever appeared here as burned until
+# it is rotated.
+.env
 
 # ---- New_ICE_data/: vendor delivery under evaluation ----
 # Only the evaluation notebook is tracked. The delivery itself is
@@ -104,3 +110,15 @@ New_ICE_data/*
 
 # Staging area for files retired from the project (review, then delete).
 _to_delete/
+
+# ---- workstation marker (never committed, by design) ---------------------
+# Its presence enables the dashboard's pipeline-run controls. A hosted clone
+# cannot have it, so a public viewer is never offered a button that fetches,
+# spends API credit, or calls a Bloomberg Terminal. Created by
+# tools/publish_dashboard.py; see LOCAL_CONTROLS in dashboard.py.
+.local_controls
+
+# DASHBOARD_DATA/ is deliberately ABSENT from this file. Like
+# ABSTRACTED_DATA/, it is a committed INPUT: the finished display frames the
+# hosted dashboard reads, staged by tools/publish_dashboard.py, which refuses
+# to publish anything carrying FORBIDDEN_COLS.
