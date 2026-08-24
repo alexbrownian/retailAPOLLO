@@ -236,9 +236,35 @@ def _bootstrap_from_bundles():
             _place(src, os.path.join(PROCESSED_DIR, name))
 
 
+def _bundle_signature() -> float:
+    """Newest mtime across the committed bundles.
+
+    The cache key for the bootstrap below. A hosted redeploy does not
+    necessarily restart the Python process - Community Cloud
+    "automatically copy[ies] any file changes you commit" into the
+    running container - so keying the bootstrap on the process alone
+    would copy the bundle once and never notice a later publish. Keyed
+    on this instead, new files landing in the checkout invalidate the
+    cache and are placed on the next rerun. Walking ~40 files costs
+    under a millisecond.
+    """
+    newest = 0.0
+    for root in (BUNDLE_DIR, os.path.join(ROOT, "ABSTRACTED_DATA")):
+        if not os.path.isdir(root):
+            continue
+        for dirpath, _dirs, files in os.walk(root):
+            for name in files:
+                try:
+                    newest = max(newest,
+                                 os.path.getmtime(os.path.join(dirpath, name)))
+                except OSError:            # vanished mid-walk; ignore
+                    pass
+    return newest
+
+
 @st.cache_resource(show_spinner="Preparing the published data...")
-def _bootstrap_once():
-    """Runs the bootstrap a single time per server process.
+def _bootstrap_once(signature: float):
+    """Places the bundle once per distinct bundle state.
 
     cache_resource (not cache_data): the work is a filesystem side
     effect, not a value, and every session in the container shares it.
@@ -246,10 +272,10 @@ def _bootstrap_once():
     from src.config import ensure_dirs
     ensure_dirs()
     _bootstrap_from_bundles()
-    return True
+    return signature
 
 
-_bootstrap_once()
+_bootstrap_once(_bundle_signature())
 
 # Pipeline controls (fetch, price pull, comment catch-up) are workstation-only.
 # The marker file is gitignored, so it exists on a machine that has run

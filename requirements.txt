@@ -1,6 +1,16 @@
-# retailAPOLLO dependencies.
-# Install with the same interpreter that runs the pipeline:
-#   pip install -r requirements.txt --user
+# retailAPOLLO runtime dependencies.
+#
+# This file is what the HOSTED dashboard installs: Streamlit Community
+# Cloud reads requirements.txt automatically and has no setting to point
+# at another name. So it carries only what a machine needs to RUN the
+# pipeline and draw the dashboard - nothing that exists for notebooks,
+# tests, or a Windows corporate network. Research and workstation extras
+# live in requirements-dev.txt.
+#
+# Workstation (both machines):
+#   pip install -r requirements.txt -r requirements-dev.txt --user
+#
+# Hosted dashboard: installs this file only, automatically.
 #
 # WINDOWS: --user is not cosmetic. Installing into a system Python
 # (C:\Python312\) makes pip rewrite files under Scripts\ and
@@ -29,7 +39,6 @@ scipy
 # Ingestion.
 zstandard          # Streamed (de)compression of raw post files.
 requests
-huggingface_hub    # Historical X dataset downloads (external machine).
 fsspec
 
 # Sentiment.
@@ -44,20 +53,12 @@ joblib             # Parallel scoring; also scikit-learn's parallel backend.
 # Extraction.
 wordfreq           # Word-vs-ticker screening fallback.
 
-# Modelling. A live-pipeline dependency: the desk GET IN / GET OUT pair
+# Modelling. A live-pipeline dependency: the GET IN / GET OUT pair
 # (analytics/ml_detector.py) and the retail-flow dial
 # (analytics/retail_flow.py) run inside `--what phases`. All sklearn
-# imports are function-level, so a dashboard-only machine may omit it.
+# imports are function-level, so a dashboard-only host never loads it,
+# but the module tree imports cleanly either way.
 scikit-learn
-
-# Notebook re-execution (research machines only). Invoke as
-# `python -m jupyter nbconvert ...`: on Windows the Scripts folder
-# holding jupyter.exe is often not on PATH, and `python -m` resolves the
-# module through the interpreter instead.
-jupyter
-nbconvert
-jupytext
-matplotlib         # Notebook figures (the dashboard uses plotly).
 
 # AI layer fallback. The Apollo gateway arrives through the firm's own
 # channel (dimsum_lite, JFrog/LEVA) and is not installable from PyPI;
@@ -69,13 +70,3 @@ anthropic
 # Dashboard.
 streamlit
 plotly
-
-# Tests.
-pytest
-
-# Windows corporate-proxy TLS (harmless elsewhere).
-pip-system-certs
-
-# blpapi (Bloomberg, pull_bloomberg_prices.py) is not on PyPI. Install
-# from Bloomberg's index with the Terminal running:
-#   python -m pip install --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi --user
