@@ -24,7 +24,7 @@ TWO MODES, ONE KNOB (the window in src/config.py, overridable per run):
         --start 2021-01-01 --end 2021-11-01   -> view Jan-Oct 2021
         --start 2021-01-01                    -> LIVE, 2021 -> today
 
-RUNS ON BOTH MACHINES (auto-detected, exactly like RetailFlow1)
+RUNS ON BOTH MACHINES (auto-detected)
     * EXTERNAL machine (data/processed/posts.parquet present)
         Holds the raw post store. Live mode merges new posts into the
         store and splices the aggregate tail; --full rebuilds every
@@ -34,7 +34,7 @@ RUNS ON BOTH MACHINES (auto-detected, exactly like RetailFlow1)
         posts fold straight into the aggregates; raw text never lands.
     Either way the run ends by verifying ABSTRACTED_DATA carries no text.
 
-WHAT THIS SCRIPT WILL NEVER DO (desk instruction, 2026-07-28)
+WHAT THIS SCRIPT WILL NEVER DO (requirement, 2026-07-28)
     It does not choose a model, re-select a threshold, or re-run the
     walk-forward / ablation / ML challenger. It refreshes data and scores
     it with the ALREADY-FROZEN winner, every time, so the run is one
@@ -312,7 +312,7 @@ def main():
     p.add_argument("--skip-comments", action="store_true",
                    help="do NOT fetch Reddit comments this run (the "
                         "influence board then rescores the same data it "
-                        "already had). Desk decision 2026-07-27: comments "
+                        "already had). Recorded decision 2026-07-27: comments "
                         "are ON by default in live runs, because the "
                         "influence board is only current if the comments "
                         "behind it are. They remain the slow species, so "
@@ -403,7 +403,7 @@ def main():
         if args.skip_comments:
             fetch_cmd.append("--skip-comments")
         else:
-            # Comments ride every live run (desk decision 2026-07-27) so the
+            # Comments ride every live run (recorded decision; see docs/DECISIONS.md) so the
             # influence board is rescored on data that is actually new. They
             # are the slow species, so the crawl gets a PAGE ALLOWANCE: the
             # desk's runtime ceiling minus what this machine measurably
@@ -509,7 +509,7 @@ def main():
         return False
 
     if full_chain:
-        # GUARD (same as RetailFlow1): months can be folded into
+        # GUARD: months can be folded into
         # ABSTRACTED_DATA on the OTHER machine. A --full here rebuilds from
         # THIS machine's posts.parquet - if the committed aggregates run
         # ahead of the local master, the rebuild would silently REVERT
@@ -596,7 +596,7 @@ def main():
         if prices_rc != 0:
             # NOT fatal, but it must not pass silently either: the rest
             # of the run is valid on the prices already on disk, and the
-            # RUN SUMMARY says how stale they now are (desk 2026-08-11 -
+            # RUN SUMMARY says how stale they now are (rationale:
             # the summary used to print "prices: present" after a failed
             # pull, which reads as success).
             log("PRICE PULL FAILED - continuing on the prices already "
@@ -620,7 +620,7 @@ def main():
     elif not internal and not live:
         log("backtest view: nothing rebuilt, nothing published", fh)
 
-    # ---- 5b. AI LAYER (desk instruction 2026-08-02: "when i
+    # ---- 5b. AI LAYER (recorded decision: "when i
     #          update_data it also does the updating of the AI pulse").
     #          Two parts, both non-fatal by design:
     #          * the AGENTIC SCAN - pure python over any new raw
@@ -650,7 +650,7 @@ def main():
                 log(f"AI PULSE: skipped - {_msg}", fh)
         except Exception as e:                           # noqa: BLE001
             log(f"AI PULSE: skipped - {type(e).__name__}: {e}", fh)
-        # the keyword-map auditor, WEEKLY (desk question 2026-08-04
+        # the keyword-map auditor, WEEKLY (design question 2026-08-04
         # "does it run every once in a while?" - it does now): if the
         # newest suggestions file is older than 7 days and the gateway
         # is up, a fresh audit is written for review. NEVER auto-applied

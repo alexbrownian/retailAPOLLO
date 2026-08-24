@@ -13,7 +13,7 @@
 # %% [markdown]
 # # ICE — a new Reddit source, assessed before it is trusted
 #
-# **Desk request, 2026-08-20.** *"its reddit data from a different
+# **Objective.** *"reddit data from a different
 # source and i want to see if it can be incorporated into our data
 # pipeline moving forward"* — then, once it was unpacked: *"dont use
 # the zip please just read straight from the unzipped folder now"*.
@@ -1176,7 +1176,7 @@ else:
 #
 # Three consequences, and the third is the interesting one.
 #
-# **1. There is no sentiment column.** The desk asked to "use theirs
+# **1. There is no sentiment column.** The intent was to "use theirs
 # wherever we have a sentiment score". There isn't one — `ICE_ID_1` and
 # `ICE_ID_2` are ICE's internal entity identifiers, the keys behind
 # `Entity_1` / `Entity_2`, not scores. `Count` is a frequency. Sentiment

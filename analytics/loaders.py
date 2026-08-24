@@ -37,7 +37,7 @@ import pandas as pd
 
 from src.config import PROCESSED_DIR, PRICES_PATH
 
-# Canonical filenames (identical to RetailFlow1, so the two projects'
+# Canonical filenames (stable across project generations, so projects'
 # outputs remain directly comparable file-for-file).
 TICKER_COUNTS = "daily_ticker_counts.parquet"
 TICKER_COUNTS_BY_SOURCE = "daily_ticker_counts_by_source.parquet"

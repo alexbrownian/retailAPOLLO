@@ -80,48 +80,27 @@ data/reference/agentic_samples.jsonl
 data/reference/agentic_scan_ledger.json
 data/reference/nb10_sample_texts.jsonl
 
-# ---- .env IS TRACKED ON PURPOSE ----
-# Desk decision 2026-08-06: ".env to be committed in the future, its
-# fine." So it is NOT ignored, and the credentials it holds travel with
-# the repository.
-#
-# Two things follow from that, neither of them optional:
-#   * this repo must stay private. Anyone with read access has the
-#     FetchLayer key and the Apollo gateway password.
-#   * rotating a key means committing the rotation, so the OLD value
-#     stays in history forever. Treat every key that has ever been in
-#     here as burned the day the repo leaves the desk.
-#
-# POST_INTERN_HANDOVER.md previously claimed this file was git-ignored.
-# It never was - the only matching pattern was `env/`, the virtualenv
-# DIRECTORY, which never matched a file called `.env`. The claim is
-# corrected there.
+# ---- .env is tracked on purpose (recorded decision) ----
+# The credentials it holds travel with the repository. Consequences:
+#   * the repository must remain private: read access includes the
+#     FetchLayer key and the gateway password;
+#   * key rotation is a commit, so superseded values remain in history.
+#     Treat any key that has ever appeared here as burned once the
+#     repository leaves controlled distribution.
 
-# ---- new_ice_data/ : A VENDOR DELIVERY UNDER EVALUATION ----
-# Desk instruction 2026-08-20: "make sure this whole thing dosnt get
-# commited". Ignored for two reasons, and the second matters more than
-# the first:
-#
-#   1. SIZE. The delivery is a 2.6 GB zip plus a 2.8 GB split archive
-#      unpacked beside it. Nothing that large belongs in git history,
-#      where it can never be truly deleted.
-#   2. RAW TEXT. It is unaggregated Reddit posts. This project's
-#      standing rule is that only TEXT-FREE aggregates are committable
-#      (see ABSTRACTED_DATA and the verify_abstracted safety check in
-#      update_data.py) - raw post text is precisely what must never
-#      reach the repository. A vendor sample is no exception.
-#
-# The notebook that evaluates the delivery IS tracked (it is code, and
-# it is how the assessment is reproduced); everything it reads and
-# everything it writes is not.
-# Both spellings are listed on purpose. The folder on the desk machine
-# is "New_ICE_data"; gitignore matching follows core.ignorecase, which
-# is true on Windows and FALSE on Linux, so a single lowercase rule
-# would silently stop protecting this folder the day the repo is cloned
-# anywhere else. Two rules cost nothing and cannot fail that way.
+# ---- New_ICE_data/: vendor delivery under evaluation ----
+# Only the evaluation notebook is tracked. The delivery itself is
+# multi-GB unaggregated raw post text: oversized for git history, and
+# raw text is exactly what the text-free commit rule exists to keep out
+# of the repository. Both case spellings are listed because gitignore
+# matching follows core.ignorecase (true on Windows, false on Linux);
+# a single-case rule would stop protecting the folder on a Linux clone.
 new_ice_data/*
 !new_ice_data/explore_ice_source.py
 !new_ice_data/explore_ice_source.ipynb
 New_ICE_data/*
 !New_ICE_data/explore_ice_source.py
 !New_ICE_data/explore_ice_source.ipynb
+
+# Staging area for files retired from the project (review, then delete).
+_to_delete/

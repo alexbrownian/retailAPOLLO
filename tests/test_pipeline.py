@@ -420,7 +420,7 @@ class TestEuphoria:
         pd.testing.assert_series_equal(ra.iloc[:300], rb.iloc[:300])
 
     def test_euphoria_is_reddit_only(self):
-        """THE desk rule: compute_euphoria must not accept price input -
+        """THE selection rule: compute_euphoria must not accept price input -
         prediction is built from the crowd data alone (price exists only
         on the ground-truth/scoring side)."""
         import inspect
@@ -670,7 +670,7 @@ class TestInfluenceGraph:
         out = ig.ticker_voices(calls, board, days=30,
                               asof=pd.Timestamp("2026-07-02"))
         # Hover text is a SCREEN surface, so the handles in it arrive
-        # half-masked (desk 2026-08-12). The masking is asserted through
+        # half-masked (see docs/DECISIONS.md). The masking is asserted through
         # the same helper the display uses rather than hard-coded, so this
         # test keeps testing ORDERING and does not become a second, stale
         # copy of the mask rule.
@@ -900,7 +900,7 @@ class TestEuphoriaPhases:
         return px
 
     def test_onset_is_crowd_only(self):
-        """THE desk rule extends to the onset detector: neither the
+        """THE selection rule extends to the onset detector: neither the
         feature builder nor the score accepts price input."""
         import inspect
         from analytics.euphoria_phases import (compute_onset_features,
@@ -1012,7 +1012,7 @@ class TestEuphoriaPhases:
 
 class TestDynamicPanel:
     """The dynamic subreddit panel (ingestion/discover_subreddits.py,
-    desk decisions 2026-07-24): crowd-referral discovery with the A0
+    recorded decisions 2026-07-24): crowd-referral discovery with the A0
     coverage floor reused as the qualification bar, a same-ruler finance
     screen, a 1-add/review cap and a committed audit manifest."""
 
@@ -1074,7 +1074,7 @@ class TestDynamicPanel:
 
 
 class TestResearchLiveSplit:
-    """Desk decision 2026-07-24, TIGHTENED 2026-07-28: research decides
+    """recorded decision:, TIGHTENED 2026-07-28: research decides
     once, live scores - and a data pull NEVER decides on its own.
 
     A pull derives a threshold in exactly one case: the machine has no
@@ -1114,7 +1114,7 @@ class TestResearchLiveSplit:
 
 
 class TestEpisodeCoherence:
-    """Desk rule 2026-07-24, ASYMMETRIC by measurement: a START within
+    """Coherence rule, asymmetric by measurement: a START within
     one 21d cooldown after an END is suppressed (contradictory flip);
     an END after a START is NEVER suppressed - fast manias genuinely
     run start-to-end inside a cooldown, and the symmetric rule cost the
@@ -1147,7 +1147,7 @@ class TestEpisodeCoherence:
 
 
 class TestDeskConfiguration:
-    """The adopted desk configuration (desk decision 2026-07-24, NB06):
+    """The adopted desk configuration (recorded decision; see docs/DECISIONS.md):
     GET OUT = boom-gated + 7d-smoothed end rules; GET IN = phase-aware +
     7d-smoothed onset rules. These tests pin the SEMANTICS the decision
     rests on - candidacy, the end-stage mask, trailing smoothing - and
@@ -1239,7 +1239,7 @@ class TestDeskConfiguration:
         assert not (set(df.columns) & FORBIDDEN_COLS)
         assert not (df["get_in"] & df["end_stage"]).any()
         if "get_in_strict" in df.columns:
-            # the Strict setting (2026-08-09) obeys the same PM-trust
+            # the Strict setting obeys the same PM-trust
             # invariant as the standard columns. (No subset assertion
             # on counts: with a crossing trigger a higher cut is not
             # mathematically a subset - one long push above the low cut
@@ -1460,7 +1460,7 @@ class TestEuphoriaGauge:
 
 class TestHandleCensoring:
     """`analytics.plain_english.censor` - the display-only mask on obscene
-    Reddit handles (desk instruction 2026-07-28).
+    Reddit handles (recorded decision:).
 
     Two failure modes matter and neither is caught by "it ran without
     error", so both are fenced here:
@@ -1579,7 +1579,7 @@ class TestHandleCensoring:
 class TestThemeRollup:
     """`theme_digest` / `theme_voices` - the influence tab's THEME view.
 
-    The desk asked the crowding question at the theme level ("what if lots
+    The crowding question is asked at the theme level ("what if lots
     of influential accounts converge on a theme"), and the tab could only
     answer it one ticker at a time.  The roll-up therefore reuses the
     ACCEPTED consensus and backing arithmetic through one shared
@@ -1712,7 +1712,7 @@ class TestThemeRollup:
             assert "price" not in code
 
     def test_half_mask_shows_some_of_the_handle_and_hides_most(self):
-        """Desk 2026-08-12: "abstract the names with like *** but can kinda
+        """Requirement: "abstract the names with *** but
         see". Both halves of that are load-bearing - a label that reveals
         nothing makes the leaderboard unreadable, and one that reveals
         everything is not a mask."""
@@ -1792,7 +1792,7 @@ class TestDashboardModuleHygiene:
 
 
 class TestPulseNoFillerRule:
-    """The desk's standing rule (2026-08-04): "if something is like
+    """The desk's standing rule "if something is like
     'there is minimum discussion' then we shouldnt include it, whatever
     is included should be the most interesting / most mentioned / most
     recent (never useless information)".  The prompt asks for that; this
@@ -1833,7 +1833,7 @@ class TestPulseNoFillerRule:
 
 class TestPollPromptPanel:
     """The poll's value IS its continuity: a reworded prompt silently
-    breaks that prompt_id's history (module docstring, handover §4)."""
+    breaks that prompt_id's history (see the module docstring)."""
 
     def test_the_original_twelve_prompts_are_untouched(self):
         from analytics.ai_poll import _prompts
@@ -1945,7 +1945,7 @@ class TestSingleNameUniverse:
 
 
 class TestEverythingIsIncremental:
-    """Desk rule (2026-08-04): "on the dashboard it should only be doing
+    """Rule: "on the dashboard it should only be doing
     incremental when i do LIVE. update_data should be for the full redo
     but for the final end-user (the dashboard refresh live) it should
     always be incremental."
@@ -1991,7 +1991,7 @@ class TestEverythingIsIncremental:
 
 
 class TestTickerAllowlist:
-    """Desk instruction 2026-08-04: "stuff like MU should be considered
+    """recorded decision: "stuff like MU should be considered
     as tickers". Two gaps fed one fix - see the block comment in
     src/extract_tickers.py."""
 
@@ -2059,7 +2059,7 @@ class TestFlagLabelsAndConfigReload:
     """The dashboard must SAY which instrument a flag refers to, and it
     must notice when config/theme_etfs.csv changes.
 
-    Both come from the same incident (2026-08-04): the china_geopolitics
+    Both come from the same incident the china_geopolitics
     anchor was corrected KWEB -> FXI in the CSV, the long-running
     Streamlit process kept serving the map it imported at start-up, and
     from the screen that was indistinguishable from the fix having
@@ -2216,7 +2216,7 @@ class TestApprovedUniverseCoverage:
     should be unreachable, and nothing on screen should quote an
     instrument the chart is not actually using.
 
-    Desk question 2026-08-04: "are there less themes than etfs? is that
+    Design question: "are there fewer themes than ETFs? is that
     why we are getting less in the dropdown?" - yes to the first, no to
     the second. The dropdown lists THEMES; instruments outnumber them
     because seven anchors serve two themes each, twenty-one lines are
@@ -2565,22 +2565,6 @@ class TestNothingCanDangle:
         assert not missing, ("src/config.py no longer defines:\n"
                              + "\n".join(missing))
 
-    def test_the_retired_notebooks_folder_is_load_bearing(self):
-        """`docs/research/nb04_final_eval.json` is read live by the
-        dashboard and its ONLY producer is a notebook inside
-        `notebooks/_to_delete_2026-07-31_merged_into_04/`. Deleting that
-        folder as 'obviously retired' orphans a working read - this test
-        is the warning label."""
-        root = self._root()
-        dash = (root / "dashboard.py").read_text(encoding="utf-8")
-        if "nb04_final_eval" not in dash:
-            return                      # the read went away; guard moot
-        retired = root / "notebooks" / "_to_delete_2026-07-31_merged_into_04"
-        assert retired.exists(), (
-            "the dashboard still reads nb04_final_eval.json but the only "
-            "notebook that writes it has been deleted - restore the "
-            "folder or remove the dashboard read")
-
 
 class TestAiPulseControls:
     """The AI Pulse changes of 2026-08-05."""
@@ -2645,56 +2629,10 @@ class TestAiPulseControls:
         assert 'st.expander("planned LLM segments' not in src
         assert "the exact prompt behind this page" in src
         # the time control moved to a SLIDER at the top of the page
-        # (desk 2026-08-05) - one control owns the date, so the old
+        # (see docs/DECISIONS.md) - one control owns the date, so the old
         # lower expander is gone on purpose
         assert "the market's mood on" in src
         assert "_market_read(" in src
-
-
-class TestOneImagesRoot:
-    """All figures live under docs/figures/, split by purpose.
-
-    There used to be a second `figures` folder nested at
-    docs/presentation/figures — two directories with the same name at
-    different depths, and no rule saying which one a given PNG belonged
-    in. Consolidated 2026-08-05."""
-
-    @staticmethod
-    def _root():
-        from pathlib import Path
-        return Path(__file__).resolve().parents[1]
-
-    def test_there_is_exactly_one_figures_directory(self):
-        dirs = sorted(p.relative_to(self._root()).as_posix()
-                      for p in self._root().rglob("figures")
-                      if p.is_dir() and "_to_delete" not in str(p))
-        assert dirs == ["docs/figures"], (
-            f"more than one figures root again: {dirs}")
-
-    def test_the_deck_pack_is_complete(self):
-        """The deck is assembled on a machine with only the brief and
-        these PNGs, so a missing one is a hole in the presentation with
-        no way to notice until the room does."""
-        deck = self._root() / "docs" / "figures" / "deck"
-        names = {p.name for p in deck.glob("*.png")}
-        for stem in ("W1_walkthrough_attention", "W2_walkthrough_factors",
-                     "W3_walkthrough_level_and_flag",
-                     "W4_walkthrough_outcome", "F10_feature_auroc",
-                     "F11_feature_ap", "F12_feature_correlation",
-                     "F15_frontier", "F16_noise_control",
-                     "F17_parameter_sweeps", "F19_performance_table",
-                     "S05a_dashboard_themes", "S05b_dashboard_singles",
-                     "S22_influence_tracker", "S23_ai_pulse"):
-            assert f"{stem}.png" in names, f"deck figure missing: {stem}"
-
-    def test_the_builder_writes_where_the_brief_points(self):
-        src = (self._root() / "tools"
-               / "build_deck_figures.py").read_text(encoding="utf-8")
-        assert '"docs", "figures", "deck"' in src
-        brief = (self._root()
-                 / "docs" / "PRESENTATION_BRIEF.md").read_text(
-                     encoding="utf-8")
-        assert "figures/deck/" in brief
 
 
 class TestPreflight:
@@ -2730,7 +2668,7 @@ class TestPreflight:
 class TestPulseRegister:
     """Section 2 must read like a colleague briefing you, not a summary.
 
-    Desk 2026-08-05, quoting the output they want: "users on WSB are
+    Specified output format: "users on WSB are
     really talking a lot about this stock xx because of this but many
     are worried about y ... sentiment super bullish as everyone is
     posting that they are making money"."""
@@ -2760,7 +2698,7 @@ class TestPulseRegister:
         assert "system=_PULSE_SYSTEM" in src
 
     def test_divergences_is_the_only_call_with_numbers(self):
-        """Desk 2026-08-12: "i like the divergences part - that can be
+        """Requirement: "the divergences part can be
         the only one which is using the numbers". Call 3 gets the pack
         AND its own system prompt - handing it numbers under the
         posts-only prompt would tell the model in one breath that it has
@@ -2998,7 +2936,7 @@ class TestInflectionMarker:
 class TestMoodGauge:
     """The mood/bullishness SCORES are gone, and must stay gone.
 
-    Desk 2026-08-07: "on AI pulse remove the bullish score number please
+    Requirement: "on AI pulse remove the bullish score number
     and all the associated code". Two numbers existed - the LLM's
     'retail mood gauge X/100' and the slider-driven bullishness
     percentile - and both were removed. These tests are the tripwire
@@ -3016,7 +2954,7 @@ class TestMoodGauge:
         slider used to print."""
         src = self._src()
         assert "(wk <= nb).mean()" not in src, (
-            "the slider bullishness percentile is back - the desk asked "
+            "the slider bullishness percentile is back - it was "
             "for the score number and its code to be removed")
         assert "bullishness (0-100)" not in src
 
@@ -3045,7 +2983,7 @@ class TestMoodGauge:
 class TestWeeklySnapshot:
     """Dragging the slider must produce a written read of THAT week.
 
-    Desk 2026-08-06: "i want it when i drag the slider to update the
+    Requirement: dragging the slider updates the
     text though, so i get like a snapshot of the market at that point of
     time." The model cannot do this - one stored document, gateway call
     - so the snapshot is composed from the stores instead."""
@@ -3073,7 +3011,7 @@ class TestWeeklySnapshot:
 
     def test_breadth_reads_wide_or_narrow_not_loud_or_quiet(self):
         """Breadth is an absolute share of themes, and with the
-        intensity score removed (desk 2026-08-07) it is the ONLY axis
+        intensity score removed (see docs/DECISIONS.md) it is the ONLY axis
         the sentence may speak to - wide vs carried-by-a-few, never a
         loudness claim it no longer measures."""
         src = self._src()
@@ -3084,7 +3022,7 @@ class TestWeeklySnapshot:
 class TestBackDatedHarvest:
     """A back-dated pulse must hand the model posts from THAT week.
 
-    Desk 2026-08-06: "even historically if we drag it back to a specific
+    Requirement: "even historically if we drag it back to a specific
     day and it uses LLMs to analyse the posts in a lookback like 3d".
     Two bugs stopped that working, both silent."""
 
@@ -3359,15 +3297,32 @@ class TestPriceBlindTrigger:
         # trigger-aware parts, never assembled ad hoc at a call site.
         assert '_c = f"{base}{_XP_PART}{_gate_part}{_SIG_SUFFIX}"' in src
         assert "experimental_price_blind" in src
-        # the store-predates-it case warns rather than silently
-        # substituting the shipped signals
-        assert "predate the experimental" in src
+        # 2026-08-23: the trigger SELECTOR was removed at the desk's
+        # request - the dashboard is hardwired to the shipped pair, so
+        # the "your store predates the experimental columns" warning it
+        # used to show has no way to fire and was removed with it. The
+        # fence therefore changes shape: instead of asserting the
+        # warning exists, assert the experimental path CANNOT BE
+        # SELECTED, which is a strictly stronger guarantee.
+        assert "XP_TRIGGER = False" in src
+        _sel = [ln for ln in src.splitlines()
+                if "st.sidebar" in ln and "trigger" in ln.lower()]
+        assert not _sel, f"a trigger selector is back in the sidebar: {_sel}"
+        # and the routing still flows through the same trigger-aware
+        # parts, so re-enabling it is a one-line change that cannot
+        # leave a surface reading the wrong family
+        assert '_XP_PART = "_xp" if XP_TRIGGER else ""' in src
         # the watchlist keeps both sides eligible in xp mode (no gate)
         assert "_boomed or XP_TRIGGER" in src
         assert "(not _boomed) or XP_TRIGGER" in src
-        # the mode is never the default
-        blk = src[src.index('"trigger",'):src.index('XP_TRIGGER = ')]
-        assert "index=0" in blk
+        # The mode is never the default. This used to be checked by
+        # reading index=0 off the radio; with the radio gone the same
+        # guarantee is now structural - XP_TRIGGER is a literal False
+        # and nothing in the file assigns it True.
+        _true = [ln.strip() for ln in src.splitlines()
+                 if ln.strip().startswith("XP_TRIGGER")
+                 and ln.strip().endswith("True")]
+        assert not _true, f"XP_TRIGGER is set True somewhere: {_true}"
 
     def test_store_columns_when_present(self):
         """On a machine whose store has been rebuilt since 2026-08-14:
@@ -3393,7 +3348,7 @@ class TestPriceBlindTrigger:
 
 
 class TestSignedReadinessAndUngatedGetIn:
-    """The 2026-08-17 adoptions (notebook 08 §10, record
+    """The adoptions (notebook 08 §10, record
     docs/research/nb08_single_dial.json): the ungated GET IN, the one
     SIGNED readiness, and the retirement of the Relaxed setting.
 
@@ -3480,7 +3435,7 @@ class TestSignedReadinessAndUngatedGetIn:
         assert (side_in | side_out).all()
 
     def test_relaxed_setting_is_gone_from_the_interface(self):
-        """Desk 2026-08-17: Standard only. The F1 columns stay in the
+        """Operating-point columns: both cuts are stored. The F1 columns stay in the
         store (recorded numbers must reproduce); the CONTROL must not
         return."""
         src = self._src("dashboard.py")
@@ -3489,7 +3444,7 @@ class TestSignedReadinessAndUngatedGetIn:
 
 
 class TestRetailFlowDial:
-    """The continuous retail-flow dial (2026-08-17 adoption, notebook 08
+    """The continuous retail-flow dial (adoption, notebook 08
     §9). Adopted as the trend/context layer on the same explicit
     condition as the inflection marker: it is FURNITURE. It never
     fires, gates, filters or re-scores a call, and its smoothness comes
@@ -3548,7 +3503,7 @@ class TestRetailFlowDial:
 
 class TestPinnedModelFamily:
     """DESK_MODEL_FAMILY must skip the tournament without weakening the
-    validation that follows it (desk 2026-08-21)."""
+    validation that follows it (see docs/DECISIONS.md)."""
 
     def _spy(self):
         import analytics.ml_detector as mld

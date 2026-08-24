@@ -34,7 +34,7 @@ DESIGN RULES
     told in the spec to ignore the evidence block.  The pack is built and
     saved into ai_pulse.json either way - it is the week's measured record
     and the dashboard orders the theme dropdown from it.
-  * FOUR STAGES PER RUN (desk request 2026-08-04: "longer and much
+  * FOUR STAGES PER RUN (recorded request: "longer and much
     more detailed"): (1) the whole-market read, (2) one brief per theme
     - BATCHED, so every theme the crowd discusses gets one and the
     dropdown is never truncated by a token ceiling, (3) catalysts and
@@ -183,7 +183,7 @@ def _evidence() -> dict:
             for r in last.nlargest(5, "level").itertuples()}
     # THE WORDS THE CROWD HAS JUST STARTED USING.
     #
-    # Added 2026-08-05. The pulse could name themes and tickers but had
+    # The pulse could name themes and tickers but had
     # no way to say "everyone is suddenly talking about tariffs" - the
     # topical phrase that spreads through a forum in a week and is often
     # the actual subject, ahead of any ticker. Measured as this week

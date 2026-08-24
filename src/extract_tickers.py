@@ -34,13 +34,13 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # JARGON, NOT TICKERS.  Symbols the crowd uses as words.
 #
-# Moved out of this file and into config/ticker_stoplist.csv on 2026-08-04
-# (desk instruction) so it can be maintained without touching code - the
+# Maintained in config/ticker_stoplist.csv so the list can change
+# without touching code - the
 # same treatment every other mapping in this project already had.  The
 # frozenset below is the FALLBACK seed: it keeps a fresh clone working if
 # the CSV is missing, and it is the list as it stood before the move.
 #
-# HOW A SYMBOL EARNS A PLACE HERE.  The 2026-08-04 additions used a
+# How a symbol earns a place here: additions use a
 # falsifiable test rather than taste: many finance abbreviations have since
 # been issued to a real ETF (HYSA, DRAM, BTC, REIT, NASA, DJIA, HVAC, EBIT,
 # ROPE), so "is it a listed symbol?" cannot separate them from real
@@ -87,7 +87,7 @@ STOP_TICKERS: frozenset[str] = load_stop_tickers()
 # ---------------------------------------------------------------------------
 # THE ALLOWLIST - real tickers the bare-word pass would otherwise never see.
 #
-# Added 2026-08-04 after the desk asked why names like MU were not being
+# Rationale: short all-caps symbols (e.g. MU) were not being
 # counted. Two separate gaps, one mechanism:
 #
 #   1. TOO SHORT. `WORD_BARE` is [A-Z]{4,5}, so every 1-3 letter ticker was
@@ -124,7 +124,7 @@ ALLOWLIST_CSV = (
 
 def load_allow_tickers(path: Path = ALLOWLIST_CSV) -> frozenset[str]:
     """Desk-editable. An empty/missing file simply means no allowlist, which
-    is the behaviour this project had before 2026-08-04."""
+    is the legacy behaviour retained for comparison."""
     if not Path(path).is_file():
         return frozenset()
     df = pd.read_csv(path)

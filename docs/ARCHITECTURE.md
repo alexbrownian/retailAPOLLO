@@ -10,7 +10,7 @@ what lives elsewhere — see the documentation map at the end.*
 > section numbers while the file itself was missing from the repository.
 > Rather than strip the references, the file was written and the cited
 > sections (3.1b, 3.1b-i, 6.1) created to hold what those call sites
-> promise. Same remedy the PARAMETER_REGISTER applied to its own broken
+> promise. Same remedy the docs/RESEARCH_RECORD.md applied to its own broken
 > pointer, and recorded for the same reason.
 
 ---
@@ -143,7 +143,7 @@ lint; it is the reason the aggregates can be committed at all.
 
 Every knob lives in `src/config.py` with its evidence quoted beside it,
 and every value belongs to a class recorded in
-`docs/PARAMETER_REGISTER.md`. The pipeline snapshots signals daily and
+`docs/RESEARCH_RECORD.md`. The pipeline snapshots signals daily and
 never revises them: that forward record is the only true out-of-sample
 test this project has.
 
@@ -175,7 +175,7 @@ would be a silent lookahead).
    Performance claims belong in notebooks with confidence intervals,
    not on screens.
 4. **Every constant carries its provenance.** No unexplained numbers,
-   ever — `docs/PARAMETER_REGISTER.md` has a row for each.
+   ever — `docs/RESEARCH_RECORD.md` has a row for each.
 5. **AI writes words, never numbers, and never edits config.** Section
    4.1.
 

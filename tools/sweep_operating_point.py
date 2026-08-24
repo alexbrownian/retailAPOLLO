@@ -1,7 +1,7 @@
 """
 sweep_operating_point.py - choose the "Standard" cut on evidence
 ================================================================
-Desk request 2026-08-23: the shipped setting declines gold's 2026 top by
+recorded decision: the shipped setting declines gold's 2026 top by
 about a hundredth of probability, and the question is whether the
 operating point is too tight IN GENERAL - not whether gold specifically
 can be made to fire.
@@ -33,7 +33,7 @@ HOW TO USE THE OUTPUT HONESTLY
 THEN
     set EUPHORIA_STRICT_BETA in src/config.py, re-run
         python -m analytics.run_analytics --what phases --research
-    and record the before/after in docs/PARAMETER_REGISTER.md.
+    and record the before/after in docs/RESEARCH_RECORD.md.
 """
 from __future__ import annotations
 
@@ -127,7 +127,7 @@ def main() -> int:
     print(f"\nwrote {os.path.relpath(dest, PROJECT_ROOT)}")
     print("\nNOTHING WAS CHANGED. To adopt a beta: set EUPHORIA_STRICT_BETA "
           "in src/config.py,\nre-run `--what phases --research`, and record "
-          "the before/after in PARAMETER_REGISTER.md.")
+          "the before/after in docs/RESEARCH_RECORD.md.")
     if watch and len(out):
         cols = ["head", "beta"] + [f"first_{w}" for w in watch]
         print(f"\nFOR INFORMATION ONLY - first alert per watched name.")

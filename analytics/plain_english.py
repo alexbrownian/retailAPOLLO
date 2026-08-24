@@ -5,7 +5,7 @@ WHY THIS MODULE EXISTS
 The research half of this repo uses research notation, and that is the right
 notation for a research record: ``s_conf``, ``s_z``, ``s_enh``, ``e1..e5``, AP,
 AUROC, homophily, DICE.  It is the wrong notation for a portfolio manager
-reading a chart between meetings.  The desk decision (2026-07-27) was
+reading a chart between meetings.  The recorded decision (2026-07-27) was
 therefore:
 
 * the METHODS keep their formal definitions, unchanged - the research must
@@ -289,7 +289,7 @@ def glossary_md(keys: list[str] | None = None) -> str:
 # WHY THIS IS HERE AND NOT IN THE STORE
 # -------------------------------------
 # The influence board is built from real Reddit handles, and a meaningful
-# minority of them are unprintable.  The desk instruction (2026-07-28) was to
+# minority of them are unprintable.  The requirement (2026-07-28) was to
 # "censor the innapropriate stuff with **".  That is a DISPLAY concern, so it
 # belongs in this module for exactly the reason the module docstring gives: the
 # stored parquet is an interface.  Rewriting handles inside
@@ -377,7 +377,7 @@ def glossary_md(keys: list[str] | None = None) -> str:
 # These lists are a CONVENTION (Class 3), not a learned or derived parameter.
 # There is no ground truth for "offensive" to fit against, so no amount of
 # bootstrapping would make them evidence-backed.  What IS evidence is the
-# measured behaviour, recorded in `docs/PARAMETER_REGISTER.md`: how many of
+# measured behaviour, recorded in `docs/RESEARCH_RECORD.md`: how many of
 # the 12,528 real handles are masked, which stem fires each one, and the
 # residual errors named individually.  Under-masking is the deliberate
 # direction of the error: a missed handle is one embarrassing name on a board

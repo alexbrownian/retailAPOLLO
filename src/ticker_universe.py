@@ -148,7 +148,7 @@ def load_us_ticker_universe(
 # the distinction is available for free from files this project already
 # caches - no new dependency, no hand list to maintain.
 #
-# Added 2026-08-04.  The euphoria SINGLE-NAME detector was ranking on
+# Rationale: the euphoria single-name detector previously ranked on
 # mentions alone, which put SPY, QQQ, VXUS and SCHD into a tab whose whole
 # premise is single names; their mentions are real signal and stay in the
 # counts, they simply are not single names.

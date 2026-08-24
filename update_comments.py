@@ -1,7 +1,7 @@
 """
 update_comments.py
 ==================
-The dedicated Reddit-comments + influence-board runner (desk decision,
+The dedicated Reddit-comments + influence-board runner (recorded decision,
 2026-07-24: comments left the daily pipeline - they are the slow fetch -
 and live here instead).
 

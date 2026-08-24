@@ -1,6 +1,6 @@
 """Read an index or factor basket through its CONSTITUENTS.
 
-Desk instruction 2026-08-05, and it is the whole design in one sentence:
+The whole design in one sentence:
 *"you should be MAPPING stuff to these indices and not just looking for
 mentions of the ETF"* — with the worked example, *"sk hynix would map to
 SMH"*, and the framing that followed: *"momentum is basically the same as

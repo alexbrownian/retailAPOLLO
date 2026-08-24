@@ -4,7 +4,7 @@ WHY THIS MODULE EXISTS
 ----------------------
 The 17-subreddit panel produces a measured ~14,000 comments/day, i.e. about
 140 API pages/day.  At the Arctic Shift politeness contract of 1 request per
-second, a 7-day gap costs ~16.5 minutes of pure fetching - against the desk's
+second, a 7-day gap costs ~16.5 minutes of pure fetching - against the
 stated ceiling of "~10 minutes" for the ENTIRE refresh.  Weekly runs, the full
 panel and a 10-minute ceiling cannot all three hold, and the project does not
 resolve that with a number somebody types into a constant.
@@ -63,7 +63,7 @@ collects less than it claims.
 NOTHING HERE TOUCHES A SIGNAL.  These numbers decide how much data a run
 FETCHES, never how anything is scored.
 
-Evidence: ARCHITECTURE.md 3.1b and 3.1b-i, PARAMETER_REGISTER.md Class 7.
+Evidence: ARCHITECTURE.md 3.1b and 3.1b-i, docs/RESEARCH_RECORD.md Class 7.
 """
 
 from __future__ import annotations
@@ -265,7 +265,7 @@ def sub_pages_per_day(sub: str, panel_size: int = 17) -> float:
     documented cadence reproduces: 465 pages / 140 pages-per-day = 3.3 days.
     Treating 140 as per-subreddit would imply 2,380 pages/day and a 0.2-day
     cadence, i.e. running the pipeline five times a day, which is not what the
-    desk agreed to."""
+    project accepted."""
     led = _load(COST_LEDGER)
     row = (led.get("subs") or {}).get(str(sub)) or {}
     try:
@@ -288,7 +288,7 @@ def panel_pages_per_day(subs) -> float:
 
 
 def derived_cadence_days(subs, skip_prices: bool = False) -> float:
-    """How often the desk must run so that NOTHING is ever deferred.
+    """Run cadence at which nothing is ever deferred.
 
     allowance pages / panel pages-per-day.  This is the number in the RUN
     SUMMARY, and it is entirely measured: it is what turns "run about twice a
@@ -305,7 +305,7 @@ def live_lookback_days() -> int:
 
         ceil(cadence) + LATE_ARRIVAL_DAYS
 
-    so the window moves when the desk's real cadence moves.  The late-arrival
+    so the window moves when the real run cadence moves.  The late-arrival
     day is one day of deliberate overlap for comments posted just behind the
     watermark; the seen-file dedups the re-read, so the overlap costs pages
     but can never double-count a comment."""

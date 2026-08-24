@@ -34,6 +34,7 @@
 #   ever adds genuinely new days on top of the committed history.
 
 import argparse
+import datetime
 import glob
 import io
 import json
@@ -64,27 +65,37 @@ META_PATH = os.path.join(PROJECT_ROOT, "data", "reference",
                          "abstracted_live_meta.json")
 LEGACY_META = os.path.join(PROJECT_ROOT, "data", "reference",
                            "gic_live_meta.json")   # pre-rename ledger location
-MAX_SEEN = 300_000            # ledger cap; newest ids kept (plenty for dedup)
+MAX_SEEN = 300_000            # LEGACY cap - see SEEN_PATH below. Kept only
+                              # so an old ledger can still be read.
 
 # ---------------------------------------------------------------------
-# THE PER-FILE SKIP LEDGER (2026-08-21).
+# Dedup set. src/abstracted_data.merge_counts is additive: the same
+# (date, ticker) row has its mention_count summed into the store, and
+# the aggregates carry no post ids, so a post counted twice can never
+# afterwards be detected or undone. The seen-id set is therefore the
+# sole guard against permanent double counting and is kept durable and
+# uncapped in its own parquet (raw files accumulate indefinitely by
+# design, so a lost or truncated id set would re-fold all of them). The
+# JSON ledger retains live_start and the file-scan ledger; any legacy
+# seen_ids array it holds is migrated on first read and kept in place as
+# a fallback.
+SEEN_PATH = os.path.join(PROJECT_ROOT, "data", "reference",
+                         "abstracted_seen_ids.parquet")
+# Rolling copies of the whole reference dir, taken only after a run that
+# actually changed something. Cheap insurance against (1).
+BACKUP_DIR = os.path.join(PROJECT_ROOT, "data", "reference", "_backups")
+BACKUP_KEEP = 7
+
+# ---------------------------------------------------------------------
+# Per-file skip ledger. The raw folder accumulates files indefinitely
+# (backfills included), and reading every file on every run scales with
+# history rather than with new data. The skip is exact, not heuristic: a
+# file whose newest post predates LIVE_START cannot contribute a single
+# row, because the LIVE_START filter removes all of it by construction.
+# Each file's max date is recorded once and the file is skipped until it
+# changes on disk (size or mtime) or LIVE_START itself moves.
 #
-# collect_reddit_live() globs EVERY raw file and reads all of them into
-# one list, every run. That was fine when data/raw/RedditLive held a
-# handful of daily pulls. After the 2026-08-21 backfill it holds 83
-# files and ~600 MB compressed - roughly 1.9 M posts - and the ordinary
-# `python update_data.py` sat at this step for many minutes, re-reading
-# and re-normalising all of it to then DROP nearly all of it at the
-# LIVE_START filter. And it gets worse with every backfill.
-#
-# The insight that makes skipping exact rather than approximate: a file
-# whose NEWEST post is older than LIVE_START can never contribute a
-# single row, no matter what the seen-id ledger contains, because the
-# LIVE_START filter removes all of it by construction. So we record each
-# file's max date once and skip it forever after - unless the file
-# changes on disk (size or mtime), or LIVE_START itself moves.
-#
-# We deliberately do NOT skip on "we saw these ids before": seen_ids is
+# Skipping on previously-seen ids is deliberately avoided: seen_ids is
 # capped at MAX_SEEN, so an old id can be evicted, and skipping on that
 # basis could drop rows that should be folded.
 FILE_LEDGER_KEY = "files_scanned"
@@ -204,14 +215,81 @@ def load_meta():
 
 
 def save_meta(meta):
+    """Persist live_start + the file-scan ledger. seen_ids is NO LONGER
+    written here - it lives in SEEN_PATH, uncapped. Any legacy array
+    already in the file is left exactly as it is: harmless, and a
+    fallback if the parquet is ever lost."""
     os.makedirs(os.path.dirname(META_PATH), exist_ok=True)
-    # keep only the newest MAX_SEEN ids so the file cannot grow forever
-    ids = meta.get("seen_ids", [])
-    meta["seen_ids"] = ids[-MAX_SEEN:]
     tmp = META_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(meta, f)
     os.replace(tmp, META_PATH)
+
+
+def load_seen(meta):
+    """The durable dedup set. Reads the parquet; falls back to (and
+    migrates from) the legacy JSON array the first time."""
+    if os.path.exists(SEEN_PATH):
+        try:
+            got = set(pd.read_parquet(SEEN_PATH)["id"].astype(str))
+            legacy = {str(i) for i in meta.get("seen_ids", [])}
+            missing = legacy - got
+            if missing:                    # belt and braces: never shrink
+                got |= missing
+                print(f"[ledger] recovered {len(missing):,} id(s) present "
+                      f"only in the legacy JSON ledger")
+            return got
+        except Exception as exc:           # noqa: BLE001
+            print(f"[ledger] WARNING: {os.path.basename(SEEN_PATH)} "
+                  f"unreadable ({exc}); falling back to the JSON ledger")
+    legacy = {str(i) for i in meta.get("seen_ids", [])}
+    if legacy:
+        print(f"[ledger] migrating {len(legacy):,} id(s) from the legacy "
+              f"JSON ledger into {os.path.basename(SEEN_PATH)} (uncapped)")
+    return legacy
+
+
+def save_seen(ids):
+    """Atomic: write beside, then replace. A crash mid-write leaves the
+    previous set intact rather than a truncated one."""
+    os.makedirs(os.path.dirname(SEEN_PATH), exist_ok=True)
+    tmp = SEEN_PATH + ".tmp"
+    pd.DataFrame({"id": sorted(ids)}).to_parquet(tmp, index=False)
+    os.replace(tmp, SEEN_PATH)
+
+
+def backup_reference():
+    """Snapshot data/reference after a run that changed something.
+
+    The ledgers are small (a few MB) and losing one is unrecoverable, so
+    a handful of dated copies is the cheapest possible insurance. Keeps
+    BACKUP_KEEP and deletes the rest; never recurses into itself."""
+    import shutil
+    try:
+        src_dir = os.path.dirname(META_PATH)
+        stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        dest = os.path.join(BACKUP_DIR, stamp)
+        # two runs inside the same second would otherwise overwrite each
+        # other and make the rotation count wrong
+        _n = 1
+        while os.path.exists(dest):
+            dest = os.path.join(BACKUP_DIR, f"{stamp}_{_n}")
+            _n += 1
+        os.makedirs(dest, exist_ok=True)
+        for fn in os.listdir(src_dir):
+            fp = os.path.join(src_dir, fn)
+            if os.path.isfile(fp) and not fn.endswith(".tmp"):
+                shutil.copy2(fp, os.path.join(dest, fn))
+        kept = sorted(d for d in os.listdir(BACKUP_DIR)
+                      if os.path.isdir(os.path.join(BACKUP_DIR, d)))
+        for old_dir in kept[:-BACKUP_KEEP]:
+            shutil.rmtree(os.path.join(BACKUP_DIR, old_dir),
+                          ignore_errors=True)
+        print(f"[backup] data/reference -> _backups/{stamp} "
+              f"(keeping {min(len(kept), BACKUP_KEEP)})")
+    except Exception as exc:               # noqa: BLE001
+        # a backup failure must never stop a good run
+        print(f"[backup] skipped ({exc})")
 
 
 def newest_committed_date():
@@ -269,7 +347,7 @@ def main():
             save_meta(meta)        # keep the skip ledger even on a no-op
         return 0
 
-    seen = set(meta.get("seen_ids", []))
+    seen = load_seen(meta)
 
     in_window = cand[cand["date"] >= live_start]
     fresh = in_window[~in_window["id"].isin(seen)].reset_index(drop=True)
@@ -304,10 +382,17 @@ def main():
     abstracted_data.merge_into_abstracted(new_aggs)
 
     # ---- 4. record the new ids, then hydrate for the local notebooks
-    meta["seen_ids"] = meta.get("seen_ids", []) + fresh["id"].tolist()
+    #
+    # ORDER MATTERS. The aggregates were merged above; if the process
+    # dies before the ids are written, the next run would fold those
+    # posts AGAIN. So the dedup set is saved immediately after the
+    # merge, before anything slower (hydrate) can fail.
+    seen |= set(fresh["id"].astype(str))
+    save_seen(seen)
     save_meta(meta)
-    print(f"[ledger] +{len(fresh):,} ids "
-          f"(ledger now holds {len(meta['seen_ids']):,})")
+    print(f"[ledger] +{len(fresh):,} ids (dedup set now holds "
+          f"{len(seen):,}, uncapped)")
+    backup_reference()
 
     if not args.no_hydrate:
         print("\n--- hydrate ABSTRACTED_DATA -> data/processed ---")

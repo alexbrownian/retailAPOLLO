@@ -76,7 +76,7 @@ means each run only parses the NEW raw files, appends their calls and
 edges, and rescores the whole board (rescoring is cheap; parsing is
 not). A full rebuild is just deleting the ledger.
 
-USAGE - normally NOTHING (desk decision, July 2026: live-only). Every
+USAGE - normally NOTHING (recorded decision; see docs/DECISIONS.md). Every
 live pipeline run (update_data.py) fetches new comments and calls
 update(): the store builds itself from nothing on the first pull, new
 calls append on every later pull, and recently-made calls re-judge

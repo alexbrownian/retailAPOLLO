@@ -1,7 +1,7 @@
 """
 overlays.py
 ===========
-Price-overlay analytics - the computations behind RetailFlow1's overlay
+Price-overlay analytics - the computations behind the overlay
 notebooks 11-16, reduced to pure functions that return DATA (series and
 frames). The dashboard renders them as interactive Plotly; nothing here
 draws anything, which is exactly why it is fast enough to recompute live
@@ -103,7 +103,7 @@ def sentiment_baseline(sent: pd.DataFrame, entity_col: str, lo, hi,
     share over EVERY tracked entity, same trailing window and same
     ratio-of-sums estimator as `sentiment_series`.
 
-    WHY THIS EXISTS (desk question 2026-08-10: "how come net bullishness
+    WHY THIS EXISTS (design question 2026-08-10: "how come net bullishness
     is always positive?"): retail social finance is structurally long -
     measured on this store, 46% of posts score bullish against 24%
     bearish, so net-bullish is positive on 82% of theme-days and only

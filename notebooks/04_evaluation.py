@@ -30,7 +30,7 @@
 # > still run on these rules unchanged, and this is their evaluation.
 # > The adopted model's own scorecard, forward-return battery and case
 # > studies live in notebook 07 (the presentation pack) and
-# > `docs/research/ml_tournament.md`.
+# > `docs/RESEARCH_RECORD.md`.
 #
 # > **The one question this notebook answers:** for the two signals the desk
 # > actually runs — **GET OUT** (euphoria ending) and **GET IN** (euphoria
@@ -50,7 +50,7 @@
 #
 # | Question | Answer | Evidence |
 # |---|---|---|
-# | Is every threshold justified? | **Yes — each is either swept here with the frozen value marked on the plot, or is a stated convention/desk decision with its sensitivity measured.** Two constants are LEARNED (the trigger levels, the 54d boom window, the 1.10 onset floor); the rest survived their sweeps unchanged. | §1.1–§1.10 |
+# | Is every threshold justified? | **Yes — each is either swept here with the frozen value marked on the plot, or is a stated convention/recorded decision with its sensitivity measured.** Two constants are LEARNED (the trigger levels, the 54d boom window, the 1.10 onset floor); the rest survived their sweeps unchanged. | §1.1–§1.10 |
 # | Why these features? | **No single feature works (AUROC 0.51–0.59); the banks work as committees.** No learner (logistic, GBM) beats the un-weighted rules outside a bootstrap CI, and no single feature is load-bearing in the leave-one-out ablation. | §2 |
 # | GET OUT record (walk-forward) | **22 of 98 detectable tops captured (22.4%)**, 0 late, **0.083 FA/instrument-year** (budget 0.23), median warning ≈ **9–10 days** before the peak. | §3.1 |
 # | GET IN record (walk-forward) | **18 of 125 detectable starts captured (14.4%)**, 5 late, **0.200 FA/instrument-year** (inside budget since the 1.10 floor), median entry ≈ **14 days** after the trough with ≈ **62 days** of rally still ahead. | §3.1 |
@@ -130,7 +130,7 @@ print(glossary_md([
 #   (calendar), and "within 30 days" means such a fall *starts* inside the
 #   next 30 days. §1.10 sweeps all three numbers.
 # * **trading days** — §3's outcome horizons (+5/+20/+84) count *exchange*
-#   days (≈ 1 week / 1 month / 4 months), because that is how the desk asked
+#   days (≈ 1 week / 1 month / 4 months), because that is how the horizon was
 #   for them. Everything else in the project (cooldowns, windows) stays in
 #   calendar days, as shipped.
 
@@ -300,7 +300,7 @@ rng = np.random.default_rng(SEED)
 # * The desk's question 1, verbatim: *"anytime there is a threshold, why is
 #   that the best? show me for all with plots."*
 # * Each subsection below takes ONE constant, states its provenance class
-#   (LEARNED / DERIVED / CONVENTION / GROUND TRUTH / DESK DECISION — from
+#   (LEARNED / DERIVED / CONVENTION / GROUND TRUTH / PROJECT DECISION — from
 #   the comments in `src/config.py`, which carry the audit trail), and shows
 #   either the sweep that chose it or the sensitivity of the record to it.
 #
@@ -815,7 +815,7 @@ display(exam_boom); display(exam_crash)
 # * Both curves are **smooth slopes**: episode counts fall gradually as the
 #   bars rise. The shipped point is not a knife-edge that manufactures a
 #   convenient exam.
-# * The 2× ETF→single ratio is a **DESK DECISION**, not measured — recorded
+# * The 2× ETF→single ratio is a **PROJECT DECISION**, not measured — recorded
 #   as such. Its consequence (singles must boom 50% and bust 30% to count)
 #   is visible in every per-name table in §3/§4.
 #
@@ -1007,7 +1007,7 @@ fig.tight_layout(); plt.show()
 #    peak arrives within [alert, alert+45d]. (DERIVED companion: 45 = the
 #    30d aim window + the 15d it takes G1 to confirm a local max.)
 # 2. **The onset window** — a GET IN alert "caught the start" if it lands
-#    within [trough, trough+45d], capped at the peak (DESK DECISION,
+#    within [trough, trough+45d], capped at the peak (PROJECT DECISION,
 #    July 2026, recorded before any result).
 #
 # Neither is swept *for adoption* — they are the exam. What is shown is the
@@ -1091,9 +1091,9 @@ display(fa_tbl); display(on_tbl)
 # %% [markdown]
 # ## §1.10 The cliff: 10% in 7 days, within 30 days — the desk's outcome
 #
-# **Provenance: DESK DECISION** (the desk's own words: *"predict sharp
+# **Provenance: PROJECT DECISION** (stated as: *"predict sharp
 # drops — ≥10% within ~a week — up to a month before they happen"*). It is
-# an *outcome definition*, not a detector knob — but the desk asked "why is
+# an *outcome definition*, not a detector knob — the natural question "why is
 # that the best?", so here is the operating-point evidence: how the GET OUT
 # flag's warning value reads under every nearby definition of "sharp drop".
 
@@ -2024,7 +2024,7 @@ print(verdict_text)
 #   candidacy floor.
 # * Every constant in both rules now carries a plot: two LEARNED trigger
 #   levels (§1.1), two LEARNED gate parameters (54d window §1.7, 1.10
-#   floor §1.4), and the rest CONVENTIONS/DESK DECISIONS that were swept
+#   floor §1.4), and the rest CONVENTIONS/PROJECT DECISIONS that were swept
 #   and kept (§1.2, §1.3, §1.5, §1.8) or are exam definitions whose
 #   sensitivity is shown (§1.6, §1.9, §1.10).
 #

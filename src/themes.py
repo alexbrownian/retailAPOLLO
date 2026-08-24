@@ -17,7 +17,7 @@ SIGNAL 1 - KEYWORD themes (direct mentions)
   substrings of the lowercased text. Each post counts AT MOST ONCE per
   theme (same per-post dedupe rule as the ticker pipeline).
 
-  NOTE (2026-07-06): the score**2 upvote weighting was REMOVED everywhere -
+  NOTE: the score**2 upvote weighting is removed everywhere -
   archived scores are FINAL scores, so weighting day-t mentions by them
   leaks future information into any backtest (see build_mentions.py and
   design_decisions.xlsx #30). The *_weighted columns are still emitted for
@@ -64,8 +64,8 @@ import pandas as pd
 
 
 # ---------------------------------------------------------------------------
-# EDITABLE CONFIG (2026-07-31): the theme definitions live in config/*.csv,
-# NOT in this file.  Desk instruction: "make an easy to edit file with each
+# Editable config: the theme definitions live in config/*.csv,
+# NOT in this file.  Requirement: "make an easy to edit file with each
 # theme ... i want the word mapping to a theme and the etf list to be both
 # easy to edit."  Edit the CSVs (Excel is fine), rerun the pipeline, done.
 #

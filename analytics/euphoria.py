@@ -46,7 +46,7 @@ RESEARCH GROUNDING (why these rules and not others)
   flag, validated directionally in the July-2026 conviction study
   (post-peak sentiment fade preceded drawdowns). -> rule E4.
 
-REDDIT-ONLY PREDICTION (desk rule, July 2026)
+REDDIT-ONLY PREDICTION (selection rule, July 2026)
 ---------------------------------------------
 Every PREDICTIVE input below is built from the Reddit-derived aggregates
 (mention counts + scored sentiment). PRICE IS NEVER AN INPUT to the
@@ -881,7 +881,7 @@ def needs_research(stored: dict | None, data_max_year: int) -> bool:
 
       PRACTICAL. `update_data` is the data-refresh job. A refresh that
       sometimes takes seconds and sometimes re-selects the model is not
-      a job anyone can schedule or reason about (desk instruction,
+      a job anyone can schedule or reason about (requirement,
       2026-07-28: "update_data should simply be to just update the data
       and run the model on these new data downloaded").
 
@@ -898,7 +898,7 @@ def needs_research(stored: dict | None, data_max_year: int) -> bool:
     The staleness itself is not swept away - `record_lags_data` reports
     it and the pipeline prints one line telling the desk to run the
     research pass. Recorded in DECISIONS.xlsx ("3b. Pipeline & Cadence")
-    and docs/PARAMETER_REGISTER.md Class 9."""
+    and docs/RESEARCH_RECORD.md Class 9."""
     return not stored or not stored.get("thresholds")
 
 

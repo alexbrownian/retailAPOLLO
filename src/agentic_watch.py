@@ -2,7 +2,7 @@
 agentic_watch.py — how much of the crowd is trading WITH an AI?
 ===============================================================
 
-The desk's question (2026-08-02): "figure out what the retail traders are
+Purpose: surface what retail traders are
 prompting AI, and what the AI is spitting out / auto-trading for these
 guys" — and whether that chatter leads or lags our GET IN / GET OUT flags
 and the boom/bust episodes (notebook 09 runs that test).

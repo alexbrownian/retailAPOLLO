@@ -12,7 +12,7 @@ On 2026-07-29 a routine `python update_data.py` died on
 
 and the investigation found that `src/pipeline_budget.py` was not on disk, not
 in any git commit, and had no stale `.pyc` anywhere - i.e. it had NEVER been
-imported successfully - while ARCHITECTURE.md and PARAMETER_REGISTER.md both
+imported successfully - while ARCHITECTURE.md and docs/RESEARCH_RECORD.md both
 described it in detail, and four other files called into it.  Three further
 gaps rode along invisibly: two missing `src/config.py` constants, a CLI flag
 `fetch_all.py` did not accept, and a `default_lookback_days` import in
@@ -121,7 +121,7 @@ _CITED_DIRS = ("src", "analytics", "ingestion", "tools", "helper", "docs",
 # that the file has genuinely gone.
 _DESK_ONLY = ("helper/", "docs/panel_review_latest.md",
               "docs/HANDOFF_PROMPT.md", "docs/LIVE_INGESTION.md",
-              "docs/RESEARCH_REPORT.md", "docs/DATA_FLOW.tex")
+              "docs/RESEARCH_RECORD.md", "docs/DATA_FLOW.tex")
 
 _KNOWN_ABSENT = ("not in this repo", "does not exist", "no longer",
                  "is not on disk", "never present", "absent",

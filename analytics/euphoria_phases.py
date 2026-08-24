@@ -61,7 +61,7 @@ from analytics.euphoria import (EuphoriaSeries, ground_truth_peaks,
                                 _bullish_series)
 from analytics.loaders import load, TICKER_COUNTS_BY_SOURCE
 
-# Desk decision (July 2026): the onset hit window length. Anchored to the
+# The onset hit window length. Anchored to the
 # trough that G2 already defines, capped at the peak (see module docstring).
 ONSET_WINDOW_DAYS = 45
 
@@ -239,7 +239,7 @@ def compute_onset_features(name: str, counts_long: pd.DataFrame,
     # O3: the mood turning up - 14d change of the 14d net-bullish share
     one = sent_long[sent_long[entity_col] == name]
     n = one.groupby("date")["n_posts"].sum().reindex(all_days).fillna(0.0)
-    # VECTORISED 2026-08-05. This was a `groupby("date").apply(lambda ...)`
+    # Vectorised: previously a `groupby("date").apply(lambda ...)`
     # which, on the 306k-row sentiment store, cost 482 ms PER INSTRUMENT
     # against 2 ms for the line below - the same arithmetic, done once per
     # group in Python instead of once in C. Across 59 instruments and two
@@ -382,7 +382,7 @@ def alerts_from_scores(dates: list, scores: list, threshold: float,
 def alerts_from_scores_shaped(dates: list, scores: list, gate,
                               threshold: float, rearm: float,
                               spacing: int) -> list:
-    """The SHAPED trigger (desk decision 2026-08-09 v2, evidence
+    """The SHAPED trigger (shaped trigger; evidence
     docs/research/alert_shape_sweep.json - "one clear call per boom"):
 
     * fire only on an UPWARD CROSSING of the cut, and only on days the
@@ -434,7 +434,7 @@ def boomed120_frame(series, pxmap) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# INFLECTION — the reversal context marker (desk 2026-08-12)
+# INFLECTION — the reversal context marker
 # ---------------------------------------------------------------------------
 # Prototyped in notebook 08, trigger swept in
 # docs/research/inflection_trigger_sweep.json, constants and the reason it is a
@@ -1001,7 +1001,7 @@ def rebuild_phase_files(verbose: bool = True,
 
     fa_budget = EUPHORIA_FA_BUDGET_PER_IY      # frozen - see src/config.py
 
-    # THE DESK MODEL IS SELECTED, NOT ASSUMED (2026-08-07). A research
+    # The desk model is selected, not assumed. A research
     # pass runs the full model tournament (analytics/ml_detector.py:
     # incumbent rules + logistic + monotone GBM + MLP + ensemble, all
     # walk-forward) and freezes the winner under the pre-stated
@@ -1036,7 +1036,7 @@ def rebuild_phase_files(verbose: bool = True,
         """(standard F1 cut, strict F0.5 cut, train-median re-arm level)
         from ONE train scoring. The re-arm level is the GET IN trigger's
         'the crowd must fully cool before another start call' floor
-        (desk decision 2026-08-09 v2)."""
+        (shaped-trigger convention)."""
         train = cand_j[cand_j["year"] < data_max_year]
         if train.empty:
             train = cand_j
@@ -1236,7 +1236,7 @@ def rebuild_phase_files(verbose: bool = True,
             dscore=maker("y_top")(train, live_cand, mld.DESK_ML_BANK))
         onset_scored = live_cand.assign(
             dscore=maker("y_onset")(train, live_cand, mld.DESK_ML_BANK))
-        # THE INFLECTION HEAD (desk 2026-08-12) - a third, independent score on
+        # The inflection head - a third, independent score on
         # the same candidate frame, price-free bank, fitted the same way
         # and on the same train years. It reads nothing the other two
         # write and neither of them reads it back: if this head is ever
@@ -1264,7 +1264,7 @@ def rebuild_phase_files(verbose: bool = True,
                           "days yet")
         else:
             inflection_scored, _ttrain_sc = None, None
-        # THE EXPERIMENTAL PRICE-BLIND PAIR (desk 2026-08-14: "i want
+        # The experimental price-blind pair (crowd-only by design: "only
         # only the post factors to predict the price"). A SECOND GET IN
         # / GET OUT scoring with price removed from BOTH places it
         # enters the desk pair: the two price features are dropped from
@@ -1312,7 +1312,7 @@ def rebuild_phase_files(verbose: bool = True,
             if verbose:
                 print(f"  (model insight skipped: {_e})")
 
-    # THE SHAPED TRIGGER (desk decision 2026-08-09 v2, evidence
+    # The shaped trigger (evidence
     # docs/research/alert_shape_sweep.json): phase gates from the
     # ground truth's own 120d boom bar, re-arm levels, 63d spacing.
     from src.config import EUPHORIA_ALERT_SPACING_D
@@ -1342,7 +1342,7 @@ def rebuild_phase_files(verbose: bool = True,
     out_alerts_s = (_alert_dates(end_scored, thr_out_strict, None, True)
                     if thr_out_strict is not None else {})
 
-    # UNGATED GET IN (desk adoption 2026-08-17; evidence notebook 08
+    # Ungated GET IN (production; evidence notebook 08
     # §10.4, docs/research/nb08_single_dial.json). The 120d phase gate
     # was measured throwing away roughly three quarters of the GET IN
     # calls the model earns (captured episodes 28 -> 116 ungated, at
@@ -1390,7 +1390,7 @@ def rebuild_phase_files(verbose: bool = True,
                          ("_nogate_strict", in_alerts_ng_s)):
         ds[f"get_in{_suffix}"] = [d in _ia.get(n, ())
                                   for n, d in zip(ds["name"], ds["date"])]
-    # PM-TRUST COHERENCE (desk order 2026-08-09: "we CANNOT have a GET
+    # PM-trust coherence (invariant: a name can never show GET
     # IN and a GET OUT so close together"): a START is never shown on
     # an end-stage day, and never within one cooldown of an END call IN
     # EITHER DIRECTION. GET OUT is never suppressed - it is the risk
@@ -1456,7 +1456,7 @@ def rebuild_phase_files(verbose: bool = True,
         ds["inflection"] = [d in _tmap.get(n, ())
                       for n, d in zip(ds["name"], ds["date"])]
         if isinstance(desk_stored, dict) and _infl_src != "frozen":
-            # RENAMED 2026-08-12 (TURN -> INFLECTION). A record written
+            # Renamed TURN -> INFLECTION. A record written
             # before the rename carries a "turn" block; drop it rather
             # than leave two thresholds in one file, where the next
             # reader has to guess which is live.
@@ -1473,7 +1473,7 @@ def rebuild_phase_files(verbose: bool = True,
                 "derived": _infl_src}
             with open(desk_path, "w") as _f:
                 _json.dump(desk_stored, _f, indent=1, default=str)
-    # EXPERIMENTAL PRICE-BLIND COLUMNS (desk 2026-08-14). Same frozen-
+    # EXPERIMENTAL PRICE-BLIND COLUMNS (see docs/DECISIONS.md). Same frozen-
     # threshold contract as the desk cuts and the inflection head: the
     # cuts live in the desk record, are re-derived only on research (or
     # once, on bootstrap), and every live run scores at them. The
@@ -1577,7 +1577,7 @@ def rebuild_phase_files(verbose: bool = True,
     ds = ds.merge(_b120, on=["name", "date"], how="left")
     ds["boomed120"] = ds["boomed120"].eq(True)
     ds["symbol"] = ds["name"].map(sym_by)
-    # THE RETAIL-FLOW DIAL (desk adoption 2026-08-17; notebook 08 §9,
+    # Retail-flow dial (production; notebook 08 §9,
     # record docs/research/nb08_retail_flow.json). Failure-isolated: the
     # desk store must never be lost to a dial bug, so a dial error
     # degrades to missing columns and one printed line, never a crash.
@@ -1602,7 +1602,7 @@ def rebuild_phase_files(verbose: bool = True,
               f"{int(ds['get_out'].sum())} GET OUT alerts all-time, "
               f"{int(ds['inflection'].sum())} inflection markers, "
               f"model {model_name})")
-    # READINESS ALERTS (desk request 2026-08-17: "a scheduled check that
+    # Readiness alerts ("a scheduled check that
     # pings you when any name crosses ±90% signed readiness"). Computed
     # here so the alert file always matches the store it was cut from;
     # the dashboard banners it, and the pipeline run prints it - the two
@@ -1612,7 +1612,7 @@ def rebuild_phase_files(verbose: bool = True,
     try:
         _al_rows = []
         if thr_in_strict and thr_out_strict:
-            # THEMES ONLY (desk 2026-08-17: "i want the alerts to be
+            # Themes only (alerts are restricted to
             # only for themes please, not single name tickers"). The
             # bands and the radar still show every name; the ALERT - the
             # thing that interrupts - is reserved for the tradeable
@@ -1660,7 +1660,7 @@ def rebuild_phase_files(verbose: bool = True,
 
 
 # ---------------------------------------------------------------------------
-# 6. THE DESK CONFIGURATION (desk decision 2026-07-24) - the GET IN /
+# 6. THE DESK CONFIGURATION (recorded decision; see docs/DECISIONS.md) - the GET IN /
 #    GET OUT signal family the dashboard actually shows.
 #
 #    The desk lifted the crowd-only restriction for a SECOND, clearly
@@ -1706,7 +1706,7 @@ def boom_state_frame(series: list, pxmap: dict) -> pd.DataFrame:
     closes <= t); the SIZE thresholds are the ground-truth constants,
     reused, so the gate introduces no new size number.
 
-    THE WINDOW IS NOT THE GROUND TRUTH'S WINDOW (desk decision 2026-07-29).
+    THE WINDOW IS NOT THE GROUND TRUTH'S WINDOW (recorded decision; see docs/DECISIONS.md).
     `find_episodes` above walks back 120 days because that is the yardstick
     an episode is DEFINED by; this gate walks back
     EUPHORIA_BOOM_WINDOW_D (54) because that is a prediction-time choice
@@ -1744,7 +1744,7 @@ def _smooth_by_name(scores: pd.Series, names: pd.Series,
     one-week window, same as A1's mention-share window) mean over each
     instrument's own candidate days. Trailing => no look-ahead.
 
-    CALENDAR-AWARE SINCE 2026-07-31, and this is a DEFECT FIX, not a
+    CALENDAR-AWARE, and this is a defect fix, not a
     tuning choice.  The old code rolled over each name's candidate-ROW
     sequence (`rolling(ROLL)` = last 7 rows), so a multi-year candidacy
     gap was silently bridged: the 2026-07-06 `biotech_pharma` GET OUT
@@ -1800,7 +1800,7 @@ def desk_candidacy(frame_px: pd.DataFrame) -> tuple:
     with boom_state. Returns (end_frame, onset_frame).
 
     THE ONSET FLOOR IS EUPHORIA_ONSET_HYPE_MIN (1.10), NOT 1.0, since
-    2026-07-29 - at 1.0 this rule breached its own false-alarm budget
+    at 1.0 this rule breached its own false-alarm budget
     (0.255 vs 0.23) from the day it shipped. The sweep, the cost (one
     capture) and what it buys (budget compliance, late starts 6 -> 2) are
     in src/config.py beside the constant. The CROWD-ONLY onset store above
@@ -1827,7 +1827,7 @@ def _desk_test_years(stored: dict | None) -> list:
 
 def desk_needs_research(stored: dict | None, data_max_year: int) -> bool:
     """Same convention as onset_needs_research, changed on the same date
-    (2026-07-28) for the same reasons: research only to BOOTSTRAP a
+    for the same reasons: research only to BOOTSTRAP a
     machine with no usable frozen record. A record that lags the data is
     a notice, not a refit - see `desk_record_lags_data`."""
     return not _desk_test_years(stored)
@@ -1844,12 +1844,12 @@ def desk_record_lags_data(stored: dict | None, data_max_year: int):
 
 
 # ---------------------------------------------------------------------------
-# 7. EPISODE COHERENCE - the desk-facing state machine (2026-07-24)
+# 7. EPISODE COHERENCE - the desk-facing state machine
 # ---------------------------------------------------------------------------
 def episode_coherent_alerts(onset_dates, top_dates,
                             cooldown: int = EUPHORIA_COOLDOWN_DAYS):
     """The desk-facing state machine, ASYMMETRIC by evidence
-    (2026-07-24): a new START within `cooldown` days AFTER an END is a
+    : a new START within `cooldown` days AFTER an END is a
     contradictory flip and is SUPPRESSED (you cannot start euphoria the
     desk was just told is ending); a fast START -> END is a REAL,
     violent mania and the ENDING (risk) signal is NEVER suppressed.

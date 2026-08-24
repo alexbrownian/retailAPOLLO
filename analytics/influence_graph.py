@@ -926,7 +926,7 @@ def theme_digest(calls: pd.DataFrame, board: pd.DataFrame,
     same consensus, same backing share; only the grouping key changes.
 
     INFORMATION ONLY.  Theme convergence was tested as a predictor of the
-    house cliff outcome and REJECTED - see PARAMETER_REGISTER Class 6c.
+    house cliff outcome and REJECTED - see the parameter register (docs/RESEARCH_RECORD.md §7, Class 6)c.
     This exhibit describes where the room is positioned, which is a fact
     about the room, not a forecast about the price."""
     c = explode_to_themes(
@@ -1240,7 +1240,7 @@ def crowding_history(calls: pd.DataFrame, board: pd.DataFrame,
     baseline - draw five lines or fifty, each week's denominator is the same.
 
     Weekly by default because the comment fetch runs about twice a week
-    (see PARAMETER_REGISTER Class 7): a daily axis would mostly plot the
+    (see the parameter register (docs/RESEARCH_RECORD.md §7, Class 7)): a daily axis would mostly plot the
     ingestion cadence rather than the crowd.  Weekly is not a cure for a
     THIN week, though - the fetch budget leaves some weeks with a few dozen
     calls and others with thousands - so `n_calls` and `n_authors` come back

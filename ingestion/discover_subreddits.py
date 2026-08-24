@@ -2,7 +2,7 @@
 discover_subreddits.py
 ======================
 THE DYNAMIC PANEL - monthly, crowd-referral subreddit discovery
-(desk decisions 2026-07-24; every knob lives in src/config.py with its
+(every knob lives in src/config.py with its
 derivation).
 
 THE IDEA
@@ -165,18 +165,45 @@ def _iter_raw(paths):
             continue
 
 
+def _ledger_key(path: str) -> str:
+    """Ledger key for a raw file: its path relative to RAW_DIR, with
+    forward slashes on every OS. A relative key survives a repo folder
+    rename or move; an absolute key does not, and would make every file
+    look unseen after the checkout is relocated (see docs/DECISIONS.md).
+    """
+    return os.path.relpath(path, RAW_DIR).replace(os.sep, "/")
+
+
+def _migrate_ledger(ledger: dict) -> dict:
+    """Fold legacy entries keyed by absolute path onto the current
+    relative-path key scheme, so a prior scan is not repeated after a
+    folder rename. Matches everything after the last data/raw/ segment
+    of the old key. Idempotent: a ledger already on relative keys passes
+    through unchanged."""
+    migrated = {}
+    for old_key, size in ledger.items():
+        marker = "/data/raw/"
+        norm = old_key.replace("\\", "/")
+        idx = norm.rfind(marker)
+        new_key = norm[idx + len(marker):] if idx != -1 else old_key
+        if new_key not in migrated or size > migrated[new_key]:
+            migrated[new_key] = size
+    return migrated
+
+
 def scan_new_raw(verbose=True) -> int:
     """Incrementally scan raw live files (posts + comments) that the
     ledger has not seen: extract r/<name> referrals into the local
     referral store, and extend the LOCAL by-subreddit ticker counts from
     post files. Returns the number of newly scanned files."""
-    ledger = _load_json(SCAN_LEDGER, {})
+    ledger = _migrate_ledger(_load_json(SCAN_LEDGER, {}))
     candidates_files = sorted(
         glob.glob(os.path.join(RAW_DIR, "RedditLive", "*.jsonl.zst"))
         + glob.glob(os.path.join(RAW_DIR, "RedditComments", "*.jsonl.zst")))
     new_files = [p for p in candidates_files
-                 if ledger.get(p) != os.path.getsize(p)]
+                 if ledger.get(_ledger_key(p)) != os.path.getsize(p)]
     if not new_files:
+        _save_json(SCAN_LEDGER, ledger)   # persist the migration itself
         return 0
 
     panel = set(read_panel())
@@ -211,7 +238,7 @@ def scan_new_raw(verbose=True) -> int:
         _extend_by_sub_counts(pd.DataFrame(post_rows))
 
     for p in new_files:
-        ledger[p] = os.path.getsize(p)
+        ledger[_ledger_key(p)] = os.path.getsize(p)
     _save_json(SCAN_LEDGER, ledger)
     if verbose:
         print(f"  panel scan: {len(new_files)} new raw files, "

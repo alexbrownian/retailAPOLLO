@@ -2,7 +2,7 @@
 conviction.py
 =============
 Conviction = mentions x sentiment combined, per TICKER and per THEME.
-This module is the direct replacement for RetailFlow1 notebooks 08 and 09 -
+This module is the direct replacement for the legacy notebook chain -
 identical mathematics, but pure vectorised pandas with no chart rendering,
 so a full recompute over nine years of aggregates takes ~1 second instead
 of minutes of notebook execution.
@@ -161,7 +161,7 @@ def compute_conviction(sent_df: pd.DataFrame, entity_col: str,
     entity_col : "ticker" or "theme".
     baseline   : "ewm" (default) = EWM mean/std baseline - see ewm_z's
                  docstring for the validation evidence. "rolling" = the
-                 fixed 84-day window of RetailFlow1 notebooks 08/09.
+                 fixed 84-day window of the legacy notebook chain.
     normalise  : False (default). True = COVERAGE-INVARIANT z: bull
                  pressure and attention are divided by the day's TOTAL
                  scored posts before the z (each expressed as % of the

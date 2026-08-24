@@ -69,30 +69,17 @@ PAUSE_S = 1.0
 MAX_SEEN = 50_000     # rolling window of recently-written ids
 
 # ---------------------------------------------------------------------
-# BACKFILL SPEED (2026-08-21). The 2024-08 chunk took 712 minutes and
-# still lost three subreddits. Four things were costing that time, none
-# of them the network's fault:
-#
-#   1. limit=100. Arctic Shift accepts limit="auto", which returns
-#      between 100 and 1000 rows depending on server capacity - up to
-#      TEN TIMES fewer round trips for the same posts.
-#   2. Every field. Arctic returns the full Reddit object (preview,
-#      media_metadata, all_awardings, gildings, ...). This project reads
-#      exactly EIGHT of those fields - see src/reddit_live_data.py, which
-#      normalises through src.clean_data.normalise. The rest is
-#      downloaded, decompressed, parsed and thrown away. `fields=` makes
-#      the request return only what is kept, which is lossless here.
-#   3. A flat 1-second sleep after every page, whether or not the server
-#      wanted one. Arctic publishes X-RateLimit-Remaining; pacing off
-#      that sleeps when the server is actually near its limit and not
-#      otherwise.
-#   4. 4xx treated as a network hiccup. A 422 is the server saying the
-#      REQUEST is malformed - retrying it four times with 20/40/60/80s
-#      backoff burns 200 seconds to be told the same thing again, and
-#      then counts as "gave up", which is what left chunks unfinished.
-#
-# The live daily path is unchanged: these apply to --backfill, or to any
-# run that passes --fast explicitly.
+# Fast mode (used by --backfill; the daily live path is unchanged).
+# Four request-level optimisations, each lossless:
+#   1. limit="auto": Arctic Shift returns 100-1000 rows per page
+#      depending on server capacity, versus a fixed 100.
+#   2. fields=: only the eight fields the pipeline reads are requested
+#      (see KEEP_FIELDS); the full Reddit object is otherwise
+#      downloaded and discarded.
+#   3. Rate-limit pacing from the X-RateLimit-Remaining header instead
+#      of a fixed per-page sleep.
+#   4. 4xx classification (below) so a malformed-request response
+#      cannot consume a long retry ladder.
 # ---------------------------------------------------------------------
 
 # The only fields anything downstream reads. Keep in step with
@@ -103,22 +90,11 @@ KEEP_FIELDS = ("id,created_utc,author,score,subreddit,title,selftext,"
 RATELIMIT_FLOOR = 5       # start waiting when this few requests remain
 FAST_PAUSE_S = 0.0        # pacing comes from the rate-limit header instead
 
-# 4xx handling, split by how confident we can be about the cause.
-#
-# HONEST NOTE (2026-08-21): the desk reported "422 https stuff" during the
-# backfill. I could NOT reproduce a 422 from this file's own pagination -
-# I built a stand-in server that answers an inverted range with 422 and
-# drove the original loop at it with dense boundaries and duplicate
-# timestamps, and the loop terminated cleanly every time. So the 422 is
-# coming from the server for a reason we have not identified, and the
-# code must NOT pretend to know which.
-#
-# Therefore: 400/404 are unambiguous - the URL or a parameter is wrong,
-# and retrying is pointless. 403/422 get a SHORT retry (a server under
-# load may answer 422 transiently) and the response BODY is printed, so
-# the next run tells us what Arctic actually objects to instead of us
-# guessing again. Either way the old behaviour - four retries over 200
-# seconds, then marking the whole subreddit "gave up" - is gone.
+# 4xx handling, split by confidence in the cause. 400/404 are
+# unambiguous (malformed request; retrying is pointless). 403/422 have
+# been observed transiently from the archive under load and receive a
+# short retry with the response body logged, so the cause is recorded
+# rather than guessed.
 HARD_4XX = {400, 404}         # the request is malformed; stop
 SOFT_4XX = {403, 422}         # might be transient; a couple of quick tries
 SOFT_4XX_TRIES = 3

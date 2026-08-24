@@ -1,7 +1,7 @@
 """
 signals.py
 ==========
-The BUY/SELL decision engine - the direct replacement for RetailFlow1
+The BUY/SELL decision engine - the direct replacement for the legacy notebook engine.
 notebook 10, with identical rules, thresholds and output schema. Pure
 computation: a full rerun over nine years of aggregates takes ~2 seconds.
 

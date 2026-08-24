@@ -45,7 +45,7 @@
 #   this work, answered. They are marked so you can find them.
 # * **No unexplained constants.** Every number is tagged LEARNED (from data),
 #   DERIVED (forced by a definition), CONVENTION (inherited and tested),
-#   GROUND TRUTH, or DESK DECISION (a judgement, with its reason).
+#   GROUND TRUTH, or PROJECT DECISION (a judgement, with its reason).
 # * Section 1 defines every term, so no jargon is load-bearing.
 #
 # ---
@@ -75,12 +75,12 @@
 # | Quantity | Value | Class | Where it comes from |
 # |---|---|---|---|
 # | G1 local max | highest close in a ±21d window | CONVENTION | Inherited unchanged from the validated euphoria detector (`analytics/euphoria.py`). |
-# | G2 boom | peak ≥ **20%** (theme ETF) / **40%** (single name) above the minimum close of the prior 120d | DESK DECISION 2026-08-07, swept | Lowered from the July 25/50 CONVENTION after a three-level sweep re-ran the full walk-forward per level (`docs/research/ml_tournament.json`, `ground_truth_sweep`): episodes 292→494, every named desk episode kept, model accuracy IMPROVED. The 15/30 level was rejected — ~1.5 episodes per instrument-year makes "euphoria" indistinguishable from an ordinary correction. Single names still carry the harder bar because they move further on less. |
-# | G3 bust | drawdown ≥ **12%** / **25%** within the next 90d | DESK DECISION 2026-08-07, swept | Scaled with the boom bars in the same sweep. The bust requirement is what makes an episode *worth having warned about*. |
+# | G2 boom | peak ≥ **20%** (theme ETF) / **40%** (single name) above the minimum close of the prior 120d | PROJECT DECISION 2026-08-07, swept | Lowered from the July 25/50 CONVENTION after a three-level sweep re-ran the full walk-forward per level (`docs/research/ml_tournament.json`, `ground_truth_sweep`): episodes 292→494, every named desk episode kept, model accuracy IMPROVED. The 15/30 level was rejected — ~1.5 episodes per instrument-year makes "euphoria" indistinguishable from an ordinary correction. Single names still carry the harder bar because they move further on less. |
+# | G3 bust | drawdown ≥ **12%** / **25%** within the next 90d | PROJECT DECISION 2026-08-07, swept | Scaled with the boom bars in the same sweep. The bust requirement is what makes an episode *worth having warned about*. |
 # | trough | the argmin of the **same** 120d window G2 already measures the boom from | DERIVED | Re-using G2's window means no new lookback is introduced, so no new number can be tuned. |
 # | bust date | the first day G3's drawdown condition is met | DERIVED | Forced by G3; nothing is chosen. |
-# | Onset hit window | `[trough, trough+45d]`, **capped at the peak** | DESK DECISION | 45d mirrors the false-alarm horizon already in `score_alerts` (an alert is false if no peak follows within 45d), so it is not a new constant. The cap exists because on a fast rally an uncapped window would let an alert fired *after* the top count as "caught the start". |
-# | LATE ≠ FALSE | alerts in `(onset end, peak]` are reported in their own bucket | DESK DECISION | Calling a mid-rally alert a *hit* inflates the onset claim; calling it *false* punishes an alert fired inside a genuine episode. A third bucket avoids both distortions. |
+# | Onset hit window | `[trough, trough+45d]`, **capped at the peak** | PROJECT DECISION | 45d mirrors the false-alarm horizon already in `score_alerts` (an alert is false if no peak follows within 45d), so it is not a new constant. The cap exists because on a fast rally an uncapped window would let an alert fired *after* the top count as "caught the start". |
+# | LATE ≠ FALSE | alerts in `(onset end, peak]` are reported in their own bucket | PROJECT DECISION | Calling a mid-rally alert a *hit* inflates the onset claim; calling it *false* punishes an alert fired inside a genuine episode. A third bucket avoids both distortions. |
 # | Top hit window | `[peak−30d, peak+1d]` | CONVENTION | The stated aim of the existing detector — "a few weeks before, or one day after" — unchanged. |
 # | Coverage gate | ≥100 tagged posts (posts naming it) in 28d, on at least one day of the window | CONVENTION | The existing A0 rule. It decides *detectability*, never *truth*. |
 
@@ -177,7 +177,7 @@ print(glossary_md([
 # * **Price is the only input.** No mention count, no sentiment score, and no
 #   model output touches the catalog.
 # * The universe is the detector's own: 34 theme anchor ETFs (rates/bonds and
-#   real estate excluded — DESK DECISION, they are macro instruments the retail
+#   real estate excluded — PROJECT DECISION, they are macro instruments the retail
 #   crowd does not trade in size) plus the top-25 single names chosen by data
 #   (≥3,000 tagged posts, and priced). 59 instruments.
 # * The builder lives in `analytics/euphoria_phases.py` — **the same module the
@@ -306,7 +306,7 @@ plt.show()
 #   window, so the fraction of the histogram to its right is the fraction of
 #   run-ups where 45 days is a genuinely *early* call.
 # * The window itself is **not a new constant** — 45d is the false-alarm
-#   horizon `score_alerts` already used (DESK DECISION, recorded above). The
+#   horizon `score_alerts` already used (PROJECT DECISION, recorded above). The
 #   test here is whether that inherited number is defensible, not what it
 #   should be.
 
@@ -377,11 +377,11 @@ print(f"median run {med:.0f}d -> the 45d onset window covers the first "
 # * Shaded **blue = the onset window** `[trough, min(trough+45d, peak)]`;
 #   shaded **pink = peak→bust**. Dots mark the trough and the peak.
 # * Two panels are named in the project aim (GME 2021, gold 2026) — chosen
-#   because they are the cases the desk asked about, and stated as such.
+#   because they are the named reference episodes, and stated as such.
 # * The **third panel is chosen by the data**, not by hand: the largest
 #   onset-detectable theme boom excluding gold. Hand-picking all three would
 #   make this a gallery of successes; letting the data pick one keeps it a
-#   sample. DESK DECISION.
+#   sample. PROJECT DECISION.
 # * Log price scale where the boom demands it (GME), linear elsewhere. A
 #   display choice; no number is transformed.
 
@@ -553,7 +553,7 @@ print(f"saved {out_path.name} ({len(catalog)} episodes) "
 # * Everything above defines the episode *given* the size bars. A reviewer's
 #   sharper question is: **why 20/40 and 12/25, and not something else?**
 #   The July bars (25/50, 15/30) were CONVENTION-class round numbers; the
-#   desk asked whether they could come down ("as long as we catch the main
+#   question was whether they could come down ("as long as we catch the main
 #   ones — gold, meme stocks, semiconductors; more false alarms is ok").
 # * The scientific answer is a SWEEP with a pre-stated reading rule: try
 #   three levels, re-run the FULL walk-forward detector under each, and
@@ -597,7 +597,7 @@ pd.DataFrame(_sw_rows)
 #   "any ordinary correction" — the word stops carrying information, and
 #   a detector of everything is a detector of nothing.
 # * Provenance class of the bars therefore changed: CONVENTION →
-#   **DESK DECISION, swept** (PARAMETER_REGISTER Class 14b carries the
+#   **PROJECT DECISION, swept** (the parameter register (docs/RESEARCH_RECORD.md §7, Class 14b) carries the
 #   full table).
 #
 # **IF ASKED — "you moved the exam after seeing the students; isn't that

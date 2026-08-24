@@ -9,7 +9,7 @@
 #     pip install streamlit plotly
 #     python -m streamlit run dashboard.py
 #
-# WHAT CHANGED vs the RetailFlow1 dashboard
+# WHAT CHANGED vs the predecessor dashboard
 #   * The price-overlay analytics that used to live in notebooks 11-16
 #     (mention share vs price, attention first derivative, lead/lag scan,
 #     direction flips, conviction crossings, the signal report card) are
@@ -96,7 +96,7 @@ def _security_names():
     """symbol -> company name, from the Nasdaq symbol directories this
     project already caches for the ticker universe. Used to label the
     single-name dropdown the way the theme dropdown is labelled with its
-    anchor ETF (desk request 2026-08-04: "it should be like the theme
+    anchor ETF (requirement: "it should be like the theme
     dashboard") - a bare list of tickers makes you remember what NBIS or
     SNDK are; a labelled one does not."""
     out = {}
@@ -175,7 +175,7 @@ st.set_page_config(page_title="RetailRadar", layout="wide",
 def flag_label(name, kind):
     """The ONE way this app spells an instrument on screen.
 
-    Desk request 2026-08-04: "copy the thematic dashboard side on the
+    Requirement 2026-08-04: "copy the thematic dashboard side on the
     format i like".  The theme side already read `China geopolitics
     (FXI)` - a name a human recognises, followed by the thing you would
     actually trade.  The single-name side read `IREN`, which is neither:
@@ -239,7 +239,7 @@ def _cached_priced_symbols(mtime):
 
 # ---------------------------------------------------------------------------
 # DESIGN TOKENS - institutional light theme (GIC design language, adopted
-# 2026-07-27 by desk decision).  The brief: navy on white, high whitespace,
+# by design).  The brief: navy on white, high whitespace,
 # hairline rules, restrained accents, "annual report rather than startup".
 #
 # WHY tokens and not literals: before this block the file carried 33 loose
@@ -264,9 +264,9 @@ SLATE = "#7A8794"          # price line, raw/context series
 # draws is always also legible from the axis and the hover.
 SLATE_LIGHT = "#B9BFC7"    # same series, on a day that could not fire
 
-# DESK DECISION - INK_LABEL departs from the brief's #8C8C8C.
-# Measured with tools/contrast_audit.py, which computes the WCAG 2.1 contrast
-# ratio of every text node against its COMPOSITED backdrop.  #8C8C8C scores
+# Deliberate departure: INK_LABEL departs from the brief's #8C8C8C.
+# Measured with a WCAG 2.1 contrast audit of every text node against
+# its composited backdrop.  #8C8C8C scores
 # 3.36:1 on WHITE and 3.14:1 on PANEL; the AA bar for text below 18.66px is
 # 4.5:1, and every use of this token here is 10-12px (card labels, axis
 # titles, the masthead subtitle).  The brief's grey therefore fails on the two
@@ -485,7 +485,7 @@ real_estate excluded); single names join the themes. Full rules +
 research grounding: the EUPHORIA definition expander on the first tab
 and analytics/euphoria.py.
 
-**0b - PREDICTION IS REDDIT-ONLY (desk rule, July 2026).** Price never
+**0b - PREDICTION IS REDDIT-ONLY (selection rule, July 2026).** Price never
 enters the euphoria level or the alert; it only DEFINES and SCORES the
 ground-truth tops. This was a deliberate trade: the earlier variant with
 a price-convexity feature and a price-boom gate captured **46%** of
@@ -511,10 +511,10 @@ independent evidence the hand-rules are not arbitrary.
 so no rule on this dashboard is a black box. All PnL figures: real
 Bloomberg closes, signals from 2021, per-year cross-validation.)*
 
-**1 - The BUY/SELL engine is the ORIGINAL RetailFlow1 logic, unchanged.**
+**1 - The BUY/SELL engine is the original legacy logic, unchanged.**
 Verified by diffing the two projects' signal files: every tradeable
 signal matches (the only differences are in `cannabis`, which has no
-approved instrument and never trades). Scoring *RetailFlow1's own file*
+approved instrument and never trades). Scoring *the legacy engine's own file*
 on real prices gives BUY = **-1.42%/trade** over 2021-2026 - identical
 to this project, because it is the same engine. The old project never
 scored full history (its report cards were window-clipped), which is why
@@ -963,7 +963,7 @@ def _base_fig(title):
 
 
 # ---------------------------------------------------------------------------
-# THE EUPHORIA GAUGE  (desk request 2026-07-27: "a current euphoria
+# THE EUPHORIA GAUGE  (recorded decision: "a current euphoria
 # percentage with a red zone to get out ... a very clear speedometer thing
 # for each graph, and showing the change")
 # ---------------------------------------------------------------------------
@@ -1004,7 +1004,7 @@ def gauge_state(level_now, in_danger, z):
 # ---------------------------------------------------------------------------
 # READINESS - "how close is this name to a signal firing?"
 #
-# Desk request 2026-08-13, and it fixes a real inconsistency rather than
+# Requirement 2026-08-13, and it fixes a real inconsistency rather than
 # adding a feature. The card used to show a 0-100 EUPHORIA level beside a
 # "0.21 to go" gap, which read as two views of one quantity and is not:
 # the level is a crowd-heat composite, the gap is the ML score against
@@ -1111,7 +1111,7 @@ def fig_euphoria_gauge(level_now, level_prev, in_danger, z, as_of,
     selected for "it was hot recently" reads calm almost always, and looks
     broken while being right.
     The fix is to make the dial answer both questions instead of moving any
-    threshold: the big needle stays TODAY (the desk asked for a *current*
+    threshold: the big needle stays TODAY (the requirement was for a *current*
     percentage), and the window's high-water mark is drawn behind it so a
     calm reading carries its own explanation - "calm now, peaked 99 in red
     on 27 Jun".  No edge moves, no number is invented.
@@ -1204,8 +1204,8 @@ def fig_euphoria_gauge(level_now, level_prev, in_danger, z, as_of,
 
 # The standing caveat about what the dial is. It is CONSTANT text, so it is
 # a module constant rather than something rebuilt per chart, and it lives in
-# the info tooltip rather than on the page (desk instruction 2026-07-28).
-# THE SEVEN SIGNAL STATES, in one place (desk request 2026-08-11:
+# the info tooltip rather than on the page (recorded decision).
+# THE SEVEN SIGNAL STATES, in one place (recorded decision:
 # "a ? for the signal state part so I know the different states like
 # blow-off"). Two families: a FIRED FLAG owns the state for its 21-day
 # episode window, and when no flag is live the phase clock reads the
@@ -1477,7 +1477,7 @@ def _attention_mode_control(key):
 
 def _mood_mode_control(key):
     """The mood line: RELATIVE to the market's mood (default) or the raw
-    net-bullish level (desk question 2026-08-10, "how come net
+    net-bullish level (design review: "how come net
     bullishness is always positive?").
 
     Measured on this store: 46% of posts score bullish vs 24% bearish,
@@ -1646,7 +1646,7 @@ onset = load("euphoria_onset.parquet")
 if onset is not None:
     onset["date"] = pd.to_datetime(onset["date"])
 
-# the DESK CONFIGURATION store (desk decision 2026-07-24): the GET IN /
+# the DESK CONFIGURATION store (recorded decision): the GET IN /
 # GET OUT signals the euphoria tabs actually show - boom-gated smoothed
 # END + phase-aware smoothed ONSET, at frozen walk-forward thresholds
 # (full record: NB06 "adopted desk configuration" + euphoria_phases.py §6)
@@ -1660,7 +1660,7 @@ if os.path.exists(_dkrep_path):
     desk_report = _json.load(open(_dkrep_path))
 
 # episodes.parquet is deliberately NOT loaded here. It was the ground truth
-# behind the window-adaptive scorecard; with that strip removed (desk decision
+# behind the window-adaptive scorecard; with that strip removed (recorded decision;
 # 2026-07-28, see the euphoria tab) nothing on this dashboard scores itself, so
 # loading it would be a read with no reader. The file is unchanged on disk and
 # is still the ground truth every notebook judges against.
@@ -1722,13 +1722,13 @@ lo = pd.Timestamp(st.sidebar.date_input("window start", _default_lo.date()))
 live_mode = st.sidebar.checkbox("LIVE (to newest data)", value=True)
 hi = None if live_mode else pd.Timestamp(
     st.sidebar.date_input("window end", data_max.date()))
-# HOW MANY CHARTS (desk question 2026-07-28: "why are there so little charts
+# HOW MANY CHARTS (design review: "why are there so little charts
 # displayed? like only 8 charts - also how do you select what do to show?").
 #
 # THREE filters stack, and only the last one is a preference:
 #   1. the window - a name is only considered if it has euphoria rows in it;
 #   2. IT MUST HAVE ALERTED INSIDE THE WINDOW.  This is deliberate and stays:
-#      the earlier desk instruction was "just show all the themes / tickers
+#      an earlier requirement was "just show all the themes / tickers
 #      that have had a euphoria detected in the time frame selected", i.e. no
 #      filler names.  It is also what BINDS in the default window: 8 of 31
 #      themes and 3 of the 8 present singles alerted between 1 Jan and 21 Jul
@@ -1744,137 +1744,59 @@ hi = None if live_mode else pd.Timestamp(
 # charts states how many qualified versus how many are drawn.
 how_many = st.sidebar.slider("items per section", 3, 60, 15)
 
-# SIGNAL SETTING (desk decisions 2026-08-09). Standard = the F1 cut;
-# Strict = the F0.5 cut (precision weighted twice). Both are SHAPED
-# identically: GET IN only pre-boom (re-arms at the train-median
-# score), GET OUT only post-boom (the ground truth's own 120d bar,
-# re-arms at the cut), one call per name per quarter per side, and no
-# GET IN within 21d of a GET OUT in either direction. Evidence:
-# docs/research/alert_shape_sweep.json.
-# RENAMED 2026-08-12, RETIRED 2026-08-17 on desk instruction ("remove
-# the standard and relaxed stuff, just use the standard"): the
-# interface serves STANDARD only. The cuts did not change.
+# ---------------------------------------------------------------------------
+# Signal configuration (final production values; provenance in
+# docs/DECISIONS.md). None of these is user-selectable: every surface
+# reads them through sig_col()/sig_head()/IN_SCORE/OUT_SCORE, so a
+# single flag change here re-routes the whole page consistently.
 #
-# READ THIS BEFORE "FIXING" THE SUFFIX BELOW. The stored columns keep
-# their original names - `get_in_strict` / `get_out_strict` are the
-# F0.5 cut and are what STANDARD (the only setting) serves; the bare
-# `get_in` / `get_out` are the retired Relaxed F1 cut, still written by
-# the pipeline so every stored record and notebook reproduces. The
-# display reads the columns whose names say "strict", which looks like
-# an inversion and is not one. Renaming the parquet columns to match
-# the labels would break every stored record, every notebook and the
-# frozen research JSONs, for a cosmetic gain - so the mapping is stated
-# here instead and fenced by a test.
-# THE EXPERIMENTAL PRICE-BLIND TRIGGER (desk 2026-08-14: "i want only
-# the post factors to predict the price, not price predicting price").
-# A second, clearly-labelled signal family scored from CROWD FEATURES
-# ONLY - no price features, and no price-based phase gate routing IN vs
-# OUT. It is a MODE, never the default: walk-forward it ranks days at
-# AUROC ~0.57 against the shipped pair's ~0.73 (notebook 08 §8), so it
-# answers "what can the posts alone see", not "what should the desk
-# act on". Columns *_xp in the store; frozen cuts in the desk record's
-# experimental_price_blind block.
+# Column naming, stated once because it looks inverted and is not: the
+# pipeline writes BOTH operating points on every run. `get_in_strict` /
+# `get_out_strict` are the F0.5 (precision-weighted) cut; the bare
+# `get_in` / `get_out` are the F1 cut. The parquet names are frozen -
+# renaming them would break every stored record, notebook, and research
+# JSON - so the mapping is documented here and fenced by a test.
+#
+# Both operating points are SHAPED identically: GET IN only pre-boom
+# (re-arms at the train-median score), GET OUT only post-boom (the
+# ground truth's own 120d bar, re-arms at the cut), one call per name
+# per quarter per side, and no GET IN within 21d of a GET OUT in either
+# direction. Evidence: docs/research/alert_shape_sweep.json.
+# ---------------------------------------------------------------------------
+
+# Trigger: SHIPPED (crowd + price). The experimental price-blind pair
+# reads crowd features only and ranks days at walk-forward AUROC ~0.57
+# against the shipped pair's ~0.73 (notebook 08 §8); it answers "what
+# can the posts alone see" and is a research record, not a desk signal.
+# Its *_xp columns are still written on every run; set XP_TRIGGER = True
+# to inspect them - nothing else changes.
 _XP_STORE_OK = desk is not None and "in_score_xp" in desk.columns
-# HARDWIRED TO SHIPPED (desk 2026-08-23: "we just automatically use the
-# shipped and the wider as default. do not even show this selection").
-#
-# The experimental posts-only pair is the WEAKER detector - walk-forward
-# AUROC ~0.57 against the shipped pair's ~0.73 (notebook 08 §8) - so it
-# was never the thing to act on, only the answer to "what can the crowd
-# alone see". Its *_xp columns are still written on every run and the
-# research record still quotes them; the dashboard simply no longer
-# offers a way to put a research mode in front of the desk by accident.
-#
-# To look at it again, set XP_TRIGGER = True here. Nothing else changes:
-# every surface reads the trigger through sig_col()/sig_head(), so the
-# routing follows this one flag.
 XP_TRIGGER = False
 _XP_PART = "_xp" if XP_TRIGGER else ""
 
-# SIGNAL SETTING RETIRED (desk 2026-08-17: "remove the standard and
-# relaxed stuff (just use the standard)"). The interface now serves the
-# F0.5 *_strict columns only - the better-performing setting measured
-# walk-forward (post-GET-OUT excess -1.4%/21d, post-GET-IN +0.7%,
-# against Relaxed's +0.1%/-0.4%). The F1 columns stay in the store so
-# every recorded number and notebook still reproduces; only the control
-# is gone.
-# GET IN IS UNGATED, FULL STOP (desk 2026-08-17 v2: "remove the
-# stricter threshold stuff. Just keep get in as no price-gate as
-# default"). The switch that briefly offered the price-gated variant is
-# gone: nb08 §10.4 measured the 120d phase gate throwing away roughly
-# three quarters of the GET IN calls the model earns (captured episodes
-# 28 -> 116 ungated, at under double the false alarms), because chained
-# episodes re-onset while a name still counts as boomed. GET OUT keeps
-# its gate everywhere - ungated its false alarms double (same section),
-# which is why no switch ever existed for that side.
-# THE DIAL ALWAYS SHOWS % OF SIGNAL (desk 2026-08-17: "remove the
-# euphoria stuff, we use % of signal always now"). The choice used to be
-# a sidebar radio; it is gone because the two readings answer different
-# questions and only one of them is the signal. % OF SIGNAL is the live
-# model score over that side's frozen cut, so 100 = the call fires, and
-# it means the same thing for every name and both sides. EUPHORIA LEVEL
-# (100 x the mean of e1/e2/e3/e5) is crowd heat only - no price, no
-# model, no threshold - so it never lined up with the firing line, and
-# offering it beside a readiness needle invited exactly the misreading
-# the signed band was built to end.
-#
-# Euphoria survives in ONE place, as automatic degradation rather than a
-# choice: if a name has no score to be a percentage OF (no stored row,
-# or no frozen cut yet) the gauge falls back to the euphoria reading
-# below rather than showing an empty dial - and the facts panel keeps
-# "euphoria today" as a descriptive row either way.
+# Dial: % of signal. The needle is the live model score over that
+# side's frozen cut, so 100 means the call fires, identically for every
+# name and both sides. The unthresholded euphoria level survives only
+# as an automatic fallback when a name has no score to be a percentage
+# of, and as a descriptive row in the facts panel.
 READINESS_DIAL = True
 
-# THE SIGNAL SETTING IS A CHOICE AGAIN (desk 2026-08-23).
-#
-# It was retired to Standard-only on 2026-08-17. What that hid: BOTH cuts
-# are computed and stored on every run, and the wider one catches calls
-# the tighter one declines by a hundredth of probability. gold_metals is
-# the case that made it obvious - out_score 0.958 into its 2026-01-29
-# peak against a Standard cut of 0.970, so `get_out` fires 2026-01-28
-# (one day early) and `get_out_strict` never fires at all. The call was
-# in the store the whole time; the dashboard simply was not drawing it.
-#
-# This is NOT a threshold change. Nothing is refitted, no frozen cut
-# moves, and the operating-point sweep (tools/sweep_operating_point.py)
-# still says Standard is the right DEFAULT under the pre-stated
-# false-alarm budget. It only lets the desk read the wider column that
-# already exists - with the cost stated, so nobody mistakes it for free.
-#
-# MEASURED COST of the wider cut, walk-forward (sweep, 2026-08-23):
+# Operating point: WIDER (the F1 columns). Rationale: a top visible on
+# the chart should produce a call on the chart - the F0.5 cut declines
+# calls that miss it by ~0.01 of probability (gold_metals' 2026-01-29
+# peak: out_score 0.958 against a 0.970 cut, while the F1 call fired a
+# day early and was simply not drawn). Measured trade, walk-forward
+# (tools/sweep_operating_point.py), Wider vs Standard:
 #   GET OUT  capture 34% -> 45%,  precision 37% -> 32%,  FA/iy 0.35 -> 0.58
 #   GET IN   capture 39% -> 57%,  precision 58% -> 46%,  FA/iy 0.17 -> 0.40
-# More calls, more of them wrong. That is the trade, and it is the whole
-# reason Standard remains the default.
-# DEFAULT = WIDER (desk decision 2026-08-23). The desk's instruction was
-# that a top it can see on the chart should produce a call on the chart:
-# a detector that declines gold's 2026 peak by 0.012 of probability is
-# not useful at the screen, whatever it does to a precision statistic.
-# Standard remains one click away and remains what the research pack
-# quotes.
-# HARDWIRED TO WIDER (same desk instruction). Standard is the
-# precision-weighted cut and is what the research pack quotes; Wider is
-# what the desk reads, because a top visible on the chart should produce
-# a call on the chart - gold's 2026-01-29 peak is the case that settled
-# it (out_score 0.958 against a Standard cut of 0.970, so the call
-# existed in the store and was simply not drawn).
-#
-# THE TRADE, measured walk-forward (tools/sweep_operating_point.py,
-# 2026-08-23) - Wider against Standard:
-#   GET OUT  capture 34% -> 45%,  precision 37% -> 32%,  FA/iy 0.35 -> 0.58
-#   GET IN   capture 39% -> 57%,  precision 58% -> 46%,  FA/iy 0.17 -> 0.40
-# More calls, a larger share of them wrong. NO threshold is refitted by
-# this: both cuts are computed on every run and this only selects which
-# stored column every surface reads.
-#
-# MIND THE MISMATCH: the deck and RESEARCH_REPORT quote STANDARD. A
-# capture rate read off this screen is not the number in the pack. Set
-# RELAXED_SIGNALS = False here to put the two back in agreement.
+# No threshold is refitted by this flag; it selects which stored column
+# the page reads. NOTE: the research pack quotes the F0.5 (Standard)
+# figures - a capture rate read off this screen is not the number in
+# the pack. Set RELAXED_SIGNALS = False to align the two.
 RELAXED_SIGNALS = True
-# STANDARD -> the strict-named columns; WIDER -> the bare F1 columns.
 _SIG_SUFFIX = "" if RELAXED_SIGNALS else "_strict"
 
-# UNGATED GET IN (desk 2026-08-17, notebook 08 §10.4): the 120d phase
+# UNGATED GET IN (production; notebook 08 §10.4): the 120d phase
 # gate was measured blocking ~3/4 of the correct GET IN calls, so the
 # desk view routes GET IN through the *_nogate columns. GET OUT keeps
 # its gate always - ungated, its false alarms double. A store written
@@ -2123,7 +2045,7 @@ def pipeline_panel():
             else:
                 box.markdown(f"<span style='color:#8C8C8C'>[ &nbsp; ] "
                              f"{label}</span>", unsafe_allow_html=True)
-        # THE LIVE LINE (desk request 2026-08-04: "add the AI progress
+        # THE LIVE LINE (recorded decision: "add the AI progress
         # to it too") - the newest log line, so slow in-process stages
         # (the 12-prompt AI poll, the two pulse calls) show their
         # step-by-step progress without opening the technical log.
@@ -2163,7 +2085,7 @@ win_env = {"PIPELINE_START_DATE": start_s, "PIPELINE_END_DATE": end_s}
 
 # buttons are disabled while a pipeline runs - one at a time, by design.
 #
-# SIMPLIFIED TO THREE (desk instruction 2026-07-31: "simplify the refresh
+# SIMPLIFIED TO THREE (recorded decision: "simplify the refresh
 # buttons ... remove the external machine one").  What happened to the two
 # that left:
 #   * "recompute analytics only" - folded into QUICK UPDATE, which already
@@ -2194,7 +2116,7 @@ if st.sidebar.button("FULL UPDATE - live pull  (~10 min)",
                           "picked up by the next run, never dropped. Run it "
                           "about twice a week."):
     start_pipeline([(["update_data.py"], None)], "LIVE pull", plan="live")
-# Comments ARE part of the full update (desk decision 2026-07-27): this is
+# Comments ARE part of the full update (recorded decision): this is
 # the CATCH-UP button, for when the pipeline has been idle long enough that
 # one budgeted run cannot close the gap. Its estimate is computed from the
 # watermarks and this machine's measured throughput, not bracketed by hand.
@@ -2272,16 +2194,15 @@ _m3.metric("most retail attention (7d)", _hottest)
 _m4.metric("data through", str(data_max.date()))
 _m5.metric("priced symbols", len(priced))
 
-# ---- NO MODEL-EVIDENCE EXPANDERS ON THE PAGE (desk instruction
-# 2026-07-28: "for the explanations, just keep the what is euphoria one ...
-# dont change the current what is euphoria? (start here - plain English)
-# just remove the rest").
+# ---- NO MODEL-EVIDENCE EXPANDERS ON THE PAGE (final
+# requirement): a single explainer is kept; all other
+# model-evidence expanders are removed from the page.
 #
 # Two sibling expanders used to sit here - "WHY THE MODEL DOES WHAT IT DOES"
 # (`decisions_simple()`, 7 decisions each with the number that settled it)
 # and "the long-form evidence log" (`DECISIONS_DOC`).  Both are REMOVED from
 # the screen.  The reasoning they carried is not lost and was not weakened:
-# it is the same content as docs/DECISIONS.xlsx, docs/PARAMETER_REGISTER.md
+# it is the same content as docs/DECISIONS.xlsx, docs/RESEARCH_RECORD.md
 # and the notebooks, which are the research record by standing instruction
 # ("the dashboard shows conclusions only").
 #
@@ -2291,14 +2212,14 @@ _m5.metric("priced symbols", len(priced))
 # notebook.  `decisions_simple()` (defined at the top of this file) and
 # `DECISIONS_DOC` are deliberately left in place rather than deleted, so
 # restoring this block is a two-line change if the desk wants it back.
-# Recorded in DECISIONS.xlsx ("4. Detector Design") and PARAMETER_REGISTER
+# Recorded in DECISIONS.xlsx ("4. Detector Design") and docs/RESEARCH_RECORD.md
 # Class 8.
 
 # NOTE: individual-ticker overlays were removed from the dashboard by
 # request - the desk trades THEMES via their anchor ETFs, never single
 # tickers. The ticker analytics remain available in analytics/ for
 # research (windowed backtests via run_analytics --what signals).
-# PERSISTENT TAB BAR, NOT st.tabs (desk bug report 2026-07-31: "sometimes
+# PERSISTENT TAB BAR, NOT st.tabs (defect report: "sometimes
 # when i flick between tabs it just gets stuck on a certain tab").
 #
 # THE CAUSE, so this is never reverted to st.tabs: st.tabs keeps its active
@@ -2312,7 +2233,7 @@ _m5.metric("priced symbols", len(priced))
 # The fix is a radio bound to session_state: the selection is server-side
 # state, so a rerun cannot lose it, and ONLY the active tab's code runs -
 # a flick now costs one tab, not nine.
-# TAB SET REDUCED 2026-08-07 (desk instruction): "Overlays: themes",
+# TAB SET (final): "Overlays: themes",
 # "Conviction" and "Historical checker" removed from the screen (the
 # conviction ENGINE still runs in the pipeline and its store is still
 # written - only the display went); "[dev] Data Stats" added - the
@@ -2324,7 +2245,7 @@ _TAB_NAMES = ["EUPHORIA: Themes", "EUPHORIA: Singles", "ETF radar",
 active_tab = st.radio("view", _TAB_NAMES, horizontal=True,
                       key="active_tab", label_visibility="collapsed")
 
-# ---- READINESS ALERTS BANNER (desk request 2026-08-17: "pings you
+# ---- READINESS ALERTS BANNER (recorded decision: "pings you
 # when any name crosses ±90% signed readiness"). Written by every
 # pipeline run beside the store it was cut from, so the banner and the
 # bands can never disagree; stale-scored names are excluded at source
@@ -2335,7 +2256,7 @@ if os.path.exists(_ra_path):
     try:
         _ra = _read_json(_ra_path, _mtime(_ra_path))
         _ra_alerts = _ra.get("alerts") or []
-        # THEMES ONLY, enforced at display too (desk 2026-08-17): an
+        # THEMES ONLY, enforced at display too: an
         # alerts file written before the pipeline's themes-only filter
         # still carries single names - never banner them.
         if desk is not None and "kind" in desk.columns:
@@ -2378,7 +2299,7 @@ def euphoria_simple():
     what it is not.  The method is not hidden - it is one click deeper, and
     the notebooks remain the research record.
 
-    NO PERFORMANCE NUMBERS HERE (desk decision 2026-07-28).  A fourth block,
+    NO PERFORMANCE NUMBERS HERE (recorded decision).  A fourth block,
     "Why a red line matters - the measured version", used to sit between the
     gate list and "What this is NOT".  It quoted the 30-day cliff rates on a
     red-line day versus an ordinary day, the ten-day mean move against its
@@ -2397,7 +2318,7 @@ def euphoria_simple():
     the scaffolding is present.  What remains here is definitional: what euphoria means, what
     must be true before anything can fire, and what this is not - none of
     which moves when the record is re-measured.  Recorded in DECISIONS.xlsx
-    ("4. Detector Design") and PARAMETER_REGISTER Class 8."""
+    ("4. Detector Design") and the parameter register (docs/RESEARCH_RECORD.md §7, Class 8)."""
     hype = f"{EUPHORIA_HYPE_MULT:.0f}x"
     return f"""
 **Euphoria, in one sentence.** The crowd has stopped analysing a name and
@@ -2435,7 +2356,7 @@ Nothing else on the chart is a decision. The 0-100 curve is context.
 
 **Every gate and every number, both directions.**
 
-Desk request 2026-08-05: one table, so the whole rule set is readable in
+Requirement 2026-08-05: one table, so the whole rule set is readable in
 one place instead of being reconstructed from the register. Every value
 below is imported live from `src/config.py` - if a constant moves, this
 table moves with it, and the two can never disagree.
@@ -2628,7 +2549,7 @@ here run unchanged as the research baseline.)*
 
 **EUPHORIA = the crowd has stopped analysing and started
 celebrating.** Prediction is built from the **Reddit-derived data ONLY**
-(desk rule, July 2026): price never enters the euphoria level or the
+(selection rule, July 2026): price never enters the euphoria level or the
 alert - it is used solely to TEST the detector against real tops, so the
 claim stays clean: *the crowd alone called the top*. Measured, per
 instrument, as the average of four percentile-ranked ingredients (each
@@ -2688,7 +2609,7 @@ its own budget for the first time at 0.200.
 that already satisfies every ending gate is end-stage, and a "start"
 there is incoherent - so it cannot fire. That cut start-next-to-end
 adjacency from 20 to 2 and late starts from 21 to 10, at a recorded
-cost of captures (29 → 20 of 125): a desk decision, made because a
+cost of captures (29 → 20 of 125): a recorded decision, made because a
 START landing on an END destroys PM trust, and documented with the full
 variant table in the strictness study's frozen record (nb06_strictness.json; notebook retired 2026-08-07).
 
@@ -2703,7 +2624,7 @@ Ground truth peak = local 21d high >= 25% (ETF) / 50% (single) above its
 `analytics/euphoria.py` + `analytics/euphoria_phases.py`."""
 
 # ---- EUPHORIA: Themes / Single names ------------------------------------
-# Desk decision 2026-07-24: the dashboard shows CONCLUSIONS only - the
+# Recorded decision 2026-07-24: the dashboard shows CONCLUSIONS only - the
 # state (starting / ending) drawn on the chart itself, one tab per
 # instrument kind. All validation evidence (walk-forward tables, the
 # ablation, the ML challenger, the tournament) lives in notebooks/01-04
@@ -2725,7 +2646,7 @@ def _state_of(name, starting, ending):
 
 
 def render_euphoria_tab(kind, kind_label, key_prefix):
-    # HEADING AND LEGEND ARE SEPARATE (desk bug report 2026-08-04, with a
+    # HEADING AND LEGEND ARE SEPARATE (defect report, with a
     # screenshot).  The legend used to be glued onto the subheader, so on a
     # normal-width screen the h2 wrapped and its second line read
     #
@@ -2743,14 +2664,13 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     st.caption("**Green = GET IN** (euphoria starting - the crowd is "
                "arriving).  **Red = GET OUT** (euphoria ending - expect "
                "the top within ~a month of the signal).")
-    # ONE explainer, and its label is not to be touched (desk instruction
-    # 2026-07-28: "dont change the current what is euphoria? (start here -
-    # plain English) just remove the rest").  The wording below is therefore
+    # ONE explainer, and its label is not to be touched (frozen
+    # requirement): the explainer label is frozen.  The wording below is therefore
     # verbatim and deliberate - do not retitle it.
     #
     # Two deeper levels used to follow it: "full method & measured record"
     # (`EUPHORIA_DEF_FULL`) and "deep archive: every constant and its
-    # evidence", which read docs/PARAMETER_REGISTER.md off disk and printed
+    # evidence", which read docs/RESEARCH_RECORD.md off disk and printed
     # the whole file.  Both removed, same reasoning as the page-level block
     # above.  `EUPHORIA_DEF_FULL` stays defined at the top of this file (it is
     # the research text, still cited by the report) and the register is still
@@ -2771,7 +2691,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
 
     # ---- ANCHOR TROUBLE, AND ONLY WHEN THERE IS ANY -------------------
     # The two reference expanders that used to sit here were removed on
-    # desk instruction 2026-08-05 ("please remove these drop downs, only
+    # recorded decision ("please remove these drop downs, only
     # keep the what is euphoria one"). The CHECK they performed is kept,
     # because it caught something real: `europe_defense` was being drawn
     # on ITA, a US aerospace line standing in for a European one, and
@@ -2823,7 +2743,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     dk = (desk[desk["kind"] == kind].copy()
           if desk is not None and len(desk) else None)
 
-    # THE SIGNAL SOURCE (desk configuration 2026-07-24): GET IN /
+    # THE SIGNAL SOURCE (recorded decision): GET IN /
     # GET OUT from euphoria_desk.parquet - the boom-gated SMOOTHED end
     # + phase-aware SMOOTHED onset the desk adopted in NB06 (adjacency
     # 20 -> 2, END AP 0.435 -> 0.449 in the 120d-gate era, no one-day
@@ -2881,7 +2801,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     "WHICH way. It is price-free like the other two, "
                     "walk-forward like the other two, and its cut is "
                     "frozen from past years like the other two. Full "
-                    "record: PARAMETER_REGISTER Class 3d and "
+                    "record: the parameter register (docs/RESEARCH_RECORD.md §7, Class 3)d and "
                     "docs/research/inflection_trigger_sweep.json.")
                 _cols = st.columns(2)
                 for _c, (_hk, _ht) in zip(_cols, (("get_in", "GET IN — "
@@ -2914,7 +2834,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                              "GET IN / GET OUT")
     if use_desk:
         src_in = dk[dk[sig_col("get_in", dk)].astype(bool)]
-        # SINGLE-NAME DISPLAY BAR (desk decision 2026-07-24): a ticker
+        # SINGLE-NAME DISPLAY BAR (recorded decision): a ticker
         # shows as "euphoria starting" only when its crowd cleared the
         # FULL A1 hype bar (2x its own 120d median). Really-euphoric
         # names only; marginal names cannot flicker in and out.
@@ -2929,7 +2849,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             src_in = src_in[src_in["hype_raw"] >= EUPHORIA_HYPE_MULT]
         src_out = ek[ek["alert"]]
 
-    # EPISODE COHERENCE (desk rule 2026-07-24, asymmetric by
+    # EPISODE COHERENCE (selection rule 2026-07-24, asymmetric by
     # measurement): a START within one cooldown AFTER an END is a
     # contradictory flip and is suppressed; an END after a START is
     # never suppressed - fast manias genuinely run start-to-end inside
@@ -2960,7 +2880,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             ending[name] = max(state_t)
 
     # ---- SHARED EXPLANATION + OUTCOME MACHINERY --------------------------
-    # One arithmetic, three surfaces (desk brief 2026-07-31: the hover, the
+    # One arithmetic, three surfaces (design brief: the hover, the
     # per-flag dropdowns and the per-chart "why did it fire" must never
     # disagree): every factor line a human reads is built by the SAME
     # helpers below, from the SAME stored rows the detector acted on.
@@ -3074,7 +2994,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         md += [f"- {ln}" for ln in lines]
         return "\n".join(md)
 
-    # ---- SIGNAL OUTCOME RECORD (desk request 2026-07-31: "median time
+    # ---- SIGNAL OUTCOME RECORD (recorded decision: "median time
     # after signal for price up / down by the X%" + "price change after
     # 5, 20, 84 days after each signal").  The X% move is the SAME test
     # NB06 uses for the danger state: a >=10%-in-7d move STARTING within
@@ -3085,7 +3005,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     # against the signal - same PENDING rule as the notebooks.
     def _outcome_stats(name, win_lo=None, win_hi=None):
         """Signal outcomes for one name, ALERTS CLIPPED TO THE SIDEBAR
-        WINDOW (desk request 2026-07-31: "make the performance metrics
+        WINDOW (requirement: "make the performance metrics
         for each chart update according to the timeframe window").  The
         JUDGING always uses the full price history - an alert near the
         window edge is still judged on what actually followed it, the
@@ -3150,7 +3070,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             }
         return out
 
-    # ---- THE SIGNAL, unmissable (desk brief 2026-07-24: "it should be
+    # ---- THE SIGNAL, unmissable (design brief: "it should be
     # super clear: euphoria is ending (get out signal) or euphoria
     # starting (get in)") - one red banner, one green banner, nothing to
     # interpret. Sparse by design: empty = the radar working.
@@ -3180,7 +3100,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 "out) in the last 21 days. Euphoria is rare; an empty "
                 "pane is the radar working.")
 
-    # ---- WHY, PER FLAG (desk request 2026-07-31: "make each get out /
+    # ---- WHY, PER FLAG (recorded decision: "make each get out /
     # get in flag have a drop down we can click and that shows the
     # reasons").  One expander per live flag, right under its banner, built
     # by the same helper as the hover - the two cannot disagree.
@@ -3193,7 +3113,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                          f"(signal {starting[n].date()})"):
             st.markdown(_explain_alert(n, starting[n], "in"))
 
-    # ---- NO PERFORMANCE METRICS ON THIS PANEL (desk decision 2026-07-28).
+    # ---- NO PERFORMANCE METRICS ON THIS PANEL (recorded decision).
     #
     # A window-adaptive scorecard used to sit here: hit rate, median lead,
     # false alarms and signal count, recomputed against the same judge the
@@ -3216,12 +3136,12 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     #
     # Nothing measured was lost: `classify_onset_alerts` / `classify_top_alerts`
     # are untouched and still drive the notebooks.  Recorded in DECISIONS.xlsx
-    # ("4. Detector Design") and PARAMETER_REGISTER Class 8.
+    # ("4. Detector Design") and the parameter register (docs/RESEARCH_RECORD.md §7, Class 8).
 
     # FROZEN THRESHOLDS, and WHICH ONE THE CHART IS ALLOWED TO DRAW.
     #
     # This block is the fix for a real self-contradiction in the old chart
-    # (desk bug report 2026-07-28: "its quite unclear to see WHEN is the
+    # (defect report: "its quite unclear to see WHEN is the
     # actual change - its like flat and then suddenly a get out flag").
     #
     # The old panel drew ONE dotted line labelled "signal level" at the
@@ -3259,7 +3179,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     ew = clip_window(ek, "date", lo, hi)
 
     # ---- ONE MASTER DIAL FOR THE WHOLE TAB -----------------------------
-    # Desk instruction 2026-07-29: "make all the guages use a master dial".
+    # Requirement: all gauges share one master dial implementation.
     #
     # The scrubber shipped one pass earlier lived INSIDE draw_chart, so a
     # six-name page carried six independent sliders.  That is the wrong
@@ -3361,7 +3281,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         w0, w1 = one_i.index.min(), one_i.index.max()
         onset_alerts = [d for d in co if w0 <= d <= w1]
         top_alerts = [d for d in ct if w0 <= d <= w1]
-        # INFLECTION MARKERS (desk 2026-08-12) - CONTEXT, NOT A CALL. Drawn as
+        # INFLECTION MARKERS - CONTEXT, NOT A CALL. Drawn as
         # a small tick on the axis rather than a full-height rule, so it
         # can never be mistaken for GET IN / GET OUT at a glance. It is
         # not in the watchlist, it does not set the state, and nothing
@@ -3369,7 +3289,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # direction, and its measured hit rate is only modestly above
         # the base rate - which is exactly why it is furniture and not a
         # signal. The numbers deliberately live in the RUNBOOK and
-        # PARAMETER_REGISTER Class 3d rather than here: a hard-coded hit
+        # the parameter register (docs/RESEARCH_RECORD.md §7, Class 3)d rather than here: a hard-coded hit
         # rate in the UI goes stale the first time the head is re-fitted
         # and nothing would catch it.
         inflection_alerts = []
@@ -3426,7 +3346,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
 
 
         # ---- THE PHASE CLOCK: one displayed state (NB08, 2026-07-31) -----
-        # The desk asked how the panel could read GET IN and GET OUT at
+        # The design question: how could the panel read GET IN and GET OUT at
         # once, and why the shown side could flip overnight.  NB08 built
         # and judged two single-state designs; the PHASE CLOCK won: two
         # smooth coordinates - L (crowd extremity: the e-bank mean) and
@@ -3464,8 +3384,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 # ~zero, so it enters the 7d mean as 0 and the momentum
                 # DECAYS over a week when the crowd drops out - it cannot
                 # snap to zero overnight, so the clock cannot jump arcs
-                # on a tracking-floor blink (desk: "it shouldnt be able
-                # to flop between the two quickly").  No new window and
+                # on a tracking-floor blink; the state must not
+                # oscillate rapidly.  No new window and
                 # no look-ahead: this is the same house ROLL, applied on
                 # the calendar the way NB08's dense frame applies it.
                 _cal = pd.date_range(_om.index.min(), lvl.index.max(),
@@ -3505,7 +3425,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             return ("COOLING", INK_MUTED,
                     "the crowd is fading; neither question is close")
 
-        # ---- THE DISPLAYED STATE, full priority order (desk instruction
+        # ---- THE DISPLAYED STATE, full priority order (specified
         # 2026-07-31: "it has to be explainable when there is an alert" /
         # "only one clear direction at any time").
         #
@@ -3524,7 +3444,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
 
         def _disp_state(_day):
             _day = pd.Timestamp(_day)
-            # STRICT <, ages 0-20 (review 2026-08-02 #2: at exactly 21
+            # STRICT <, ages 0-20 (design review #2: at exactly 21
             # days the banner said "no live signal" while this said "EXIT
             # WINDOW ... owns the state" - the badge, the coherence engine
             # and this resolver now share one boundary).
@@ -3563,7 +3483,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 if _on_mean is not None else None)
 
         # ---- THE SIGNAL OUTCOME RECORD + the price-scale switch live in
-        # a FOURTH column beside the dial (desk request 2026-07-31).  The
+        # a FOURTH column beside the dial (recorded decision).  The
         # record is this name's own history, full data, judged exactly the
         # way the notebooks judge it - alerts too new to judge are PENDING
         # and never counted.
@@ -3578,7 +3498,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             _pk_v = float(_lvl_ok.max())
             _pk_d = _lvl_ok.idxmax()
             _zkey, _zlab, _zcol = gauge_state(_now, _dgr, _z)
-            # READINESS MODE (desk 2026-08-13). Same dial, different
+            # READINESS MODE. Same dial, different
             # quantity: the live score as a percentage of its own frozen
             # trigger, so 100 is the firing line for every name and both
             # sides. The delta and the peak marker are recomputed in the
@@ -3764,7 +3684,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 help="Plot the price on a logarithmic axis - equal "
                      "percentage moves take equal vertical space.")
 
-        # ---- READINESS, for the HOVER (desk brief 2026-07-31: "if you
+        # ---- READINESS, for the HOVER (design brief: "if you
         # hover over the chart it shows all the factors that contribute to
         # a signal ... and the percentage of the way to their threshold ...
         # and a bar towards -100 to 100% of the signal firing").
@@ -3776,7 +3696,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # that panel drew, priority-merged with the production scorers'
         # recomputation so the stored value wins on every day the detector
         # actually judged (the full reasoning, and the two rejected
-        # drawings, are recorded in DECISIONS.xlsx and RESEARCH_REPORT
+        # drawings, are recorded in DECISIONS.xlsx and docs/RESEARCH_RECORD.md
         # 6.13-6.16).  The numbers now live in the hover instead of on an
         # axis: same crossings, same eligibility, zero panel height.
         _ready = []
@@ -3790,7 +3710,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 if _s.notna().any():
                     _ready.append((_lab, _s))
         # A name the desk store does not COVER must not inherit the
-        # level fallback (review 2026-08-02 #1: europe_defense rendered
+        # level fallback (design review #1: europe_defense rendered
         # "+107% of trigger · could fire today" from the retired level
         # threshold while its factor lines divided by the desk trigger -
         # two arithmetics in one panel).  The fallback exists for a
@@ -3853,8 +3773,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
 
         # which question is LIVE on each day: `end_stage` opens the exit
         # question and closes the entry one.  The hover shows BOTH rules
-        # every day (desk feedback 2026-07-31: "make it show GET OUT % by
-        # default as right now it seems to be all get in") and marks the
+        # every day (GET OUT % is the default view) and marks the
         # live one - the two banks are different machines and seeing them
         # side by side is what makes a GET OUT distinguishable from a
         # GET IN.
@@ -3865,7 +3784,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             _es = pd.Series(False, index=_idx)
 
         # ---- THE HOVER TEXT, one block per day ---------------------------
-        # Desk spec 2026-07-31: the total bar at the top stays; every
+        # Specification: the total bar at the top stays; every
         # factor below it gets its own box and its % of the trigger, so
         # the COMPOSITION is visible: each rule's score is the plain
         # average of its five factors, so one factor at value v
@@ -3933,7 +3852,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     ("attention_convexity",
                      _h_on["attention_convexity"]))
 
-        # ONE SIDE PER DAY (desk instruction 2026-07-31: "I dont want it
+        # ONE SIDE PER DAY (recorded decision: "I dont want it
         # to be like both get in and get out ... how can it be both?").
         # The PHASE picks which rule's breakdown is shown - BUILDING is
         # the start of the bullishness, so it shows GET IN; BLOW-OFF and
@@ -3945,7 +3864,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # rules exactly as before; this chooses only what is DISPLAYED.
         _fired_out_days = {pd.Timestamp(d) for d in top_alerts}
         _fired_in_days = {pd.Timestamp(d) for d in onset_alerts}
-        # ONE builder, two consumers (desk request 2026-07-31: "hover and
+        # ONE builder, two consumers (recorded decision: "hover and
         # then see the reasons outside the graph? right now its covering
         # the price chart"): compact (_full=False) feeds the HOVER - a
         # three-line glance that no longer buries the price - and full
@@ -4134,7 +4053,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         _hover_txt = ["<br>".join(_day_lines(_j))
                       for _j in range(len(_idx))]
 
-        # ---- ONE PANEL: THE PRICE (desk brief 2026-07-31: "remove the
+        # ---- ONE PANEL: THE PRICE (design brief: "remove the
         # euphoria chart below the price chart").  Everything the lower
         # panel said is now in the hover above; the flags stay as vertical
         # rules + dots on the price line itself.
@@ -4229,7 +4148,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             # NB: scratch index variable is NOT named _pos - that name
             # carries the master-day position into _lvl_ok, and
             # clobbering it here sent the WHY panel indexing past the
-            # end of that shorter series (IndexError, desk bug report
+            # end of that shorter series (IndexError, defect report
             # 2026-08-17)
             for _d in inflection_alerts:
                 _ipos = _carrier.index.searchsorted(pd.Timestamp(_d))
@@ -4320,7 +4239,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                          type="log" if _log_scale else "linear")
         _axes_fidelity(_theme(fig))
         st.plotly_chart(fig, width="stretch", key=key)
-        # ---- THE COMBINED BAND (desk 2026-08-17 v2, notebook 08 §11.4:
+        # ---- THE COMBINED BAND (notebook 08 §11.4:
         # "combine the get out and get in chart with this +1 to -1 one
         # ... make the chart clearer"). ONE panel, three layers, one
         # [-1, +1] axis:
@@ -4341,7 +4260,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 and OUT_SCORE in dk_i.columns
                 and _thr_in_d and _thr_out_d):
             _srg = dk_i.loc[(dk_i.index >= w0) & (dk_i.index <= w1)]
-            # PER-SIDE coverage (desk bug report 2026-08-17: "why do we
+            # PER-SIDE coverage (defect report: "why do we
             # have missing data?"): only the LIVE side's score is needed
             # for the reading, so a day scored on one side still draws -
             # requiring both scores was punching holes wherever the
@@ -4449,7 +4368,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                                "- run `python -m analytics."
                                "run_analytics --what phases` once to "
                                "compute it")
-        # ---- THE FULL REASONS, OUTSIDE THE CHART (desk request
+        # ---- THE FULL REASONS, OUTSIDE THE CHART (requirement
         # 2026-07-31).  Streamlit surfaces no hover events, so the panel
         # follows the tab's master "read every dial on" slider - the
         # control every dial already obeys - and renders the complete
@@ -4511,7 +4430,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 "after each flag."))
 
     # ---- LOOK UP ANY NAME (type to search) --------------------------
-    # Themes are shown WITH their tradeable anchor ETF (desk request
+    # Themes are shown WITH their tradeable anchor ETF (requirement
     # 2026-07-31) - the instrument comes straight from config/theme_etfs.csv
     # via THEME_ETFS, so fixing a mapping there fixes every dropdown at once.
     all_names = sorted(ek["name"].unique())
@@ -4523,7 +4442,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     if pick and pick != "(none)":
         draw_chart(pick, "LOOKUP: ", f"{key_prefix}_lookup_chart")
 
-    # ---- WHICH CHARTS, IN WHICH ORDER (desk request 2026-07-31: "sort
+    # ---- WHICH CHARTS, IN WHICH ORDER (recorded decision: "sort
     # the charts ... by either share of total mentions (which tickers have
     # the most chatter or retail attention at the moment) or by recent
     # get out / get in flags (as it is now)").
@@ -4561,7 +4480,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
              "whether or not it ever alerted.")
 
     if sort_mode.startswith("closest"):
-        # THE WATCHLIST (desk request 2026-08-10: "which ones are
+        # THE WATCHLIST (recorded decision: "which ones are
         # closest / eligible to fire, how close, and in what
         # direction - the ones I should be watching").
         #
@@ -4587,8 +4506,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             _old = _g[_g["date"] <= _prev]
             _boomed = bool(_cur.get("boomed120", False))
             # INFLECTION joins the watchlist as a third SIDE (desk
-            # 2026-08-12: "can you also make it like closest to a
-            # inflection"). It is always eligible - the inflection head has no
+            # requirement: rank by proximity to an
+            # inflection). It is always eligible - the inflection head has no
             # phase gate, deliberately - and it stays labelled as
             # context wherever it is rendered, because a row in a
             # watchlist is the furthest this signal is allowed to go.
@@ -4625,7 +4544,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             # rank: eligible first, then smallest gap to its trigger.
             # A name already OVER its trigger (gap <= 0) is on the
             # verge / just fired - it sorts to the very top.
-            # ONE TABLE, ONE ORDERING (desk 2026-08-12: the two
+            # ONE TABLE, ONE ORDERING (final: the two
             # "closest to..." options produced nearly the same table
             # from the same rows and only differed in which side sorted
             # first - two ways to ask one question). INFLECTION is now a
@@ -4751,7 +4670,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     "sidebar to see past episodes")
         else:
             # NO SILENT CAPS.  Coverage reported separately from alerting
-            # (desk question 2026-07-28: "why does euphoria singles only
+            # (design review: "why does euphoria singles only
             # show 3 graphs?") - the denominator is names WATCHABLE in the
             # window, and names whose history ends before it are counted
             # out loud with the fix attached.
@@ -4822,7 +4741,7 @@ if active_tab == "EUPHORIA: Themes":
 if active_tab == "EUPHORIA: Singles":
     render_euphoria_tab("single", "Single names", "euphsg")
 
-# ---- ETF RADAR (desk request 2026-08-17: "add to the dashboard a table
+# ---- ETF RADAR (recorded decision: "add to the dashboard a table
 # (tab) of all the ETFs we have and their score currently (even better
 # if its the continuous graph over time) of the retail attention. order
 # it by whats the closest to a get out") ----
@@ -4852,8 +4771,7 @@ if active_tab == "ETF radar":
         "last and are marked *stale*. *Retail attention* is the crowd "
         "heat the scores are built from: the bar is today against the "
         "name's own last year; the sparkline is the last six months.")
-    # THEME ETFs ONLY (desk 2026-08-17: "etf radar should also only be
-    # etfs not single names") - the tab exists to rank the tradeable
+    # THEME ETFs ONLY - the tab exists to rank the tradeable
     # theme instruments; single names keep their own EUPHORIA: Singles
     # tab and their per-name bands.
     _dkr = desk[(desk["date"] <= _as_of_r) & (desk["kind"] == "theme")]
@@ -4889,7 +4807,7 @@ if active_tab == "ETF radar":
         _fresh = (_out_day is not None
                   and (pd.Timestamp(_as_of_r)
                        - pd.Timestamp(_out_day)).days <= 60)
-        # ONE SIGNED NUMBER PER NAME (desk 2026-08-17, notebook 08
+        # ONE SIGNED NUMBER PER NAME (notebook 08
         # §10.5, replacing the two % columns this table shipped with -
         # which could and did read 100%/100% on the same name). The
         # phase routing supplies the sign, so the reading can never
@@ -4972,7 +4890,7 @@ if active_tab == "ETF radar":
 
 # ---- INFLUENCE TRACKER (committed text-free store, extended live) ----
 # INFORMATION ONLY. Nothing on this tab feeds the euphoria level or the
-# GET IN / GET OUT alerts - that is a desk rule, and notebook 05 is the
+# GET IN / GET OUT alerts - that is a selection rule, and notebook 05 is the
 # reason for it: the influence model does NOT generalise to authors it has
 # not seen (cohort-split AP sits at or below the random floor), so it is a
 # research exhibit, never a live input. The RANKING shown here is the
@@ -5141,7 +5059,7 @@ equally, drawn and labelled on the charts. On the 30-day cross-section that is
 each name's OWN volatility: a 3% move is a real call on an index and noise
 on a meme stock.
 
-**Why no per-author hit rate is displayed** (desk decision, 2026-07-27). It is
+**Why no per-author hit rate is displayed.** It is
 still computed, still stored in `author_scores.parquet`, and still an input to
 the composite - it is simply not shown on this screen. Two reasons. First, a
 raw hit rate and a shrunk composite are answers to different questions, and
@@ -5163,7 +5081,7 @@ yet every exhibit pooled the whole window into one snapshot - so the tab could
 say "GME is the most-backed name" but never "GME's backing has tripled in
 three weeks", which is the statement a PM can act on. Both panels are weekly,
 not daily: the comment fetch runs about twice a week under the ingestion
-budget (PARAMETER_REGISTER Class 7), so a daily axis would largely plot the
+budget (the parameter register (docs/RESEARCH_RECORD.md §7, Class 7)), so a daily axis would largely plot the
 fetch schedule. Per-week backing is normalised by that week's own median name,
 so a busy forum week cannot masquerade as crowding.
 
@@ -5960,7 +5878,7 @@ if active_tab == "Influence tracker":
             _k4.metric("most-backed name", "-")
             _k5.metric("calls vs last week", "-")
 
-        # SUB-TABS, NOT ONE LONG SCROLL (desk instruction 2026-07-28:
+        # SUB-TABS, NOT ONE LONG SCROLL (recorded decision:
         # "influence tracker why is everything crowded long?").  The tab
         # carried six numbered sections stacked vertically - roughly six
         # screens - so the reader had to scroll past four exhibits to reach
@@ -5989,7 +5907,7 @@ if active_tab == "Influence tracker":
                 st.info("no calls in the chosen window - widen it, or run a "
                         "live comment pull to extend the store.")
             else:
-                # NAMES or THEMES.  The desk asked the question at the theme
+                # NAMES or THEMES.  The question is posed at the theme
                 # level - "what if lots of influential accounts converge on a
                 # theme" - and the tab could only answer it one ticker at a
                 # time.  Same chart, same arithmetic, different grouping key;
@@ -6072,7 +5990,7 @@ if active_tab == "Influence tracker":
                         f"{panel_n} voices"
                         + (f", to {pd.Timestamp(asof).date()}"
                            if asof is not None else "") + ".")
-                    # The desk asked whether convergence here could be read as
+                    # The open question was whether convergence here could be read as
                     # a bullish / euphoria indicator.  It was tested rather
                     # than assumed, and the numbers below are the reason the
                     # answer is no - they are quoted, not summarised, because
@@ -6092,7 +6010,7 @@ if active_tab == "Influence tracker":
                         "vs 0.481 and 0.282 vs 0.477 - all pointing the WRONG "
                         "way, because the panel converges on the largest "
                         "liquid names and those fall less often than the "
-                        "small-cap tail. See PARAMETER_REGISTER Class 6c.]")
+                        "small-cap tail. See the parameter register (docs/RESEARCH_RECORD.md §7, Class 6)c.]")
                     st.caption(
                         ":grey[This tab is **information, not a signal.** "
                         "Notebook 05 measured that these scores do not "
@@ -6287,13 +6205,13 @@ if active_tab == "Influence tracker":
 
             # ---- 4. the leaderboard ---------------------------------------
             # Per-user ACCURACY was removed from this table on 2026-07-27, by
-            # desk instruction and for a reason the tab itself demonstrates: a
+            # requirement and for a reason the tab itself demonstrates: a
             # raw hit rate sat one column from a composite that is shrunk
             # toward the crowd base rate, so the two numbers disagreed on
             # purpose and every reader tried to reconcile them. `hit_rate` is
             # still computed and still stored - the notebooks need it, it is an
             # input to the composite - it is simply not a thing this screen
-            # asks a PM to act on. What replaced it is what the desk asked for:
+            # asks a PM to act on. What replaced it is what the requirement was for:
             # influence, and the tickers they are pushing.
             st.markdown("#### 4. The names - their influence, and what "
                         "they are pushing")
@@ -6543,7 +6461,7 @@ if active_tab == "Influence tracker":
 # ---- TOP TRENDS ----
 if active_tab == "Top trends":
     st.subheader("Most-mentioned themes (rank 1 = top trending)")
-    st.caption("Each chart is the PM view (desk 2026-08-07): the anchor "
+    st.caption("Each chart is the PM view: the anchor "
                "ETF's price, the crowd's attention and the crowd's mood "
                "on ONE graph - price up + attention up + sentiment up "
                "reads in a single glance. Attention uses the "
@@ -6596,7 +6514,7 @@ if active_tab == "Emerging trends":
     else:
         mv = ranked(pd.DataFrame(movers), grow_col).head(how_many)
         st.dataframe(mv, width="content", hide_index=True)
-        st.caption("Charts show the PM view (desk 2026-08-07): price + "
+        st.caption("Charts show the PM view: price + "
                    "attention + sentiment on one graph. The RANKING "
                    "above always uses attention growth over the chosen "
                    "lookback; the toggle below picks what the chart's "
@@ -6667,7 +6585,7 @@ PULSE_SEGMENTS_SAMPLE = {
 def _market_read(day_ts, tc_m, ts_m, tk_m):
     """The market's mood on ONE day, computed from the stores.
 
-    Desk 2026-08-05: "can you make the slider at the top of the page so i
+    Requirement: "the slider at the top of the page so i
     can see what the market is feeling / its sentiment / bullishness
     score ... and the ability to go to a specific point in time".
     
@@ -6716,11 +6634,11 @@ def _market_read(day_ts, tc_m, ts_m, tk_m):
             nb = float((r["net_bullish"] * r["n_posts"]).sum()
                        / r["n_posts"].sum())
             out["net_bullish"] = nb
-            # NO BULLISHNESS SCORE (desk instruction 2026-08-07: "remove
+            # NO BULLISHNESS SCORE (recorded decision: "remove
             # the bullish score number and all the associated code").
             # This function used to rank the weekly net-bullish figure
             # against its own trailing two years and print it as a
-            # 0-100 score; the desk asked for the number to go. The raw
+            # 0-100 score; the requirement was for the number to go. The raw
             # net_bullish stays available to the snapshot text, and
             # breadth (below) remains the participation read.
             per = r.groupby("theme").apply(
@@ -6779,7 +6697,7 @@ def _breadth_clause(br):
     Retail is structurally positive, so breadth is high almost always -
     the sentence has to say wide-or-narrow, not loud-or-quiet. (The
     intensity percentile this used to pair with was removed with the
-    bullishness score, desk 2026-08-07.)"""
+    bullishness score; see docs/DECISIONS.md.)"""
     if br is None:
         return None
     if br >= 0.7:
@@ -6792,9 +6710,8 @@ def _breadth_clause(br):
 def _snapshot_text(mr):
     """A written snapshot of one week, composed FROM THE NUMBERS.
 
-    Desk 2026-08-06: "i want it when i drag the slider to update the
-    text though, so i get like a snapshot of the market at that point of
-    time."
+    Requirement: dragging the date slider must update the text, giving
+    a market snapshot as of the selected day.
 
     The model's prose cannot do this - it is one stored document behind
     a ~30s gateway call. But the narrative a desk actually wants from a
@@ -6862,7 +6779,7 @@ if active_tab == "AI Pulse":
     st.subheader("AI - the pulse, the advice, and the chatter")
 
     # ---- THE MOOD SLIDER --------------------------------------------
-    # Desk 2026-08-05: a slider at the top of the page for the market's
+    # Requirement: a slider at the top of the page for the market's
     # feeling and bullishness at any point in time.
     #
     # It drives the NUMBERS, not the prose. The model's words need a
@@ -6894,8 +6811,7 @@ if active_tab == "AI Pulse":
                                 "daily_theme_sentiment.parquet")),
             _mtime(os.path.join(PROCESSED_DIR,
                                 "daily_ticker_counts.parquet")))
-        # NO bullishness-score metric here (desk 2026-08-07: "remove the
-        # bullish score number and all the associated code") - breadth,
+        # NO bullishness-score metric here (removed by design) - breadth,
         # volume and the written snapshot carry the mood read.
         _k2, _k3, _k4 = st.columns(3)
         if _mr.get("breadth") is not None:
@@ -6954,8 +6870,9 @@ if active_tab == "AI Pulse":
                 st.json(_read_json(_pp, _mtime(_pp)))
         elif pd.Timestamp(_day).date() != pd.Timestamp(_mr_hi).date():
             # THE WORDS DO NOT MOVE WITH THE SLIDER, and the page has to
-            # say so loudly. Desk 2026-08-06: "the AI pulse doesn't
-            # refresh when i scroll back the dates."
+            # say so loudly: the AI pulse does not refresh when the
+            # slider moves back in time, and pretending otherwise would
+            # mislead.
             #
             # It never could: the written sections are one stored
             # document, produced by a ~30s gateway call that only runs on
@@ -7063,7 +6980,7 @@ if active_tab == "AI Pulse":
                              "(the recurring threads and arguments)"):
                 st.markdown(_tott)
 
-        # ---- 3. per-theme read, on a DROPDOWN (desk 2026-08-04) ----
+        # ---- 3. per-theme read, on a DROPDOWN ----
         _tb = [b for b in (_pulse.get("theme_briefs") or [])
                if isinstance(b, dict) and str(b.get("brief", "")).strip()]
         if _tb:
@@ -7135,8 +7052,7 @@ if active_tab == "AI Pulse":
         st.markdown("### 2 - What all the forums are saying")
         st.info(PULSE_MARKET_SAMPLE)
         st.markdown("### 3 - What retail thinks about a theme")
-        # THE FOUR-THEME DROPDOWN IS NOT A LIMIT (desk 2026-08-12: "why
-        # are there so little themes here"). It is the hand-written
+        # THE FOUR-THEME DROPDOWN IS NOT A LIMIT. It is the hand-written
         # SAMPLE fallback, shown only because no pulse has been
         # generated on this machine. The old caption said so in grey
         # body text under a working-looking dropdown, which reads as
@@ -7262,17 +7178,16 @@ if active_tab == "AI Pulse":
                        "herding mechanism notebook 09 \u00a72b tests.")
 
     # The "planned LLM segments (the full roadmap)" expander was removed
-    # on desk instruction 2026-08-05. It described sections that do not
+    # on recorded decision. It described sections that do not
     # exist, which on a page whose whole claim is that every sentence is
     # auditable against stored evidence is the one thing that should not
     # be there.
     # The second time control that used to sit here is gone (desk
-    # 2026-08-05: "the button to go back in time should be at the top of
-    # the page"). One control, at the top, owns the date - the mood
+    # requirement). One control, at the top, owns the date - the mood
     # slider. Two ways to set the same thing in two places is how a page
     # ends up showing one date in the header and another in the body.
     # ---- WHAT WE ACTUALLY ASKED THE MODEL ----------------------------
-    # Desk 2026-08-05: "actually what is the prompt?" - a fair question
+    # Requirement: the exact prompt must be inspectable - a fair question
     # to ask of any page written by a model, and the answer should not
     # require opening a source file. The instruction text is read live
     # from analytics/ai_pulse.py, so it cannot drift from what was
@@ -7300,8 +7215,8 @@ if active_tab == "AI Pulse":
                "paraphrases, no verbatim crowd text, no usernames: the "
                "same text-free boundary as the committed aggregates.")
 
-# ---- [dev] DATA STATS (added 2026-08-07: "a snapshot of the data
-# behind this" - freshness, volumes, sources, ingestion status) ----
+# ---- [dev] DATA STATS - a snapshot of the data behind the page:
+# freshness, volumes, sources, ingestion status ----
 if active_tab == "[dev] Data Stats":
     st.subheader("[dev] Data stats - the data behind every chart")
     st.caption("Everything on this tab is read live from the stores and "
@@ -7373,9 +7288,8 @@ if active_tab == "[dev] Data Stats":
         _tot = (_tm_all[_tm_all["term"] == "__TOTAL__"]
                 if _tm_all is not None else None)
         # WHAT IS ACTUALLY IN STORAGE, and why the two headline numbers
-        # differ by an order of magnitude (desk 2026-08-12: "change this
-        # to total posts we have in storage too - its like 3 mil or
-        # something right"). Both are true and they count different
+        # differ by an order of magnitude (both totals are shown
+        # deliberately). Both are true and they count different
         # things:
         #   TOTAL POSTS  - one per post, and only since term-tracking
         #                  began (Aug 2025). The __TOTAL__ row did not
@@ -7515,7 +7429,7 @@ if active_tab == "[dev] Data Stats":
                "trigger: shaped crossings (phase-gated, re-armed, "
                "63d spacing, 21d IN/OUT separation) | records: "
                "euphoria_desk_report.json, desk_model_insight.json, "
-               "docs/research/ml_tournament.md, "
+               "docs/RESEARCH_RECORD.md, "
                "docs/research/alert_shape_sweep.json")
     if _xp_ds:
         _xgi, _xgo = (_xp_ds.get("get_in") or {}), (_xp_ds.get("get_out")

@@ -94,7 +94,7 @@ def fetch_plan():
         # fetch_reddit_live.py remains available as a manual fallback.
         ("Reddit", True, "Arctic Shift public API - no key needed",
          ["fetch_reddit_arctic.py"]),
-        # Reddit COMMENTS feed the influence tracker (live-first, desk
+        # Reddit COMMENTS feed the influence tracker (live-first;
         # decision July 2026): watermarked like the post fetcher, so only
         # the first run pays for the lookback window. Runs in parallel
         # with the other three - it touches its own raw folder.
@@ -150,14 +150,14 @@ def main():
                    help="run fetchers one at a time (easier-to-read output)")
     p.add_argument("--skip-comments", action="store_true",
                    help="skip the Reddit COMMENTS fetcher (the influence "
-                        "tracker source). SUPERSEDED DEFAULT: the 2026-07-24 "
+                        "tracker source). Superseded default: the previous "
                         "decision was to leave comments OUT of the daily run "
                         "because they are the slow species (10-50x post "
-                        "volume at 1s/page). Desk decision 2026-07-27 turned "
+                        "volume at 1s/page). The budgeted scheme turned "
                         "them back ON by default - an influence board is "
                         "only current if the comments behind it are - and "
                         "solved the runtime instead, by BUDGETING the crawl "
-                        "against the desk's ~10-minute ceiling "
+                        "against the pipeline's ~10-minute ceiling "
                         "(--comment-pages). This flag remains the way to opt "
                         "one run out; update_comments.py is the unbudgeted "
                         "catch-up runner")
@@ -170,7 +170,7 @@ def main():
                    help="TOTAL Arctic Shift comment pages this run may "
                         "spend, forwarded to fetch_reddit_comments.py as "
                         "--max-pages. update_data.py computes it as the "
-                        "desk's runtime ceiling MINUS what this machine "
+                        "pipeline's runtime ceiling MINUS what this machine "
                         "measurably spends on every other stage "
                         "(src/pipeline_budget.py). Omitted = unbudgeted, "
                         "which is the right thing for a manual backfill and "

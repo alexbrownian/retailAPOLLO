@@ -5,7 +5,7 @@ The LEARNED euphoria detectors (August 2026) - one shared crowd-only
 feature bank, two heads (GET IN / GET OUT), three model families, judged
 by the SAME walk-forward discipline as everything else in this project.
 
-WHY THIS EXISTS (desk brief, 2026-08-07)
+WHY THIS EXISTS (design brief, 2026-08-07)
 ----------------------------------------
 The incumbent desk signals are hand rules stacked on gates, and every
 gate carries a constant that has to be defended one by one in a
@@ -302,7 +302,7 @@ def choose_threshold_strict(train_scored: pd.DataFrame,
                             episodes: pd.DataFrame, mode: str,
                             fa_budget_per_iy: float,
                             n_instruments: int) -> float:
-    """The STRICT operating point (desk request 2026-08-09: 'a stricter
+    """The STRICT operating point (recorded request: 'a stricter
     setting with fewer false alarms'): identical machinery, F0.5 - the
     standard precision-weighted F-measure. Same walk-forward convention,
     same grid.
@@ -319,7 +319,7 @@ def choose_threshold_strict(train_scored: pd.DataFrame,
 
 # ---------------------------------------------------------------------------
 # WITHDRAWN 2026-08-10 - the "Max Performance" operating point.
-# The desk asked for a cut chosen purely for outcome (most negative
+# A cut chosen purely for outcome was evaluated (most negative
 # forward move after a GET OUT). It was built and measured walk-forward
 # against the DATE-MATCHED EXCESS move - the name's forward return minus
 # what the whole tracked universe did that day, because the universe

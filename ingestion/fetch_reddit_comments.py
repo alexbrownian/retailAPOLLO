@@ -12,8 +12,8 @@
 #   python ingestion/fetch_reddit_comments.py --backfill 2021-01-01 2021-06-30
 #   python ingestion/fetch_reddit_comments.py --test                # one page
 #
-# PAGE BUDGET (desk decision 2026-07-27): update_data.py computes how many
-#   API pages a run may spend - the desk's ~10-minute ceiling MINUS what this
+# PAGE BUDGET: update_data.py computes how many
+#   API pages a run may spend - the pipeline's ~10-minute ceiling MINUS what this
 #   machine measurably spends on everything else - and passes it here as
 #   --max-pages via fetch_all.py. The allowance is shared out across the
 #   panel in proportion to what each subreddit owes, BEFORE the first
@@ -22,12 +22,12 @@
 #   Without --max-pages the crawl is unbudgeted (backfills, catch-ups).
 #   Arithmetic and rejected alternatives: src/pipeline_budget.py.
 #
-# DATA BOUNDARY (desk decision, July 2026 - REVISED): the raw comment
+# DATA BOUNDARY: the raw comment
 #   files stay LOCAL (gitignored, like all raw text), but the influence
 #   STORE derived from them (calls/scores/edges - text-free, pseudonymous)
 #   is committed and shared. Raw text never crosses git; metadata does.
 #
-# SCOPE (desk decision, July 2026): comments run LIVE-FIRST - fetch_all
+# SCOPE: comments run LIVE-FIRST - fetch_all
 #   calls this script on every live pass (watermarked, incremental), and
 #   the recommended one-off backfill is the CURRENT YEAR only. Deep
 #   multi-year comment history was descoped: at the API's polite rate
@@ -122,7 +122,7 @@ class Pacer:
 
 
 def default_lookback_days() -> int:
-    """The live window, DERIVED from how often this desk actually runs.
+    """The live window, derived from the machine's measured run cadence.
 
         ceil(measured cadence) + LATE_ARRIVAL_DAYS
 
@@ -278,7 +278,7 @@ def fetch_page(sub, after, before, retries=4):
             # be retried.  But this API also answers a too-fast crawl with
             # 422 and the body {"error": "Timeout. Maybe slow down a bit"},
             # which is a RATE LIMIT wearing a client-error status code.
-            # Observed 2026-08-05: r/Bitcoin stopped at page 15 with that
+            # Observed in production: r/Bitcoin stopped at page 15 with that
             # exact message and 1,254 comments were left behind for no
             # reason.  The body is what separates the two cases, so the
             # body is what decides.
@@ -315,12 +315,12 @@ def main():
                         "the whole window")
     p.add_argument("--backfill", nargs=2, metavar=("START", "END"),
                    help="historical range YYYY-MM-DD YYYY-MM-DD (end excl); "
-                        "desk scope is the current year only, e.g. "
+                        "live scope is the current year only, e.g. "
                         "2026-01-01 <today>")
     p.add_argument("--max-pages", type=int, default=None,
                    help="TOTAL API pages this run may spend across the whole "
                         "panel (the budgeted path - update_data.py computes "
-                        "it from the desk's runtime ceiling and passes it "
+                        "it from the pipeline's runtime ceiling and passes it "
                         "through fetch_all.py). Omitted = UNBUDGETED: crawl "
                         "until the data runs out, which is what "
                         "update_comments.py does for backfills and "
@@ -481,7 +481,7 @@ def main():
                 # covered, and every further page is a full 100 rows of
                 # comments we already hold.
                 #
-                # Nothing stopped it. Measured on the 2026-08-05 run, ~95
+                # Nothing stopped it. Measured in production, ~95
                 # of the budgeted pages returned ZERO new comments -
                 # r/personalfinance burned 21, r/Daytrading 14,
                 # r/Bogleheads 10 - and those pages came out of the same

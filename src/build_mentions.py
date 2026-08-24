@@ -13,7 +13,7 @@ first-derivative) expect. We keep the heavy ticker logic in extract_tickers.py
 and the valid-symbol list in ticker_universe.py - this file just wires them
 together so a notebook can do it in one line.
 
-WHY THERE IS NO UPVOTE-WEIGHTED COUNT ANY MORE (removed 2026-07-06):
+Upvote-weighted counts are deliberately absent (see docs/DECISIONS.md):
 The old weighted_count summed score**2 per post. But archived Reddit dumps
 carry each post's FINAL score - the upvotes it collected over days or weeks
 AFTER posting. A backtest that weights day-t mentions by final scores is

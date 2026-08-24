@@ -1,75 +1,56 @@
-# retailAPOLLO dependencies.  Install:  pip install -r requirements.txt --user
-# (use the SAME python you will run the pipeline with - multiple installed
-# Pythons is the classic cause of intermittent import failures)
+# retailAPOLLO dependencies.
+# Install with the same interpreter that runs the pipeline:
+#   pip install -r requirements.txt --user
 
-# core data stack
+# Core data stack.
 pandas
 pyarrow
 numpy
 scipy
 
-# ingestion
-zstandard          # streamed (de)compression of the raw post files
-requests           # every fetcher
-huggingface_hub    # historical X dataset downloads (external machine)
+# Ingestion.
+zstandard          # Streamed (de)compression of raw post files.
+requests
+huggingface_hub    # Historical X dataset downloads (external machine).
 fsspec
 
-# sentiment
+# Sentiment.
 vaderSentiment
-finvader           # optional financial lexicons; engine degrades gracefully without
-joblib             # parallel scoring across CPU cores; ALSO scikit-learn's
-                   # own parallel backend - see the note on the
-                   # scikit-learn line before upgrading either alone
+finvader           # Optional financial lexicons; degrades gracefully if absent.
+joblib             # Parallel scoring; also scikit-learn's parallel backend.
+                   # Install and upgrade together with scikit-learn: a
+                   # mismatched pair emits high-volume UserWarnings from
+                   # sklearn's fit paths (cosmetic, filtered narrowly in
+                   # analytics/retail_flow.py).
 
-# extraction
-wordfreq           # word-ticker screening fallback signal
+# Extraction.
+wordfreq           # Word-vs-ticker screening fallback.
 
-# modelling - NOW A LIVE PIPELINE DEPENDENCY, not research-only.
-#
-# This line used to say "notebook 05 only".  That stopped being true on
-# 2026-08-07, when the desk GET IN / GET OUT pair became the logit+GBM
-# ensemble (analytics/ml_detector.py), and again on 2026-08-17 with the
-# retail-flow dial (analytics/retail_flow.py).  Both run inside
-# `python -m analytics.run_analytics --what phases`, so the ordinary
-# `python update_data.py` refresh needs scikit-learn.  Every sklearn
-# import in the package is function-level, which is why a machine that
-# ONLY serves the dashboard can still skip this line - dashboard.py
-# imports sklearn nowhere and reads the stored parquet columns instead.
-# analytics/influence_ml.py (notebook 05) also needs it.
-#
-# INSTALL scikit-learn AND joblib TOGETHER, and upgrade them together.
-# A mismatched pair makes sklearn's own fit paths emit hundreds of
-# "sklearn.utils.parallel.delayed should be used with
-# sklearn.utils.parallel.Parallel" UserWarnings per walk-forward, which
-# drowns the pipeline's progress lines (desk log 2026-08-17).  The
-# warning is cosmetic - the numbers are unaffected - and
-# analytics/retail_flow.py filters that one message narrowly so a
-# mismatched machine still reads its own logs.
+# Modelling. A live-pipeline dependency: the desk GET IN / GET OUT pair
+# (analytics/ml_detector.py) and the retail-flow dial
+# (analytics/retail_flow.py) run inside `--what phases`. All sklearn
+# imports are function-level, so a dashboard-only machine may omit it.
 scikit-learn
-# scipy is in the core block above; the dial uses it for the rank
-# correlations that choose each fold's filter gain.
 
-# re-running the notebooks (research only; skip on a dashboard-only machine).
-# NOTE the invocation: always `python -m jupyter nbconvert ...`, never bare
-# `jupyter ...`.  pip drops the jupyter.exe launcher in the Scripts folder of
-# whichever Python owns that pip, and on Windows that folder is usually NOT on
-# PATH - so bare `jupyter` raises CommandNotFoundException even though the
-# package is installed correctly.  `python -m` skips the launcher and asks the
-# interpreter for the module, so it works wherever plain `python` works.
+# Notebook re-execution (research machines only). Invoke as
+# `python -m jupyter nbconvert ...`: on Windows the Scripts folder
+# holding jupyter.exe is often not on PATH, and `python -m` resolves the
+# module through the interpreter instead.
 jupyter
 nbconvert
-matplotlib         # the notebooks' figures (the dashboard uses plotly instead)
+jupytext
+matplotlib         # Notebook figures (the dashboard uses plotly).
 
-# dashboard
+# Dashboard.
 streamlit
 plotly
 
-# tests
+# Tests.
 pytest
 
-# Windows corporate-proxy TLS (harmless elsewhere)
+# Windows corporate-proxy TLS (harmless elsewhere).
 pip-system-certs
 
-# blpapi (Bloomberg, for pull_bloomberg_prices.py) is not on PyPI.
-# Install it separately from Bloomberg's own index, with the Terminal running:
+# blpapi (Bloomberg, pull_bloomberg_prices.py) is not on PyPI. Install
+# from Bloomberg's index with the Terminal running:
 #   python -m pip install --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi --user

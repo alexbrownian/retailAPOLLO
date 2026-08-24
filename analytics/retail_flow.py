@@ -51,7 +51,7 @@ import pandas as pd
 # version pairs emit "sklearn.utils.parallel.delayed should be used
 # with sklearn.utils.parallel.Parallel" from INSIDE sklearn's own fit
 # paths - hundreds of times per walk-forward, drowning the progress
-# lines (desk log, 2026-08-17). It is sklearn's internal usage, not
+# lines under a mismatched joblib pair. It is sklearn's internal usage, not
 # ours, and harmless; upgrading joblib+scikit-learn together clears it
 # at the source. The filter is message-targeted so every other warning
 # still surfaces.

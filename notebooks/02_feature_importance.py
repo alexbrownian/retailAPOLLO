@@ -32,7 +32,7 @@
 #   from), **SO WHAT** (the finding, and what changes).
 # * **`IF ASKED` blocks** answer the awkward questions a reviewer would put.
 # * **No unexplained constants.** Every number is tagged LEARNED, DERIVED,
-#   CONVENTION, GROUND TRUTH or DESK DECISION.
+#   CONVENTION, GROUND TRUTH or PROJECT DECISION.
 #
 # ---
 #

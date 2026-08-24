@@ -122,7 +122,7 @@ def main(argv=None) -> int:
                         "research pass also auto-triggers when the data "
                         "rolls into a year the stored record does not "
                         "cover, or when a report is missing. Run after "
-                        "backfills or rule changes (desk decision "
+                        "backfills or rule changes (recorded decision "
                         "2026-07-24: research decides once, live scores)")
     args = p.parse_args(argv)
 

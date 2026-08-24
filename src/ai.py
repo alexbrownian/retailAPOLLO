@@ -7,8 +7,7 @@ digest, the keyword-map auditor, notebook 10's sentiment test) talks to
 the model through this module and nothing else, so the connection details
 live in exactly one place.
 
-THE CONNECTION (from the desk's Apollo connection-test notebook,
-2026-08-02): the firm gateway is reached through `dimsum_lite`'s
+Connection: the firm gateway is reached through `dimsum_lite`'s
 Apollo-authenticated OpenAI factory —
 
     from dimsum_lite.clients.openai import ApolloOpenAI
@@ -40,13 +39,12 @@ CONFIG (all optional, all read from .env / the environment):
                              runaway loop hits this, never the gateway.
                              One full update spends about 36: the poll's
                              30 prompts, the pulse's 5 calls and the
-                             weekly keyword audit. Raised from 40 on
-                             2026-08-04 when the poll panel grew, so a
+                             weekly keyword audit, with headroom so a
                              couple of retries cannot exhaust it
     AI_MOCK                  '1' = return deterministic canned output
                              without any network (tests, cloud dev)
 
-Self-test (mirrors the desk's connection notebook, cell for cell):
+Self-test:
     python -m src.ai --selftest
 """
 
@@ -248,7 +246,7 @@ def calls_made() -> int:
 
 # ---------------------------------------------------------------------------
 def _selftest() -> int:
-    """Mirrors the desk's Apollo connection-test notebook."""
+    """Verifies gateway connectivity and prints the effective config."""
     print(f"model={MODEL}  mock={MOCK}  "
           f"env={os.environ.get('ENVIRONMENT', '(unset)')}")
     if not available():

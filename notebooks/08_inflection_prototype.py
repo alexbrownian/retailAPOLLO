@@ -13,7 +13,7 @@
 # %% [markdown]
 # # 08 — Can we do better? A prototype for INFLECTIONS
 #
-# **Desk request, 2026-08-12.** *"lets aim to improve performance now …
+# **Objective.** *"improve performance …
 # i want the get in to flag when prices do infact move upwards
 # significantly, and get out to call the top (quite near the tops) —
 # especially for larger price moments that are really retail driven.
@@ -120,7 +120,7 @@ print(f"crowd features ({len(CROWD)}): {', '.join(CROWD)}")
 # ## 0.2 The gap, stated once so every number below is read correctly
 #
 # Scored coverage collapses from 2023Q2 and only recovers in 2026Q1
-# (`docs/research/coverage_gap.md`). Everything in this notebook is
+# (`docs/RESEARCH_RECORD.md`). Everything in this notebook is
 # therefore measured on **a mania (2021–22) and a recovery (2026)** with
 # the flat middle years almost entirely missing. Two consequences, both
 # real:
@@ -809,7 +809,7 @@ RESULTS["sections"]["direction_model"] = DIRREP
 # %% [markdown]
 # # 4.2 — What the adopted changes actually look like
 #
-# Desk request: *"show me what some plots would look like with the new
+# Objective: *"show what plots would look like with the new
 # changes like the adopt stuff (all). also Label B too."*
 #
 # Five names, drawn with **everything this notebook recommends adopting
@@ -1322,7 +1322,7 @@ print(f"\nwrote {OUT}/nb08_inflection.json · "
 # %% [markdown]
 # # 7 — Can the INFLECTION be traded as volatility?
 #
-# Desk request, 2026-08-12: *"see if there is a correlation between when
+# Objective: *"see if there is a correlation between when
 # there is an inflection and volatility spikes (or like if we buy a
 # strangle) at what % either side of the spot will we make profit and by
 # how much … either by trading volatility, or by buying option
@@ -1636,7 +1636,7 @@ plt.show()
 # ---
 # # §8 — Can the posts ALONE call GET IN / GET OUT? (added 2026-08-14)
 #
-# **Desk request.** *"i dont like how this project uses prices as a
+# **Objective.** *"do not use prices as a
 # feature to predict prices (i feel like thats a bit fundamentally
 # wrong). can you investigate for the get in and get out symbols if its
 # possible to use only the post factors to predict with relatively good
@@ -1789,7 +1789,7 @@ plt.show()
 RESULTS["sections"]["price_blind"] = {
     "results": XP_RES, "shipped_reference": SHIPPED,
     "winner": "logit on the 13-feature price-blind bank",
-    "selection_rule": ("desk rule: one family both heads, combined AP "
+    "selection_rule": ("selection rule: one family both heads, combined AP "
                        "lift, ties -> AUROC"),
 }
 with open(os.path.join(OUT, "nb08_price_blind.json"), "w",
@@ -1853,7 +1853,7 @@ print(f"wrote {OUT}/nb08_price_blind.json")
 # ---
 # # §9 — The continuous dial: retail flow from −1 to +1 (added 2026-08-17)
 #
-# **Desk request.** *"i would like that the posts (and not so much the
+# **Objective.** *"the posts (and not so much the
 # price change) can predict the price change more … i would like ideally
 # to have this measure of get in and out be like from -1 to 1 and smooth
 # (as in it cant go from fully in and fully out in the span of a few
@@ -2365,7 +2365,7 @@ plt.show()
 # momentum echo would peak on the left), and the crowd build it
 # measures **front-runs the move** rather than reporting it. The
 # magnitudes stay small — this is a tide gauge, not a trade ticket —
-# but the asymmetry is the shape the desk asked for: posts first,
+# but the asymmetry is the required shape: posts first,
 # prices after.
 
 # %% [markdown]
@@ -2480,7 +2480,7 @@ for ax, (nm, sym, nice) in zip(np.atleast_1d(axes), SHOW):
     ax.set_title(f"{nice}  ({sym})  —  posts-only retail flow "
                  f"(green/red band, right axis) under price; shipped "
                  f"IN/OUT marks for reference", loc="left", fontsize=12)
-fig.suptitle("The continuous dial the desk asked for — walk-forward, "
+fig.suptitle("The continuous retail-flow dial — walk-forward, "
              "price-free, smooth by construction", fontsize=14,
              fontweight="bold", y=1.001)
 fig.tight_layout()
@@ -2535,7 +2535,7 @@ print(f"wrote {OUT}/nb08_retail_flow.json · §9 total "
 # ---
 # # §10 — One scale, not two heads (added 2026-08-17)
 #
-# **Desk request.** *"there is something fundamentally wrong here. we
+# **Objective.** *"there is something fundamentally wrong here. we
 # cannot be BOTH get in and get out … imagine going from like max
 # bullish AND max bearish together, that contradicts. please fix this.
 # it can only either be bearish (get out) or bullish (get in). this
@@ -2558,7 +2558,7 @@ print(f"wrote {OUT}/nb08_retail_flow.json · §9 total "
 # captured-minus-false-alarms. Those were display constructions bolted
 # onto two separate rule systems. What is new here is changing the
 # MODEL: architectures whose output layer makes the contradiction
-# impossible, exactly as the desk asked.
+# impossible, exactly as required.
 
 # %% [markdown]
 # ## 10.1 How bad is it, measured on the shipped store
@@ -3029,7 +3029,7 @@ print(f"wrote {OUT}/nb08_single_dial.json · §10 total "
 # ## 10.7 Worked examples — what the proposed package looks like on
 # real names
 #
-# Desk request: *"show like gold semis etc some examples so i can
+# Objective: *"gold, semis and other worked examples for
 # approve for roll out into the main model."* Each panel below shows
 # everything §10 proposes, on one name:
 #
@@ -3172,7 +3172,7 @@ plt.show()
 # ---
 # # §11 — Are the dial's crossings a signal? (added 2026-08-17)
 #
-# **Desk request.** *"the crossing of the posts only chart seems to
+# **Objective.** *"the crossing of the posts-only chart seems to
 # correlate quite well with get in and out? is there real signal here?
 # … how we can use crossings etc to determine get in / get out signals
 # instead? if its better than previously suggest that to me too! …

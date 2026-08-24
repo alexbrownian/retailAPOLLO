@@ -25,7 +25,7 @@
 # right?**
 #
 # The store is `data/reference/influence/`: live-only, zero-touch,
-# text-free, pseudonymous. No backfill (desk decision) — it is a forward
+# text-free, pseudonymous. No backfill (recorded decision) — it is a forward
 # record from inception.
 #
 # ---
@@ -43,7 +43,7 @@
 # * **Nothing here is a threshold somebody liked the look of.** Every
 #   constant is tagged with where it came from: LEARNED from data, DERIVED
 #   from a definition, CONVENTION (a stated convention, and ablated),
-#   GROUND TRUTH, or DESK DECISION.
+#   GROUND TRUTH, or PROJECT DECISION.
 # * Section 1 defines every term used, so no jargon is load-bearing.
 #
 # ---
@@ -295,7 +295,7 @@ print(f"\nmaturity bar: >= {ml.MIN_POSITIVES} positives before any result "
 # * Brandes' algorithm from a random sample of `PIVOT_SAMPLE = 400` source
 #   nodes estimates both at about 1/30 of the cost, without bias. Sampled
 #   columns are named `_sampled` so no reader mistakes them for exact.
-#   *(400 = DESK DECISION on runtime; the estimate is unbiased at any pivot
+#   *(400 = PROJECT DECISION on runtime; the estimate is unbiased at any pivot
 #   count, so this trades precision for minutes, not correctness for
 #   convenience.)*
 # * `small_world_sigma` = (C/C_rand) / (L/L_rand), against Erdős–Rényi
@@ -407,7 +407,7 @@ plt.show()
 #   *is* "the two classes have the same mean", so there is nothing to
 #   tune. Above 1, HIGH authors are more central; below 1, less.
 # - `closeness` needs distances from a node to *everything*, so it is only
-#   defined on the 400 sampled pivots (DESK DECISION, see §3.1) and is NaN
+#   defined on the 400 sampled pivots (PROJECT DECISION, see §3.1) and is NaN
 #   elsewhere. Its class means come from whichever pivots happened to be
 #   labelled — read that row as indicative, not measured.
 #
@@ -467,7 +467,7 @@ plt.show()
 #   implementation in an earlier validation pass, not by taste.
 # - The concentration test is the step that turns a description into a
 #   decision. For every
-#   community with ≥ 25 labelled authors (DESK DECISION — below ~25 the
+#   community with ≥ 25 labelled authors (PROJECT DECISION — below ~25 the
 #   prevalence estimate is one or two authors wide and the ratio is noise)
 #   we compute its positive rate ÷ the overall positive rate. The 1.0 line
 #   is DERIVED again: 1.0 *is* "this community is exactly average".
@@ -541,7 +541,7 @@ plt.show()
 #   author in a k-core *provably* has ≥ k neighbours inside it, so the
 #   picture is a claim: "here is the densely interconnected heart of the
 #   conversation." We take the deepest core that still has ≥ 40 members —
-#   DESK DECISION, and the only judgement in the section: it trades depth
+#   PROJECT DECISION, and the only judgement in the section: it trades depth
 #   for a picture with enough nodes to read.
 # - **One ego network** (right). The 1-hop neighbourhood of the single
 #   highest-composite author. If the ball exceeds the 120-node cap the
@@ -1123,7 +1123,7 @@ plt.show()
 #   swamps every margin in §6's table. Paired, the split variance cancels
 #   *exactly*, because both candidates see the same split — the only
 #   difference left between the two runs is the model.
-# - 10 seeds is a DESK DECISION and the cost is stated: it fixes the
+# - 10 seeds is a PROJECT DECISION and the cost is stated: it fixes the
 #   smallest difference we can resolve at roughly ±0.02 AP. A gap smaller
 #   than that is not "absent", it is "not measurable here", and the
 #   notebook says so rather than claiming a null.

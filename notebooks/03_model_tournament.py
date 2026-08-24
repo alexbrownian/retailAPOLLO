@@ -1212,7 +1212,7 @@ for _head, _df in _insight.items():
 # ## SS2.1 — The architecture, on one slide
 
 # %%
-# the how-a-call-is-made diagram (desk request 2026-08-07) - drawn from
+# the how-a-call-is-made diagram - drawn from
 # the shipped construction, saved for the deck AND shown on the
 # dashboard's "what drives the calls" expander
 import matplotlib.patches as _mp

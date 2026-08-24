@@ -1,7 +1,7 @@
 """
 backfill_reddit.py — RESUMABLE Reddit history backfill
 ======================================================
-Desk request 2026-08-11. Fills the 2023-04 -> 2026-01 data drought
+recorded decision: Fills the 2023-04 -> 2026-01 data drought
 without needing an uninterrupted 8-hour connection.
 
     python tools/backfill_reddit.py                      # full gap, monthly chunks
@@ -37,15 +37,11 @@ AFTER IT FINISHES - AND THE RIGHT COMMAND DEPENDS ON THE MACHINE:
       python update_data.py --skip-fetch
       python -m analytics.run_analytics --what phases --research
 
-  DO NOT run `update_data.py --skip-fetch` on the internal machine after a
-  backfill. It calls ingestion/append_live_abstracted.py, which keeps only
-  posts dated >= LIVE_START and drops everything older BY DESIGN. Every
-  backfilled post is older than LIVE_START, so it reads all of them, spends
-  a long time doing it, and folds in NONE. That is the failure documented in
-  docs/research/coverage_gap.md - "THE INSTRUCTIONS BELOW THIS LINE WERE
-  WRONG AND COST 45 HOURS". These lines used to give exactly that wrong
-  advice; corrected 2026-08-21 after it sent the desk down the same hole a
-  second time.
+  Do not run `update_data.py --skip-fetch` on the internal machine after
+  a backfill: ingestion/append_live_abstracted.py keeps only posts dated
+  on or after LIVE_START by design, so every backfilled post is read and
+  then dropped. tools/fold_historical.py is the correct path for
+  historical posts on that machine (see docs/RESEARCH_RECORD.md).
 
   print_next_steps() below picks the right pair automatically, so the
   message printed at the end of a run is always the one for THIS machine.
@@ -68,7 +64,7 @@ LEDGER = os.path.join(PROJECT_ROOT, "data", "reference",
                       "reddit_backfill_progress.json")
 
 # The drought: ticker-mention rows collapse ~90% from 2023Q2 and only
-# recover in 2026Q1 (see docs/research/coverage_gap.md).
+# recover in 2026Q1 (see docs/RESEARCH_RECORD.md).
 DEFAULT_START = "2023-04-01"
 DEFAULT_END = "2026-01-01"
 
@@ -114,20 +110,13 @@ SUBS_TAG = "all"
 
 
 def key_of(a: str, b: str) -> str:
-    """Ledger key = window PLUS the subreddit set.
+    """Builds the ledger key from the window plus the subreddit set.
 
-    THE BUG THIS FIXES (desk 2026-08-21). The key used to be the dates
-    alone. So: backfill 2024-09 -> 2026-01 with
-    `--subreddits wallstreetbets,stocks,valueinvesting`, decide the
-    speed work makes the other fourteen affordable, re-run with all of
-    them - and every chunk is already "done". The run finishes in
-    seconds, reports success, and fetches nothing. Silent, and exactly
-    the shape of the mistake that cost 45 hours in August.
-
-    A chunk is only done for the SUBREDDITS IT ACTUALLY FETCHED, so the
-    set belongs in the key. Adding subreddits later now correctly shows
-    the window as outstanding, and re-running the SAME set still skips.
-    Dedup is by post id all the way down, so any overlap is harmless.
+    A chunk is only complete for the subreddits it actually fetched, so
+    the set belongs in the key: with a date-only key, re-running a
+    finished window with additional subreddits would be skipped as
+    already done and silently fetch nothing. Re-running the same set
+    still skips; dedup is by post id, so any overlap is harmless.
     """
     return f"{a}_{b}" if SUBS_TAG == "all" else f"{a}_{b}#{SUBS_TAG}"
 
@@ -222,7 +211,7 @@ def print_next_steps(header: str) -> None:
         print("\n  (INTERNAL machine - no posts.parquet. fold_historical is")
         print("   the door for historical posts. `update_data.py --skip-fetch`")
         print("   would drop every one of them: append_live_abstracted keeps")
-        print("   only dates >= LIVE_START. See docs/research/coverage_gap.md.)")
+        print("   only dates >= LIVE_START. See docs/RESEARCH_RECORD.md.)")
     else:
         print("  python update_data.py --skip-fetch")
         print("  python -m analytics.run_analytics --what phases --research")
