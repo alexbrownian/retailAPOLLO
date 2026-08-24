@@ -1,6 +1,24 @@
 # retailAPOLLO dependencies.
 # Install with the same interpreter that runs the pipeline:
 #   pip install -r requirements.txt --user
+#
+# WINDOWS: --user is not cosmetic. Installing into a system Python
+# (C:\Python312\) makes pip rewrite files under Scripts\ and
+# site-packages\, and an upgrade of an already-present transitive
+# dependency then fails mid-uninstall:
+#
+#   WARNING: Failed to write executable - trying to use .deleteme logic
+#   ERROR: ... [WinError 2] The system cannot find the file specified:
+#          'C:\Python312\Scripts\<name>.exe' -> '<name>.exe.deleteme'
+#
+# pip rolls the change back, so the environment survives, but nothing is
+# installed. Two causes, both worth clearing before a reinstall:
+#   * a running process holds the files - stop Streamlit and any Jupyter
+#     kernel first; a live dashboard keeps site-packages open;
+#   * no write permission to the system Python - --user installs into the
+#     per-user directory and avoids it entirely.
+# Failing both, an elevated shell (Run as administrator) works without
+# --user.
 
 # Core data stack.
 pandas
@@ -40,6 +58,13 @@ jupyter
 nbconvert
 jupytext
 matplotlib         # Notebook figures (the dashboard uses plotly).
+
+# AI layer fallback. The Apollo gateway arrives through the firm's own
+# channel (dimsum_lite, JFrog/LEVA) and is not installable from PyPI;
+# this is the second provider, used when Apollo does not resolve. Only
+# needed on a machine that regenerates the AI Pulse - src/ai.py imports
+# it lazily and reports the provider as unavailable when it is absent.
+anthropic
 
 # Dashboard.
 streamlit
