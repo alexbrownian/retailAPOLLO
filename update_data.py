@@ -435,15 +435,35 @@ def main():
         run([py, "ingestion/discover_subreddits.py", "--if-due"],
             fh, dry, show=True)
 
+    fold_failed = False
     # ---- 2. APPEND into the right store (idempotent either way) ----
     if internal:
         log("folding live raw -> ABSTRACTED_DATA + hydrate", fh)
-        run([py, "ingestion/append_live_abstracted.py"], fh, dry, show=True,
-            stage="fold")
+        # The fold's exit code was discarded, so a crashed fold
+        # produced a green run: analytics recomputed on unchanged
+        # aggregates, the bundle published, "safety check: PASS",
+        # exit 0. Worse, a fold that dies after writing some of the
+        # six aggregate files but before recording the seen-ids will
+        # DOUBLE COUNT on the next run - so a silent failure here is
+        # the one that corrupts the store. Record it loudly.
+        fold_rc = run([py, "ingestion/append_live_abstracted.py"], fh,
+                      dry, show=True, stage="fold")
+        if fold_rc:
+            fold_failed = True
+            log("FOLD FAILED - the aggregates may be partially "
+                "written. Do NOT re-run until the log above is "
+                "read: a partial fold that did not record its "
+                "seen-ids will double count on the next run.", fh)
     else:
         if do_fetch or full_chain:
             log("merging live raw -> posts.parquet (close viewers first)", fh)
-            run([py, "ingestion/merge_live.py"], fh, dry, show=True, stage="fold")
+            fold_rc = run([py, "ingestion/merge_live.py"], fh, dry,
+                          show=True, stage="fold")
+            if fold_rc:
+                fold_failed = True
+                log("MERGE FAILED - posts.parquet may be "
+                    "incomplete; read the log above before "
+                    "re-running.", fh)
         else:
             # the merge streams the ENTIRE master (minutes) - pointless in a
             # backtest where nothing was fetched, so skip it
@@ -775,9 +795,17 @@ def main():
             except OSError:
                 pass
         log(f"  safety check  : {'PASS' if safe else 'FAIL - do NOT commit ABSTRACTED_DATA'}", fh)
+        # The fold's own verdict, separate from the text-free check. A
+        # crashed fold used to leave no trace in this summary at all.
+        if fold_failed:
+            log("  fold          : FAILED - aggregates may be partial; "
+                "read the log before re-running", fh)
         log(f"  dashboard     : python -m streamlit run dashboard.py", fh)
         log("=" * 60, fh)
-    return 0 if safe else 1
+    # A failed fold is a failed run. Previously only the text-free check
+    # could set a nonzero exit, so a crashed fold exited 0 and any
+    # scheduler or wrapper saw success.
+    return 0 if (safe and not fold_failed) else 1
 
 
 if __name__ == "__main__":

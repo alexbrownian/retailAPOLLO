@@ -350,6 +350,42 @@ def _cached_priced_symbols(mtime):
     return frozenset(pd.read_parquet(
         PRICES_PATH, columns=["symbol"])["symbol"].unique())
 
+# ---- DISPLAY-ONLY INSTRUMENT HIDING --------------------------------------
+# Names the dashboard does not draw. They are still fetched, still scored
+# and still written to the stores - this is a screen filter and nothing
+# more, so hiding one costs no data and needs no research pass.
+#
+# NOT src.config.EUPHORIA_EXCLUDED_THEMES: that set removes a theme from
+# the DETECTOR's universe, which changes what is computed and would make
+# the frozen thresholds stale. This set is the display's own.
+#
+# meme_stocks: anchored to ARKK, the same ETF as short_squeeze, and both
+# now label as "ARK Innovation". Shown together they render two
+# identical rows in every instrument list, which cannot be told apart
+# when picking one. The squeeze theme is kept as the ARKK line.
+HIDDEN_THEMES = {"meme_stocks"}
+
+
+def _hide(df):
+    """Drops hidden instruments from anything about to be displayed."""
+    if df is None or not len(df) or "name" not in df.columns:
+        return df
+    return df[~df["name"].isin(HIDDEN_THEMES)]
+
+
+# The signal names as STORED. readiness_alerts.json is written by the
+# pipeline and carries the engine's own vocabulary, so a file produced
+# before the display rename - or by a machine that has not taken it -
+# still says GET IN / GET OUT. Mapping at read time means no stored file
+# has to be rewritten and no pipeline rerun is needed; anything not in
+# the map (INFLECTION..., future names) passes through untouched.
+_SIDE_DISPLAY = {"GET IN": "CONSIDER", "GET OUT": "WARNING"}
+
+
+def _side_label(side) -> str:
+    return _SIDE_DISPLAY.get(str(side).strip().upper(), str(side))
+
+
 # ---------------------------------------------------------------------------
 # DESIGN TOKENS - institutional light theme (GIC design language, adopted
 # by design).  The brief: navy on white, high whitespace,
@@ -540,7 +576,7 @@ of {prod.get('detectable', '-')} - *more* hits, not fewer, because it stopped
 the detector wasting alerts on names that were never in a rally.
 
 **3 - The trigger reads a smoothed score, which killed the one-day blips.**
-The desk complaint was "euphoria for a single day, then gone". Averaging the
+The desk complaint was "crowd heat for a single day, then gone". Averaging the
 score over a week before triggering raised quality
 (**AP {raw.get('AP', '-')} → {prod.get('AP', '-')}**) and cost
 **{(raw.get('captured', 0) or 0) - (prod.get('captured', 0) or 0)} captures**.
@@ -586,8 +622,8 @@ tables, is below.*
 
 DECISIONS_DOC = """### Model decisions & evidence log
 
-**0 - THE AIM (re-set July 2026): detect retail EUPHORIA and call price
-TOPS.** The dashboard's headline signal is the 0-100 euphoria level and
+**0 - THE AIM (re-set July 2026): detect retail CROWD HEAT and call price
+TOPS.** The dashboard's headline signal is the 0-100 crowd heat level and
 its red alert lines; success = an alert inside [peak-30d, peak+1d] of a
 genuine top (peak = local high after a boom, followed by a >=15% ETF /
 >=30% single-name drawdown within 90d). The BUY/SELL engine was retired
@@ -595,11 +631,11 @@ from the dashboard at the same time (its full-history record was
 negative - see point 1); it remains in analytics/ for research.
 Universe: equities + retail commodities only (rates_bonds and
 real_estate excluded); single names join the themes. Full rules +
-research grounding: the EUPHORIA definition expander on the first tab
-and analytics/euphoria.py.
+research grounding: the CROWD HEAT definition expander on the first tab
+and analytics/crowd heat.py.
 
 **0b - PREDICTION IS REDDIT-ONLY (selection rule, July 2026).** Price never
-enters the euphoria level or the alert; it only DEFINES and SCORES the
+enters the crowd heat level or the alert; it only DEFINES and SCORES the
 ground-truth tops. This was a deliberate trade: the earlier variant with
 a price-convexity feature and a price-boom gate captured **46%** of
 detectable peaks (0.08 FAs/instr-yr); the crowd-only detector captures
@@ -607,10 +643,10 @@ detectable peaks (0.08 FAs/instr-yr); the crowd-only detector captures
 information - giving it up is the documented price of the clean claim
 "the crowd alone called the top". The identified path to winning capture
 back WITHOUT price: richer crowd data (the comment backfill is ~10x the
-post volume and directly feeds every euphoria ingredient).
+post volume and directly feeds every crowd heat ingredient).
 
 **0c - Every rule is ablation-tested and the hand-rules beat an ML
-challenger under a pre-stated criterion** (tables on the EUPHORIA tab):
+challenger under a pre-stated criterion** (tables on the CROWD HEAT tab):
 dropping the hype gate floods false alarms (+83), dropping the fade
 trigger loses the most captures (-0.095 of detectable) - each rule has a
 measured job. A walk-forward logistic regression on the same features
@@ -755,7 +791,7 @@ a {{ color: {NAVY}; }}
    puts that rule on the INNER markdown container rather than the <label>, so
    styling the label alone does nothing.  Uppercase tracked labels are wide,
    so the truncation ate the second half of nearly every card:
-   'EUPHORIA AL...', 'MEDIAN WARNING B...'.  A KPI whose name is unreadable is
+   'CROWD HEAT AL...', 'MEDIAN WARNING B...'.  A KPI whose name is unreadable is
    not a KPI, so the label is allowed to wrap and the cards are stretched to a
    common height so a row still lines up. */
 [data-testid="stMetricLabel"] div[data-testid="stMarkdownContainer"],
@@ -896,7 +932,7 @@ div[data-baseweb="select"] > div, div[data-baseweb="input"] > div {{
    segment is therefore filled with the primary navy and reversed out
    to white.  Navy rather than a bright blue: it is the colour already
    carrying "primary" everywhere else on the page (headers, the
-   euphoria curve, links, buttons), so the tab bar joins the existing
+   crowd heat curve, links, buttons), so the tab bar joins the existing
    system instead of introducing a second accent.
 
    Styled by data-testid, which is Streamlit's stable hook.  Every rule
@@ -922,6 +958,105 @@ div[data-baseweb="select"] > div, div[data-baseweb="input"] > div {{
 }}
 [data-testid="stSegmentedControl"] button:hover:not([aria-checked="true"]) * {{
     color: {NAVY} !important;
+}}
+
+/* =====================================================================
+   EDITORIAL LAYER  (experiment)
+   ---------------------------------------------------------------------
+   Appended LAST so it overrides the blocks above by cascade order, and
+   so removing this one block returns the page exactly to the treatment
+   above it. Nothing here is referenced from Python - deleting from this
+   comment to the end of the style tag is the whole undo.
+
+   What it does: takes the design language already established above -
+   statistic counters, editorial tabs, hairline cards - and pushes it to
+   a publication's manners. Headings get bigger and LIGHTER, the numbers
+   get bigger and lighter still, and air is added BETWEEN subjects.
+
+   The density rule it obeys: whitespace goes between sections, never
+   between a label and the number it labels. No chart, table, control or
+   tab changes size, position or behaviour.
+   ================================================================== */
+
+/* HEADINGS. Authority from scale and space rather than from weight. */
+h1, h2, h3, h4 {{ color: {INK}; letter-spacing: -0.026em; }}
+h1 {{ font-size: 3.05rem !important; font-weight: 300 !important;
+      line-height: 1.05; }}
+h2 {{ font-size: 2.05rem !important; font-weight: 300 !important;
+      line-height: 1.16; }}
+h3 {{ font-size: 1.42rem !important; font-weight: 400 !important;
+      letter-spacing: -0.018em; }}
+h4 {{ font-size: 1.08rem !important; font-weight: 500 !important; }}
+
+/* BODY. Editorial measure: slightly larger, noticeably looser. This is
+   the single biggest change in how the page reads. */
+p, li, [data-testid="stMarkdownContainer"] p {{
+    font-size: 1.02rem; line-height: 1.74;
+}}
+
+/* MASTHEAD, promoted to a front page. The elements and their order are
+   unchanged - only the type scale moved. */
+.rf-eyebrow {{
+    color: {TEAL}; font-size: 0.66rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.18em;
+    margin-bottom: 12px;
+}}
+.rf-title {{
+    font-size: 3.7rem !important; font-weight: 300 !important;
+    letter-spacing: -0.038em !important; line-height: 1.0 !important;
+}}
+.rf-standfirst {{
+    color: {INK_MUTED}; font-size: 1.18rem; font-weight: 300;
+    line-height: 1.5; max-width: 48ch; margin: 16px 0 20px 0;
+}}
+/* The one heavy rule on the page, closing the masthead the way a
+   publication closes its front-page furniture. */
+.rf-rule-heavy {{
+    border-top: 2px solid {INK}; margin: 2.4rem 0 2.2rem 0;
+}}
+
+/* STATISTIC COUNTERS, taken further: the number is the loudest thing on
+   the page, and it gets there by size, not by weight. The card becomes a
+   figure under a rule rather than a box - the label/number pairing and
+   the wrap fix established above are preserved exactly. */
+[data-testid="stMetric"] {{
+    background: rgba(0,0,0,0) !important;
+    border: none !important;
+    border-top: 1px solid {INK} !important;
+    border-radius: 0 !important;
+    padding: 15px 16px 18px 0 !important;
+}}
+[data-testid="stMetricValue"],
+[data-testid="stMetricValue"] div,
+[data-testid="stMetricValue"] p {{
+    font-size: 2.4rem !important; font-weight: 300 !important;
+    letter-spacing: -0.035em !important; line-height: 1.14 !important;
+    color: {NAVY} !important;
+}}
+[data-testid="stMetricLabel"],
+[data-testid="stMetricLabel"] div,
+[data-testid="stMetricLabel"] p {{
+    font-size: 0.63rem !important; font-weight: 600 !important;
+    letter-spacing: 0.14em !important; color: {INK_LABEL} !important;
+}}
+
+/* SECTION RHYTHM. Air between subjects only. */
+[data-testid="stExpander"] {{
+    border: none !important; border-top: 1px solid {HAIRLINE} !important;
+    border-radius: 0 !important; background: rgba(0,0,0,0) !important;
+}}
+[data-testid="stAppViewContainer"] > .main .block-container {{
+    padding-top: 3.2rem !important;
+}}
+
+/* TABLES as ruled figures rather than framed boxes. Columns, sorting
+   and interactions are untouched. */
+[data-testid="stDataFrame"] thead tr th {{
+    background: rgba(0,0,0,0) !important;
+    color: {INK_LABEL} !important;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    font-size: 0.63rem !important; font-weight: 600 !important;
+    border-bottom: 1px solid {INK} !important;
 }}
 </style>"""
 
@@ -1028,7 +1163,7 @@ def _facts(items):
     number with no box around it; st.metric fixes its own type scale and
     cannot be told otherwise.  More importantly st.metric draws a green/red
     delta chip, and on this dashboard a coloured delta reads as a
-    recommendation - which is precisely the inference the euphoria panel
+    recommendation - which is precisely the inference the crowd heat panel
     exists to prevent.  Rendering the counters directly keeps the choice of
     what to colour, and what to leave alone, with the caller.
     """
@@ -1209,10 +1344,10 @@ READY_HELP = (
     "already boomed is measured against WARNING; one that has not is "
     "measured against CONSIDER. The other side is not just unlikely, it "
     "is blocked by the phase gate.\n\n"
-    "This is a different quantity from the EUPHORIA level in the facts "
+    "This is a different quantity from the CROWD HEAT level in the facts "
     "beside it. The level is crowd heat only; the score behind this "
     "dial also sees price, which is why a quiet name that has run hard "
-    "can read cold on euphoria and high here."
+    "can read cold on crowd heat and high here."
 )
 
 READY_HELP_XP = (
@@ -1232,7 +1367,7 @@ READY_HELP_XP = (
 
 def fig_euphoria_gauge(level_now, level_prev, in_danger, z, as_of,
                        peak_val=None, peak_day=None):
-    """A speedometer for one name.  Needle = the CURRENT smoothed euphoria
+    """A speedometer for one name.  Needle = the CURRENT smoothed crowd heat
     level; delta = the same curve one smoothing window ago.
 
     Four things about the construction are load-bearing:
@@ -1311,7 +1446,7 @@ def fig_euphoria_gauge(level_now, level_prev, in_danger, z, as_of,
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(family=FONT_STACK, color=INK),
         annotations=[
-            dict(text=("EUPHORIA AT "
+            dict(text=("CROWD HEAT AT "
                        f"{pd.Timestamp(as_of).strftime('%d %b %Y').upper()}"),
                  xref="paper", yref="paper", x=0.5, y=1.32,
                  xanchor="center", yanchor="bottom", showarrow=False,
@@ -1692,11 +1827,16 @@ st.markdown(INSTITUTIONAL_CSS, unsafe_allow_html=True)
 
 h_left, h_right = st.columns([5, 1])
 with h_left:
+    # EDITORIAL MASTHEAD (experiment). Same elements, same order, same
+    # column split, same header mark - the description simply moves from
+    # a small uppercase line to a standfirst, with an eyebrow above the
+    # name. Reverting is this block plus the editorial CSS layer.
     st.markdown(
+        '<div class="rf-eyebrow">Retail attention &amp; trading signals</div>'
         '<div><span class="rf-dot">&#9679;</span> '
         '<span class="rf-title">RetailRadar</span></div>'
-        '<div class="rf-sub">retail attention &amp; trading signals - '
-        'real-time monitoring dashboard</div>'
+        '<div class="rf-standfirst">A real-time read on where retail '
+        'attention is building, and where it is ending.</div>'
         f'<div class="rf-sub">last update: '
         f'{pd.Timestamp.now():%d/%m/%Y, %H:%M:%S}</div>'
         '<div class="rf-credit">Alex Brown - GIP 2026 Project - '
@@ -1704,7 +1844,7 @@ with h_left:
         unsafe_allow_html=True)
 with h_right:
     st.markdown(HEADER_MARK_HTML, unsafe_allow_html=True)
-st.divider()
+st.markdown('<div class="rf-rule-heavy"></div>', unsafe_allow_html=True)
 
 st.sidebar.title("RetailRadar")
 
@@ -2078,7 +2218,7 @@ STAGES = {
                   "building rolling term counts", "need scoring"]),
     "coverage": ("Checking data coverage for the window",
                  ["DATA COVERAGE", "WINDOW CHECK"]),
-    "analyse":  ("Analysing: conviction, signals, euphoria + onset radar, "
+    "analyse":  ("Analysing: conviction, signals, crowd heat + onset radar, "
                  "influence board",
                  ["recomputing conviction", "analytics:",
                   "conviction (was nb", "signals (was nb",
@@ -2326,7 +2466,7 @@ st.sidebar.caption(
 # ---------------------------------------------------------------------------
 _m1, _m2, _m3, _m4, _m5 = st.columns(5)
 _e_now = _alerts_w = 0
-_hottest = "-"
+_hottest, _hottest_share = "-", None
 if euph is not None and len(euph):
     # THEMES ONLY, like the readiness banner below. Single names are no
     # longer shown anywhere, so counting them here would produce a
@@ -2343,9 +2483,10 @@ if euph is not None and len(euph):
     # the top EUPHORIA LEVEL, which is a percentile of a name's own
     # history - a tiny theme at its own extreme could outrank the theme
     # the whole crowd is actually talking about.
-    _hottest = "-"
+    _hottest, _hottest_share = "-", None
     if theme_counts is not None and len(theme_counts):
-        _tc_h = theme_counts[theme_counts["theme"].isin(THEME_ETFS)]
+        _tc_h = theme_counts[theme_counts["theme"].isin(THEME_ETFS)
+                             & ~theme_counts["theme"].isin(HIDDEN_THEMES)]
         if len(_tc_h):
             _hi_h = _tc_h["date"].max()
             _w_h = _tc_h[_tc_h["date"] > _hi_h - pd.Timedelta(days=7)]
@@ -2353,8 +2494,12 @@ if euph is not None and len(euph):
             if _tot_h > 0:
                 _s_h = (_w_h.groupby("theme")["mention_count"].sum()
                         / _tot_h)
-                _hottest = (f"{_s_h.idxmax()} "
-                            f"({_s_h.max():.0%} of mentions)")
+                # Name on the value line, share underneath: the share
+                # was competing with the name for the eye inside one
+                # string. delta_color="off" keeps it neutral grey - it
+                # is a magnitude, not a rise or a fall.
+                _hottest = theme_label(_s_h.idxmax())
+                _hottest_share = f"{_s_h.max():.0%} of mentions"
     # the DESK flags - the ones every chart draws (review 2026-08-02
     # #8: this metric counted the retired level-detector's alerts, so
     # the headline could not be reconciled with the tabs).  Falls back
@@ -2368,9 +2513,10 @@ if euph is not None and len(euph):
     else:
         _ew = clip_window(euph, "date", lo, hi)
         _alerts_w = int(_ew["alert"].sum())
-_m1.metric("euphoria alerts in window", _alerts_w)
+_m1.metric("crowd heat alerts in window", _alerts_w)
 _m2.metric("instruments at level 70+", _e_now)
-_m3.metric("most retail attention (7d)", _hottest)
+_m3.metric("most retail attention (7d)", _hottest,
+           delta=_hottest_share, delta_color="off")
 _m4.metric("data through", str(data_max.date()))
 _m5.metric("priced symbols", len(priced))
 
@@ -2459,11 +2605,18 @@ if os.path.exists(_ra_path):
                                .unique())
             _ra_alerts = [a for a in _ra_alerts
                           if a.get("name") in _theme_names]
+        # Hidden instruments are hidden HERE TOO. Without this the banner
+        # was the one surface still naming them, and because two ARKK
+        # themes share a display name it listed the same label twice with
+        # different numbers - unreadable, and the reason this was noticed.
+        _ra_alerts = [a for a in _ra_alerts
+                      if a.get("name") not in HIDDEN_THEMES]
         if _ra_alerts:
             _ra_bits = [
-                (f"**{a['name']}** ({a.get('symbol') or '-'}) "
+                (f"**{theme_label(a['name'])}** "
+                 f"({a.get('symbol') or '-'}) "
                  f"{100 * a['signed_readiness']:+.0f}% toward "
-                 f"{a['side']}")
+                 f"{_side_label(a['side'])}")
                 for a in _ra_alerts]
             st.warning("**At the line (±90% signed readiness):** "
                        + " · ".join(_ra_bits)
@@ -2701,8 +2854,8 @@ def tournament_table_md(rep):
              "ens": "Ensemble: logit + GBM",
              "ens_crowd": "Ensemble (crowd-only)"}
     out = []
-    for head, title in (("get_out", "WARNING - calling the top"),
-                        ("get_in", "CONSIDER - calling the start")):
+    for head, title in (("get_out", "WARNING: calling the top"),
+                        ("get_in", "CONSIDER: calling the start")):
         rows = tour.get(head) or {}
         if not rows:
             continue
@@ -2855,10 +3008,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     # So: the heading says what the panel is, in one line that cannot wrap
     # into a false claim, and the legend is a caption under it naming the
     # colours that are actually on screen.
-    st.subheader(f"EUPHORIA - {kind_label}")
-    st.caption("**Green = CONSIDER** (euphoria starting - the crowd is "
-               "arriving).  **Red = WARNING** (euphoria ending - expect "
-               "the top within ~a month of the signal).")
+    st.subheader(f"CROWD HEAT - {kind_label}")
+    st.caption("**Green = CONSIDER** — attention is building, the crowd is "
+               "arriving, expect growth.  **Red = WARNING** — attention is "
+               "topping, expect a fall within ~a month of the signal.")
     # ONE explainer, and its label is not to be touched (frozen
     # requirement): the explainer label is frozen.  The wording below is therefore
     # verbatim and deliberate - do not retitle it.
@@ -2912,7 +3065,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                        "wrong to leave unsaid on a live screen.")
 
     if euph is None or not len(euph):
-        st.info("no euphoria data yet - run QUICK UPDATE in the sidebar")
+        st.info("no crowd heat data yet - run QUICK UPDATE in the sidebar")
         return
 
     # THE WATCH TRACK needs the PRODUCTION scorers, not a reimplementation.
@@ -2926,10 +3079,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                                            desk_end_fit, desk_onset_fit,
                                            episode_coherent_alerts)
 
-    ek = euph[euph["kind"] == kind]
-    ok = (onset[onset["kind"] == kind].copy()
+    ek = _hide(euph[euph["kind"] == kind])
+    ok = (_hide(onset[onset["kind"] == kind].copy())
           if onset is not None and len(onset) else None)
-    dk = (desk[desk["kind"] == kind].copy()
+    dk = (_hide(desk[desk["kind"] == kind].copy())
           if desk is not None and len(desk) else None)
 
     # THE SIGNAL SOURCE (recorded decision): GET IN /
@@ -3173,8 +3326,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         sentence. The dates come from the stored flags; the values are the
         stored evidence on that day."""
         ready, lines = _factor_lines(name, d, side)
-        head = ("WARNING (euphoria ending)" if side == "out"
-                else "CONSIDER (euphoria starting)")
+        head = ("WARNING: expect a fall" if side == "out"
+                else "CONSIDER: expect growth")
         md = [f"**{pd.Timestamp(d).date()} — {head}.**",
               "Every factor below is a percentile of this name's OWN "
               "trailing year (1.00 = the most extreme it has been); the "
@@ -3270,14 +3423,14 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                      if _state_of(n, starting, ending) == "STARTING"),
                     key=starting.get, reverse=True)
     if out_now:
-        st.error("**WARNING — euphoria is ENDING:** "
+        st.error("**WARNING — crowd heat is ENDING:** "
                  + ";  ".join(f"{flag_label(n, kind)} — signal "
                               f"{ending[n].date()}, "
                               f"{int((latest_day - ending[n]).days)}d ago"
                               for n in out_now)
                  + ". Expect the top within ~a month of the signal.")
     if in_now:
-        st.success("**CONSIDER — euphoria is STARTING:** "
+        st.success("**CONSIDER — crowd heat is STARTING:** "
                    + ";  ".join(f"{flag_label(n, kind)} — signal "
                                 f"{starting[n].date()}, "
                                 f"{int((latest_day - starting[n]).days)}"
@@ -3285,8 +3438,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                    + ". The crowd is arriving; the rally window is open.")
     if not out_now and not in_now:
         st.info(f"**No live signal among {kind_label.lower()} right "
-                "now** - no euphoria starting (consider) or ending (get "
-                "out) in the last 21 days. Euphoria is rare; an empty "
+                "now** - no crowd heat starting (consider) or ending (get "
+                "out) in the last 21 days. Crowd heat is rare; an empty "
                 "pane is the radar working.")
 
     # ---- WHY, PER FLAG (recorded decision: "make each get out /
@@ -3420,9 +3573,15 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                              "right for today.")
 
     def draw_chart(name, title_prefix, key):
+        # `name` stays the raw slug - it is the key every store is
+        # filtered by. `_disp` is the only thing ever shown, so a theme
+        # whose display name differs from its slug (see
+        # plain_english._LABEL_OVERRIDES) is spelled the same here as in
+        # the dropdown and the banners.
+        _disp = theme_label(name) if kind == "theme" else str(name)
         one = ew[ew["name"] == name].sort_values("date")
         if not len(one):
-            st.caption(f"{name}: no euphoria data inside the selected "
+            st.caption(f"{_disp}: no crowd heat data inside the selected "
                        "window")
             return
         sym = one["symbol"].iloc[0]
@@ -3498,14 +3657,14 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                      f"{pd.Timestamp(_sig_all[-1][0]).strftime('%d %b %y')}"
                      if _sig_all else "none in window")
         _last_col = _sig_all[-1][2] if _sig_all else INK_MUTED
-        _badge = {"STARTING": (TEAL, "CONSIDER - euphoria starting now"),
-                  "ENDING": (BEAR, "WARNING - euphoria ending now")}.get(
+        _badge = {"STARTING": (TEAL, "CONSIDER: attention building — expect growth"),
+                  "ENDING": (BEAR, "WARNING: attention topping — expect a fall")}.get(
                       state, (INK_MUTED, "no live signal"))
         st.markdown(
             "<div style='display:flex;align-items:baseline;gap:12px;"
             "flex-wrap:wrap;margin:6px 0 2px 0'>"
             f"<span style='font-size:19px;font-weight:600;color:{INK}'>"
-            f"{title_prefix}{name}</span>"
+            f"{title_prefix}{_disp}</span>"
             f"<span style='font-size:13px;color:{INK_MUTED};"
             f"letter-spacing:.04em'>{sym}</span>"
             f"<span style='font-size:11px;font-weight:600;"
@@ -3726,7 +3885,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     (f"% to {_rd_side.lower()}",
                      f"{_rd_now:.0f}<span style='font-size:13px;"
                      f"color:{INK_LABEL}'>/100</span>", None),
-                    ("euphoria today",
+                    ("crowd heat today",
                      f"{_now:.0f}<span style='font-size:13px;"
                      f"color:{INK_LABEL}'>/100</span>", None),
                 ]
@@ -3741,8 +3900,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                                                amber=_z["amber_edge"]))
                 _facts_rows = [
                     ("state", _zlab, _zcol),
-                    ("euphoria today" if _as_of_click is None
-                     else "euphoria on that day",
+                    ("crowd heat today" if _as_of_click is None
+                     else "crowd heat on that day",
                      f"{_now:.0f}<span style='font-size:13px;"
                      f"color:{INK_LABEL}'>/100</span>", None),
                     (f"change over {ROLL} days", f"{_now - _ref:+.0f}",
@@ -3865,7 +4024,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     help="Plot the price on a logarithmic axis, so equal "
                          "PERCENTAGE moves take equal vertical space and "
                          "a long run-up does not flatten the early "
-                         "history. Linear is the default; the euphoria "
+                         "history. Linear is the default; the crowd heat "
                          "signals are identical either way.")
         else:
             _log_scale = st.toggle(
@@ -4268,7 +4427,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             # so the hover still has a line to ride on.
             _carrier = lvl
             fig.add_trace(go.Scatter(x=lvl.index, y=lvl.values,
-                                     name="euphoria level (no price data)",
+                                     name="crowd heat level (no price data)",
                                      line=dict(color=SLATE, width=1.5),
                                      hovertemplate=(
                                          "level %{y:.0f}<extra></extra>")))
@@ -4282,7 +4441,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         _hv = _hv.reindex(_carrier.index, method="ffill")
         _hv_missing = _hv.isna()
         if bool(_hv_missing.any()):
-            _hv = _hv.fillna("no euphoria reading yet")
+            _hv = _hv.fillna("no crowd heat reading yet")
         fig.add_trace(go.Scatter(
             x=_carrier.index, y=_carrier.values, mode="lines",
             line=dict(width=0.5, color="rgba(0,0,0,0)"),
@@ -4424,7 +4583,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # LOG IS DISPLAY ONLY: same prices, same flags, same hover - the
         # axis transform changes nothing measured.
         fig.update_yaxes(title_text=("price (USD)" if _px_ok
-                                     else "euphoria level"),
+                                     else "crowd heat level"),
                          type="log" if _log_scale else "linear")
         _axes_fidelity(_theme(fig))
         st.plotly_chart(fig, width="stretch", key=key)
@@ -4613,7 +4772,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 "**Amber stretches of the price line** are the danger "
                 "state: the crowd at least twice its own normal AND the "
                 "price in a confirmed boom.\n\n"
-                "How hot the crowd is - the euphoria level - is the dial "
+                "How hot the crowd is - the crowd heat level - is the dial "
                 "and the facts above; the signal record beside them is "
                 "this name's own measured history of what prices did "
                 "after each flag."))
@@ -4625,7 +4784,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     all_names = sorted(ek["name"].unique())
     pick = st.selectbox(
         f"look up any {kind_label.lower()} (type to search - shows its "
-        "euphoria whether or not it ever alerted)",
+        "crowd heat whether or not it ever alerted)",
         ["(none)"] + all_names, key=f"{key_prefix}_lookup",
         format_func=lambda n: n if n == "(none)" else flag_label(n, kind))
     if pick and pick != "(none)":
@@ -4762,7 +4921,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 return "·  flat"
 
             _disp = pd.DataFrame({
-                "name": _best["name"],
+                "name": _best["name"].map(theme_label),
                 "ticker": _best["symbol"],
                 "watch for": _best["side"],
                 "how close": [
@@ -4854,7 +5013,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         show = sorted(last_alert, key=last_alert.get,
                       reverse=True)[:how_many]
         if not show:
-            st.info(f"no euphoria alerts among {kind_label.lower()} in "
+            st.info(f"no crowd heat alerts among {kind_label.lower()} in "
                     "the selected window - widen the window in the "
                     "sidebar to see past episodes")
         else:
@@ -4944,6 +5103,13 @@ if active_tab == MAIN_TAB:
 # the "graph over time" column and the score column come from the same
 # store and can never disagree about what the crowd was doing.
 if active_tab == "ETF radar":
+    if desk is None or not len(desk):
+        # Every other consumer guards this; without it the tab raised
+        # TypeError on a clone that has fetched but not yet run the
+        # analytics pass, blanking the page instead of explaining.
+        st.info("No scored store yet - the ETF radar appears once "
+                "the analytics pass has run.")
+        st.stop()
     _as_of_r = desk["date"].max() if hi is None else min(
         hi, desk["date"].max())
     st.subheader("ETF radar — every tradeable theme ETF, ranked by how "
@@ -4965,7 +5131,8 @@ if active_tab == "ETF radar":
     # instruments. This filter predates the removal of the single-name
     # display and is kept regardless: the radar is about what can be
     # traded through an anchor ETF.
-    _dkr = desk[(desk["date"] <= _as_of_r) & (desk["kind"] == "theme")]
+    _dkr = _hide(desk[(desk["date"] <= _as_of_r)
+                      & (desk["kind"] == "theme")])
     _rows_r = []
     for _n, _g in _dkr.groupby("name"):
         _g = _g.sort_values("date")
@@ -5033,7 +5200,7 @@ if active_tab == "ETF radar":
             ["fresh", "signed", "att_pct"],
             ascending=[False, True, False], na_position="last")
         _disp_r = pd.DataFrame({
-            "name": _radar["name"], "ticker": _radar["ticker"],
+            "name": _radar["name"].map(theme_label), "ticker": _radar["ticker"],
             "signed readiness": _radar["signed"],
             "side live today": _radar["side"],
             "retail attention (vs own year)": _radar["att_pct"],
@@ -5091,7 +5258,7 @@ def influence_simple():
 
     The tab's own numbers (12,528 authors, 33,451 calls) are quoted from the
     notebook export rather than typed, for the same staleness reason as the
-    euphoria panel - this store grows on every live run, so any hard-typed
+    crowd heat panel - this store grows on every live run, so any hard-typed
     count here is wrong within a week."""
     n5 = _research("nb05_influence")
     store = n5.get("store", {})
@@ -5173,7 +5340,7 @@ on this tab.
 
 **Two honest limits.**
 
-- This tab does **not** feed the euphoria signal. It is information, not a
+- This tab does **not** feed the crowd heat signal. It is information, not a
   trigger.
 - We tried to *predict* who would be influential with eight graph models and
   **none of them beat a plain baseline**, so nothing here is a prediction.
@@ -5751,7 +5918,7 @@ def fig_crowding_time(tilt: pd.DataFrame, hist: pd.DataFrame, title: str):
 
     TOP - the whole panel's net direction, week by week. A line walking up
     toward +1 is a room getting one-sidedly bullish, which is the condition
-    the euphoria detector exists to catch; a line rolling over is the crowd
+    the crowd heat detector exists to catch; a line rolling over is the crowd
     losing conviction. The dotted zero line is genuine two-way disagreement.
 
     DOT SIZE on that line is the number of calls behind the week, and it is
@@ -5937,7 +6104,7 @@ def fig_ticker_backers(bk: pd.DataFrame, ticker: str, title: str):
 if active_tab == "Influence tracker":
     st.subheader("Influence tracker - who has actually been right, and "
                  "what they are saying now")
-    st.caption("INFORMATION ONLY - nothing on this tab feeds the euphoria "
+    st.caption("INFORMATION ONLY - nothing on this tab feeds the crowd heat "
                "level or the CONSIDER / WARNING alerts. Ranking is the "
                "MEASURED record from the store, not a model prediction.")
     with st.expander("HOW TO READ THIS TAB  (start here - plain English)",
@@ -5947,7 +6114,20 @@ if active_tab == "Influence tracker":
                      "(research version)", expanded=False):
         st.markdown(INFLUENCE_HOW_TO_READ)
 
-    if not os.path.exists(_INFL_SCORES):
+    if not os.path.exists(_INFL_SCORES) and not LOCAL_CONTROLS:
+        # HOSTED COPY. The advice below ("run a live pull") is not
+        # actionable here - the host fetches nothing and its disk is
+        # rebuilt from the published bundle on every deploy. The board is
+        # absent because tools/publish_dashboard.py leaves it out by
+        # default: its frames are keyed by Reddit author handle, so
+        # publishing it puts real usernames on a hosted page. Say that
+        # plainly instead of sending a viewer to a command they cannot
+        # run.
+        st.info("The influence board is not part of the published data. "
+                "It is keyed by individual Reddit usernames, so it is "
+                "kept off the hosted copy by default and is available "
+                "on the machines that run the pipeline.")
+    elif not os.path.exists(_INFL_SCORES):
         st.info("no influence store on this machine yet - it builds "
                 "ITSELF from live data: run one live pull "
                 "(`python update_data.py`, or the sidebar button) and "
@@ -6108,7 +6288,7 @@ if active_tab == "Influence tracker":
                     "group the panel's calls by",
                     ["individual names", "themes"], horizontal=True,
                     key="infl_group",
-                    help="Themes use the SAME membership as the euphoria "
+                    help="Themes use the SAME membership as the crowd heat "
                          "Themes tab (src/themes.py), so a theme means one "
                          "thing across the whole app. A ticker in several "
                          "themes counts in each. Calls on tickers in no theme "
@@ -6195,7 +6375,7 @@ if active_tab == "Influence tracker":
                         "against the house outcome (a >10% fall inside a "
                         "week, any time in the next 30 days) and all three "
                         "were rejected. On the same 1,552 name-days where the "
-                        "accepted euphoria level separates 0.925 against "
+                        "accepted crowd heat level separates 0.925 against "
                         "0.428 (a gap of +0.497, worst case +0.2515), the "
                         "three influence measures read 0.237 vs 0.482, 0.250 "
                         "vs 0.481 and 0.282 vs 0.477 - all pointing the WRONG "
@@ -6206,7 +6386,7 @@ if active_tab == "Influence tracker":
                         ":grey[This tab is **information, not a signal.** "
                         "Notebook 05 measured that these scores do not "
                         "generalise to authors the model has not seen, so "
-                        "nothing here feeds the euphoria CONSIDER / WARNING "
+                        "nothing here feeds the crowd heat CONSIDER / WARNING "
                         "dates. Read it as \"what the room with a track "
                         "record is saying\", and see the expander at the "
                         "bottom of this tab for exactly why.]")
@@ -6460,7 +6640,7 @@ if active_tab == "Influence tracker":
                 f"this person actually called in the last {days} days, "
                 "netted, most-conviction first, so a person who went long "
                 "then short a name shows MIXED rather than appearing twice. "
-                "*called tops* - bearish calls made inside a euphoria peak "
+                "*called tops* - bearish calls made inside a crowd heat peak "
                 "window that the bust then confirmed; *bought tops* is the "
                 "opposite, bullish into the same peak. *loud but wrong* - "
                 "heavily replied-to but below-median record.\n\n**No hit "
@@ -6554,7 +6734,7 @@ if active_tab == "Influence tracker":
             _w1, _w2 = st.columns(2)
             with _w1:
                 st.markdown("**Called the tops** - most confirmed bearish "
-                            "calls inside a euphoria peak window")
+                            "calls inside a crowd heat peak window")
                 if board["called_tops"].fillna(0).sum():
                     _ct = board.nlargest(10, "called_tops").copy()
                     _ct["influence"] = (_infl_all.reindex(_ct.index).round(0)
@@ -6567,7 +6747,7 @@ if active_tab == "Influence tracker":
                                  "bought_tops": "bought tops",
                                  "latest_calls": "latest calls"}),
                         width="stretch", hide_index=True)
-                    st.caption("The people who were bearish INTO a euphoria "
+                    st.caption("The people who were bearish INTO a crowd heat "
                                "peak that then busted. Rare by construction - "
                                "most of the forum is long into a top.")
                 else:
@@ -6628,7 +6808,7 @@ if active_tab == "Influence tracker":
                 "every model lands at or below the random floor.\n\n"
                 "So the board above is ranked by the **measured** composite "
                 "(a record, not a prediction), and no influence number "
-                "touches the euphoria signal. Full evidence, plots and "
+                "touches the crowd heat signal. Full evidence, plots and "
                 "confidence intervals: `notebooks/"
                 "05_influence_users_model.py`.")
             if os.path.exists(_nb05):
@@ -6661,10 +6841,13 @@ if active_tab == "Top trends":
                "noise.")
     _att_mode = _attention_mode_control("top_att_mode")
     _mood_mode = _mood_mode_control("top_mood_mode")
-    top = (tc.groupby("theme")["mention_count"].sum()
+    top = (tc[~tc["theme"].isin(HIDDEN_THEMES)]
+           .groupby("theme")["mention_count"].sum()
            .rename("total mentions").reset_index())
     top_r = ranked(top, "total mentions").head(how_many)
-    st.dataframe(top_r, width="content", hide_index=True)
+    # Display copy only: the slug stays the key every later lookup uses.
+    st.dataframe(top_r.assign(theme=top_r["theme"].map(theme_label)),
+                 width="content", hide_index=True)
     for i, theme in enumerate(top_r["theme"], 1):
         symbol = resolve_anchor(theme, priced)
         share, _albl, _aax, _zl = _attention_series(
@@ -6675,7 +6858,8 @@ if active_tab == "Top trends":
               if prices is not None and symbol else None)
         st.plotly_chart(fig_theme_pulse(
             share, sent, px, symbol,
-            f"#{i}  {theme}  vs  {symbol or 'no priced anchor'}",
+            f"#{i}  {theme_label(theme)}  vs  "
+            f"{symbol or 'no priced anchor'}",
             att_label=_albl, att_axis=_aax, zero_line=_zl,
             mood_label=_mlbl, mood_relative=_mrel),
             width="stretch", key=f"top_{theme}")
@@ -6692,8 +6876,8 @@ if active_tab == "Emerging trends":
     grow_col = f"avg change last {look}d (pp)"
     movers = []
     for theme in tc["theme"].unique():
-        if theme not in THEME_ETFS:          # tradeable themes only
-            continue
+        if theme not in THEME_ETFS or theme in HIDDEN_THEMES:
+            continue            # tradeable, and not hidden from display
         chg = chatter_change_series(theme_counts, "theme", theme, lo, hi)
         tail = chg.dropna().tail(look)
         if len(tail):
@@ -6704,7 +6888,8 @@ if active_tab == "Emerging trends":
                 f"with {MIN_TOTAL}+ total posts and a {look}-day run-up)")
     else:
         mv = ranked(pd.DataFrame(movers), grow_col).head(how_many)
-        st.dataframe(mv, width="content", hide_index=True)
+        st.dataframe(mv.assign(theme=mv["theme"].map(theme_label)),
+                     width="content", hide_index=True)
         st.caption("Charts show the PM view: price + "
                    "attention + sentiment on one graph. The RANKING "
                    "above always uses attention growth over the chosen "
@@ -6722,7 +6907,8 @@ if active_tab == "Emerging trends":
                   if prices is not None and symbol else None)
             fig = fig_theme_pulse(
                 share, sent, px, symbol,
-                f"#{i}  {theme}: the crowd arriving  vs  {symbol or '-'}",
+                f"#{i}  {theme_label(theme)}: the crowd arriving  vs  "
+                f"{symbol or '-'}",
                 att_label=_albl, att_axis=_aax, zero_line=_zl,
                 mood_label=_mlbl, mood_relative=_mrel)
             # grey out everything the growth ranking does NOT look at
@@ -6962,7 +7148,7 @@ def _snapshot_text(mr):
         bits.append("The detector was calling **CONSIDER** on "
                     + ", ".join(theme_label(n) for n in fi[:4]) + ".")
     else:
-        bits.append("No euphoria flag was live that week.")
+        bits.append("No crowd heat flag was live that week.")
     return " ".join(bits)
 
 
@@ -7364,7 +7550,7 @@ if active_tab == "AI Pulse":
             _axes_fidelity(_theme(fig0))
             st.plotly_chart(fig0, width="stretch", key="poll_ts")
             st.caption("Rotation in the AI's advice. When a name climbs "
-                       "here while its euphoria chart heats up, the "
+                       "here while its crowd heat chart heats up, the "
                        "crowd and its AI are feeding each other - the "
                        "herding mechanism notebook 09 \u00a72b tests.")
 
@@ -7390,8 +7576,11 @@ if active_tab == "AI Pulse":
             st.code(_apm._PULSE_SYSTEM, language="text")
             st.markdown("**The per-theme brief** — what section 3 asks "
                         "for:")
-            st.code(_apm._themes_prompt({"<evidence pack>": "..."},
-                                        {"<theme>": ["<recent posts>"]}),
+            # _themes_prompt takes ONE argument (by_theme). Calling it
+            # with two raised TypeError, which the broad except below
+            # swallowed - so this expander was permanently broken on
+            # every machine and read as an environment problem.
+            st.code(_apm._themes_prompt({"<theme>": ["<recent posts>"]}),
                     language="text")
             st.caption("Read live from analytics/ai_pulse.py, so this is "
                        "the instruction that was actually sent - not a "
@@ -7425,7 +7614,7 @@ if active_tab == "[dev] Data Stats":
         ("emerging terms", "daily_term_counts.parquet"),
         ("episodes (ground truth)", "episodes.parquet"),
         ("desk signals (CONSIDER/OUT)", "euphoria_desk.parquet"),
-        ("euphoria levels", "euphoria_levels.parquet"),
+        ("crowd heat levels", "euphoria_levels.parquet"),
     ]
     _rows_ds = []
     for _lab, _fn in _stores:

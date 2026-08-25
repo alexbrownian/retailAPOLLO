@@ -1,6 +1,6 @@
 {
  "threshold": 0.9,
- "built": "2026-08-24 08:25",
+ "built": "2026-08-25 02:31",
  "alerts": [
   {
    "name": "meme_stocks",
@@ -12,7 +12,7 @@
   {
    "name": "short_squeeze",
    "symbol": "ARKK",
-   "signed_readiness": -0.921,
+   "signed_readiness": -0.919,
    "side": "GET OUT",
    "as_of": "2026-08-21"
   },

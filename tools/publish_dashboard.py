@@ -119,11 +119,21 @@ def _forbidden_columns(path: str) -> list:
     import pyarrow.parquet as pq
     try:
         names = set(pq.ParquetFile(path).schema.names)
-    except Exception:                                     # noqa: BLE001
-        # Unreadable here means unreadable on the host too; let the copy
-        # step surface it rather than guessing at the schema.
-        return []
-    return sorted(names & IDENTITY_COLS)
+    except Exception as exc:                              # noqa: BLE001
+        # FAIL CLOSED. Returning [] here meant an unreadable footer - a
+        # half-written snapshot from a concurrent run, a truncated file -
+        # was copied into the publicly served bundle with no guard
+        # applied at all. A file whose schema cannot be read cannot be
+        # cleared, so it is refused.
+        raise SystemExit(
+            f"REFUSED: cannot read the schema of "
+            f"{os.path.relpath(path, PROJECT_ROOT)} ({exc}). A file that "
+            "cannot be checked is never published.")
+    # Case-insensitive, matching verify_abstracted in update_data.py: a
+    # column arriving as "Author" or "Title" is the same disclosure as
+    # the lower-case spelling.
+    lowered = {n.lower() for n in names}
+    return sorted(c for c in IDENTITY_COLS if c.lower() in lowered)
 
 
 def _copy(src: str, dst: str, dry_run: bool) -> int:

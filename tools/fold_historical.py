@@ -211,7 +211,14 @@ def fold_file(path, led, args, subs, lo, hi):
             skipped_win += 1
             continue
         key = f"{base}:{row['date'][:7]}"
-        if key in led["blocks"] and not args.force:
+        # A mid-file chunk flush records the block with partial=True.
+        # Skipping on presence alone therefore dropped every remaining
+        # record of that month IN THE SAME FILE - a 200k-post month at
+        # the default chunk size lost everything after the first flush,
+        # and the ledger then asserted the block was done. Only a
+        # COMPLETE block skips.
+        _blk = led["blocks"].get(key)
+        if _blk is not None and not _blk.get("partial") and not args.force:
             continue
         if row["id"] in seen_ids:
             continue
@@ -234,7 +241,11 @@ def fold_file(path, led, args, subs, lo, hi):
         n = flush(buf[m], f"{base}:{m}", args.dry_run)
         if not args.dry_run:
             k = f"{base}:{m}"
-            prev = led["blocks"].get(k, {}).get("posts", 0) if args.force else 0
+            # Carry forward whatever the chunk flushes already counted
+            # for this block, and drop the partial marker: the file is
+            # now fully read, so the block is complete.
+            _p = led["blocks"].get(k, {})
+            prev = _p.get("posts", 0) if (args.force or _p.get("partial")) else 0
             led["blocks"][k] = {"posts": n + prev,
                                 "folded_utc": pd.Timestamp.utcnow()
                                 .strftime("%Y-%m-%dT%H:%M:%S")}

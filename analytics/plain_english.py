@@ -653,7 +653,19 @@ _ACRONYMS = {"ai": "AI", "ev": "EV", "saas": "SaaS", "glp1": "GLP-1"}
 # fund holding none of those positions invites the reader to take the
 # price panel as the theme's own line, so the label names the instrument
 # actually drawn.
-_LABEL_OVERRIDES = {"short_squeeze": "ARK Innovation"}
+#
+# meme_stocks is the SECOND theme anchored to ARKK, and config records
+# the same caveat for it ("ARKK holds none of the meme names"). It is
+# labelled the same way for the same reason.
+#
+# CONSEQUENCE, recorded because it is visible on screen: two themes now
+# render under one name. They remain separate series with separate
+# crowd signals - only the label collides - so any list that shows both
+# (the instrument dropdown, the ETF radar) will carry two rows reading
+# "ARK Innovation (ARKK)". Merging or hiding one is the fix if that
+# ambiguity matters; renaming alone cannot resolve it.
+_LABEL_OVERRIDES = {"short_squeeze": "ARK Innovation",
+                    "meme_stocks": "ARK Innovation"}
 
 
 def theme_label(slug: str) -> str:
