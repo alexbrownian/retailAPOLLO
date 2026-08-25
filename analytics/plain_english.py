@@ -68,8 +68,8 @@ PLAIN: dict[str, str] = {
     "fade": "mood rolling over while the crowd is still large",
     "level": "euphoria level",
     "boom_state": "price already run up from its own low",
-    "onset": "euphoria starting (GET IN)",
-    "top": "euphoria ending (GET OUT)",
+    "onset": "euphoria starting (CONSIDER)",
+    "top": "euphoria ending (WARNING)",
     "lead_days": "days of warning before the drop",
     "hit": "the drop actually came",
     # --- influence scoring ------------------------------------------------
@@ -188,7 +188,7 @@ DEFINITIONS: dict[str, str] = {
         "repeat. Every number in this project is out-of-sample by "
         "construction; nothing is scored on data used to choose it."),
     "lead time": (
-        "How many days before the actual drop the GET OUT fired. A signal "
+        "How many days before the actual drop the WARNING fired. A signal "
         "that is right but simultaneous is a description, not a warning."),
     "episode": (
         "One complete boom-then-bust arc around a confirmed top: the low the "
@@ -196,7 +196,7 @@ DEFINITIONS: dict[str, str] = {
         "are defined from PRICE ONLY and exist to mark the exam - no crowd "
         "feature is ever allowed to influence what counts as an episode."),
     "the onset window": (
-        "The stretch of days in which a GET IN alert counts as having caught "
+        "The stretch of days in which a CONSIDER alert counts as having caught "
         "the start: from the trough to 45 days later, and never past the peak. "
         "An alert after the top is not an early call however close it lands."),
     "detectable": (
@@ -643,12 +643,29 @@ def censor_series(s: pd.Series) -> pd.Series:
 _ACRONYMS = {"ai": "AI", "ev": "EV", "saas": "SaaS", "glp1": "GLP-1"}
 
 
+# Whole-slug display overrides, for the few themes whose slug is not the
+# name to put on screen. DISPLAY ONLY: the slug stays the key in every
+# store, config file and model, so nothing here can move a number or
+# orphan history.
+#
+# short_squeeze: anchored to ARKK, which config/theme_etfs.csv itself
+# records as a proxy ("no squeeze ETF exists"). A squeeze name against a
+# fund holding none of those positions invites the reader to take the
+# price panel as the theme's own line, so the label names the instrument
+# actually drawn.
+_LABEL_OVERRIDES = {"short_squeeze": "ARK Innovation"}
+
+
 def theme_label(slug: str) -> str:
     """`ai_megacap` -> `AI megacap`, `ev_clean_energy` -> `EV clean energy`.
 
     Sentence case, not Title Case: the labels sit inside chart captions and
     hover text as ordinary nouns, and Title Case on a scatter reads as a
-    proper name ("Gold Metals" looks like a company)."""
+    proper name ("Gold Metals" looks like a company). A slug listed in
+    _LABEL_OVERRIDES returns that name verbatim instead."""
+    key = str(slug).strip().lower()
+    if key in _LABEL_OVERRIDES:
+        return _LABEL_OVERRIDES[key]
     words = [w for w in str(slug).split("_") if w]
     if not words:
         return str(slug)
