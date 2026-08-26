@@ -1093,6 +1093,13 @@ div[data-baseweb="select"] > div, div[data-baseweb="input"] > div {{
     font-weight: 500 !important;
     letter-spacing: 0.01em;
 }}
+/* The first three tabs are the product; the rest are supporting. */
+[data-testid="stSegmentedControl"] button:nth-of-type(-n+3),
+[data-testid="stSegmentedControl"] button:nth-of-type(-n+3) *,
+[data-testid="stSegmentedControl"] > div > div:nth-child(-n+3) button,
+[data-testid="stSegmentedControl"] > div > div:nth-child(-n+3) button * {{
+    font-weight: 700 !important;
+}}
 [data-testid="stSegmentedControl"] button[aria-checked="true"],
 [data-testid="stSegmentedControl"] button[kind="segmented_controlActive"] {{
     background: {NAVY} !important;
@@ -2786,8 +2793,13 @@ _m5.metric("priced symbols", len(priced))
 # and the store still carries them - only the screen changed, the same
 # way Conviction and Historical checker were retired from the display.
 MAIN_TAB = "Today's calls  ·  main"
-_TAB_NAMES = [MAIN_TAB, "Influence tracker", "Top trends",
-              "Emerging trends", "AI Pulse", "[dev] Data Stats"]
+# ORDER IS THE RANKING. The first three answer the questions this
+# product exists for - what to act on, what the model reads in the
+# posts, who is saying it - and they are emboldened in the bar so the
+# hierarchy survives a glance. The rest are supporting views.
+PRIMARY_TABS = 3
+_TAB_NAMES = [MAIN_TAB, "AI Pulse", "Influence tracker",
+              "Top trends", "Emerging trends", "[dev] Data Stats"]
 active_tab = st.segmented_control(
     "view", _TAB_NAMES, key="active_tab", default=MAIN_TAB,
     required=True, label_visibility="collapsed")
