@@ -6662,9 +6662,6 @@ if active_tab == "Influence tracker":
     st.caption("INFORMATION ONLY - nothing on this tab feeds the crowd heat "
                "level or the INCREASE EXPOSURE / CUT EXPOSURE alerts. Ranking is the "
                "MEASURED record from the store, not a model prediction.")
-    with st.expander("HOW TO READ THIS TAB  (start here - plain English)",
-                     expanded=False):
-        st.markdown(influence_simple())
     with st.expander("full method: scoring, shrinkage and the graph slice "
                      "(research version)", expanded=False):
         st.markdown(INFLUENCE_HOW_TO_READ)
@@ -6820,106 +6817,10 @@ if active_tab == "Influence tracker":
         # third of four, behind two charts that need reading. "The
         # names" was removed with it: the leaderboard and the
         # per-name breakdown were a directory, not a decision.
-        _i4, _i1, _i2 = st.tabs(
-            ["The map", "What they are pushing", "Building or fading?"])
-        with _i1:
-            # ---- 1. WHAT THEY ARE PUSHING (the lead exhibit) ---------------
-            # This section used to be second, underneath a 25-row leaderboard.
-            # It leads now, and the reason is about what the tab is FOR: a PM
-            # does not trade a list of usernames, they trade positioning.  The
-            # first question is "what are the people with an actual record
-            # pushing, and how one-sided is it" - the names are the EVIDENCE
-            # for that answer, so they belong underneath it, and the reply map
-            # (which measured near-zero relationship between being central and
-            # being right) belongs underneath them.
-            st.markdown("#### 1. What the panel is pushing")
-            if calls is None or not len(dig):
-                st.info("no calls in the chosen window - widen it, or run a "
-                        "live comment pull to extend the store.")
-            else:
-                # NAMES or THEMES.  The question is posed at the theme
-                # level - "what if lots of influential accounts converge on a
-                # theme" - and the tab could only answer it one ticker at a
-                # time.  Same chart, same arithmetic, different grouping key;
-                # see ig.theme_digest for why the roll-up reuses the accepted
-                # consensus and backing formulas rather than restating them.
-                _view = st.radio(
-                    "group the panel's calls by",
-                    ["individual names", "themes"], horizontal=True,
-                    key="infl_group",
-                    help="Themes use the SAME membership as the crowd heat "
-                         "Themes tab (src/themes.py), so a theme means one "
-                         "thing across the whole app. A ticker in several "
-                         "themes counts in each. Calls on tickers in no theme "
-                         "are left out, so the two views have different "
-                         "denominators and are not expected to agree "
-                         "name-for-name.")
-                _is_theme = _view == "themes"
-                _key = "theme" if _is_theme else "ticker"
-                _grain = "themes" if _is_theme else "names"
-                if _is_theme:
-                    _digest = ig.theme_digest(calls, board,
-                                              authors=panel, days=days,
-                                              asof=asof)
-                    _voices = ig.theme_voices(calls, board, authors=panel,
-                                              days=days, asof=asof)
-                else:
-                    _digest, _voices = dig, ig.ticker_voices(
-                        calls, board, authors=panel, days=days, asof=asof)
-
-                if not len(_digest):
-                    st.info("none of the panel's calls in this window are on "
-                            "a ticker that belongs to a theme - switch back "
-                            "to individual names, or widen the window.")
-                else:
-                    _n_all = len(_digest)
-                    _nb = min(_n_all, INFL_BUBBLE_MAX)
-                    # FULL digest, plus how many to draw - not
-                    # _digest.head(_nb). The share and the even-split line are
-                    # denominated on the whole window inside the figure, so
-                    # they agree with KPI 4.
-                    st.plotly_chart(
-                        fig_influence_bubbles(
-                            _digest, _voices,
-                            f"the {_nb} most-backed {_grain}, last {days} "
-                            "days",
-                            top_n=_nb, key=_key),
-                        width="stretch", key="infl_bubbles")
-                    st.caption(
-                        "**Read it in four steps.**\n\n1. **Left or right** "
-                        "is which way they lean. Right of the centre line is "
-                        "net **long**, left is net **short**, and one "
-                        "sitting on the line is a genuine argument rather "
-                        "than a view. Colour just repeats it so the picture "
-                        "survives a black-and-white printout.\n2. **How "
-                        "high** is its **share of the room's conviction** - "
-                        "of everything this panel said in the window, "
-                        "weighted by whose record said it and how hard, what "
-                        "per cent went into this one. The dotted line is the "
-                        f"**even split** ({ig.even_share(_n_all):.1f}% here), "
-                        f"what each would show if all {_n_all} {_grain} in "
-                        "the window shared attention equally, so above the "
-                        "line means more crowded than even. Height means "
-                        "*who and how hard*, not how many - that is the "
-                        "bubble size.\n3. **How big** is how many times it "
-                        "was called. Area, not width, so a bubble that looks "
-                        "twice as big really is twice the calls.\n4. "
-                        "**Hover** for the actual people behind it, their "
-                        "side, and their influence on the 0-100 scale used "
-                        "everywhere on this tab.\n\n**So what.** Top-right "
-                        "is the corner that matters: high up (people with a "
-                        "record), far right (all one way), big (said "
-                        "repeatedly). That is crowded bullish positioning, "
-                        "which is the thing worth flagging to a PM before it "
-                        "unwinds - and top-left is the identical setup on "
-                        "the short side. One that is far right but LOW is "
-                        "the crowd, not the panel; one that is high but near "
-                        "the centre is two good voices disagreeing, which is "
-                        f"information of a different kind. Showing the {_nb} "
-                        f"best-backed of {_n_all} {_grain} touched by the top "
-                        f"{panel_n} voices"
-                        + (f", to {pd.Timestamp(asof).date()}"
-                           if asof is not None else "") + ".")
+        # "What they are pushing" was removed - the bubble chart was the
+        # exhibit and it did not carry its weight. Two views remain: who
+        # talks to whom, and whether the crowding is building.
+        _i4, _i2 = st.tabs(["The map", "Building or fading?"])
         with _i2:
             # ---- 2. IS IT BUILDING OR FADING? (added 2026-07-27) -----------
             # The tab had no time axis at all, which made every reading on it a
