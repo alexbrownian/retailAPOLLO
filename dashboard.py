@@ -503,9 +503,17 @@ ACTION_READY_PCT = 90.0
 ACTION_MIN_ROWS = 5
 # How many recently-fired signals the landing page lists.
 ACTION_FIRED_ROWS = 8
-# A score older than this is not a call about today. Matches the
-# 60-day rule readiness_alerts.json already applies at source.
-ACTION_STALE_DAYS = 60
+# Freshness is DISCLOSED, not filtered. Dropping stale names emptied
+# the CUT side entirely - four themes have cleared the boom bar and
+# every one was last scored weeks or months ago - and an empty list
+# reads as a broken page rather than as "nothing to do".
+#
+# So every eligible name is listed, and age is surfaced INSIDE the row
+# instead: the label stays clean, and opening a stale one leads with
+# how old it is. That keeps the page populated without letting it imply
+# a reading from April 2025 is a call about today - which is the defect
+# this whole area was fixed for once already.
+ACTION_STALE_DAYS = 7
 
 
 def _hide(df):
@@ -5075,8 +5083,6 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 if _scored.empty:
                     continue
                 _row = _scored.iloc[-1]
-                if _row["date"] < _stale_cut:
-                    continue                     # too old to be a call
                 _sc = float(_row[_col])
 
                 def _at(days_back):
@@ -5111,6 +5117,11 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
             floods."""
             if _a_df.empty:
                 return _a_df
+            # CLOSEST TO FIRING, full stop. Age is deliberately not a
+            # tiebreak and is not shown: the list answers "what is
+            # nearest its trigger", and a name that has not been scored
+            # recently still holds its last measured position in that
+            # ranking.
             s = (_a_df[_a_df["side"] == side]
                  .sort_values("ready", ascending=False))
             hot = s[s["ready"] >= ACTION_READY_PCT]
@@ -5127,11 +5138,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
 
         def _a_row(r, side, tone, key):
             rid = f"{side}:{r.name}"
-            _stale = "" if r.age <= 3 else f"   ·  as of {r.score_date:%d %b}"
             _head = (f"{theme_label(r.name)}  ({r.symbol})   "
                      f"{r.ready:.0f}% of trigger"
                      + ("   ● FIRING NOW" if r.fired else "")
-                     + ("   ◆ HIGH CONVICTION" if r.hiconv else "") + _stale)
+                     + ("   ◆ HIGH CONVICTION" if r.hiconv else ""))
             _was = st.session_state.get(_OPEN) == rid
             with st.container(key=f"rfrow_{key}"):
                 _hit = st.button(("▼  " if _was else "▶  ") + _head,
@@ -5278,7 +5288,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
         st.markdown('<div class="rf-rule"></div>', unsafe_allow_html=True)
         st.toggle(
             "Show the full list - every tracked name and the side live "
-            "today", key="show_full_list",
+            "today", key="show_full_list", value=True,
             help="The complete radar: every instrument in the store, "
                  "ranked by how close it is to its trigger, whether or "
                  "not it is near one.")
