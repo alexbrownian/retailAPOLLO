@@ -104,7 +104,7 @@ def audit() -> str:
           "and an unambiguous home; moves/removals only for clear "
           "errors.")
     res = ai.chat(prompt, system=_SYSTEM, want_json=True,
-                  max_tokens=1600)
+                  max_tokens=3200)
     out_path = os.path.join(
         ROOT, "config", f"keyword_suggestions_{date.today()}.csv")
     with open(out_path, "w", newline="", encoding="utf-8") as f:

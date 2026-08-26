@@ -2117,15 +2117,17 @@ class TestFlagLabelsAndConfigReload:
                         "not say what the right instrument is")
 
     def test_the_colour_legend_matches_the_boxes_on_screen(self):
-        """CONSIDER renders through st.success, which is GREEN. The
-        legend said blue for weeks.
+        """INCREASE EXPOSURE renders through st.success, which is GREEN.
+        The legend said blue for weeks.
 
-        CONSIDER and WARNING are the on-screen labels for the get_in and
-        get_out signals; the stored column names are unchanged.
+        INCREASE EXPOSURE and CUT EXPOSURE are the on-screen labels for
+        the get_in and get_out signals; the stored column names are
+        unchanged.
         """
         src = self._src().read_text(encoding="utf-8")
-        assert "blue = CONSIDER" not in src
-        assert "Green = CONSIDER" in src and "Red = WARNING" in src
+        assert "blue = INCREASE EXPOSURE" not in src
+        assert ("Green = INCREASE EXPOSURE" in src
+                and "Red = CUT EXPOSURE" in src)
 
     def test_flags_are_labelled_with_the_instrument_not_the_bare_symbol(self):
         """One helper spells every instrument on the euphoria tab - the
@@ -3010,7 +3012,7 @@ class TestWeeklySnapshot:
         i = src.index("def _snapshot_text(")
         body = src[i:i + 5000]
         for part in ("Rotation was", "words spreading", "Loudest names",
-                     "WARNING", "CONSIDER"):
+                     "CUT EXPOSURE", "INCREASE EXPOSURE"):
             assert part in body, f"snapshot omits {part}"
 
     def test_breadth_reads_wide_or_narrow_not_loud_or_quiet(self):

@@ -325,6 +325,13 @@ def main():
     #     command lines printed in the RUNBOOK, the research report and any
     #     scheduled task the desk already created keep working instead of
     #     dying on an unrecognised argument.
+    p.add_argument("--ai", action="store_true",
+                   help="AI LAYER ONLY: agentic scan, poll, pulse and "
+                        "the keyword audit, then republish the "
+                        "dashboard bundle. Fetches nothing, folds "
+                        "nothing, recomputes nothing and pulls no "
+                        "prices - for regenerating the AI panels "
+                        "against data already on disk")
     p.add_argument("--skip-publish", action="store_true",
                    help="do not stage the hosted dashboard's display "
                         "bundle (DASHBOARD_DATA/) at the end of the run")
@@ -349,6 +356,19 @@ def main():
     live = (args.end == "")
     # backtest covers the past, which does not change - no fetching by default
     do_fetch = (live and not args.skip_fetch) or (args.fetch and not args.skip_fetch)
+
+    # AI-ONLY MODE. The AI layer reads the stores rather than building
+    # them, so it is the one stage that is meaningful on its own: a
+    # pulse that failed, or a prompt that changed, can be regenerated
+    # without spending an API budget on a fetch or half an hour on a
+    # recompute. Everything that WRITES a store is switched off here
+    # rather than guarded stage by stage, so a stage added later
+    # cannot quietly start running in this mode.
+    ai_only = args.ai
+    if ai_only:
+        do_fetch = False
+        args.skip_prices = True
+        args.skip_panel_review = True
     full_chain = args.full and not internal
 
     config.ensure_dirs()
@@ -364,7 +384,9 @@ def main():
     if full_chain:
         path_label = f"FULL rebuild over {BUILD_START_DATE} -> today"
     elif live:
-        path_label = "LIVE fast (incremental fold + analytics)"
+        path_label = ("AI LAYER ONLY (no fetch, fold, recompute or prices)"
+                      if ai_only
+                      else "LIVE fast (incremental fold + analytics)")
     else:
         path_label = "BACKTEST view (analytics only if stale)"
     log(f"  path   : {path_label}", fh)
@@ -437,7 +459,11 @@ def main():
 
     fold_failed = False
     # ---- 2. APPEND into the right store (idempotent either way) ----
-    if internal:
+    if ai_only:
+        log("AI-only run: no fetch, no fold, no recompute, "
+            "no prices - regenerating the AI layer against the "
+            "stores already on disk", fh)
+    elif internal:
         log("folding live raw -> ABSTRACTED_DATA + hydrate", fh)
         # The fold's exit code was discarded, so a crashed fold
         # produced a green run: analytics recomputed on unchanged
@@ -571,7 +597,9 @@ def main():
         compute = True
     elif live:
         compute = True
-        log("live: recomputing conviction + signals off the aggregates", fh)
+        if not ai_only:
+            log("live: recomputing conviction + signals off the "
+                "aggregates", fh)
     elif signals_stale():
         compute = True
         log("backtest: the aggregates are NEWER than the derived outputs "
@@ -581,7 +609,7 @@ def main():
         log(f"backtest: aggregates + signals are up to date - the dashboard "
             f"renders {args.start} -> {end_label} directly", fh)
 
-    if compute:
+    if compute and not ai_only:
         analytics_cmd = [py, "-m", "analytics.run_analytics"]
         if args.full:
             # a full rebuild rewrites history - the frozen thresholds and
@@ -600,7 +628,7 @@ def main():
 
     # ---- 4. SNAPSHOT the signals (never revised) ----
     import shutil
-    for fname in SIGNAL_FILES:
+    for fname in ([] if ai_only else SIGNAL_FILES):
         src_path = os.path.join(PROCESSED_DIR, fname)
         if os.path.exists(src_path):
             dest = os.path.join(SNAPSHOT_DIR, f"{today}_{fname}")
@@ -636,7 +664,7 @@ def main():
 
     # ---- 5. PUBLISH aggregates to ABSTRACTED_DATA (external machine, in
     #         live or --full runs; a backtest changes nothing to publish) ----
-    if not internal and (live or full_chain) and not dry:
+    if not internal and (live or full_chain) and not dry and not ai_only:
         from src import abstracted_data
         log("publishing aggregates -> ABSTRACTED_DATA", fh)
         abstracted_data.export(verbose=False)
@@ -653,7 +681,30 @@ def main():
     #            Apollo gateway (src/ai.py). Off the VPN it skips with
     #            the reason logged and the dashboard keeps the last
     #            pulse; the pipeline NEVER fails on the AI stage.
+    ai_poll_msg = ai_pulse_msg = "not run"
     if not dry:
+        # CALL-BUDGET PRE-FLIGHT. The AI stages are non-fatal, so a
+        # budget too small for the configured work fails on the LAST
+        # call of the pulse - after every expensive call has been spent
+        # and with nothing written. That happened for real: the pulse's
+        # batch count is ceil(themes / THEMES_PER_CALL), so halving that
+        # constant doubled the calls and silently pushed a run past a
+        # 40-call cap. Check the arithmetic BEFORE spending anything.
+        try:
+            from src import ai as _ai_mod
+            from analytics import ai_pulse as _ap_mod
+            _n_themes = len(getattr(_ap_mod, "THEME_ETFS", {}) or {}) or 33
+            _batches = max(1, -(-_n_themes // _ap_mod.THEMES_PER_CALL))
+            _need = 30 + 1 + _batches + 1 + 1 + 1     # poll+pulse+audit
+            if _ai_mod.MAX_CALLS < _need * 1.5:
+                log(f"  NOTE: AI_MAX_CALLS={_ai_mod.MAX_CALLS} and this "
+                    f"configuration needs about {_need} "
+                    f"({_batches} theme batches). Raise it in .env to at "
+                    f"least {int(_need * 1.5)} so one retry cannot "
+                    "exhaust the budget on the pulse's last call.", fh)
+        except Exception:                                # noqa: BLE001
+            pass                                          # advisory only
+
         try:
             from src.agentic_watch import scan as _agentic_scan
             _agentic_scan(log=lambda m: log(m, fh))
@@ -662,16 +713,20 @@ def main():
         try:
             from analytics.ai_poll import run as _run_poll
             _ok, _msg = _run_poll(log=lambda m: log(m, fh))
+            ai_poll_msg = "ok" if _ok else f"FAILED - {_msg}"
             if not _ok:
                 log(f"AI POLL: skipped - {_msg}", fh)
         except Exception as e:                           # noqa: BLE001
+            ai_poll_msg = f"FAILED - {type(e).__name__}: {e}"
             log(f"AI POLL: skipped - {type(e).__name__}: {e}", fh)
         try:
             from analytics.ai_pulse import generate as _gen_pulse
             _ok, _msg = _gen_pulse(log=lambda m: log(m, fh))
+            ai_pulse_msg = "ok" if _ok else f"FAILED - {_msg}"
             if not _ok:
                 log(f"AI PULSE: skipped - {_msg}", fh)
         except Exception as e:                           # noqa: BLE001
+            ai_pulse_msg = f"FAILED - {type(e).__name__}: {e}"
             log(f"AI PULSE: skipped - {type(e).__name__}: {e}", fh)
         # the keyword-map auditor, WEEKLY (design question 2026-08-04
         # "does it run every once in a while?" - it does now): if the
@@ -800,6 +855,12 @@ def main():
         if fold_failed:
             log("  fold          : FAILED - aggregates may be partial; "
                 "read the log before re-running", fh)
+        # The AI stages are non-fatal, which is right - a dead gateway
+        # must not stop a data refresh - but it also meant a failed
+        # pulse left no trace here, and the dashboard quietly served a
+        # months-old file. State the verdict where the run is read.
+        log(f"  AI poll       : {ai_poll_msg[:78]}", fh)
+        log(f"  AI pulse      : {ai_pulse_msg[:78]}", fh)
         log(f"  dashboard     : python -m streamlit run dashboard.py", fh)
         log("=" * 60, fh)
     # A failed fold is a failed run. Previously only the text-free check

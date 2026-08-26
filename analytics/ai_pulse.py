@@ -94,10 +94,17 @@ MAX_THEME_BRIEFS = 40       # i.e. no practical cap - every tradeable theme
                             # qualified. The briefs are BATCHED below so the
                             # count is no longer limited by one response's
                             # token ceiling.
-THEMES_PER_CALL = 12        # briefs per gateway call. 12 x ~110 words sits
-                            # comfortably inside the 4k-token response
-                            # ceiling with room for the model to run long;
-                            # more themes simply means more calls.
+THEMES_PER_CALL = 6         # briefs per call. MEASURED, not reasoned.
+                            # 12 was tried at both a 4000- and an
+                            # 8000-token ceiling and truncated at BOTH;
+                            # 6 at 8000 completed every batch. So the
+                            # batch size matters on its own and is not
+                            # substitutable for tokens - a 12-theme
+                            # answer is simply longer than this call's
+                            # useful ceiling, whatever the ceiling is.
+                            # Batches are ceil(themes / this), so at 33
+                            # themes the pulse costs 6 + 3 = 9 calls;
+                            # keep AI_MAX_CALLS well clear of that.
 
 
 # THE AS-OF DATE. None = today, which is every normal run.
@@ -803,7 +810,10 @@ def generate(log=print, as_of=None) -> tuple[bool, str]:
     try:
         log("AI PULSE: call 1 - the whole-market read (vibe, forums)")
         pulse = ai.chat(_market_prompt(posts), system=_PULSE_SYSTEM,
-                        want_json=True, max_tokens=4000)
+                        # call 1 writes the whole-market read; 4000 was
+                        # a gpt-4o-era ceiling and truncated in
+                        # production.
+                        want_json=True, max_tokens=8000)
         # THEME BRIEFS, BATCHED. One call per THEMES_PER_CALL themes, so
         # the number of themes on the dropdown is set by how many themes
         # the crowd is actually discussing - never by how much text fits
@@ -819,7 +829,7 @@ def generate(log=print, as_of=None) -> tuple[bool, str]:
                 f"({len(_batch)} themes)")
             _part = ai.chat(
                 _themes_prompt({k: by_theme[k] for k in _batch}),
-                system=_PULSE_SYSTEM, want_json=True, max_tokens=4000)
+                system=_PULSE_SYSTEM, want_json=True, max_tokens=8000)
             if isinstance(_part, dict):
                 briefs += list(_part.get("theme_briefs") or [])
         themes = {"theme_briefs": briefs}
@@ -827,12 +837,12 @@ def generate(log=print, as_of=None) -> tuple[bool, str]:
         log("AI PULSE: call 3 - catalysts (posts) and divergences "
             "(posts vs the measured numbers)")
         watch = ai.chat(_watch_prompt(ev, posts), system=_WATCH_SYSTEM,
-                        want_json=True, max_tokens=2000)
+                        want_json=True, max_tokens=4000)
         from src.agentic_watch import recent_samples
         log("AI PULSE: call 4 - the agentic digest")
         agentic = ai.chat(
             _agentic_prompt(recent_samples(per_cat=8)),
-            system=_AGENTIC_SYSTEM, want_json=True, max_tokens=900)
+            system=_AGENTIC_SYSTEM, want_json=True, max_tokens=2000)
         log(f"AI PULSE: done ({2 + len(_batches)} calls)")
     except (RuntimeError, ValueError) as e:
         return False, f"generation failed: {e}"

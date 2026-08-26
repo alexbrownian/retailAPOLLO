@@ -664,8 +664,16 @@ _ACRONYMS = {"ai": "AI", "ev": "EV", "saas": "SaaS", "glp1": "GLP-1"}
 # (the instrument dropdown, the ETF radar) will carry two rows reading
 # "ARK Innovation (ARKK)". Merging or hiding one is the fix if that
 # ambiguity matters; renaming alone cannot resolve it.
+#
+# quantum_computing: anchored to IYW, which config/theme_etfs.csv records
+# as "a broad-tech proxy; QTUM is the natural line (not approved)". A
+# quantum name against a broad US technology fund invites the reader to
+# take the price panel as the theme's own line, so the label names the
+# instrument actually drawn. The crowd signal underneath is unchanged -
+# it still measures quantum-computing chatter.
 _LABEL_OVERRIDES = {"short_squeeze": "ARK Innovation",
-                    "meme_stocks": "ARK Innovation"}
+                    "meme_stocks": "ARK Innovation",
+                    "quantum_computing": "US Technology"}
 
 
 def theme_label(slug: str) -> str:

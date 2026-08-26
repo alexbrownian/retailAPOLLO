@@ -292,7 +292,7 @@ def flag_label(name, kind):
     format i like".  The theme side already read `China geopolitics
     (FXI)` - a name a human recognises, followed by the thing you would
     actually trade.  The single-name side read `IREN`, which is neither:
-    a bare four-letter ticker in a CONSIDER banner makes the reader stop
+    a bare four-letter ticker in a INCREASE EXPOSURE banner makes the reader stop
     and remember what IREN, NBIS or SNDK are, and the whole point of the
     banner is that it needs no interpretation.
 
@@ -350,6 +350,137 @@ def _cached_priced_symbols(mtime):
     return frozenset(pd.read_parquet(
         PRICES_PATH, columns=["symbol"])["symbol"].unique())
 
+# ---- TECHNICAL CONFIRMATION (the five gates) -----------------------------
+# A five-condition momentum screen, in two windows, computed from close
+# prices alone. Provenance: Jonathan's momentum framework; the study of
+# whether it agrees with this project's crowd signal is notebook 09.
+#
+# READ THIS BEFORE TRUSTING THE FLAG. Nothing here moves a trigger,
+# gates a signal, or changes a score. It is a DISPLAY annotation: the
+# crowd detector decides when a name is worth acting on, and this says
+# whether price action agreed on that same day. Notebook 09 measured the
+# agreement as promising and NOT established - the direction is
+# consistent across two signal sets and three horizons, but nothing
+# survives multiple-comparison correction and the matched gate rests on
+# 22 INCREASE events. It is shown so a reader can weigh it, never to
+# suppress a signal it disagrees with.
+#
+# Every window is TRAILING and every percentile is against the name's
+# own trailing 252 observations, so no forward data enters any column.
+# cache_RESOURCE, not cache_data. cache_data returns a DEEP COPY of its
+# value on every call to protect against mutation, and this value is a
+# dict of ~420 DataFrames. The row builder asks for it three times per
+# instrument, so the copying alone cost 4.4 SECONDS per rerun - the
+# single largest item on the landing page once the charts were made
+# lazy. The dict is read-only, so handing back the same object is both
+# correct and free.
+@st.cache_resource(show_spinner=False)
+def _momentum_gates(mtime):
+    """{symbol: DataFrame(date, EM, ES, px_last)} from close prices.
+
+    TREAT THE RETURN VALUE AS READ-ONLY - it is shared, not copied.
+    """
+    if not os.path.exists(PRICES_PATH):
+        return {}
+    px = pd.read_parquet(PRICES_PATH, columns=["date", "symbol", "px_last"])
+    px["date"] = pd.to_datetime(px["date"])
+    out = {}
+    for sym, g in px.groupby("symbol"):
+        g = g.sort_values("date")
+        if len(g) < 300:                 # 252-day windows need the history
+            continue
+        c = g["px_last"]
+        r1m = c.pct_change(21) * 100
+        a1 = r1m - r1m.shift(21)
+        em = ((r1m.rolling(252, min_periods=252).rank(pct=True) * 100 >= 85)
+              & (((a1 - a1.rolling(252, min_periods=252).mean())
+                  / a1.rolling(252, min_periods=252).std()) >= 1.0)
+              & (c > c.rolling(50, min_periods=50).mean())
+              & (((c.rolling(252, min_periods=252).max() - c)
+                  / c.rolling(252, min_periods=252).max() * 100) <= 10)
+              & (r1m > 0))
+        r2w = c.pct_change(10) * 100
+        a2 = r2w - r2w.shift(10)
+        es = ((r2w.rolling(252, min_periods=252).rank(pct=True) * 100 >= 85)
+              & (((a2 - a2.rolling(252, min_periods=252).mean())
+                  / a2.rolling(252, min_periods=252).std()) >= 1.0)
+              & (c > c.rolling(20, min_periods=20).mean())
+              & (((c.rolling(126, min_periods=126).max() - c)
+                  / c.rolling(126, min_periods=126).max() * 100) <= 10)
+              & (r2w > 0))
+        out[sym] = pd.DataFrame({"date": g["date"].values,
+                                 "EM": em.values, "ES": es.values,
+                                 "px_last": c.values})
+    return out
+
+
+def _tech_confirms(symbol, when, side):
+    """Does the MATCHED window agree with this side on that day?
+
+    EM (medium) for INCREASE - an entry wants an established trend.
+    ES (short) for CUT - an exit wants a stretched one. The pairing is
+    notebook 09's, chosen on mechanism before the numbers were seen.
+    """
+    if not symbol or when is None:
+        return False
+    g = _momentum_gates(_mtime(PRICES_PATH)).get(str(symbol))
+    if g is None or not len(g):
+        return False
+    i = g["date"].searchsorted(pd.Timestamp(when))
+    if i >= len(g):
+        i = len(g) - 1
+    col = "EM" if str(side).upper().startswith("INCREASE") else "ES"
+    return bool(g[col].iloc[i])
+
+
+def _price_change(symbol, when, days):
+    """% change in close over the `days` before `when`. None if unknown."""
+    if not symbol or when is None:
+        return None
+    g = _momentum_gates(_mtime(PRICES_PATH)).get(str(symbol))
+    if g is None or not len(g):
+        return None
+    i = g["date"].searchsorted(pd.Timestamp(when))
+    i = min(i, len(g) - 1)
+    j = g["date"].searchsorted(pd.Timestamp(when) - pd.Timedelta(days=days))
+    if j >= len(g) or j >= i:
+        return None
+    p0, p1 = g["px_last"].iloc[j], g["px_last"].iloc[i]
+    return None if not p0 else (p1 / p0 - 1) * 100
+
+
+HIGH_CONV_HELP = (
+    "**HIGH CONVICTION** means the crowd signal and the price action "
+    "agree on the same day.\n\n"
+    "The crowd detector decides WHEN a name is worth acting on. This "
+    "flag adds whether the price action agreed on that same day.\n\n"
+    "**The five factors**, from Jonathan's momentum framework. All "
+    "five must hold, and each is measured against the name's OWN "
+    "trailing year rather than against the market:\n\n"
+    "1. **Return percentile** - the trailing return sits in the top "
+    "15% of the name's own history.\n"
+    "2. **Acceleration** - the return is not just high but "
+    "increasing, at least one standard deviation above its own "
+    "normal rate of change.\n"
+    "3. **Above its moving average** - price is above the trend "
+    "line, so the move is a trend and not a bounce.\n"
+    "4. **Near its own high** - within 10% of the highest price it "
+    "has reached in the window.\n"
+    "5. **Positive return** - the move is upward at all.\n\n"
+    "Two windows apply the same five: a MEDIUM window (one-month "
+    "return, 50-day average, 52-week high) and a SHORT one "
+    "(two-week return, 20-day average, 26-week high). INCREASE is "
+    "confirmed by the medium window - an entry wants an established "
+    "trend. CUT is confirmed by the short one - an exit wants a "
+    "stretched one.\n\n"
+    "**How much to trust it.** Measured lift is real but not "
+    "established: the direction is consistent across two signal sets "
+    "and three horizons, and INCREASE accuracy at 20 days rose from "
+    "61% to 82% - but on 22 events, and no single result survives "
+    "correction for multiple testing. It never suppresses a signal; it "
+    "only annotates one."
+)
+
 # ---- DISPLAY-ONLY INSTRUMENT HIDING --------------------------------------
 # Names the dashboard does not draw. They are still fetched, still scored
 # and still written to the stores - this is a screen filter and nothing
@@ -365,6 +496,17 @@ def _cached_priced_symbols(mtime):
 # when picking one. The squeeze theme is kept as the ARKK line.
 HIDDEN_THEMES = {"meme_stocks"}
 
+# Landing-page sizing. A name is worth showing when its score has
+# reached this share of its own trigger; below that the page still
+# shows the nearest few so it is never blank on a quiet day.
+ACTION_READY_PCT = 90.0
+ACTION_MIN_ROWS = 5
+# How many recently-fired signals the landing page lists.
+ACTION_FIRED_ROWS = 8
+# A score older than this is not a call about today. Matches the
+# 60-day rule readiness_alerts.json already applies at source.
+ACTION_STALE_DAYS = 60
+
 
 def _hide(df):
     """Drops hidden instruments from anything about to be displayed."""
@@ -379,7 +521,7 @@ def _hide(df):
 # still says GET IN / GET OUT. Mapping at read time means no stored file
 # has to be rewritten and no pipeline rerun is needed; anything not in
 # the map (INFLECTION..., future names) passes through untouched.
-_SIDE_DISPLAY = {"GET IN": "CONSIDER", "GET OUT": "WARNING"}
+_SIDE_DISPLAY = {"GET IN": "INCREASE EXPOSURE", "GET OUT": "CUT EXPOSURE"}
 
 
 def _side_label(side) -> str:
@@ -542,12 +684,12 @@ def decisions_simple():
     n4 = _research("nb04_final_eval")
     n1 = _research("nb01_episode_stats")
 
-    raw = _row(cfg.get("table"), variant="WARNING boom-gated raw")
+    raw = _row(cfg.get("table"), variant="CUT EXPOSURE boom-gated raw")
     prod = _row(cfg.get("table"),
-                variant="WARNING boom-gated SMOOTHED (production)")
-    gi_old = _row(cfg.get("table"), variant="CONSIDER incumbent raw")
+                variant="CUT EXPOSURE boom-gated SMOOTHED (production)")
+    gi_old = _row(cfg.get("table"), variant="INCREASE EXPOSURE incumbent raw")
     gi_new = _row(cfg.get("table"),
-                  variant="CONSIDER phase-aware SMOOTHED (production)")
+                  variant="INCREASE EXPOSURE phase-aware SMOOTHED (production)")
     gbm = _row(ds.get("table"), variant="gbm COMBINED")
     # The ML comparison must come from the SAME table as the challenger:
     # nb06_desk_signal and nb06_desk_config count captures under slightly
@@ -564,13 +706,13 @@ Every line below is a choice we made, followed by the measurement that made
 it. Nothing here is a preference.
 
 **1 - The dashboard shows two signals, not four.**
-CONSIDER and WARNING only. The old BUY/SELL engine was retired because on the
+INCREASE EXPOSURE and CUT EXPOSURE only. The old BUY/SELL engine was retired because on the
 full price history it *lost* money (**-1.42% per trade, 2021-2026**) - it
 bought retail enthusiasm into the 2022 bear market. It still exists in the
 research code; it is simply not desk output.
 
 **2 - The alert waits for the price to have actually run.**
-Requiring a real boom before a WARNING can fire took captures from
+Requiring a real boom before a CUT EXPOSURE can fire took captures from
 **{_dig(n4, 'top', 'captured', default='-')} to {raw.get('captured', '-')}**
 of {prod.get('detectable', '-')} - *more* hits, not fewer, because it stopped
 the detector wasting alerts on names that were never in a rally.
@@ -583,7 +725,7 @@ score over a week before triggering raised quality
 That cost is recorded, not hidden.
 
 **4 - A START can no longer print next to an END.**
-The old version put a CONSIDER right beside a WARNING **{gi_old.get('adjacency', '-')}
+The old version put a INCREASE EXPOSURE right beside a CUT EXPOSURE **{gi_old.get('adjacency', '-')}
 times**; now it happens **{gi_new.get('adjacency', '-')}** times, because a day
 that already meets every ending condition is not allowed to call a start. The
 price was captures (**{gi_old.get('captured', '-')} → {gi_new.get('captured', '-')}**),
@@ -597,10 +739,10 @@ so the two counts are like-for-like. The rules we ship also match what the model
 *learned* was important - which is independent evidence they are not
 arbitrary.
 
-**6 - "Buy on CONSIDER" and "short on WARNING" were both REJECTED.**
-Tested properly and neither beat simply holding: CONSIDER
+**6 - "Buy on INCREASE EXPOSURE" and "short on CUT EXPOSURE" were both REJECTED.**
+Tested properly and neither beat simply holding: INCREASE EXPOSURE
 **{_pct(buy.get('diff'), 2, signed=True)}** over 20 days
-(90% interval {_ci_pct(buy.get('ci90'))}), WARNING
+(90% interval {_ci_pct(buy.get('ci90'))}), CUT EXPOSURE
 **{_pct(sell.get('diff'), 2, signed=True)}** (interval {_ci_pct(sell.get('ci90'))}).
 Both intervals contain zero, so we do **not** claim a trade. This is a
 risk-warning tool.
@@ -791,7 +933,7 @@ a {{ color: {NAVY}; }}
    puts that rule on the INNER markdown container rather than the <label>, so
    styling the label alone does nothing.  Uppercase tracked labels are wide,
    so the truncation ate the second half of nearly every card:
-   'CROWD HEAT AL...', 'MEDIAN WARNING B...'.  A KPI whose name is unreadable is
+   'CROWD HEAT AL...', 'MEDIAN CUT EXPOSURE B...'.  A KPI whose name is unreadable is
    not a KPI, so the label is allowed to wrap and the cards are stretched to a
    common height so a row still lines up. */
 [data-testid="stMetricLabel"] div[data-testid="stMarkdownContainer"],
@@ -1011,6 +1153,65 @@ p, li, [data-testid="stMarkdownContainer"] p {{
 }}
 /* The one heavy rule on the page, closing the masthead the way a
    publication closes its front-page furniture. */
+/* Landing-page list headings: the two verbs are the loudest words on
+   the page, so they are set as section titles rather than as labels. */
+/* Readiness bar: how far a name is from its own trigger. The tick is
+   the trigger line, so a bar that reaches it has fired. Drawn rather
+   than st.progress because the trigger mark is the point. */
+.rf-readbar {{
+    position: relative; height: 8px; border-radius: 2px;
+    background: {HAIRLINE}; margin: 2px 0 8px 0; overflow: hidden;
+}}
+.rf-readfill {{ height: 100%; border-radius: 2px; }}
+.rf-readtick {{
+    position: absolute; top: -2px; right: 0;
+    width: 2px; height: 12px; background: {INK};
+}}
+/* HIGH CONVICTION chip: outlined rather than filled, because it
+   annotates a signal and must never outrank it. */
+/* List rows are BUTTONS (so a row can open lazily) but must read as
+   rows: full width, left-aligned, quiet border, no button chrome.
+   
+   SCOPED by PREFIX to the class Streamlit puts on a keyed
+   container - st.container(key='rfrow_x') emits
+   'st-key-rfrow_x', and a plain .st-key-rfrow selector matches
+   NOTHING because CSS class selectors match whole names, not
+   prefixes. Not scoped to every button in a block - the sidebar's
+   pipeline buttons are meant to stay navy.
+   
+   AND colour is restated with !important on the button AND its
+   children. The rule above sets `.stButton button * {{ color: WHITE
+   !important }}` to stop navy-on-navy, so a row that only overrode the
+   BACKGROUND rendered white-on-white: visible boxes with invisible
+   text. Exactly the defect the comment above warns about, in the other
+   direction. */
+[class*="st-key-rfrow"] .stButton > button {{
+    text-align: left; justify-content: flex-start;
+    font-weight: 500; border-radius: 3px;
+    border: 1px solid {HAIRLINE} !important;
+    background: {WHITE} !important;
+    color: {INK} !important;
+    padding: 0.55rem 0.8rem;
+}}
+[class*="st-key-rfrow"] .stButton > button * {{
+    color: {INK} !important; text-align: left;
+}}
+[class*="st-key-rfrow"] .stButton > button:hover {{
+    border-color: {NAVY_MID} !important; background: {WHITE} !important;
+}}
+[class*="st-key-rfrow"] .stButton > button:hover * {{ color: {NAVY_MID} !important; }}
+.rf-hiconv {{
+    display: inline-block; border: 1px solid; border-radius: 2px;
+    padding: 2px 8px; font-size: 0.66rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    margin: 2px 0 6px 0;
+}}
+.rf-actionhead {{
+    font-size: 0.86rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.14em;
+    padding-bottom: 6px; margin-bottom: 2px;
+    border-bottom: 2px solid currentColor;
+}}
 .rf-rule-heavy {{
     border-top: 2px solid {INK}; margin: 2.4rem 0 2.2rem 0;
 }}
@@ -1269,7 +1470,7 @@ def gauge_state(level_now, in_danger, z):
     """Which band the needle sits in, as (key, label, colour).
 
     The band is a description of WHERE THE CROWD IS.  It is deliberately
-    NOT the signal: CONSIDER / WARNING come from the walk-forward detector
+    NOT the signal: INCREASE EXPOSURE / CUT EXPOSURE come from the walk-forward detector
     and can fire with the needle anywhere.  Keeping the two apart is the
     whole reason this returns a *state* and never an *instruction*.
     """
@@ -1308,8 +1509,8 @@ READY_RED = 100.0       # the trigger itself, never a tuned number
 def readiness_now(dk_row, thr_in, thr_out):
     """(pct, side, score, cut) for the side this name may actually fire.
 
-    The eligible side is the one the phase gate allows TODAY: WARNING
-    once the name has cleared the 120d boom bar, CONSIDER before. Showing
+    The eligible side is the one the phase gate allows TODAY: CUT EXPOSURE
+    once the name has cleared the 120d boom bar, INCREASE EXPOSURE before. Showing
     the other side's score would be a number that cannot fire.
     """
     if dk_row is None:
@@ -1319,17 +1520,17 @@ def readiness_now(dk_row, thr_in, thr_out):
     # always live - the dial shows whichever is nearer to firing.
     if globals().get("XP_TRIGGER", False):
         cands = []
-        for side, col, thr in (("WARNING", "out_score_xp", thr_out),
-                               ("CONSIDER", "in_score_xp", thr_in)):
+        for side, col, thr in (("CUT EXPOSURE", "out_score_xp", thr_out),
+                               ("INCREASE EXPOSURE", "in_score_xp", thr_in)):
             sc = dk_row.get(col)
             if sc is not None and thr not in (None, 0) and pd.notna(sc):
                 cands.append((100.0 * float(sc) / float(thr), side,
                               float(sc), float(thr)))
         return max(cands) if cands else None
     boomed = bool(dk_row.get("boomed120", False))
-    side, sc, thr = (("WARNING", dk_row.get("out_score"), thr_out)
+    side, sc, thr = (("CUT EXPOSURE", dk_row.get("out_score"), thr_out)
                      if boomed else
-                     ("CONSIDER", dk_row.get("in_score"), thr_in))
+                     ("INCREASE EXPOSURE", dk_row.get("in_score"), thr_in))
     if sc is None or thr in (None, 0) or pd.isna(sc):
         return None
     return (100.0 * float(sc) / float(thr), side, float(sc), float(thr))
@@ -1341,8 +1542,8 @@ READY_HELP = (
     "percentage - so 80 means it is four fifths of the way there and "
     "100 means it is at the line.\n\n"
     "Only the side that CAN fire today is shown. A name that has "
-    "already boomed is measured against WARNING; one that has not is "
-    "measured against CONSIDER. The other side is not just unlikely, it "
+    "already boomed is measured against CUT EXPOSURE; one that has not is "
+    "measured against INCREASE EXPOSURE. The other side is not just unlikely, it "
     "is blocked by the phase gate.\n\n"
     "This is a different quantity from the CROWD HEAT level in the facts "
     "beside it. The level is crowd heat only; the score behind this "
@@ -1501,10 +1702,10 @@ STATE_HELP = (
     "window, so you never see two directions at once; otherwise the "
     "phase clock reads it.\n\n"
     "**After a flag fires (these win):**\n\n"
-    "- **EXIT WINDOW** — a WARNING fired within 21 days. The desk read "
+    "- **EXIT WINDOW** — a CUT EXPOSURE fired within 21 days. The desk read "
     "is *reduce*, never short: manias overshoot, and the model's own "
     "record shows the upper quartile keeps rallying.\n"
-    "- **ENTRY WINDOW** — a CONSIDER fired within 21 days. The crowd is "
+    "- **ENTRY WINDOW** — a INCREASE EXPOSURE fired within 21 days. The crowd is "
     "arriving and the move is still young.\n\n"
     "**Otherwise, the phase clock** — two smooth coordinates (how "
     "EXTREME the crowd is × how fast it is still ARRIVING), so it cannot "
@@ -1516,7 +1717,7 @@ STATE_HELP = (
     "- **BLOW-OFF** — extreme AND still arriving fast. Late-stage: "
     "historically the rally often runs on for a while yet, which is "
     "exactly why it is dangerous — the tail risk is building "
-    "underneath. Not the peak, and deliberately NOT a WARNING on its "
+    "underneath. Not the peak, and deliberately NOT a CUT EXPOSURE on its "
     "own.\n"
     "- **TOPPING** — extreme, and the arrivals are dying. The exit side "
     "of the clock: the last buyer has bought.\n"
@@ -1525,13 +1726,13 @@ STATE_HELP = (
     "**A state is DISPLAY ONLY.** It never fires anything — the frozen "
     "walk-forward rules fire every flag, and the clock just narrates "
     "where the name sits between them. A name can sit in BLOW-OFF for "
-    "weeks without a WARNING, and that is the system working: the flag "
+    "weeks without a CUT EXPOSURE, and that is the system working: the flag "
     "waits for its own evidence."
 )
 
 
 GAUGE_HELP = (
-    "**What the dial is.** A STATE, not an instruction. CONSIDER and WARNING "
+    "**What the dial is.** A STATE, not an instruction. INCREASE EXPOSURE and CUT EXPOSURE "
     "come from the walk-forward detector and can fire with the needle "
     "anywhere; the bands only say how crowded this name is and what days "
     "like it did next.\n\n"
@@ -2094,11 +2295,11 @@ _NOGATE_STORE_OK = (desk is not None
                     and f"get_in_nogate{_SIG_SUFFIX}" in desk.columns)
 GATED_GET_IN = XP_TRIGGER
 if not GATED_GET_IN and not _NOGATE_STORE_OK:
-    st.sidebar.warning("The stored signals predate the ungated CONSIDER. "
+    st.sidebar.warning("The stored signals predate the ungated INCREASE EXPOSURE. "
                        "Run the pipeline once (python -m "
                        "analytics.run_analytics --what phases) to "
                        "compute it; falling back to the price-gated "
-                       "CONSIDER until then.")
+                       "INCREASE EXPOSURE until then.")
     GATED_GET_IN = True
 
 # The live-score columns for the active trigger. Every surface that
@@ -2113,9 +2314,9 @@ def sig_col(base, frame):
     falls back to the shipped standard column if the store predates the
     extra columns (the experimental case is warned about above, not
     silently substituted - this fallback only fires mid-render if a
-    frame lacks the column). CONSIDER routes through the ungated variant
+    frame lacks the column). INCREASE EXPOSURE routes through the ungated variant
     (nb08 §10.4: the phase gate blocks ~3/4 of its correct calls);
-    WARNING never does - its gate is load-bearing, ungated its false
+    CUT EXPOSURE never does - its gate is load-bearing, ungated its false
     alarms double."""
     _gate_part = ("_nogate" if (base == "get_in" and not GATED_GET_IN
                                 and not XP_TRIGGER) else "")
@@ -2576,8 +2777,8 @@ _m5.metric("priced symbols", len(priced))
 # Single names are no longer displayed. The detector still scores them
 # and the store still carries them - only the screen changed, the same
 # way Conviction and Historical checker were retired from the display.
-MAIN_TAB = "Theme tracker  ·  main"
-_TAB_NAMES = [MAIN_TAB, "ETF radar", "Influence tracker", "Top trends",
+MAIN_TAB = "Today's calls  ·  main"
+_TAB_NAMES = [MAIN_TAB, "Influence tracker", "Top trends",
               "Emerging trends", "AI Pulse", "[dev] Data Stats"]
 active_tab = st.segmented_control(
     "view", _TAB_NAMES, key="active_tab", default=MAIN_TAB,
@@ -2586,44 +2787,11 @@ active_tab = st.segmented_control(
 # session_state left by an older build could still yield one.
 active_tab = active_tab or MAIN_TAB
 
-# ---- READINESS ALERTS BANNER (recorded decision: "pings you
-# when any name crosses ±90% signed readiness"). Written by every
-# pipeline run beside the store it was cut from, so the banner and the
-# bands can never disagree; stale-scored names are excluded at source
-# (60-day rule). One line, dismissible only by the numbers changing -
-# an alert that can be clicked away is an alert that gets clicked away.
-_ra_path = os.path.join(PROCESSED_DIR, "readiness_alerts.json")
-if os.path.exists(_ra_path):
-    try:
-        _ra = _read_json(_ra_path, _mtime(_ra_path))
-        _ra_alerts = _ra.get("alerts") or []
-        # THEMES ONLY, enforced at display too: an
-        # alerts file written before the pipeline's themes-only filter
-        # still carries single names - never banner them.
-        if desk is not None and "kind" in desk.columns:
-            _theme_names = set(desk.loc[desk["kind"] == "theme", "name"]
-                               .unique())
-            _ra_alerts = [a for a in _ra_alerts
-                          if a.get("name") in _theme_names]
-        # Hidden instruments are hidden HERE TOO. Without this the banner
-        # was the one surface still naming them, and because two ARKK
-        # themes share a display name it listed the same label twice with
-        # different numbers - unreadable, and the reason this was noticed.
-        _ra_alerts = [a for a in _ra_alerts
-                      if a.get("name") not in HIDDEN_THEMES]
-        if _ra_alerts:
-            _ra_bits = [
-                (f"**{theme_label(a['name'])}** "
-                 f"({a.get('symbol') or '-'}) "
-                 f"{100 * a['signed_readiness']:+.0f}% toward "
-                 f"{_side_label(a['side'])}")
-                for a in _ra_alerts]
-            st.warning("**At the line (±90% signed readiness):** "
-                       + " · ".join(_ra_bits)
-                       + f"  — as of the last pipeline run "
-                         f"({_ra.get('built', '?')} UTC)")
-    except Exception:                                     # noqa: BLE001
-        pass
+# The ±90% readiness banner was removed. The landing page now leads
+# with the names closest to firing, ranked by the same readiness
+# number, so a strip repeating three of them above the fold was
+# saying the page's own headline twice. readiness_alerts.json is
+# still written by every run - only the banner went.
 
 tc = clip_window(theme_counts, "date", lo, hi)
 # TRADEABLE UNIVERSE ONLY, everywhere: every list/rank/picker on this
@@ -2676,8 +2844,8 @@ started celebrating it. That is a late-stage condition, not a bullish one.
 
 **The two lines on the chart - that is the whole signal.**
 
-- **Blue line = CONSIDER.** Euphoria is *starting*. The crowd is arriving.
-- **Red line = WARNING.** Euphoria is *ending*. Historically the price top
+- **Blue line = INCREASE EXPOSURE.** Euphoria is *starting*. The crowd is arriving.
+- **Red line = CUT EXPOSURE.** Euphoria is *ending*. Historically the price top
   is close - this is the line to bring to a PM.
 
 Nothing else on the chart is a decision. The 0-100 curve is context.
@@ -2693,7 +2861,7 @@ Nothing else on the chart is a decision. The 0-100 curve is context.
   against loud-for-BTC, not against a quiet utility ETF.
 - **The mood has to have stuck.** Weeks of one-way bullishness, not one
   loud afternoon.
-- **The price has to have actually run** (for WARNING): the name must be up
+- **The price has to have actually run** (for CUT EXPOSURE): the name must be up
   **{EUPHORIA_BOOM_MIN_ETF:.0%} (theme ETF)** or
   **{EUPHORIA_BOOM_MIN_SINGLE:.0%} (single name)** off its
   **{EUPHORIA_BOOM_WINDOW_D}-day** low.
@@ -2709,10 +2877,10 @@ one place instead of being reconstructed from the register. Every value
 below is imported live from `src/config.py` - if a constant moves, this
 table moves with it, and the two can never disagree.
 
-| # | Gate | CONSIDER (euphoria starting) | WARNING (euphoria ending) | Why this number |
+| # | Gate | INCREASE EXPOSURE (euphoria starting) | CUT EXPOSURE (euphoria ending) | Why this number |
 |---|---|---|---|---|
 | A0 | Enough data to measure | {EUPHORIA_MIN_COVERAGE} tagged posts (posts naming it) in the trailing 28d, and {EUPHORIA_MIN_HISTORY}d of history | same | below this the percentile ranks are noise dressed as a signal |
-| A1 | Crowd size vs its OWN normal | 7d mentions >= **{EUPHORIA_ONSET_HYPE_MIN:g}x** its 120d median | 7d mentions >= **{EUPHORIA_HYPE_MULT:g}x** its 120d median | CONSIDER has to fire EARLY, so its bar is lower - but not 1.0x, which breached the FA budget from the day it shipped (0.255 vs {EUPHORIA_FA_BUDGET_PER_IY}) |
+| A1 | Crowd size vs its OWN normal | 7d mentions >= **{EUPHORIA_ONSET_HYPE_MIN:g}x** its 120d median | 7d mentions >= **{EUPHORIA_HYPE_MULT:g}x** its 120d median | INCREASE EXPOSURE has to fire EARLY, so its bar is lower - but not 1.0x, which breached the FA budget from the day it shipped (0.255 vs {EUPHORIA_FA_BUDGET_PER_IY}) |
 | A2 | Attention extremity | mention share at or above its **{EUPHORIA_ATT_GATE:.0%}** percentile vs its own trailing {EUPHORIA_PCT_WINDOW}d | same | "extreme" always means extreme FOR THIS NAME - a permanently loud name is judged against loud-for-itself |
 | A3 | The price actually ran | not required - the crowd arrives before the run | up **{EUPHORIA_BOOM_MIN_ETF:.0%}** (theme) / **{EUPHORIA_BOOM_MIN_SINGLE:.0%}** (single name) off its {EUPHORIA_BOOM_WINDOW_D}d low, sustained >= {EUPHORIA_BOOM_WINDOW_MIN_D}d | you cannot end a party that never started |
 | A4 | Not already in the other phase | must not already be in the ending stage | must be in a confirmed boom | the two rules cannot both own the same day |
@@ -2720,7 +2888,7 @@ table moves with it, and the two can never disagree.
 **The factors each rule scores** - the crowd does the predicting; price
 only gates and grades.
 
-| | CONSIDER bank | WARNING bank |
+| | INCREASE EXPOSURE bank | CUT EXPOSURE bank |
 |---|---|---|
 | Factors | attention acceleration, hype ratio, bull inflection, influx speed, attention convexity | E1 attention level, E2 sustained bull, E3 crowd influx, E5 super-exponential attention, E4 fade trigger |
 | Threshold | frozen by walk-forward on strictly EARLIER years | same |
@@ -2781,8 +2949,8 @@ started celebrating it. That is a late-stage condition, not a bullish one.
 
 **The two lines on the chart - that is the whole signal.**
 
-- **Blue line = CONSIDER.** Euphoria is *starting*. The crowd is arriving.
-- **Red line = WARNING.** Euphoria is *ending*. Historically the price top
+- **Blue line = INCREASE EXPOSURE.** Euphoria is *starting*. The crowd is arriving.
+- **Red line = CUT EXPOSURE.** Euphoria is *ending*. Historically the price top
   is close - this is the line to bring to a PM.
 
 ---
@@ -2854,8 +3022,8 @@ def tournament_table_md(rep):
              "ens": "Ensemble: logit + GBM",
              "ens_crowd": "Ensemble (crowd-only)"}
     out = []
-    for head, title in (("get_out", "WARNING: calling the top"),
-                        ("get_in", "CONSIDER: calling the start")):
+    for head, title in (("get_out", "CUT EXPOSURE: calling the top"),
+                        ("get_in", "INCREASE EXPOSURE: calling the start")):
         rows = tour.get(head) or {}
         if not rows:
             continue
@@ -2993,7 +3161,11 @@ def _state_of(name, starting, ending):
     return None
 
 
-def render_euphoria_tab(kind, kind_label, key_prefix):
+def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
+    """mode="full" renders the complete tab, unchanged.
+    mode="action" renders the landing page - two ranked lists and
+    nothing else - reusing this function's own draw_chart so the
+    detail can never drift from the full view."""
     # HEADING AND LEGEND ARE SEPARATE (defect report, with a
     # screenshot).  The legend used to be glued onto the subheader, so on a
     # normal-width screen the h2 wrapped and its second line read
@@ -3009,8 +3181,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     # into a false claim, and the legend is a caption under it naming the
     # colours that are actually on screen.
     st.subheader(f"CROWD HEAT - {kind_label}")
-    st.caption("**Green = CONSIDER** — attention is building, the crowd is "
-               "arriving, expect growth.  **Red = WARNING** — attention is "
+    st.caption("**Green = INCREASE EXPOSURE** — attention is building, the crowd is "
+               "arriving, expect growth.  **Red = CUT EXPOSURE** — attention is "
                "topping, expect a fall within ~a month of the signal.")
     # ONE explainer, and its label is not to be touched (frozen
     # requirement): the explainer label is frozen.  The wording below is therefore
@@ -3099,8 +3271,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                       "gbm": "monotone gradient boosting",
                       "mlp": "neural network (MLP)"}.get(_mdl, _mdl)
         _ins_path = os.path.join(PROCESSED_DIR, "desk_model_insight.json")
-        if os.path.exists(_ins_path):
-            with st.expander("what drives CONSIDER / WARNING — the "
+        # Model weights are reference, not an action - the landing page
+        # keeps only what changes a decision today.
+        if os.path.exists(_ins_path) and mode == "full":
+            with st.expander("what drives INCREASE EXPOSURE / CUT EXPOSURE — the "
                              "model's own weights", expanded=False):
                 import json as _json_i
                 _ins = _json_i.load(open(_ins_path))
@@ -3135,7 +3309,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     "head is asked whether such a day falls in the "
                     "NEXT TEN, so it is allowed to be early rather "
                     "than exact.\n\n"
-                    "Two deliberate differences from CONSIDER / WARNING. "
+                    "Two deliberate differences from INCREASE EXPOSURE / CUT EXPOSURE. "
                     "It has NO phase gate - a reversal is as "
                     "interesting at the bottom of a bust as at the top "
                     "of a boom - and it therefore fires in both "
@@ -3146,9 +3320,9 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     "record: the parameter register (docs/RESEARCH_RECORD.md §7, Class 3)d and "
                     "docs/research/inflection_trigger_sweep.json.")
                 _cols = st.columns(2)
-                for _c, (_hk, _ht) in zip(_cols, (("get_in", "CONSIDER — "
+                for _c, (_hk, _ht) in zip(_cols, (("get_in", "INCREASE EXPOSURE — "
                                                    "what starts one"),
-                                                  ("get_out", "WARNING — "
+                                                  ("get_out", "CUT EXPOSURE — "
                                                    "what ends one"))):
                     _h = _ins.get(_hk) or {}
                     _rows_i = []
@@ -3173,7 +3347,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     st.image(_arch, caption="how a call is made: 9 crowd "
                              "measurements + 2 price measurements → two "
                              "models → rank ensemble → frozen cut → "
-                             "CONSIDER / WARNING")
+                             "INCREASE EXPOSURE / CUT EXPOSURE")
     if use_desk:
         src_in = dk[dk[sig_col("get_in", dk)].astype(bool)]
         # SINGLE-NAME DISPLAY BAR (recorded decision): a ticker
@@ -3295,7 +3469,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 lines.append(f"deciding score (7d-smoothed mean of the "
                              f"factors): **{float(sc):.2f}** vs frozen "
                              f"trigger {_thr_out_d:.2f} -> "
-                             f"**{ready:+.0%} of the way to WARNING**")
+                             f"**{ready:+.0%} of the way to CUT EXPOSURE**")
             return ready, lines
         # side == "in"
         r = _row_at(oi, d)
@@ -3315,7 +3489,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             lines.append(f"deciding score (7d-smoothed mean of the "
                          f"factors): **{float(sc):.2f}** vs frozen "
                          f"trigger {_thr_in_d:.2f} -> "
-                         f"**{ready:+.0%} of the way to CONSIDER**")
+                         f"**{ready:+.0%} of the way to INCREASE EXPOSURE**")
         if rd is not None and bool(rd.get("end_stage", False)):
             lines.append("phase gate: name is END-STAGE - the entry "
                          "question is not asked here")
@@ -3326,8 +3500,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         sentence. The dates come from the stored flags; the values are the
         stored evidence on that day."""
         ready, lines = _factor_lines(name, d, side)
-        head = ("WARNING: expect a fall" if side == "out"
-                else "CONSIDER: expect growth")
+        head = ("CUT EXPOSURE: expect a fall" if side == "out"
+                else "INCREASE EXPOSURE: expect growth")
         md = [f"**{pd.Timestamp(d).date()} — {head}.**",
               "Every factor below is a percentile of this name's OWN "
               "trailing year (1.00 = the most extreme it has been); the "
@@ -3422,21 +3596,25 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     in_now = sorted((n for n in starting
                      if _state_of(n, starting, ending) == "STARTING"),
                     key=starting.get, reverse=True)
-    if out_now:
-        st.error("**WARNING — crowd heat is ENDING:** "
+    # The live-signal banner is a FULL-TAB element. On the landing page
+    # the ranked lists and the LAST FIRED section already lead with the
+    # same names, so the banner repeated the page's own headline above
+    # it.
+    if out_now and mode == "full":
+        st.error("**CUT EXPOSURE — crowd heat is ENDING:** "
                  + ";  ".join(f"{flag_label(n, kind)} — signal "
                               f"{ending[n].date()}, "
                               f"{int((latest_day - ending[n]).days)}d ago"
                               for n in out_now)
                  + ". Expect the top within ~a month of the signal.")
-    if in_now:
-        st.success("**CONSIDER — crowd heat is STARTING:** "
+    if in_now and mode == "full":
+        st.success("**INCREASE EXPOSURE — crowd heat is STARTING:** "
                    + ";  ".join(f"{flag_label(n, kind)} — signal "
                                 f"{starting[n].date()}, "
                                 f"{int((latest_day - starting[n]).days)}"
                                 "d ago" for n in in_now)
                    + ". The crowd is arriving; the rally window is open.")
-    if not out_now and not in_now:
+    if not out_now and not in_now and mode == "full":
         st.info(f"**No live signal among {kind_label.lower()} right "
                 "now** - no crowd heat starting (consider) or ending (get "
                 "out) in the last 21 days. Crowd heat is rare; an empty "
@@ -3446,14 +3624,17 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
     # get in flag have a drop down we can click and that shows the
     # reasons").  One expander per live flag, right under its banner, built
     # by the same helper as the hover - the two cannot disagree.
-    for n in out_now:
-        with st.expander(f"why WARNING on {flag_label(n, kind)}?  "
-                         f"(signal {ending[n].date()})"):
-            st.markdown(_explain_alert(n, ending[n], "out"))
-    for n in in_now:
-        with st.expander(f"why CONSIDER on {flag_label(n, kind)}?  "
-                         f"(signal {starting[n].date()})"):
-            st.markdown(_explain_alert(n, starting[n], "in"))
+    if mode == "full":
+        for n in out_now:
+            with st.expander(f"why CUT EXPOSURE on "
+                             f"{flag_label(n, kind)}?  "
+                             f"(signal {ending[n].date()})"):
+                st.markdown(_explain_alert(n, ending[n], "out"))
+        for n in in_now:
+            with st.expander(f"why INCREASE EXPOSURE on "
+                             f"{flag_label(n, kind)}?  "
+                             f"(signal {starting[n].date()})"):
+                st.markdown(_explain_alert(n, starting[n], "in"))
 
     # ---- NO PERFORMANCE METRICS ON THIS PANEL (recorded decision).
     #
@@ -3651,14 +3832,14 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         thr_out_d = _thr_out_d
 
         # ---- HEADER, then DIAL + FACTS + RECORD on ONE ROW, then chart.
-        _sig_all = sorted([(d, "CONSIDER", TEAL) for d in onset_alerts]
-                          + [(d, "WARNING", BEAR) for d in top_alerts])
+        _sig_all = sorted([(d, "INCREASE EXPOSURE", TEAL) for d in onset_alerts]
+                          + [(d, "CUT EXPOSURE", BEAR) for d in top_alerts])
         _last_sig = (f"{_sig_all[-1][1]} · "
                      f"{pd.Timestamp(_sig_all[-1][0]).strftime('%d %b %y')}"
                      if _sig_all else "none in window")
         _last_col = _sig_all[-1][2] if _sig_all else INK_MUTED
-        _badge = {"STARTING": (TEAL, "CONSIDER: attention building — expect growth"),
-                  "ENDING": (BEAR, "WARNING: attention topping — expect a fall")}.get(
+        _badge = {"STARTING": (TEAL, "INCREASE EXPOSURE: attention building — expect growth"),
+                  "ENDING": (BEAR, "CUT EXPOSURE: attention topping — expect a fall")}.get(
                       state, (INK_MUTED, "no live signal"))
         st.markdown(
             "<div style='display:flex;align-items:baseline;gap:12px;"
@@ -3671,6 +3852,21 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             f"letter-spacing:.06em;text-transform:uppercase;"
             f"color:{_badge[0]}'>{_badge[1]}</span></div>",
             unsafe_allow_html=True)
+        # Technical agreement, on the panel itself, for whichever side
+        # this name may actually fire - so the flag on a chart and the
+        # flag on the list can never disagree.
+        _hc_side = ("CUT EXPOSURE" if state == "ENDING"
+                    else "INCREASE EXPOSURE" if state == "STARTING"
+                    else ("CUT EXPOSURE"
+                          if bool(one.iloc[-1].get("boomed120", False))
+                          else "INCREASE EXPOSURE"))
+        if _tech_confirms(sym, one["date"].max(), _hc_side):
+            st.markdown(
+                f"<span class='rf-hiconv' style='border-color:{TEAL};"
+                f"color:{TEAL}'>◆ HIGH CONVICTION</span>",
+                unsafe_allow_html=True)
+            st.caption("Crowd signal and technical screen agree.",
+                       help=HIGH_CONV_HELP)
 
         _z = gauge_zones()
         _lvl_ok = lvl.dropna()
@@ -3808,13 +4004,13 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                                         or _last_o >= _last_i):
                 _n_ = (_day - _last_o).days
                 return ("EXIT WINDOW", BEAR,
-                        f"WARNING fired {_n_}d ago - the top is expected "
+                        f"CUT EXPOSURE fired {_n_}d ago - the top is expected "
                         "within ~a month of the signal; this flag owns "
                         "the state until the 21d episode window closes")
             if _last_i is not None:
                 _n_ = (_day - _last_i).days
                 return ("ENTRY WINDOW", TEAL,
-                        f"CONSIDER fired {_n_}d ago - the rally window is "
+                        f"INCREASE EXPOSURE fired {_n_}d ago - the rally window is "
                         "open; this flag owns the state until the 21d "
                         "episode window closes")
             return None
@@ -3860,7 +4056,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                                            _thr_in_d, _thr_out_d)
             if _ready is not None:
                 _rd_now, _rd_side, _rd_sc, _rd_cut = _ready
-                _sc_col_r = (OUT_SCORE if _rd_side == "WARNING"
+                _sc_col_r = (OUT_SCORE if _rd_side == "CUT EXPOSURE"
                              else IN_SCORE)
                 _hist_r = pd.Series(dtype=float)
                 if _sc_col_r in dk_i.columns:
@@ -3968,8 +4164,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                         for h in (5, 20, 84))
 
                 for _sd, _lab2, _clr2, _verb in (
-                        ("out", "WARNING", BEAR, "fall"),
-                        ("in", "CONSIDER", TEAL, "rally")):
+                        ("out", "CUT EXPOSURE", BEAR, "fall"),
+                        ("in", "INCREASE EXPOSURE", TEAL, "rally")):
                     _r = (_rec or {}).get(_sd)
                     if _rec is None:
                         # no price series at all - saying "no signals"
@@ -4012,8 +4208,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                          "than n signals when the newest are too recent "
                          "to measure). **median wait**: days from "
                          "the signal to the start of a ≥10%-in-7-days "
-                         "move within 30 days - a FALL after WARNING, a "
-                         "RALLY after CONSIDER; the same 10%-in-7d test "
+                         "move within 30 days - a FALL after CUT EXPOSURE, a "
+                         "RALLY after INCREASE EXPOSURE; the same 10%-in-7d test "
                          "NB06 uses for the danger state. Signals too "
                          "new to judge are PENDING and excluded, never "
                          "counted against the record. Medians across few "
@@ -4049,8 +4245,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # axis: same crossings, same eligibility, zero panel height.
         _ready = []
         if dk_i is not None:
-            for _col, _thr, _lab in ((OUT_SCORE, thr_out_d, "WARNING"),
-                                     (IN_SCORE, thr_in_d, "CONSIDER")):
+            for _col, _thr, _lab in ((OUT_SCORE, thr_out_d, "CUT EXPOSURE"),
+                                     (IN_SCORE, thr_in_d, "INCREASE EXPOSURE")):
                 if _col not in dk_i.columns or not _thr:
                     continue
                 _s = (pd.to_numeric(dk_i[_col], errors="coerce")
@@ -4078,9 +4274,9 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # extension is disabled and uncovered days simply show nothing.
         _model_live = (desk_report or {}).get("model", "rules")
         for _lab, _s in _ready:
-            _spec = {"WARNING": ("levels", desk_end_fit, TOP_FEATURES,
+            _spec = {"CUT EXPOSURE": ("levels", desk_end_fit, TOP_FEATURES,
                                  thr_out_d),
-                     "CONSIDER": ("onset", desk_onset_fit, ONSET_BANK,
+                     "INCREASE EXPOSURE": ("onset", desk_onset_fit, ONSET_BANK,
                                 thr_in_d)}.get(_lab)
             if _model_live != "rules":
                 _spec = None
@@ -4114,10 +4310,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                                           errors="coerce"))
             return (_nan.copy(), _nan.copy())
 
-        _out_s, _out_f = _side("WARNING")
+        _out_s, _out_f = _side("CUT EXPOSURE")
         if _out_f.isna().all():
             _out_s, _out_f = _side("SIGNAL")
-        _in_s, _in_f = _side("CONSIDER")
+        _in_s, _in_f = _side("INCREASE EXPOSURE")
 
         # which question is LIVE on each day: `end_stage` opens the exit
         # question and closes the entry one.  The hover shows BOTH rules
@@ -4224,10 +4420,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             _es_i = bool(_es.iloc[_i2])
             parts = [f"<b>{_dl}</b>"]
             if _d in _fired_out_days:
-                parts.append(f"<span style='color:{BEAR}'><b>★ WARNING "
+                parts.append(f"<span style='color:{BEAR}'><b>★ CUT EXPOSURE "
                              "FIRED today</b></span>")
             elif _d in _fired_in_days:
-                parts.append(f"<span style='color:{TEAL}'><b>★ CONSIDER "
+                parts.append(f"<span style='color:{TEAL}'><b>★ INCREASE EXPOSURE "
                              "FIRED today</b></span>")
             if _no_desk and _on_mean is None:
                 # outside the detector's universe: the clock would read
@@ -4263,12 +4459,12 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 # boundary; direct BUILDING->TOPPING swaps are zero).
                 if blowoff:
                     _head = (f"<span style='color:{OCHRE}'><b>watching "
-                             "the WARNING rule (late-stage - not yet "
+                             "the CUT EXPOSURE rule (late-stage - not yet "
                              "the peak)</b></span> ")
                     _head += _tbar(float(_tot_o) if pd.notna(_tot_o)
                                    else 0.0, OCHRE)
                 else:
-                    _head = (f"<span style='color:{BEAR}'><b>WARNING "
+                    _head = (f"<span style='color:{BEAR}'><b>CUT EXPOSURE "
                              "(exit)</b></span> ")
                     _head += _tbar(float(_tot_o) if pd.notna(_tot_o)
                                    else 0.0, BEAR)
@@ -4324,13 +4520,13 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 _on_row = any(pd.notna(s.iloc[_i2]) for _, s in _in_bank)
                 if not _on_row:
                     parts.append(
-                        f"<span style='color:{TEAL}'><b>CONSIDER (entry)"
+                        f"<span style='color:{TEAL}'><b>INCREASE EXPOSURE (entry)"
                         "</b></span> ▱▱▱▱▱▱▱▱▱▱ 0% - crowd below its "
                         "own normal (&lt;1.0x); entry tracking starts at "
                         f"{EUPHORIA_ONSET_HYPE_MIN:.2f}x")
                     return
                 _tot_i = _in_f.iloc[_i2]
-                _head = (f"<span style='color:{TEAL}'><b>CONSIDER "
+                _head = (f"<span style='color:{TEAL}'><b>INCREASE EXPOSURE "
                          "(entry)</b></span> ")
                 _head += _tbar(-(float(_tot_i) if pd.notna(_tot_i)
                                  else 0.0), TEAL)
@@ -4381,7 +4577,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                             else 0.0])
                 _raw_p = (sum(_raw0) / 5.0 / float(thr_out_d) * 100.0
                           if thr_out_d and _raw0 else 0.0)
-                _o_txt = f"WARNING {_o_v:+.0f}%"
+                _o_txt = f"CUT EXPOSURE {_o_v:+.0f}%"
                 if _raw_p - _o_v > 10:
                     _o_txt += (f" (score held at 0 by shut gates; raw "
                                f"factors {_raw_p:.0f}%)")
@@ -4389,12 +4585,12 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 if _mx < 50:
                     _lead = "neither rule close"
                 else:
-                    _near = ("WARNING" if abs(_o_v) >= abs(_i_v)
-                             else "CONSIDER")
+                    _near = ("CUT EXPOSURE" if abs(_o_v) >= abs(_i_v)
+                             else "INCREASE EXPOSURE")
                     _lead = f"no flag live · {_near} is nearest"
                 parts.append(
                     f"<span style='color:{INK_MUTED}'>{_lead} - "
-                    f"{_o_txt} · CONSIDER {-_i_v:+.0f}% of their "
+                    f"{_o_txt} · INCREASE EXPOSURE {-_i_v:+.0f}% of their "
                     "triggers</span>")
             return parts
 
@@ -4459,8 +4655,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # the alert day.  The dates come from the STORED flags, never from
         # the hover arithmetic, so a dot cannot drift off its alert.
         _fx, _fy, _fc, _ft = [], [], [], []
-        for _d, _nm, _c in ([(d, "WARNING", BEAR) for d in top_alerts]
-                            + [(d, "CONSIDER", TEAL) for d in onset_alerts]):
+        for _d, _nm, _c in ([(d, "CUT EXPOSURE", BEAR) for d in top_alerts]
+                            + [(d, "INCREASE EXPOSURE", TEAL) for d in onset_alerts]):
             _t = pd.Timestamp(_d)
             _cpos = _carrier.index.searchsorted(_t)
             if _cpos < len(_carrier) and pd.notna(_carrier.iloc[_cpos]):
@@ -4513,8 +4709,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                         f"own.<br>It is not sized, it is not in the "
                         f"watchlist, and nothing<br>else on this page "
                         f"changes because of it. Use it to<br>WEIGH a "
-                        f"call you already have - a WARNING with a<br>"
-                        f"inflection beside it is a more interesting WARNING "
+                        f"call you already have - a CUT EXPOSURE with a<br>"
+                        f"inflection beside it is a more interesting CUT EXPOSURE "
                         f"than<br>one without.")
             if _tx:
                 fig.add_trace(go.Scatter(
@@ -4533,12 +4729,20 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
         # Labels in a SEPARATE pass, on STACKED ROWS (greedy first-fit -
         # see the 2026-07-29 note: alternating two heights collides at
         # i and i+2 on long windows).
-        marks = sorted([(d, "CONSIDER", TEAL) for d in onset_alerts]
-                       + [(d, "WARNING", BEAR) for d in top_alerts])
+        # Each mark carries whether the technical screen agreed on the
+        # day it fired, so a HIGH CONVICTION signal is identifiable on
+        # the chart itself and not only in the lists.
+        marks = sorted(
+            [(d, "INCREASE EXPOSURE", TEAL,
+              _tech_confirms(sym, d, "INCREASE EXPOSURE"))
+             for d in onset_alerts]
+            + [(d, "CUT EXPOSURE", BEAR,
+                _tech_confirms(sym, d, "CUT EXPOSURE"))
+               for d in top_alerts])
         _span_days = max(1.0, (one_i.index.max()
                                - one_i.index.min()).total_seconds() / 86400)
         _rows_used, _lvl_max = [], 0
-        for d, text, colour in marks:
+        for d, text, colour, _hc in marks:
             _dt = pd.Timestamp(d)
             # WIDTH ESTIMATE. The label rendered is "GET OUT 29 Jan 21"
             # - the date adds ~9 characters that `text` does not contain,
@@ -4549,7 +4753,12 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             # visible as "GET OUT 29 Jan 1GET OUT 09 Jan" on a 9-year
             # window. Measure the WHOLE rendered string, at the real
             # per-character width, plus a gap so two labels never touch.
-            _wid_days = ((len(text) + 10 + 6) * 7.6 / 900.0) * _span_days
+            # +2 for the "◆ " marker when it is drawn: the packer
+            # measures the rendered string, and a marker left out
+            # of the estimate is exactly how labels overlapped
+            # before.
+            _wid_days = ((len(text) + 10 + 6 + (2 if _hc else 0))
+                         * 7.6 / 900.0) * _span_days
             _lvl2 = 0
             while _lvl2 < len(_rows_used) and _rows_used[_lvl2] > _dt:
                 _lvl2 += 1
@@ -4561,7 +4770,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             _lvl_max = max(_lvl_max, _lvl2)
             fig.add_annotation(
                 x=_ms(d), y=1.0, yref="y domain", yanchor="bottom",
-                text=f"<b>{text}</b>  {_dt.strftime('%d %b %y')}",
+                text=(f"<b>{'◆ ' if _hc else ''}{text}</b>  "
+                      f"{_dt.strftime('%d %b %y')}"),
                 showarrow=False, font=dict(size=9.5, color=colour),
                 bgcolor="rgba(255,255,255,0.92)", borderpad=2,
                 yshift=4 + 14 * _lvl2)
@@ -4637,23 +4847,23 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                                   _sr.index.max())).ffill(limit=7)
                 _fb = go.Figure()
                 _fb.add_scatter(x=_sr.index, y=_sr.clip(lower=0),
-                                name="LEADING — toward CONSIDER",
+                                name="LEADING — toward INCREASE EXPOSURE",
                                 mode="lines",
                                 line=dict(width=0.8, color=TEAL),
                                 fill="tozeroy",
                                 fillcolor="rgba(46,110,126,0.35)",
                                 hovertemplate="%{x|%d %b %y} · "
                                               "%{y:+.2f}<extra>toward "
-                                              "CONSIDER</extra>")
+                                              "INCREASE EXPOSURE</extra>")
                 _fb.add_scatter(x=_sr.index, y=_sr.clip(upper=0),
-                                name="LEADING — toward WARNING",
+                                name="LEADING — toward CUT EXPOSURE",
                                 mode="lines",
                                 line=dict(width=0.8, color=BEAR),
                                 fill="tozeroy",
                                 fillcolor="rgba(166,61,44,0.35)",
                                 hovertemplate="%{x|%d %b %y} · "
                                               "%{y:+.2f}<extra>toward "
-                                              "WARNING</extra>")
+                                              "CUT EXPOSURE</extra>")
                 if "retail_flow_disp" in _srg.columns:
                     _rfs = _srg["retail_flow_disp"].dropna()
                     _rfs = _rfs[~_rfs.index.duplicated()]
@@ -4671,9 +4881,9 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 # the fired calls, on the band itself
                 for _col_b, _mk_b, _cc_b, _yy_b, _nm_b in (
                         (sig_col("get_in", _srg), "triangle-up", TEAL,
-                         1.05, "CONSIDER fired"),
+                         1.05, "INCREASE EXPOSURE fired"),
                         (sig_col("get_out", _srg), "triangle-down", BEAR,
-                         -1.05, "WARNING fired")):
+                         -1.05, "CUT EXPOSURE fired")):
                     if _col_b in _srg.columns:
                         _dd_b = _srg.index[_srg[_col_b].astype(bool)]
                         if len(_dd_b):
@@ -4700,7 +4910,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                     hovermode="x unified",
                     yaxis=dict(range=[-1.3, 1.3],
                                tickvals=[-1, 0, 1],
-                               ticktext=["at WARNING", "", "at CONSIDER"],
+                               ticktext=["at CUT EXPOSURE", "", "at INCREASE EXPOSURE"],
                                tickfont=dict(size=10)))
                 _fb.update_xaxes(range=[w0, w1])
                 _axes_fidelity(_theme(_fb))
@@ -4749,8 +4959,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 "the signal that day. It leads with **the state**, "
                 "resolved in strict priority: a flag fired within the "
                 "last 21 days owns the state for its whole episode "
-                "window (**EXIT WINDOW** after a WARNING, **ENTRY "
-                "WINDOW** after a CONSIDER - one clear direction, the "
+                "window (**EXIT WINDOW** after a CUT EXPOSURE, **ENTRY "
+                "WINDOW** after a INCREASE EXPOSURE - one clear direction, the "
                 "flag's direction); otherwise the crowd-phase clock "
                 "reads QUIET → BUILDING → BLOW-OFF → TOPPING → COOLING "
                 "(notebook 08: two smooth coordinates, crowd extremity "
@@ -4760,8 +4970,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 "state, one rule's breakdown - the one the state "
                 "selects: a bar showing how far "
                 "the deciding score sits "
-                "toward its frozen trigger (-100% = CONSIDER fires, +100% = "
-                "WARNING fires), whether the gates would have let it fire, "
+                "toward its frozen trigger (-100% = INCREASE EXPOSURE fires, +100% = "
+                "CUT EXPOSURE fires), whether the gates would have let it fire, "
                 "and every contributing factor in plain English - each "
                 "one a percentile of this name's own trailing year.\n\n"
                 "**The flag is the score reaching 100% of its trigger "
@@ -4776,6 +4986,303 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 "and the facts above; the signal record beside them is "
                 "this name's own measured history of what prices did "
                 "after each flag."))
+
+    # ======================================================================
+    # ACTION VIEW - the landing page
+    # ----------------------------------------------------------------------
+    # One question, answered above the fold: what should exposure change
+    # on TODAY. Two ranked lists - names closest to firing INCREASE
+    # EXPOSURE, and names closest to firing CUT EXPOSURE - and nothing
+    # else until asked for.
+    #
+    # NO NEW MODELLING. Readiness is score / trigger on the same stored
+    # scores and the same frozen cuts every other surface reads, and the
+    # phase gate decides which side a name may fire at all, exactly as
+    # the watchlist below computes it. A name that cannot fire a side is
+    # never listed under it, however high that side's score.
+    #
+    # Size rule: every name at >= ACTION_READY_PCT, or the top
+    # ACTION_MIN_ROWS if fewer clear the bar - so the page is never empty
+    # on a quiet day and never floods on a loud one.
+    #
+    # The detail is the SAME draw_chart the full tab uses, called inside
+    # each row's expander. There is no second chart implementation to
+    # drift.
+    if mode == "action":
+        # LOOK UP ANY NAME, above the lists. The lists answer "what
+        # should I act on today"; this answers "how is X doing" for a
+        # name nowhere near firing, which is most of the universe on
+        # most days. It sits at the top because it is a question people
+        # arrive with, not one the page provokes - and with nothing
+        # selected it costs a single row of height.
+        _lk_names = sorted(ek["name"].unique()) if ek is not None else []
+        _lk = st.selectbox(
+            f"Look up any {kind_label.lower()} - type to search",
+            ["(none)"] + list(_lk_names), key=f"{key_prefix}_act_lookup",
+            # The sentinel is passed through UNformatted, exactly as the
+            # full tab's lookup does. Rewriting it to prose broke the
+            # round-trip between a value and its rendered label.
+            format_func=lambda n: n if n == "(none)" else flag_label(n, kind),
+            help="Opens the same chart and detail the lists below show, "
+                 "for any tracked name - whether or not it has ever "
+                 "signalled.")
+        if _lk and _lk != "(none)":
+            draw_chart(_lk, "", f"{key_prefix}_act_lookup_chart")
+            st.markdown('<div class="rf-rule"></div>',
+                        unsafe_allow_html=True)
+
+        # ONE SIDE PER NAME. readiness_now decides which - "the eligible
+        # side is the one the phase gate allows TODAY... showing the
+        # other side's score would be a number that cannot fire". An
+        # earlier version scored every name on BOTH sides and listed it
+        # twice, putting the same theme under INCREASE and CUT at once:
+        # not two readings, one contradiction.
+        #
+        # TWO THINGS THIS GETS RIGHT THAT THE OBVIOUS VERSION DOES NOT.
+        #
+        # 1. The score is INTERMITTENT. in_score exists only on days the
+        #    name clears the candidacy floor, so the newest row for a
+        #    name is very often NaN while a perfectly current score sits
+        #    a few days behind it. Taking `.iloc[-1]` therefore dropped
+        #    ~25 of 33 themes for having "no score" when they had one.
+        #    The most recent SCORED row is used instead.
+        #
+        # 2. A name's rows STOP when it leaves the scored universe, so
+        #    "the last row" can be arbitrarily old. Read literally, this
+        #    page showed europe_defense at 79% of its CUT trigger from a
+        #    reading 494 DAYS OLD, presented as what to act on today.
+        #    Anything older than ACTION_STALE_DAYS is therefore dropped,
+        #    and every surviving row states the date its score is from -
+        #    the same 60-day convention readiness_alerts.json already
+        #    applies at source.
+        _a_as_of = (dk["date"].max() if hi is None
+                    else min(hi, dk["date"].max())) if dk is not None else None
+        _a_rows = []
+        if dk is not None and len(dk) and _a_as_of is not None:
+            _stale_cut = _a_as_of - pd.Timedelta(days=ACTION_STALE_DAYS)
+            for _n, _g in dk[dk["date"] <= _a_as_of].groupby("name"):
+                _g = _g.sort_values("date")
+                if _g.empty:
+                    continue
+                # which side may fire is a property of the name NOW
+                _boomed = bool(_g.iloc[-1].get("boomed120", False))
+                _col = OUT_SCORE if _boomed else IN_SCORE
+                _thr = _thr_out_d if _boomed else _thr_in_d
+                _side = "CUT EXPOSURE" if _boomed else "INCREASE EXPOSURE"
+                if _col not in _g.columns or _thr in (None, 0):
+                    continue
+                _scored = _g[_g[_col].notna()]
+                if _scored.empty:
+                    continue
+                _row = _scored.iloc[-1]
+                if _row["date"] < _stale_cut:
+                    continue                     # too old to be a call
+                _sc = float(_row[_col])
+
+                def _at(days_back):
+                    """The score as it stood `days_back` days earlier -
+                    the nearest scored row at or before that date."""
+                    _e = _scored[_scored["date"]
+                                 <= _row["date"] - pd.Timedelta(days=days_back)]
+                    return float(_e.iloc[-1][_col]) if len(_e) else None
+
+                _a_rows.append({
+                    "name": _n, "symbol": _row.get("symbol") or "-",
+                    "side": _side,
+                    "ready": max(0.0, min(100.0, 100.0 * _sc / float(_thr))),
+                    "fired": _sc >= float(_thr),
+                    "score_date": _row["date"],
+                    "age": int((_a_as_of - _row["date"]).days),
+                    "d7": (100.0 * (_sc - _at(7)) / float(_thr)
+                           if _at(7) is not None else None),
+                    "d14": (100.0 * (_sc - _at(14)) / float(_thr)
+                            if _at(14) is not None else None),
+                    "hiconv": _tech_confirms(_row.get("symbol"),
+                                             _row["date"], _side),
+                    "px7": _price_change(_row.get("symbol"),
+                                         _row["date"], 7),
+                    "px14": _price_change(_row.get("symbol"),
+                                          _row["date"], 14)})
+        _a_df = pd.DataFrame(_a_rows)
+
+        def _a_pick(side):
+            """Everything at or above the bar, or the nearest few when
+            nothing clears it - so the page is never empty and never
+            floods."""
+            if _a_df.empty:
+                return _a_df
+            s = (_a_df[_a_df["side"] == side]
+                 .sort_values("ready", ascending=False))
+            hot = s[s["ready"] >= ACTION_READY_PCT]
+            return hot if len(hot) >= ACTION_MIN_ROWS else s.head(
+                ACTION_MIN_ROWS)
+
+        # LAZY ROWS. st.expander renders its contents EAGERLY, whether
+        # or not it is open, so a list of 14 rows each holding a full
+        # price chart built 42 charts before the page could paint: 16s
+        # cold and 11s on EVERY rerun, which reads as a page that never
+        # loads. One row is open at a time, tracked in session_state, and
+        # only that row builds a chart - the rest cost one button each.
+        _OPEN = f"{key_prefix}_open_row"
+
+        def _a_row(r, side, tone, key):
+            rid = f"{side}:{r.name}"
+            _stale = "" if r.age <= 3 else f"   ·  as of {r.score_date:%d %b}"
+            _head = (f"{theme_label(r.name)}  ({r.symbol})   "
+                     f"{r.ready:.0f}% of trigger"
+                     + ("   ● FIRING NOW" if r.fired else "")
+                     + ("   ◆ HIGH CONVICTION" if r.hiconv else "") + _stale)
+            _was = st.session_state.get(_OPEN) == rid
+            with st.container(key=f"rfrow_{key}"):
+                _hit = st.button(("▼  " if _was else "▶  ") + _head,
+                                 key=f"btn_{key}", width="stretch")
+            if _hit:
+                st.session_state[_OPEN] = None if _was else rid
+            if st.session_state.get(_OPEN) != rid:
+                return
+            st.markdown(
+                f"<div class='rf-readbar'><div class='rf-readfill' "
+                f"style='width:{min(100.0, r.ready):.0f}%;"
+                f"background:{tone}'></div>"
+                f"<div class='rf-readtick'></div></div>",
+                unsafe_allow_html=True)
+            if r.hiconv:
+                st.markdown(
+                    f"<span class='rf-hiconv' style='border-color:{tone};"
+                    f"color:{tone}'>◆ HIGH CONVICTION</span>",
+                    unsafe_allow_html=True)
+                st.caption("The crowd signal and the technical screen "
+                           "agree on this name today.", help=HIGH_CONV_HELP)
+            _c1, _c2, _c3 = st.columns(3)
+            _c1.metric(f"of {side.split()[0].lower()} trigger",
+                       f"{r.ready:.0f}%")
+            for _c, _v, _lbl in ((_c2, r.d7, "7d change"),
+                                 (_c3, r.d14, "14d change")):
+                if _v is None:
+                    _c.metric(_lbl, "-")
+                else:
+                    _c.metric(_lbl, f"{_v:+.0f} pts",
+                              delta=("approaching" if _v > 0
+                                     else "receding" if _v < 0 else "flat"),
+                              delta_color=("inverse" if _v < 0 else "normal"))
+            # DO READINESS AND PRICE AGREE? Both changes are measured
+            # over the SAME two windows, so this is like-for-like. Only
+            # stated when both windows agree - one window agreeing is a
+            # coin toss with extra steps.
+            _agree = [w for w, _rv, _pv in
+                      ((7, r.d7, r.px7), (14, r.d14, r.px14))
+                      if _rv is not None and _pv is not None
+                      and _rv != 0 and _pv != 0 and ((_rv > 0) == (_pv > 0))]
+            if len(_agree) == 2:
+                _dirw = "rising" if (r.d7 or 0) > 0 else "falling"
+                st.info(
+                    f"**Technical factors also correlate.** Readiness and "
+                    f"price are both {_dirw} over 7 and 14 days "
+                    f"(price {r.px7:+.1f}% / {r.px14:+.1f}%), so the crowd "
+                    "read and the price action point the same way.")
+            st.caption(
+                f"100% is the trigger - this name's score divided by the "
+                f"frozen {side} cut. The changes are in the same units, "
+                "so +6 means six points closer to firing."
+                + ("" if r.age <= 3 else
+                   f"  Scored {r.score_date:%d %b %Y}, {r.age}d ago - the "
+                   "name has not been scored since."))
+            draw_chart(r.name, "", key)
+
+        def _a_list(side, tone, blurb):
+            st.markdown(f"<div class='rf-actionhead' style='color:{tone}'>"
+                        f"{side}</div>", unsafe_allow_html=True)
+            st.caption(blurb)
+            rows = _a_pick(side)
+            if rows is None or rows.empty:
+                st.caption("nothing scored on this side today")
+                return
+            for _r in rows.itertuples():
+                _a_row(_r, side, tone,
+                       f"{key_prefix}_act_{side[:3]}_{_r.name}")
+
+        # CUT first: a position already held is the more urgent decision.
+        # Stacked full width rather than two columns - the row labels and
+        # the charts inside them need the whole measure.
+        _a_list("CUT EXPOSURE", BEAR,
+                "Names that have already run and are topping out. "
+                "Closest to firing first.")
+        st.markdown('<div class="rf-rule"></div>', unsafe_allow_html=True)
+        _a_list("INCREASE EXPOSURE", BULL,
+                "Names the crowd is arriving at, before the run. "
+                "Closest to firing first.")
+
+        # ---- LAST FIRED SIGNALS ------------------------------------------
+        # The lists above are about what has NOT fired yet. This is the
+        # record of what did: the most recent coherent alerts across the
+        # panel, newest first, each opening the same chart.
+        st.markdown('<div class="rf-rule"></div>', unsafe_allow_html=True)
+        st.markdown("<div class='rf-actionhead' style='color:"
+                    f"{INK}'>LAST FIRED</div>", unsafe_allow_html=True)
+        st.caption("The most recent signals the detector actually fired, "
+                   "newest first.")
+        _fired = []
+        for _n, (_co, _ct) in coherent.items():
+            for _d, _sd in [(d, "INCREASE EXPOSURE") for d in _co] + \
+                           [(d, "CUT EXPOSURE") for d in _ct]:
+                if _d is None:
+                    continue
+                if hi is not None and _d > hi:
+                    continue
+                _fired.append({"name": _n, "date": _d, "side": _sd})
+        _fired = sorted(_fired, key=lambda r: r["date"], reverse=True)
+        _fired = [f for f in _fired if f["name"] not in HIDDEN_THEMES]
+        if not _fired:
+            st.caption("no signals fired in the stored history")
+        else:
+            for _f in _fired[:ACTION_FIRED_ROWS]:
+                _ago = (pd.Timestamp(_a_as_of) - _f["date"]).days \
+                    if _a_as_of is not None else None
+                _tone = BULL if _f["side"].startswith("INCREASE") else BEAR
+                _sym_f = None
+                if dk is not None and len(dk):
+                    _mf = dk[dk["name"] == _f["name"]]
+                    if len(_mf):
+                        _sym_f = _mf.iloc[-1].get("symbol")
+                _hc_f = _tech_confirms(_sym_f, _f["date"], _f["side"])
+                _fid = f"F:{_f['name']}:{_f['date']:%Y%m%d}"
+                # The tradeable instrument belongs on the row: the theme
+                # is what was measured, the ticker is what you would act
+                # on, and every other list already pairs them.
+                _head = (f"{_f['side']}   {theme_label(_f['name'])}"
+                         + (f"  ({_sym_f})" if _sym_f else "")
+                         + f"   {_f['date']:%d %b %Y}"
+                         + (f"   ({_ago}d ago)" if _ago is not None else "")
+                         + ("   ◆ HIGH CONVICTION" if _hc_f else ""))
+                _wasf = st.session_state.get(_OPEN) == _fid
+                with st.container(key=f"rfrow_{key_prefix}_{_fid}"):
+                    _hitf = st.button(("▼  " if _wasf else "▶  ") + _head,
+                                      key=f"btn_{key_prefix}_{_fid}",
+                                      width="stretch")
+                if _hitf:
+                    st.session_state[_OPEN] = None if _wasf else _fid
+                if st.session_state.get(_OPEN) != _fid:
+                    continue
+                if _hc_f:
+                    st.markdown(
+                        f"<span class='rf-hiconv' style='border-color:"
+                        f"{_tone};color:{_tone}'>◆ HIGH CONVICTION</span>",
+                        unsafe_allow_html=True)
+                    st.caption("The technical screen agreed with this "
+                               "signal on the day it fired.",
+                               help=HIGH_CONV_HELP)
+                draw_chart(_f["name"], "",
+                           f"{key_prefix}_fired_{_f['name']}_"
+                           f"{_f['date']:%Y%m%d}")
+
+        st.markdown('<div class="rf-rule"></div>', unsafe_allow_html=True)
+        st.toggle(
+            "Show the full list - every tracked name and the side live "
+            "today", key="show_full_list",
+            help="The complete radar: every instrument in the store, "
+                 "ranked by how close it is to its trigger, whether or "
+                 "not it is near one.")
+        return
 
     # ---- LOOK UP ANY NAME (type to search) --------------------------
     # Themes are shown WITH their tradeable anchor ETF (requirement
@@ -4814,7 +5321,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             last_alert[name] = max(in_win)
 
     sort_mode = st.radio(
-        "order charts by", ("recent CONSIDER / WARNING signals",
+        "order charts by", ("recent INCREASE EXPOSURE / CUT EXPOSURE signals",
                             "closest to firing (the watchlist)",
                             "share of total mentions (retail attention)"),
         horizontal=True, key=f"{key_prefix}_sort",
@@ -4865,9 +5372,9 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
             # ungated by default, so a boomed name's GET IN CAN fire
             # unless the stricter price-gated variant is ticked)
             for _side, _sc_col, _thr, _elig in (
-                    ("WARNING", OUT_SCORE, _thr_out_d,
+                    ("CUT EXPOSURE", OUT_SCORE, _thr_out_d,
                      _boomed or XP_TRIGGER),
-                    ("CONSIDER", IN_SCORE, _thr_in_d,
+                    ("INCREASE EXPOSURE", IN_SCORE, _thr_in_d,
                      (not _boomed) or XP_TRIGGER or not GATED_GET_IN),
                     ("INFLECTION (context)", "inflection_score", _infl_thr, True)):
                 if _sc_col not in _g.columns:
@@ -4945,8 +5452,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
                 f"**The watchlist — {kind_label.lower()} ranked by how "
                 f"close they are to their next call**, as of "
                 f"{pd.Timestamp(_as_of):%d %b %Y}. *Can it fire today* "
-                "is the phase gate: a WARNING only exists once a name "
-                "has boomed, a CONSIDER only before it has — so a name "
+                "is the phase gate: a CUT EXPOSURE only exists once a name "
+                "has boomed, a INCREASE EXPOSURE only before it has — so a name "
                 "in the wrong phase cannot fire whatever its score. "
                 "The last column is how close that name is to an **INFLECTION "
                 "— context, not a call**: a reversal is more likely "
@@ -5085,7 +5592,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix):
 
 
 if active_tab == MAIN_TAB:
-    render_euphoria_tab("theme", "Themes", "euphth")
+    render_euphoria_tab("theme", "Themes", "euphth", mode="action")
 # The single-name tab was removed from the display. render_euphoria_tab
 # still takes kind="single" and is exercised by the tests, so restoring
 # it is a one-line change if single names are ever shown again.
@@ -5102,7 +5609,10 @@ if active_tab == MAIN_TAB:
 # the mentions-based heat the euphoria measurements are built from - so
 # the "graph over time" column and the score column come from the same
 # store and can never disagree about what the crowd was doing.
-if active_tab == "ETF radar":
+# The radar is no longer its own tab: it is the "show the full list"
+# panel underneath the landing page, driven by the toggle the action
+# view writes into session_state. Same code, same table, one less tab.
+if active_tab == MAIN_TAB and st.session_state.get("show_full_list"):
     if desk is None or not len(desk):
         # Every other consumer guards this; without it the tab raised
         # TypeError on a clone that has fetched but not yet run the
@@ -5113,15 +5623,15 @@ if active_tab == "ETF radar":
     _as_of_r = desk["date"].max() if hi is None else min(
         hi, desk["date"].max())
     st.subheader("ETF radar — every tradeable theme ETF, ranked by how "
-                 "close it is to a WARNING")
+                 "close it is to a CUT EXPOSURE")
     _thr_out_r = sig_thr(sig_head(desk_report, "get_out"))
     _thr_in_r = sig_thr(sig_head(desk_report, "get_in"))
     st.caption(
         f"As of **{pd.Timestamp(_as_of_r):%d %b %Y}** · trigger: "
         f"**{'experimental (posts only)' if XP_TRIGGER else 'shipped (crowd + price)'}**. "
         "One SIGNED readiness per name - red negative means the name "
-        "has boomed and WARNING is the live side (-100% = at the "
-        "trigger), green positive means CONSIDER is the live side. Most "
+        "has boomed and CUT EXPOSURE is the live side (-100% = at the "
+        "trigger), green positive means INCREASE EXPOSURE is the live side. Most "
         "bearish sorts first, so the top of the table is what to look "
         "at; names whose last scoring run is over 60 days old sort "
         "last and are marked *stale*. *Retail attention* is the crowd "
@@ -5185,7 +5695,7 @@ if active_tab == "ETF radar":
             "spark": _spark,
             "signed": (None if _sgn is None
                        else round(max(-100.0, min(100.0, _sgn)))),
-            "side": "WARNING" if _boomed else "CONSIDER",
+            "side": "CUT EXPOSURE" if _boomed else "INCREASE EXPOSURE",
             "fresh": _fresh,
             "scored": ("-" if _out_day is None
                        else (f"{pd.Timestamp(_out_day):%d %b %Y} (stale)"
@@ -5215,11 +5725,11 @@ if active_tab == "ETF radar":
                     "signed readiness", format="%d%%",
                     min_value=-100, max_value=100,
                     help="One number per name. NEGATIVE: the name has "
-                         "boomed, so WARNING is the side that can "
+                         "boomed, so CUT EXPOSURE is the side that can "
                          "fire, and this is how close its score "
                          "stands to the frozen cut (-100 = at the "
-                         "WARNING trigger). POSITIVE: the same "
-                         "reading for CONSIDER. The sign comes from the "
+                         "CUT EXPOSURE trigger). POSITIVE: the same "
+                         "reading for INCREASE EXPOSURE. The sign comes from the "
                          "phase routing, so a name can never read "
                          "toward-GET-IN and toward-GET-OUT at once. "
                          "Most bearish sorts first."),
@@ -5240,7 +5750,7 @@ if active_tab == "ETF radar":
             })
         st.caption(
             "Most bearish first: the top of the table is the names "
-            "closest to a WARNING. Scores update on the analytics "
+            "closest to a CUT EXPOSURE. Scores update on the analytics "
             "pass (*scored as of*), attention updates with live "
             "ingestion - a hot sparkline with a stale score means the "
             "pipeline should be re-run, and the [dev] Data Stats tab "
@@ -5882,7 +6392,30 @@ def fig_influence_bubbles(dig: pd.DataFrame, voices: pd.DataFrame,
     fig.update_layout(
         title=dict(text=title, y=0.97, x=0.01), height=520,
         margin=dict(l=10, r=10, t=64, b=58), showlegend=False)
-    fig.update_xaxes(range=[-1.18, 1.18], zeroline=False,
+    # X-RANGE FITTED TO THE DATA, not fixed at the full [-1, 1].
+    #
+    # Consensus is bounded at -1..+1, so a fixed range was the obvious
+    # choice - but on a day when every name is net long, every bubble
+    # stacks against the right edge and two thirds of the plot is blank.
+    # The chart then reads as broken rather than as unanimous.
+    #
+    # So the window follows the points, with three constraints that keep
+    # it honest: ZERO IS ALWAYS IN VIEW, because "how far from
+    # disagreement" is the whole question and a pane that cropped the
+    # centre would flatter a one-sided day; a minimum half-width stops a
+    # tight cluster being magnified into apparent spread; and the
+    # padding leaves room for the labels above each bubble.
+    _cx = pd.to_numeric(d["consensus"], errors="coerce").dropna()
+    if len(_cx):
+        _lo, _hi = min(0.0, float(_cx.min())), max(0.0, float(_cx.max()))
+        _half = max((_hi - _lo) / 2.0, 0.35)          # never over-magnify
+        _mid = (_hi + _lo) / 2.0
+        _lo, _hi = _mid - _half, _mid + _half
+        _pad = (_hi - _lo) * 0.16
+        _xr = [max(-1.18, _lo - _pad), min(1.18, _hi + _pad)]
+    else:
+        _xr = [-1.18, 1.18]
+    fig.update_xaxes(range=_xr, zeroline=False,
                      title_text="<- SHORT          net direction"
                                 "          LONG ->")
     fig.update_yaxes(range=[0, ymax * 1.34], rangemode="tozero",
@@ -6105,7 +6638,7 @@ if active_tab == "Influence tracker":
     st.subheader("Influence tracker - who has actually been right, and "
                  "what they are saying now")
     st.caption("INFORMATION ONLY - nothing on this tab feeds the crowd heat "
-               "level or the CONSIDER / WARNING alerts. Ranking is the "
+               "level or the INCREASE EXPOSURE / CUT EXPOSURE alerts. Ranking is the "
                "MEASURED record from the store, not a model prediction.")
     with st.expander("HOW TO READ THIS TAB  (start here - plain English)",
                      expanded=False):
@@ -6260,9 +6793,13 @@ if active_tab == "Influence tracker":
         # every sub-tab.  Grouping is by QUESTION, not by section number:
         # what is being pushed / is it building / who the people are / how
         # they connect.
-        _i1, _i2, _i3, _i4 = st.tabs(
-            ["What they are pushing", "Building or fading?",
-             "The names", "The map"])
+        # THE MAP LEADS. It is the exhibit that answers the tab's own
+        # question at a glance - who is talking to whom - and it was
+        # third of four, behind two charts that need reading. "The
+        # names" was removed with it: the leaderboard and the
+        # per-name breakdown were a directory, not a decision.
+        _i4, _i1, _i2 = st.tabs(
+            ["The map", "What they are pushing", "Building or fading?"])
         with _i1:
             # ---- 1. WHAT THEY ARE PUSHING (the lead exhibit) ---------------
             # This section used to be second, underneath a 25-row leaderboard.
@@ -6361,94 +6898,6 @@ if active_tab == "Influence tracker":
                         f"{panel_n} voices"
                         + (f", to {pd.Timestamp(asof).date()}"
                            if asof is not None else "") + ".")
-                    # The open question was whether convergence here could be read as
-                    # a bullish / euphoria indicator.  It was tested rather
-                    # than assumed, and the numbers below are the reason the
-                    # answer is no - they are quoted, not summarised, because
-                    # "we checked" is not defensible and "-0.245 on the same
-                    # days the accepted signal reads +0.497" is.
-                    st.caption(
-                        ":grey[**Crowding here is not a forecast - it was "
-                        "tested.** Three ways of measuring the panel "
-                        "converging (how many voices, how much they agree, "
-                        "how much backing went in) were pre-registered "
-                        "against the house outcome (a >10% fall inside a "
-                        "week, any time in the next 30 days) and all three "
-                        "were rejected. On the same 1,552 name-days where the "
-                        "accepted crowd heat level separates 0.925 against "
-                        "0.428 (a gap of +0.497, worst case +0.2515), the "
-                        "three influence measures read 0.237 vs 0.482, 0.250 "
-                        "vs 0.481 and 0.282 vs 0.477 - all pointing the WRONG "
-                        "way, because the panel converges on the largest "
-                        "liquid names and those fall less often than the "
-                        "small-cap tail. See the parameter register (docs/RESEARCH_RECORD.md §7, Class 6)c.]")
-                    st.caption(
-                        ":grey[This tab is **information, not a signal.** "
-                        "Notebook 05 measured that these scores do not "
-                        "generalise to authors the model has not seen, so "
-                        "nothing here feeds the crowd heat CONSIDER / WARNING "
-                        "dates. Read it as \"what the room with a track "
-                        "record is saying\", and see the expander at the "
-                        "bottom of this tab for exactly why.]")
-
-                    with st.expander(f"the same {_grain} as exact numbers",
-                                     expanded=False):
-                        dv = _digest.head(24).copy()
-                        # Share over ALL rows in the window, then the head - so
-                        # the column is a share of the room, not of these 24.
-                        dv["backing"] = ig.backing_share(
-                            _digest["weighted_voices"]).head(24).round(2)
-                        dv["consensus"] = dv["consensus"].round(2)
-                        dv["last_date"] = pd.to_datetime(
-                            dv["last_date"]).dt.date
-                        if _is_theme:
-                            dv[_key] = dv[_key].map(theme_label)
-                        st.dataframe(
-                            dv[[_key, "consensus", "backing", "n_authors",
-                                "n_calls", "longs", "shorts",
-                                "last_date"]].rename(
-                                    columns={
-                                        "n_calls": "calls",
-                                        "n_authors": "people",
-                                        "consensus": "net direction",
-                                        "backing": "share of conviction %",
-                                        "last_date": "last call"}),
-                            width="stretch", hide_index=True, height=480)
-                        st.caption(
-                            "The numbers behind the bubbles, in the same "
-                            "order. 'net direction' is the horizontal axis, "
-                            "'share of conviction %' the vertical one - "
-                            f"computed over all {_n_all} {_grain} in the "
-                            "window, so it still sums towards 100% across the "
-                            "whole window rather than across these "
-                            f"{min(_n_all, 24)} rows. A bar chart of these "
-                            "same two columns used to sit here as well; it "
-                            "was the bubble chart with one axis flattened "
-                            "into shading, so it was dropped rather than "
-                            "shown twice.")
-
-                with st.expander("name by name - the actual recent calls "
-                                 "behind all of this", expanded=False):
-                    wide = ig.author_calls_wide(calls, panel, days=days,
-                                                asof=asof, per_author=5)
-                    if len(wide):
-                        wide = wide.assign(
-                            author=half_mask_series(wide["author"]),
-                            date=pd.to_datetime(wide["date"]).dt.date,
-                            direction=[ig.direction_label(d)
-                                       for d in wide["direction"]],
-                            stance=wide["stance"].astype(float).round(2))
-                        st.dataframe(wide.rename(columns={
-                            "stance": "conviction", "kind": "source"}),
-                            width="stretch", hide_index=True, height=420)
-                        st.caption("'conviction' is how strongly the post was "
-                                   "worded (0-1, from the extractor). "
-                                   "'source' is whether the call came from a "
-                                   "post or a comment. Five most recent per "
-                                   "author.")
-                    else:
-                        st.caption("nothing in this window")
-
         with _i2:
             # ---- 2. IS IT BUILDING OR FADING? (added 2026-07-27) -----------
             # The tab had no time axis at all, which made every reading on it a
@@ -6516,140 +6965,6 @@ if active_tab == "Influence tracker":
                     "into a single name while the whole room tilts to +1 is "
                     "the configuration that precedes the unwinds this project "
                     "exists to flag.")
-
-        with _i3:
-            # ---- 3. WHO is behind one name (added 2026-07-27) --------------
-            st.markdown("#### 3. Who is behind one name")
-            if calls is None or not len(dig):
-                st.info("no calls in the chosen window.")
-            else:
-                _pick = st.selectbox(
-                    "name", dig["ticker"].tolist(), key="infl_backer_pick",
-                    help="ordered most-backed first - the same order as the "
-                         "bubble chart's height")
-                _bk = ig.ticker_backers(calls, board, _pick, authors=panel,
-                                        days=days, asof=asof)
-                if not len(_bk):
-                    st.caption("nobody on the panel called this name in the "
-                               "window")
-                else:
-                    _b1, _b2 = st.columns([3, 2])
-                    with _b1:
-                        st.plotly_chart(
-                            fig_ticker_backers(
-                                _bk, _pick,
-                                f"{_pick}: the {len(_bk)} people pushing it, "
-                                f"strongest record first"),
-                            width="stretch", key="infl_backers")
-                    with _b2:
-                        _bv = _bk.assign(
-                            author=half_mask_series(_bk["author"]),
-                            influence=_bk["influence"].round(0).astype(int),
-                            conviction=_bk["conviction"].round(2),
-                            last_date=pd.to_datetime(_bk["last_date"]).dt.date)
-                        st.dataframe(
-                            _bv[["author", "influence", "word", "n_calls",
-                                 "conviction", "last_date"]].rename(columns={
-                                     "word": "side", "n_calls": "calls",
-                                     "last_date": "last said"}),
-                            width="stretch", hide_index=True, height=430)
-                    _n_long = int((_bk["word"] == "LONG").sum())
-                    _n_short = int((_bk["word"] == "SHORT").sum())
-                    st.caption(
-                        "**Read it.** One bar per person. **Bar length is "
-                        "their influence** on the 0-100 board scale - 100 is "
-                        "the strongest measured record in the whole store, so "
-                        "a bar at 80 means 'four-fifths as strong a record as "
-                        "the best name we track'. **Colour and the label are "
-                        f"their side.** On {_pick} right now: **{_n_long} "
-                        f"long, {_n_short} short**"
-                        + (", mixed" if len(_bk) - _n_long - _n_short else "")
-                        + ".\n\n**So what.** The shape is the answer. A few "
-                          "long bars, all one colour, means this name is "
-                          "being pushed by the people with the best records "
-                          "and they agree - the strongest version of the "
-                          "signal this tab can produce. Many short bars means "
-                          "it is the crowd, not the panel. Two colours means "
-                          "the single 'net direction' number on the bubble "
-                          "chart is averaging an argument, and should not be "
-                          "traded as a consensus.")
-
-            # ---- 4. the leaderboard ---------------------------------------
-            # Per-user ACCURACY was removed from this table on 2026-07-27, by
-            # requirement and for a reason the tab itself demonstrates: a
-            # raw hit rate sat one column from a composite that is shrunk
-            # toward the crowd base rate, so the two numbers disagreed on
-            # purpose and every reader tried to reconcile them. `hit_rate` is
-            # still computed and still stored - the notebooks need it, it is an
-            # input to the composite - it is simply not a thing this screen
-            # asks a PM to act on. What replaced it is what the requirement was for:
-            # influence, and the tickers they are pushing.
-            st.markdown("#### 4. The names - their influence, and what "
-                        "they are pushing")
-            _push = (ig.author_push_table(calls, board, authors=panel,
-                                          days=days, asof=asof)
-                     if calls is not None else pd.DataFrame())
-            _lb_cols = [c for c in ["author", "composite", "tier",
-                                    "called_tops", "bought_tops",
-                                    "loud_but_wrong"]
-                        if c in board.columns]
-            view = board.head(panel_n)[_lb_cols].copy()
-            view.insert(1, "influence", ig.influence_index(board).head(panel_n)
-                        .round(0).astype(int).to_numpy())
-            view = view.drop(columns=["composite"])
-            if len(_push):
-                view = view.merge(
-                    _push[["author", "pushing", "n_calls", "n_tickers"]],
-                    on="author", how="left")
-            else:
-                view["pushing"], view["n_calls"], view["n_tickers"] = "", 0, 0
-            view["pushing"] = view["pushing"].fillna("nothing in this window")
-            view[["n_calls", "n_tickers"]] = (
-                view[["n_calls", "n_tickers"]].fillna(0).astype(int))
-            view = view.rename(columns={"pushing": f"pushing (last {days}d)",
-                                        "n_calls": "calls in window",
-                                        "n_tickers": "names",
-                                        "called_tops": "called tops",
-                                        "bought_tops": "bought tops",
-                                        "loud_but_wrong": "loud but wrong"})
-            view.insert(0, "rank", range(1, len(view) + 1))
-            # LAST, after every merge: the `author` column above is the join
-            # key for `_push`, so masking earlier would drop every masked
-            # author's tickers. Censor once the frame is final and about to be
-            # rendered.
-            view["author"] = half_mask_series(view["author"])
-            st.dataframe(view, width="stretch", hide_index=True, height=430,
-                         column_config={
-                             "influence": st.column_config.ProgressColumn(
-                                 "influence", min_value=0, max_value=100,
-                                 format="%d",
-                                 help=(
-                                     "0-100, where 100 is the strongest "
-                                     "measured record in the store. A "
-                                     "RELATIVE scale, not an accuracy: it "
-                                     "blends how often they were right, how "
-                                     "big the moves they called were, and "
-                                     "how clearly they said it, each shrunk "
-                                     "toward the crowd average so five lucky "
-                                     "calls cannot beat fifty solid ones."))})
-            st.caption(
-                "**What each column is.** *influence* - the 0-100 rank score "
-                "above; the number is only meaningful against the other "
-                "names here, which is exactly why it is drawn as a bar "
-                "rather than printed as a decimal. *pushing* - the tickers "
-                f"this person actually called in the last {days} days, "
-                "netted, most-conviction first, so a person who went long "
-                "then short a name shows MIXED rather than appearing twice. "
-                "*called tops* - bearish calls made inside a crowd heat peak "
-                "window that the bust then confirmed; *bought tops* is the "
-                "opposite, bullish into the same peak. *loud but wrong* - "
-                "heavily replied-to but below-median record.\n\n**No hit "
-                f"rate here, deliberately.** {n_high:,} of these "
-                f"{len(board):,} names are HIGH tier. Per-person accuracy is "
-                "measured, stored and reported in notebook 05, where it can "
-                "sit next to its sample size and its confidence interval; on "
-                "a screen, next to a shrunk score, it only ever invited the "
-                "comparison the shrinkage exists to prevent.")
 
         with _i4:
             # ---- 5. the influence map -------------------------------------
@@ -6774,60 +7089,6 @@ if active_tab == "Influence tracker":
                                "high reach on barely-above-chance accuracy.")
                 else:
                     st.caption("nobody currently fits the profile")
-
-        # ---- 7. the honest caveat, from the notebook -------------------
-        _nb05 = os.path.join(ROOT, "docs", "research", "nb05_influence.json")
-        with st.expander("WHY THERE IS NO MODEL ON THIS TAB (click to "
-                         "expand) - what notebook 05 measured",
-                         expanded=False):
-            st.markdown(
-                "Notebook 05 puts the influential-user model through a "
-                "full battery on this store: eight architectures "
-                "(GraphSAGE, GCN, SGC/MixHop, H2GCN, label propagation, an "
-                "MLP and a linear baseline), a feature-ablation study, a "
-                "graph-perturbation study, a label-shuffle significance "
-                "test and an unseen-author generalisation test. Three "
-                "results decide what this tab shows:\n\n"
-                "1. **The features carry real signal.** Shuffling the "
-                "labels 200 times puts the measured score far outside the "
-                "null (p = 0.005, the floor a 200-permutation test can "
-                "report). This is not noise.\n"
-                "2. **The graph does not earn its complexity.** Against a "
-                "plain linear model, on 10 paired seeds, not one graph "
-                "architecture's confidence interval clears zero - several "
-                "are significantly *worse*. The reason is measured: the "
-                "useful authors are **heterophilous** (a useful author's "
-                "neighbours are useful only 9% of the time, vs 96% for the "
-                "rest), so message-passing averages their signal away. "
-                "Deliberately *breaking* the graph the adversarial way "
-                "(DICE) **raises** the score, which is the same statement "
-                "from the other side.\n"
-                "3. **It does not generalise to new authors.** Split by "
-                "tenure instead of at random - train on established "
-                "accounts, test on ones the model has never seen - and "
-                "every model lands at or below the random floor.\n\n"
-                "So the board above is ranked by the **measured** composite "
-                "(a record, not a prediction), and no influence number "
-                "touches the crowd heat signal. Full evidence, plots and "
-                "confidence intervals: `notebooks/"
-                "05_influence_users_model.py`.")
-            if os.path.exists(_nb05):
-                _v = _read_json(_nb05, _mtime(_nb05))
-                _h, _s = _v.get("headline", {}), _v.get("significance", {})
-                st.caption(f"measured in the notebook run of {_v.get('date')} "
-                           f"- AP = average precision, the metric that "
-                           f"survives a 5%-positive class:")
-                _r1, _r2, _r3, _r4 = st.columns(4)
-                _r1.metric("shipped model",
-                           str(_v.get("shipped", {}).get("model", "-")),
-                           f"{_v.get('shipped', {}).get('n_features', 0)} "
-                           f"features")
-                _r2.metric("AP", f"{_h.get('ap', float('nan')):.3f}",
-                           f"random floor {_h.get('ap_random', 0):.3f}")
-                _r3.metric("AUROC", f"{_h.get('auroc', float('nan')):.3f}")
-                _r4.metric("label-shuffle p",
-                           f"{_s.get('p_value', float('nan')):.3f}",
-                           f"{_s.get('n_perm', 0)} permutations")
 
 # ---- TOP TRENDS ----
 if active_tab == "Top trends":
@@ -7142,10 +7403,10 @@ def _snapshot_text(mr):
                     + ".")
     fi, fo = mr.get("flag_in") or [], mr.get("flag_out") or []
     if fo:
-        bits.append("The detector was calling **WARNING** on "
+        bits.append("The detector was calling **CUT EXPOSURE** on "
                     + ", ".join(theme_label(n) for n in fo[:4]) + ".")
     elif fi:
-        bits.append("The detector was calling **CONSIDER** on "
+        bits.append("The detector was calling **INCREASE EXPOSURE** on "
                     + ", ".join(theme_label(n) for n in fi[:4]) + ".")
     else:
         bits.append("No crowd heat flag was live that week.")
@@ -7288,9 +7549,14 @@ if active_tab == "AI Pulse":
                   "the slider above.**" if _stale_words else ""))
     _pulse = _ai_pulse_load()
     _pulse_real = _pulse is not None and not _pulse.get("mock")
-    _c1, _c2 = st.columns([3, 1])
+    # The refresh button SPAWNS THE PIPELINE, so it belongs with the
+    # other pipeline controls: workstation only. A hosted viewer cannot
+    # run it (no credentials, ephemeral disk) and should not be shown a
+    # control that spends an API budget.
+    _c1, _c2 = st.columns([3, 1] if LOCAL_CONTROLS else [1, 0.0001])
     with _c2:
-        if st.button("refresh this page now (poll + pulse)",
+        if LOCAL_CONTROLS and st.button(
+                     "refresh this page now (poll + pulse)",
                      disabled=_pipe_running,
                      help="Re-runs BOTH sections: the retail-prompt "
                           "poll (section B, ~1 min - 12 gateway calls) "
@@ -7312,10 +7578,10 @@ if active_tab == "AI Pulse":
                        "numbers below, because asking whether the story "
                        "matches the record needs both halves")
         elif _pulse is not None:
-            st.warning("This pulse was generated in MOCK mode (no "
-                       "Apollo gateway) - placeholders only. Generate "
-                       "on the desk machine (VPN + dimsum_lite) for "
-                       "the real read.")
+            st.warning("This pulse is placeholder text, not a real "
+                       "read - it was generated with no model reachable. "
+                       "It refreshes on the next pipeline run that has "
+                       "a provider available.")
         else:
             st.warning("No pulse generated yet - the sections below are "
                        "HAND-WRITTEN SAMPLES showing the format. Run an "
@@ -7613,7 +7879,7 @@ if active_tab == "[dev] Data Stats":
         ("theme sentiment", "daily_theme_sentiment.parquet"),
         ("emerging terms", "daily_term_counts.parquet"),
         ("episodes (ground truth)", "episodes.parquet"),
-        ("desk signals (CONSIDER/OUT)", "euphoria_desk.parquet"),
+        ("desk signals (INCREASE EXPOSURE/OUT)", "euphoria_desk.parquet"),
         ("crowd heat levels", "euphoria_levels.parquet"),
     ]
     _rows_ds = []
@@ -7799,12 +8065,12 @@ if active_tab == "[dev] Data Stats":
     _gi_ds = (desk_report or {}).get("get_in") or {}
     _go_ds = (desk_report or {}).get("get_out") or {}
     _xp_ds = (desk_report or {}).get("experimental_price_blind") or {}
-    st.caption(f"Desk model: **{_mdl_ds}** | Standard cuts (F1): CONSIDER "
+    st.caption(f"Desk model: **{_mdl_ds}** | Standard cuts (F1): INCREASE EXPOSURE "
                f"{_gi_ds.get('live_threshold', float('nan')):.3f} / "
-               f"WARNING {_go_ds.get('live_threshold', float('nan')):.3f}"
-               f" | Strict cuts (F0.5): CONSIDER "
+               f"CUT EXPOSURE {_go_ds.get('live_threshold', float('nan')):.3f}"
+               f" | Strict cuts (F0.5): INCREASE EXPOSURE "
                f"{(_gi_ds.get('strict_threshold') or float('nan')):.3f} /"
-               f" WARNING "
+               f" CUT EXPOSURE "
                f"{(_go_ds.get('strict_threshold') or float('nan')):.3f} | "
                "trigger: shaped crossings (phase-gated, re-armed, "
                "63d spacing, 21d IN/OUT separation) | records: "
@@ -7817,9 +8083,9 @@ if active_tab == "[dev] Data Stats":
         st.caption(f"Experimental price-blind trigger: **{_xp_ds.get('model')}** "
                    f"on {len(_xp_ds.get('bank') or [])} crowd-only "
                    f"measurements, NO price features, NO phase gate | "
-                   f"Standard cuts: CONSIDER "
+                   f"Standard cuts: INCREASE EXPOSURE "
                    f"{(_xgi.get('strict_threshold') or float('nan')):.3f} / "
-                   f"WARNING {(_xgo.get('strict_threshold') or float('nan')):.3f}"
+                   f"CUT EXPOSURE {(_xgo.get('strict_threshold') or float('nan')):.3f}"
                    f" | F1 cuts: "
                    f"{(_xgi.get('live_threshold') or float('nan')):.3f} / "
                    f"{(_xgo.get('live_threshold') or float('nan')):.3f} | "

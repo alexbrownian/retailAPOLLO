@@ -116,7 +116,13 @@ def run(log=print) -> tuple[bool, str]:
         try:
             text = ai.chat(p["prompt"], system=_SYSTEM,
                            temperature=POLL_TEMPERATURE,
-                           max_tokens=700)
+                           # 700 was sized for the gateway's model.
+                           # The poll asks for a NATURAL answer plus a
+                           # JSON summary, and a more verbose model
+                           # spends the budget on the prose and is cut
+                           # off before the JSON - which is exactly how
+                           # this failed in production.
+                           max_tokens=2500)
         except RuntimeError as e:
             log(f"AI POLL: stopped early - {e}")
             break

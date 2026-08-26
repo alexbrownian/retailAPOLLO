@@ -55,11 +55,21 @@ CONFIG (all optional, all read from .env / the environment):
                              RESTRICTED is the conservative default)
     AI_USER_ID               passed to apollo.client() if set
     AI_MAX_CALLS             hard per-process budget, default 80 — a
-                             runaway loop hits this, never the gateway.
-                             One full update spends about 36: the poll's
-                             30 prompts, the pulse's 5 calls and the
-                             weekly keyword audit, with headroom so a
-                             couple of retries cannot exhaust it
+                             runaway loop hits this, never a provider.
+                             A full update now spends about 40: the
+                             poll's 30 prompts, the pulse's 9 (one
+                             whole-market read, SIX theme-brief batches,
+                             catalysts, agentic) and the weekly keyword
+                             audit. The pulse's batch count is not fixed
+                             — it is ceil(themes / THEMES_PER_CALL), so
+                             halving that constant doubles those calls.
+                             It was halved to 6 when a more verbose model
+                             began truncating 12-theme batches, which
+                             took a run from ~37 calls to exactly 40 and
+                             silently exhausted a 40-call budget on the
+                             LAST call of the pulse. Leave real headroom:
+                             a budget sized to the expected cost fails
+                             the moment one call retries
     AI_MOCK                  '1' = return deterministic canned output
                              without any network (tests, cloud dev)
 
@@ -218,7 +228,7 @@ def explain_unavailable() -> str:
 
 
 def chat(prompt: str, system: str | None = None, *,
-         want_json: bool = False, max_tokens: int = 1800,
+         want_json: bool = False, max_tokens: int = 4000,
          temperature: float = 0.0, retries: int = 2):
     """One completion. Returns str (or parsed object when want_json).
     Raises RuntimeError when the gateway is unreachable or the per-run
@@ -304,20 +314,73 @@ def _call_anthropic(client, prompt, system, max_tokens, temperature) -> str:
     if _anthropic_accepts_temperature(client):
         kwargs["temperature"] = temperature
     resp = client.messages.create(**kwargs)
-    return "".join(block.text for block in resp.content
+    text = "".join(block.text for block in resp.content
                    if getattr(block, "type", None) == "text")
+    if not text.strip():
+        # An empty answer used to be returned as "", which _parse_json
+        # then reported as `Expecting value: line 1 column 1 (char 0)` -
+        # a message that names the symptom and hides every cause. Say
+        # what the API actually reported instead: stop_reason
+        # distinguishes a refusal from a truncation from an empty turn,
+        # and the block types show whether the text simply arrived in a
+        # shape this join does not read.
+        raise RuntimeError(
+            "the model returned no text "
+            f"(stop_reason={getattr(resp, 'stop_reason', '?')!r}, "
+            f"blocks={[getattr(b, 'type', '?') for b in resp.content]}, "
+            f"max_tokens={max_tokens})")
+    if getattr(resp, "stop_reason", None) == "max_tokens":
+        # Truncated JSON parses as a syntax error somewhere in the
+        # middle, which reads like a model fault rather than a budget
+        # one. Name it at the point it happens.
+        raise RuntimeError(
+            f"the answer hit the {max_tokens}-token ceiling and was cut "
+            "off mid-sentence; raise max_tokens for this call or ask "
+            "for fewer items at once")
+    return text
 
 
 def _parse_json(text: str):
     """The gateway's deployments do not all honour response_format, so
-    JSON is asked for in the prompt and extracted defensively here."""
+    JSON is asked for in the prompt and extracted defensively here.
+
+    strict=False is deliberate. A model writing a paragraph into a JSON
+    string value puts REAL newlines and tabs inside the quotes rather
+    than the \\n escapes the spec demands, and strict parsing rejects
+    the whole document for it:
+
+        JSONDecodeError: Invalid control character at: line 21 column 1151
+
+    That is a formatting nicety, not a corrupt answer - the text either
+    side of it is exactly what was asked for - so the control characters
+    are accepted rather than the response thrown away. Everything else
+    about the parse stays strict: a genuinely malformed object still
+    raises, and the caller still retries.
+    """
     text = text.strip()
     m = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
     if m:
         text = m.group(1).strip()
     start = min((i for i in (text.find("{"), text.find("["))
                  if i >= 0), default=0)
-    return json.loads(text[start:])
+    body = text[start:]
+    try:
+        return json.loads(body, strict=False)
+    except json.JSONDecodeError:
+        # LAST RESORT: a trailing comma or an unterminated tail from a
+        # long answer. Walk back to the last balanced close and try that
+        # prefix, so one ragged ending does not discard a good object.
+        depth, last_ok = 0, None
+        for i, ch in enumerate(body):
+            if ch in "{[":
+                depth += 1
+            elif ch in "}]":
+                depth -= 1
+                if depth == 0:
+                    last_ok = i + 1
+        if last_ok:
+            return json.loads(body[:last_ok], strict=False)
+        raise
 
 
 # ---------------------------------------------------------------------------
