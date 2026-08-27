@@ -3003,7 +3003,11 @@ class TestWeeklySnapshot:
     def test_the_snapshot_is_computed_not_retrieved(self):
         src = self._src()
         assert "def _snapshot_text(" in src
-        assert "Written from the numbers, not by the model" in src
+        # 2026-08-27: the rendered digest (snapshot quote + the crowd/
+        # felt columns) was removed from the AI Pulse tab on request
+        # ("remove this section"); the composer stays for notebook and
+        # CLI use. Guard that the section STAYS removed.
+        assert "What the crowd was talking about" not in src
 
     def test_it_reports_flags_terms_and_rotation(self):
         """A snapshot that only gave a mood score would not be worth

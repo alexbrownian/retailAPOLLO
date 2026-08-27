@@ -481,6 +481,66 @@ HIGH_CONV_HELP = (
     "only annotates one."
 )
 
+# ---- LEVEL-CONDITIONED OUTCOMES ------------------------------------------
+# "Given where the crowd heat sits TODAY, what did price do next the
+# other times it sat here?" - the question a PM actually asks, replacing
+# the after-a-signal record (n=1 on most names, which is a story, not a
+# statistic). One row per (name, day): the level and the forward price
+# change at 5/20/84 trading days. Built once, cached on the two source
+# files' mtimes; per-name slices and the all-theme pool both cut from
+# the same frame so they can never disagree.
+@st.cache_resource(show_spinner=False)
+def _level_outcome_frame(lv_mtime, px_mtime):
+    """DataFrame(name, level, f5, f20, f84) for every theme day."""
+    lv_path = os.path.join(PROCESSED_DIR, "euphoria_levels.parquet")
+    if not (os.path.exists(lv_path) and os.path.exists(PRICES_PATH)):
+        return None
+    lv = pd.read_parquet(lv_path,
+                         columns=["date", "name", "symbol", "kind", "level"])
+    lv = lv[(lv["kind"] == "theme") & lv["level"].notna()]
+    lv["date"] = pd.to_datetime(lv["date"])
+    px = pd.read_parquet(PRICES_PATH)
+    px["date"] = pd.to_datetime(px["date"])
+    out = []
+    for sym, g in lv.groupby("symbol"):
+        p = px[px["symbol"] == sym].sort_values("date")
+        if len(p) < 100:
+            continue
+        pdates, pvals = p["date"].values, p["px_last"].values
+        idx = pd.Series(pdates).searchsorted(g["date"].values)
+        for (_, r), i in zip(g.iterrows(), idx):
+            i = min(int(i), len(pvals) - 1)
+            row = {"name": r["name"], "date": r["date"],
+                   "level": float(r["level"])}
+            for h in (5, 20, 84):
+                j = i + h
+                row[f"f{h}"] = (float(pvals[j] / pvals[i] - 1)
+                                if j < len(pvals) and pvals[i] else None)
+            out.append(row)
+    return pd.DataFrame(out) if out else None
+
+
+def level_conditioned_stats(name, level_now, band=10.0, min_n=10):
+    """Median forward px change on days this name's level sat near
+    today's. Returns (rows, pooled_flag) - pooled across all themes when
+    the name's own sample is under min_n, and says so."""
+    lf = _level_outcome_frame(
+        _mtime(os.path.join(PROCESSED_DIR, "euphoria_levels.parquet")),
+        _mtime(PRICES_PATH))
+    if lf is None or level_now is None:
+        return None, False
+    m = (lf["level"] - float(level_now)).abs() <= band
+    own = lf[m & (lf["name"] == name)]
+    pooled = len(own.dropna(subset=["f5"])) < min_n
+    d = lf[m] if pooled else own
+    rows = []
+    for h in (5, 20, 84):
+        v = d[f"f{h}"].dropna()
+        if len(v):
+            rows.append((h, float(v.median()), int(len(v))))
+    return (rows or None), pooled
+
+
 # ---- DISPLAY-ONLY INSTRUMENT HIDING --------------------------------------
 # Names the dashboard does not draw. They are still fetched, still scored
 # and still written to the stores - this is a screen filter and nothing
@@ -503,17 +563,12 @@ ACTION_READY_PCT = 90.0
 ACTION_MIN_ROWS = 5
 # How many recently-fired signals the landing page lists.
 ACTION_FIRED_ROWS = 8
-# Freshness is DISCLOSED, not filtered. Dropping stale names emptied
-# the CUT side entirely - four themes have cleared the boom bar and
-# every one was last scored weeks or months ago - and an empty list
-# reads as a broken page rather than as "nothing to do".
-#
-# So every eligible name is listed, and age is surfaced INSIDE the row
-# instead: the label stays clean, and opening a stale one leads with
-# how old it is. That keeps the page populated without letting it imply
-# a reading from April 2025 is a call about today - which is the defect
-# this whole area was fixed for once already.
-ACTION_STALE_DAYS = 7
+# A reading older than this is dropped from the lists. 21 days - one
+# signal cooldown - is the shelf life of "act on this now": beyond it
+# the crowd state that produced the score has turned over. This page
+# once showed a 499-day-old reading two rows above one from yesterday,
+# visually identical; a short honest list beats a long misleading one.
+ACTION_STALE_DAYS = 21
 
 
 def _hide(df):
@@ -530,6 +585,37 @@ def _hide(df):
 # has to be rewritten and no pipeline rerun is needed; anything not in
 # the map (INFLECTION..., future names) passes through untouched.
 _SIDE_DISPLAY = {"GET IN": "INCREASE EXPOSURE", "GET OUT": "CUT EXPOSURE"}
+
+
+def eligible_scored_now(g):
+    """The last row whose OWN eligible-side score exists: gate and score
+    from the SAME day.
+
+    The desk store's newest rows are unscored placeholders whose
+    boomed120 reads False, so "gate from the last row, score from the
+    last scored row" mixed two different days - and on a day when every
+    placeholder read not-boomed, every theme landed on the INCREASE side
+    and the CUT list rendered empty while four themes were genuinely
+    CUT-eligible (biotech 83%, cloud_saas 86%, uranium 91%). One rule,
+    used by the landing rows, the dial and the radar, so the three can
+    never disagree about which side a name is on."""
+    if g is None or not len(g):
+        return None
+    b = g["boomed120"].fillna(False).astype(bool)
+    ok = pd.Series(False, index=g.index)
+    if OUT_SCORE in g.columns:
+        ok |= (b & g[OUT_SCORE].notna())
+    if IN_SCORE in g.columns:
+        ok |= (~b & g[IN_SCORE].notna())
+    if not ok.any():
+        return None
+    r = g[ok].iloc[-1]
+    # the FILLED gate, not the raw value: the mask above treats a NaN
+    # gate as False, and returning bool(nan)=True here would report a
+    # row the mask selected as IN-eligible as CUT - whose score on that
+    # row is NaN, which min/max arithmetic then turns into a phantom
+    # "100% of the way" entry
+    return r, bool(b.loc[r.name])
 
 
 def _side_label(side) -> str:
@@ -1221,6 +1307,13 @@ p, li, [data-testid="stMarkdownContainer"] p {{
     text-transform: uppercase; letter-spacing: 0.12em;
     margin: 2px 0 6px 0;
 }}
+/* The page's two-line key: large enough to be furniture, quiet
+   enough not to shout over the lists it explains. */
+.rf-keyline {{
+    font-size: 1.35rem; font-weight: 300; line-height: 1.55;
+    color: {INK}; margin: 0.4rem 0 1.2rem 0;
+    letter-spacing: -0.01em;
+}}
 .rf-actionhead {{
     font-size: 0.86rem; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.14em;
@@ -1386,11 +1479,11 @@ def _facts(items):
     rows = []
     for label, value, colour in items:
         rows.append(
-            "<div style='margin:0 0 12px 0'>"
-            "<div style='font-size:10px;letter-spacing:.09em;"
+            "<div style='margin:0 0 14px 0'>"
+            "<div style='font-size:12px;letter-spacing:.09em;"
             f"text-transform:uppercase;color:{INK_LABEL};"
-            f"margin-bottom:1px'>{label}</div>"
-            "<div style='font-size:20px;font-weight:600;line-height:1.15;"
+            f"margin-bottom:2px'>{label}</div>"
+            "<div style='font-size:28px;font-weight:600;line-height:1.15;"
             f"color:{colour or INK}'>{value}</div></div>")
     return "<div style='padding-top:6px'>" + "".join(rows) + "</div>"
 
@@ -1582,7 +1675,8 @@ READY_HELP_XP = (
 
 
 def fig_euphoria_gauge(level_now, level_prev, in_danger, z, as_of,
-                       peak_val=None, peak_day=None):
+                       peak_val=None, peak_day=None,
+                       title_text=None, band_text=None, band_colour_o=None):
     """A speedometer for one name.  Needle = the CURRENT smoothed crowd heat
     level; delta = the same curve one smoothing window ago.
 
@@ -1617,6 +1711,14 @@ def fig_euphoria_gauge(level_now, level_prev, in_danger, z, as_of,
     """
     red, amber = z["red_edge"], z["amber_edge"]
     _, band_label, band_colour = gauge_state(level_now, in_danger, z)
+    # The readiness dial passes its own header and band word: the crowd
+    # -heat vocabulary (WARMING, the CROWD HEAT title) on a needle that
+    # is measuring distance-to-trigger was two different instruments
+    # sharing one face - the exact confusion this dial was built to end.
+    if band_text is not None:
+        band_label = band_text
+    if band_colour_o is not None:
+        band_colour = band_colour_o
     fig = go.Figure(go.Indicator(
         mode="gauge+number+delta",
         value=float(level_now),
@@ -1662,8 +1764,8 @@ def fig_euphoria_gauge(level_now, level_prev, in_danger, z, as_of,
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(family=FONT_STACK, color=INK),
         annotations=[
-            dict(text=("CROWD HEAT AT "
-                       f"{pd.Timestamp(as_of).strftime('%d %b %Y').upper()}"),
+            dict(text=(title_text or ("CROWD HEAT AT "
+                       f"{pd.Timestamp(as_of).strftime('%d %b %Y').upper()}")),
                  xref="paper", yref="paper", x=0.5, y=1.32,
                  xanchor="center", yanchor="bottom", showarrow=False,
                  font=dict(size=10, color=INK_LABEL)),
@@ -1694,7 +1796,7 @@ def fig_euphoria_gauge(level_now, level_prev, in_danger, z, as_of,
             text=("this IS the window's high point" if _same else
                   (f"window high <b>{float(peak_val):.0f}</b> "
                    f"({_pk_band}) on "
-                   f"{pd.Timestamp(peak_day).strftime('%d %b')}")))
+                   f"{pd.Timestamp(peak_day).strftime('%d %b %y')}")))
         # the taller frame and deeper bottom margin are what keep this line
         # inside the canvas - at the base 268/36 it renders below the cut
         fig.update_layout(height=300, margin=dict(l=28, r=28, t=64, b=74))
@@ -4035,23 +4137,12 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                         "episode window closes")
             return None
 
-        _ph_now = None
-        if _have_dial:
-            _d_now = _lvl_ok.index[_pos]
-            _ph_now = (("UNTRACKED", INK_MUTED, "")
-                       if (use_desk and (dk_i is None or not len(dk_i))
-                           and _on_mean is None)
-                       else None) or _disp_state(_d_now) or _phase_of(
-                _L_ser.get(_d_now, float("nan")),
-                _on_mean.get(_d_now, float("nan"))
-                if _on_mean is not None else None)
+        # (_ph_now phase-state block removed - its panel is gone)
 
-        # ---- THE SIGNAL OUTCOME RECORD + the price-scale switch live in
-        # a FOURTH column beside the dial (recorded decision).  The
-        # record is this name's own history, full data, judged exactly the
-        # way the notebooks judge it - alerts too new to judge are PENDING
-        # and never counted.
-        _rec = _outcome_stats(name, lo, hi)
+        # The after-signal outcome record was replaced by the
+        # level-conditioned stats; its computation (two rolling scans
+        # over the full price history, per chart, per rerun) ran on,
+        # discarded - the single largest waste on the page.
         _log_scale = False
         if _have_dial:
             _now = float(_lvl_ok.iloc[_pos])
@@ -4070,10 +4161,21 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
             # be precisely the confusion this mode exists to remove.
             _ready = None
             if READINESS_DIAL and dk_i is not None and len(dk_i):
-                _upto = dk_i[dk_i.index <= _lvl_ok.index[_pos]]
+                # At the slider's right edge, use the FULL desk
+                # history: the euphoria-levels store can end days before
+                # the desk store, and capping by it made the dial read a
+                # different day than the list above it (94 vs 91 on the
+                # same screen). A dragged slider still caps as before.
+                _upto = (dk_i if _as_of_click is None
+                         else dk_i[dk_i.index <= _lvl_ok.index[_pos]])
                 if len(_upto):
-                    _ready = readiness_now(_upto.iloc[-1].to_dict(),
-                                           _thr_in_d, _thr_out_d)
+                    # gate and score from the SAME day - see
+                    # eligible_scored_now. readiness_now then reads that
+                    # row's own boom state and eligible-side score.
+                    _es_u = eligible_scored_now(_upto)
+                    if _es_u is not None:
+                        _ready = readiness_now(_es_u[0].to_dict(),
+                                               _thr_in_d, _thr_out_d)
             if _ready is not None:
                 _rd_now, _rd_side, _rd_sc, _rd_cut = _ready
                 _sc_col_r = (OUT_SCORE if _rd_side == "CUT EXPOSURE"
@@ -4092,44 +4194,43 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                     else _g_now
                 _g_pkd = (_hist_r.idxmax() if len(_hist_r)
                           else _lvl_ok.index[_pos])
-                _g_help = (READY_HELP_XP if XP_TRIGGER
-                           else READY_HELP).format(side=_rd_side)
-                _g_sub = (f"% of the way to <b>{_rd_side}</b> · "
-                          f"100 = fires")
+                # NAME THE SIDE. "91/100" with no side was how a dial
+                # pointing at INCREASE sat over a chart whose recent
+                # days were CUT-eligible and read as a contradiction.
                 _facts_rows = [
-                    ("state", _zlab, _zcol),
-                    (f"% to {_rd_side.lower()}",
-                     f"{_rd_now:.0f}<span style='font-size:13px;"
-                     f"color:{INK_LABEL}'>/100</span>", None),
-                    ("crowd heat today",
-                     f"{_now:.0f}<span style='font-size:13px;"
+                    (f"% of the way to {_rd_side.lower()}",
+                     f"{_rd_now:.0f}<span style='font-size:17px;"
                      f"color:{INK_LABEL}'>/100</span>", None),
                 ]
             else:
                 _g_now, _g_ref, _g_z = _now, _ref, _z
                 _g_pkv, _g_pkd = _pk_v, _pk_d
-                _g_sub = "what this dial means"
-                _g_help = (gauge_headline(_now, _dgr, _z, _pk_v, _pk_d)
-                           + "\n\n" + gauge_caption(_now, _dgr, _z)
-                           + "\n\n"
-                           + GAUGE_HELP.format(red=_z["red_edge"],
-                                               amber=_z["amber_edge"]))
                 _facts_rows = [
-                    ("state", _zlab, _zcol),
-                    ("crowd heat today" if _as_of_click is None
-                     else "crowd heat on that day",
-                     f"{_now:.0f}<span style='font-size:13px;"
-                     f"color:{INK_LABEL}'>/100</span>", None),
                     (f"change over {ROLL} days", f"{_now - _ref:+.0f}",
                      None),
                 ]
             _gc, _f1, _f2, _f3 = st.columns([1.05, 0.85, 1.00, 1.25])
             with _gc:
+                _g_title = _g_band = _g_bcol = None
+                if _ready is not None:
+                    _g_title = ("% OF THE WAY TO A SIGNAL · "
+                                + pd.Timestamp(_lvl_ok.index[_pos])
+                                .strftime("%d %b %Y").upper())
+                    _g_band = _rd_side
+                    # TEAL, this palette's dark accent - TEAL_TEXT was a
+                    # token from the reverted re-skin and does not exist
+                    # here; referencing it crashed every INCREASE-side
+                    # chart while the CUT branch sailed past the test.
+                    _g_bcol = (BEAR if _rd_side == "CUT EXPOSURE"
+                               else TEAL)
                 st.plotly_chart(
                     fig_euphoria_gauge(_g_now, _g_ref,
                                        _dgr and _ready is None, _g_z,
                                        _lvl_ok.index[_pos],
-                                       peak_val=_g_pkv, peak_day=_g_pkd),
+                                       peak_val=_g_pkv, peak_day=_g_pkd,
+                                       title_text=_g_title,
+                                       band_text=_g_band,
+                                       band_colour_o=_g_bcol),
                     width="stretch", key=f"{key}_gauge")
                 # SAY WHEN. A dial on a past day looks exactly like a dial
                 # on today, so the date is stated whenever the reading is
@@ -4140,101 +4241,59 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                         "font-weight:600'>reading "
                         + pd.Timestamp(_as_of_click).strftime("%d %b %y")
                         + "</span>", unsafe_allow_html=True)
-                st.markdown(
-                    f"<span style='font-size:11px;color:{INK_MUTED}'>"
-                    f"{_g_sub}</span>",
-                    unsafe_allow_html=True, help=_g_help)
+                # subtitle line removed on request ("remove this") -
+                # the dial's own title already names the side and scale
             with _f1:
                 st.markdown(_facts(_facts_rows), unsafe_allow_html=True)
             with _f2:
+                # Trimmed to the one fact a reader acts on. The state
+                # words (calm/quiet), the window peak and the in/out
+                # counts were removed by request - they described the
+                # chart the reader is already looking at.
                 st.markdown(_facts([
-                    ("hottest in window",
-                     f"{_pk_v:.0f}<span style='font-size:13px;"
-                     f"color:{INK_LABEL}'> · "
-                     f"{pd.Timestamp(_pk_d).strftime('%d %b %y')}</span>",
-                     None),
                     ("last signal", _last_sig, _last_col),
-                    ("signals in window",
-                     f"{len(onset_alerts)}<span style='font-size:13px;"
-                     f"color:{INK_LABEL}'> in · </span>"
-                     f"{len(top_alerts)}<span style='font-size:13px;"
-                     f"color:{INK_LABEL}'> out</span>", None),
-                ] + ([("signal state" + ("" if _as_of_click is None
-                                         else " on that day"),
-                       _ph_now[0], _ph_now[1])]
-                     if _ph_now is not None else [])),
-                    unsafe_allow_html=True)
-                if _ph_now is not None:
-                    st.markdown(
-                        f"<span style='font-size:11px;color:{INK_MUTED}'>"
-                        "what the states mean</span>",
-                        unsafe_allow_html=True,
-                        help=(f"**Right now: {_ph_now[0]}** — "
-                              f"{_ph_now[2]}.\n\n" + STATE_HELP)
-                        if len(_ph_now) > 2 else STATE_HELP)
+                ]), unsafe_allow_html=True)
             with _f3:
+                # CONDITIONED ON TODAY, not on past signals. The old
+                # block showed the median move after this name's own
+                # fired signals - n=1 on most names, a story rather than
+                # a statistic. This one asks the question a PM actually
+                # has: the other times crowd heat sat where it sits
+                # TODAY, what did price do next? Same-name days first;
+                # pooled across all themes when the name alone is too
+                # thin, and labelled when it is.
                 _rows = []
-                _small = (f"<span style='font-size:13px;"
+                _small = (f"<span style='font-size:15px;"
                           f"color:{INK_LABEL}'>")
-
-                def _chg_str(side_rec):
-                    ch = side_rec["chg"]
-                    return " / ".join(
-                        (f"{ch[h]:+.1%}" if ch[h] is not None else "-")
-                        for h in (5, 20, 84))
-
-                for _sd, _lab2, _clr2, _verb in (
-                        ("out", "CUT EXPOSURE", BEAR, "fall"),
-                        ("in", "INCREASE EXPOSURE", TEAL, "rally")):
-                    _r = (_rec or {}).get(_sd)
-                    if _rec is None:
-                        # no price series at all - saying "no signals"
-                        # beside drawn flags would be false (review
-                        # 2026-08-02 #7)
-                        _rows.append((f"{_lab2} record",
-                                      "no price data to judge signals",
-                                      None))
-                        continue
-                    if not _r or not _r["n"]:
-                        _rows.append((f"{_lab2} record",
-                                      "no signals in this window",
-                                      None))
-                        continue
+                _cond, _pooled = level_conditioned_stats(name, _now)
+                if _cond:
+                    _cs = " / ".join(f"{v:+.1%}" for _h, v, _n in _cond)
+                    _cn = min(_n for _h, _v, _n in _cond)
                     _rows.append(
-                        (f"{_lab2} · median px after 5/20/84 td",
-                         f"{_chg_str(_r)}{_small} · n={_r['n']}</span>",
-                         _clr2))
-                    if _r["judged"]:
-                        _w = (f"{_r['med_wait']:.0f}d"
-                              if _r["med_wait"] is not None else "no hit")
-                        _rows.append(
-                            (f"median wait to a ≥10%-in-7d {_verb}",
-                             f"{_w}{_small} · hit "
-                             f"{_r['hits']}/{_r['judged']} signals</span>",
-                             None))
+                        ("at a trigger level like today's · "
+                         "median px after 5/20/84 td",
+                         f"{_cs}{_small} · n≥{_cn}"
+                         + (" · all themes pooled" if _pooled
+                            else " · this name") + "</span>",
+                         None))
+                else:
+                    _rows.append(("at a trigger level like today's",
+                                  "no comparable days on record", None))
                 st.markdown(_facts(_rows), unsafe_allow_html=True)
                 st.markdown(
                     f"<span style='font-size:11px;color:{INK_MUTED}'>"
                     "what this record means</span>",
                     unsafe_allow_html=True,
-                    help="This name's signal record FOR THE SIDEBAR "
-                         "WINDOW - change the window and it recomputes. "
-                         "Judging always uses the full price history; the "
-                         "window only selects which signals count. "
-                         "**median px after 5/20/84 td**: the median price "
-                         "change 5, 20 and 84 TRADING days after each "
-                         "signal (a week / a month / the project's "
-                         "baseline window; a horizon's median may rest on fewer "
-                         "than n signals when the newest are too recent "
-                         "to measure). **median wait**: days from "
-                         "the signal to the start of a ≥10%-in-7-days "
-                         "move within 30 days - a FALL after CUT EXPOSURE, a "
-                         "RALLY after INCREASE EXPOSURE; the same 10%-in-7d test "
-                         "NB06 uses for the danger state. Signals too "
-                         "new to judge are PENDING and excluded, never "
-                         "counted against the record. Medians across few "
-                         "signals are noisy - read n before reading the "
-                         "number.")
+                    help="Every past day this name's attention level sat "
+                         f"within ±10 of today's {_now:.0f} was collected, "
+                         "and the median price change 5, 20 and 84 "
+                         "TRADING days after those days is shown. When "
+                         "this name alone has fewer than 10 such days, "
+                         "the same attention band is pooled across every "
+                         "tracked theme and the row says so. It is a "
+                         "conditional base rate, not a forecast: it says "
+                         "what usually followed this crowd state, over "
+                         "the history this project holds.")
                 _log_scale = st.toggle(
                     "log price scale", key=f"{key}_log",
                     help="Plot the price on a logarithmic axis, so equal "
@@ -4844,46 +4903,120 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
             # requiring both scores was punching holes wherever the
             # other head had no candidate row that day.
             if len(_srg):
-                _rin = _srg[IN_SCORE] / float(_thr_in_d)
-                _rout = _srg[OUT_SCORE] / float(_thr_out_d)
-                if XP_TRIGGER:
-                    # no phase gate in the experimental trigger: the
-                    # nearer side carries the sign (readiness_now's own
-                    # convention)
-                    _sr = _rin.where(_rin.fillna(-9) >= _rout.fillna(-9),
-                                     -_rout)
-                else:
-                    _bmk = _srg["boomed120"].fillna(False).astype(bool)
-                    _sr = _rin.where(~_bmk, -_rout)
-                _sr = (_sr.dropna().clip(-1.15, 1.15)
-                       [lambda s: ~s.index.duplicated()])
+                # THE TWO SIDES HAVE DIFFERENT RULES (defect report:
+                # "cut side live but an INCREASE gets fired - that makes
+                # no sense"). The old signed one-side series claimed the
+                # boom gate picks a single live side; that is only true
+                # of CUT. The shipped INCREASE signal is deliberately
+                # ungated (nb08 §10.4: the gate blocks ~3/4 of its
+                # correct calls; 36 of the store's 40 fires land on
+                # boomed days), so it stays armed even through a red
+                # stretch. The bands draw the WATCH side, one at a
+                # time; the markers draw the firing truth, each at its
+                # own side's value - see the ONE BAND AT A TIME note
+                # below for how the two coexist without contradiction.
+                # ONE BAND AT A TIME - STRUCTURALLY (defect report,
+                # twice: "when red is on there shouldnt be blue at the
+                # same time"). Two masked series with NaN holes were
+                # tried; plotly's fill polygons BRIDGE NaN gaps even
+                # though the line breaks, so the two bands painted over
+                # each other as long diagonal wedges. The only airtight
+                # shape is a SINGLE signed series - one value per day,
+                # teal when positive (watching INCREASE), red when
+                # negative (run up -> watching CUT) - from which both
+                # traces are clipped. Both drawn at once is then
+                # impossible by construction, not by masking. The
+                # MARKERS still tell the firing truth: each fire plots
+                # at its own side's value, so an ungated INCREASE that
+                # fires inside a red stretch draws its teal triangle AT
+                # the INCREASE line, on top of the red band.
+                _b_g = _srg["boomed120"].fillna(False).astype(bool)
+                _rin = (_srg[IN_SCORE] / float(_thr_in_d)).clip(0, 1.15)
+                _rin = _rin[~_rin.index.duplicated()]
+                _rout = (_srg[OUT_SCORE] / float(_thr_out_d)).clip(0, 1.15)
+                _rout = _rout[~_rout.index.duplicated()]
+                _rout = _rout.reindex(_rin.index)
+                _b_g = _b_g[~_b_g.index.duplicated()]
+                # SMOOTHED SIDE ("can we smooth this a bit more?"): the
+                # raw boom gate flickers at its 20% bar (URA crossed it
+                # six times in five weeks), painting one-day colour
+                # slivers. A centred 5-day rolling MAJORITY of the gate
+                # keeps every regime shift (at most ~2d of lag) and
+                # erases the one-two-day flips. Display only - the
+                # detector still fires off the raw gate, and the
+                # fire-day override below pins every fire to its true
+                # side regardless of what the smoothed gate says.
+                _b_s = (_b_g.astype(float).reindex(_rin.index)
+                        .fillna(0.0)
+                        .rolling(5, center=True, min_periods=1)
+                        .mean() >= 0.5)
+                _sr = _rin.where(~_b_s, -_rout)
+                # rolling magnitude, sign untouched: a 3-day centred
+                # mean of the HEIGHT only, so the band rolls instead of
+                # sawing while the colour boundary stays exact
+                _sr = (_sr.abs()
+                       .rolling(3, center=True, min_periods=1).mean()
+                       * _sr.map(lambda v: (1.0 if v >= 0 else -1.0)
+                                 if pd.notna(v) else float("nan")))
+                # FIRE-DAY OVERRIDE (defect report, third round: "why is
+                # there that floating increase exposure even though the
+                # cut side is at the cut exposure side?"). The gate
+                # picks the band's side by default, but the ungated
+                # INCREASE signal can fire on a red day; a fired call
+                # OWNS its day - the band flips to the FIRING side at
+                # its own value, so every ▲▼ sits on its own colour,
+                # touching its line. No marker ever floats over the
+                # opposite band again.
+                # ...and the override is DILATED two scored days each
+                # way ("the days before and after are also blue"), so a
+                # fire owns a small neighbourhood of its own colour
+                # instead of a one-day sliver. Neighbour days take
+                # their OWN day's score on the firing side, the fire
+                # day its exact value - the marker still touches.
+                for _fcb, _fsg in ((sig_col("get_in", _srg), 1.0),
+                                   (sig_col("get_out", _srg), -1.0)):
+                    if _fcb in _srg.columns:
+                        _fdd = _srg.index[_srg[_fcb].astype(bool)]
+                        _fdd = _fdd[~_fdd.duplicated()]
+                        _own = _rin if _fsg > 0 else _rout
+                        for _fd in _fdd:
+                            _pi = _rin.index.get_indexer([_fd])
+                            if _pi[0] < 0:
+                                continue
+                            for _j in range(max(0, _pi[0] - 2),
+                                            min(len(_rin.index),
+                                                _pi[0] + 3)):
+                                _fv = _own.iloc[_j]
+                                if pd.notna(_fv):
+                                    _sr.iloc[_j] = _fsg * float(_fv)
+                _sr = _sr.dropna().sort_index()
             if len(_srg) and len(_sr):
-                # daily calendar; SHORT scoring holes (<=7d - weekends,
-                # a missed pull) carry the last reading forward, LONG
-                # gaps stay blank - an unscored month must look
-                # unscored, never invented
+                # daily calendar; SHORT holes (<=7d) carry forward, long
+                # gaps stay blank - an unscored month must look unscored
                 _sr = _sr.reindex(
                     pd.date_range(_sr.index.min(),
                                   _sr.index.max())).ffill(limit=7)
                 _fb = go.Figure()
                 _fb.add_scatter(x=_sr.index, y=_sr.clip(lower=0),
-                                name="LEADING — toward INCREASE EXPOSURE",
+                                name="INCREASE side · distance to "
+                                     "its line",
                                 mode="lines",
                                 line=dict(width=0.8, color=TEAL),
                                 fill="tozeroy",
                                 fillcolor="rgba(46,110,126,0.35)",
-                                hovertemplate="%{x|%d %b %y} · "
-                                              "%{y:+.2f}<extra>toward "
-                                              "INCREASE EXPOSURE</extra>")
+                                hovertemplate="%{x|%d %b %y} · %{y:.2f} "
+                                              "of the way<extra>INCREASE "
+                                              "side</extra>")
                 _fb.add_scatter(x=_sr.index, y=_sr.clip(upper=0),
-                                name="LEADING — toward CUT EXPOSURE",
+                                name="CUT side · shown once the "
+                                     "name has run up",
                                 mode="lines",
                                 line=dict(width=0.8, color=BEAR),
                                 fill="tozeroy",
                                 fillcolor="rgba(166,61,44,0.35)",
                                 hovertemplate="%{x|%d %b %y} · "
-                                              "%{y:+.2f}<extra>toward "
-                                              "CUT EXPOSURE</extra>")
+                                              "%{y:.2f}<extra>CUT "
+                                              "side</extra>")
                 if "retail_flow_disp" in _srg.columns:
                     _rfs = _srg["retail_flow_disp"].dropna()
                     _rfs = _rfs[~_rfs.index.duplicated()]
@@ -4898,17 +5031,35 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                             hovertemplate="%{x|%d %b %y} · "
                                           "%{y:+.2f}<extra>retail "
                                           "flow</extra>")
-                # the fired calls, on the band itself
-                for _col_b, _mk_b, _cc_b, _yy_b, _nm_b in (
+                # fired calls sit ON the curve; fall back to the line
+                # they fired at when the curve has no reading that day
+                # Each marker sits at ITS OWN side's score that day,
+                # never at the signed band's value: get_in_nogate can
+                # fire on a boomed day, where the signed band shows the
+                # CUT side - plotting there put a teal "INCREASE fired"
+                # triangle deep in the red fill at the WRONG quantity.
+                # 36 of the store's 40 nogate fires land on boomed days,
+                # so this was the rule, not the exception.
+                _y_in = (_srg[IN_SCORE] / float(_thr_in_d)).clip(0, 1.15) \
+                    if IN_SCORE in _srg.columns else pd.Series(dtype=float)
+                _y_out = (-(_srg[OUT_SCORE] / float(_thr_out_d))
+                          .clip(0, 1.15)) \
+                    if OUT_SCORE in _srg.columns else pd.Series(dtype=float)
+                _y_in = _y_in[~_y_in.index.duplicated()]
+                _y_out = _y_out[~_y_out.index.duplicated()]
+                for _col_b, _mk_b, _cc_b, _own_y, _line_y, _nm_b in (
                         (sig_col("get_in", _srg), "triangle-up", TEAL,
-                         1.05, "INCREASE EXPOSURE fired"),
+                         _y_in, 1.0, "INCREASE EXPOSURE fired"),
                         (sig_col("get_out", _srg), "triangle-down", BEAR,
-                         -1.05, "CUT EXPOSURE fired")):
+                         _y_out, -1.0, "CUT EXPOSURE fired")):
                     if _col_b in _srg.columns:
                         _dd_b = _srg.index[_srg[_col_b].astype(bool)]
                         if len(_dd_b):
+                            _yy = [float(_own_y.get(d, _line_y))
+                                   if pd.notna(_own_y.get(d, float("nan")))
+                                   else _line_y for d in _dd_b]
                             _fb.add_scatter(
-                                x=_dd_b, y=[_yy_b] * len(_dd_b),
+                                x=_dd_b, y=_yy,
                                 name=_nm_b, mode="markers",
                                 marker=dict(symbol=_mk_b, size=11,
                                             color=_cc_b,
@@ -4916,6 +5067,49 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                                                       color="white")),
                                 hovertemplate="%{x|%d %b %y}"
                                               f"<extra>{_nm_b}</extra>")
+                # one diamond per blocked stretch (the cooldown holds a
+                # crossing for 21 days by construction; a mark per day
+                # was a caterpillar of noise)
+                _fired_by_side = {}
+                for _sd_k, _cb in (("in", sig_col("get_in", _srg)),
+                                   ("out", sig_col("get_out", _srg))):
+                    _fired_by_side[_sd_k] = (
+                        set(_srg.index[_srg[_cb].astype(bool)])
+                        if _cb in _srg.columns else set())
+                # a diamond is suppressed only by ITS OWN side firing
+                # nearby - the opposite side's fire says nothing about
+                # whether this side was held. INCREASE crossings are
+                # judged on the UNMASKED series - the ungated signal
+                # stays armed through a red stretch, so a held crossing
+                # there is real even though its band is hidden; CUT
+                # crossings only on the days its gate allows (NaN days
+                # can't cross). Stretches collapse per side.
+                _blk_pts = []
+                for _ser_s, _yv_s, _sd_s in ((_sr.clip(lower=0), 1.1,
+                                              "in"),
+                                             (_sr.clip(upper=0), -1.1,
+                                              "out")):
+                    _ov = [d for d in _ser_s.index[_ser_s.abs() >= 1.0]
+                           if not any(abs((d - f).days) <= 2
+                                      for f in _fired_by_side[_sd_s])]
+                    _prev = None
+                    for d in _ov:
+                        if _prev is None or (d - _prev).days > 3:
+                            _blk_pts.append((d, _yv_s))
+                        _prev = d
+                if _blk_pts:
+                    _fb.add_scatter(
+                        x=[p[0] for p in _blk_pts],
+                        y=[p[1] for p in _blk_pts],
+                        name="at its line, held by the cooldown/gate",
+                        mode="markers",
+                        marker=dict(symbol="diamond-open", size=8,
+                                    color=INK_LABEL),
+                        hovertemplate=(
+                            "%{x|%d %b %y}<br>this side reached its "
+                            "line but no signal fired - the 21-day "
+                            "cooldown or the boom gate held it"
+                            "<extra>held</extra>"))
                 for _yv, _cc in ((1.0, TEAL), (-1.0, BEAR)):
                     _fb.add_hline(y=_yv, line_dash="dash", line_width=1,
                                   line_color=_cc, opacity=0.7)
@@ -4937,39 +5131,20 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 st.plotly_chart(_fb, width="stretch",
                                 key=f"{key}_srband")
                 st.caption(
-                    "**The black line is the raw signal.** The red and "
-                    "blue aim to PREDICT the black signal's changes — "
-                    "at the dashed line the call fires (▲▼ = it fired). "
-                    "Empty means not enough posts to be conclusive.")
+                    "**One band at a time.** Teal until the name has "
+                    "run up (20% above its 120-day low), red after; "
+                    "the curve is that side's distance to its line. On "
+                    "a day a signal fires, the band shows the firing "
+                    "side at its own level - so every ▲▼ sits on its "
+                    "own colour, touching its line. ◇ = reached its "
+                    "line but the 21-day cooldown or the gate held it. "
+                    "The black line is the raw retail flow. Empty "
+                    "means not enough posts to be conclusive.")
                 if "retail_flow_disp" not in _srg.columns:
                     st.caption("retail-flow dial not in this store yet "
                                "- run `python -m analytics."
                                "run_analytics --what phases` once to "
                                "compute it")
-        # ---- THE FULL REASONS, OUTSIDE THE CHART (requirement
-        # 2026-07-31).  Streamlit surfaces no hover events, so the panel
-        # follows the tab's master "read every dial on" slider - the
-        # control every dial already obeys - and renders the complete
-        # factor/gate evidence UNDER the chart where it covers nothing.
-        if _have_dial:
-            _d_now2 = _lvl_ok.index[_pos]
-            try:
-                _jp = int(_idx.get_loc(_d_now2))
-            except KeyError:
-                _jp = len(_idx) - 1
-            with st.container(border=True):
-                st.markdown(
-                    f"<span style='font-size:12px;font-weight:600;"
-                    f"color:{INK_MUTED};letter-spacing:.05em'>WHY - "
-                    "the full evidence for "
-                    + pd.Timestamp(_idx[_jp]).strftime("%d %b %y")
-                    + "</span><br>"
-                    + "<br>".join(_day_lines(_jp, _full=True)[1:]),
-                    unsafe_allow_html=True)
-                st.caption("Follows the \"read every dial on\" slider "
-                           "at the top of the tab - drag it to read any "
-                           "day's full evidence. The chart hover shows "
-                           "the same state in brief.")
         st.markdown(
             f"<span style='font-size:11px;color:{INK_MUTED}'>"
             "how to read this chart</span>",
@@ -5016,10 +5191,13 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
     # else until asked for.
     #
     # NO NEW MODELLING. Readiness is score / trigger on the same stored
-    # scores and the same frozen cuts every other surface reads, and the
-    # phase gate decides which side a name may fire at all, exactly as
-    # the watchlist below computes it. A name that cannot fire a side is
-    # never listed under it, however high that side's score.
+    # scores and the same frozen cuts every other surface reads. The
+    # phase gate picks the WATCH side - the side the desk leads with
+    # for a name today (boomed -> CUT, else INCREASE) - exactly as the
+    # watchlist below computes it. NOTE this is a display convention,
+    # not a firing rule: the shipped INCREASE signal is ungated (nb08
+    # §10.4) and can fire on a boomed day too; the band chart draws
+    # that truth. Only CUT is truly blocked off its side.
     #
     # Size rule: every name at >= ACTION_READY_PCT, or the top
     # ACTION_MIN_ROWS if fewer clear the bar - so the page is never empty
@@ -5051,12 +5229,27 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
             st.markdown('<div class="rf-rule"></div>',
                         unsafe_allow_html=True)
 
-        # ONE SIDE PER NAME. readiness_now decides which - "the eligible
-        # side is the one the phase gate allows TODAY... showing the
-        # other side's score would be a number that cannot fire". An
-        # earlier version scored every name on BOTH sides and listed it
-        # twice, putting the same theme under INCREASE and CUT at once:
-        # not two readings, one contradiction.
+        # THE KEY, stated once where every reader passes. Two sentences
+        # that define the page's two states, so a first-time viewer does
+        # not have to reverse-engineer what a percentage means.
+        st.markdown(
+            "<div class='rf-keyline'>"
+            "<b>A signal</b> means at this retail level we have had "
+            "MAJOR price movements in the past (quite rare).<br>"
+            "<b>High conviction</b> means technical factors (price, "
+            "moving averages) also correlate.<br>"
+            "<b>On the way to a signal</b> means consider this theme "
+            "and use AI Pulse tab to understand more."
+            "</div>", unsafe_allow_html=True)
+
+        # ONE SIDE PER NAME. readiness_now decides which - the WATCH
+        # side, the one the desk leads with today (boomed -> CUT, else
+        # INCREASE). An earlier version scored every name on BOTH sides
+        # and listed it twice, putting the same theme under INCREASE
+        # and CUT at once: not two readings, one contradiction. NB:
+        # this is a ranking convention, not a firing rule - the ungated
+        # INCREASE signal can still fire on a boomed name (the band
+        # chart shows both armed sides); only CUT is truly gated.
         #
         # TWO THINGS THIS GETS RIGHT THAT THE OBVIOUS VERSION DOES NOT.
         #
@@ -5077,24 +5270,47 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
         #    applies at source.
         _a_as_of = (dk["date"].max() if hi is None
                     else min(hi, dk["date"].max())) if dk is not None else None
+        def _near_since(scored, col, thr):
+            """First DATE of the current unbroken run of scored days at
+            or above the 'close' band (READY_AMBER) - the honest answer
+            to 'how new is this name here'. None when today is below.
+            Dates come from the frame's date column: scored keeps the
+            desk store's integer index, so positional index values would
+            be meaningless as dates."""
+            rs = pd.Series(scored[col].astype(float).values / thr * 100.0,
+                           index=pd.to_datetime(scored["date"].values))
+            if not len(rs) or rs.iloc[-1] < READY_AMBER:
+                return None
+            below = rs < READY_AMBER
+            if not below.any():
+                return rs.index[0]
+            last_below = below[below].index[-1]
+            after = rs.index[rs.index > last_below]
+            return after[0] if len(after) else None
+
         _a_rows = []
         if dk is not None and len(dk) and _a_as_of is not None:
-            _stale_cut = _a_as_of - pd.Timedelta(days=ACTION_STALE_DAYS)
             for _n, _g in dk[dk["date"] <= _a_as_of].groupby("name"):
                 _g = _g.sort_values("date")
                 if _g.empty:
                     continue
-                # which side may fire is a property of the name NOW
-                _boomed = bool(_g.iloc[-1].get("boomed120", False))
+                # gate and score from the SAME day (see
+                # eligible_scored_now for the placeholder-row defect
+                # this replaces)
+                _es = eligible_scored_now(_g)
+                if _es is None:
+                    continue
+                _row, _boomed = _es
                 _col = OUT_SCORE if _boomed else IN_SCORE
                 _thr = _thr_out_d if _boomed else _thr_in_d
                 _side = "CUT EXPOSURE" if _boomed else "INCREASE EXPOSURE"
-                if _col not in _g.columns or _thr in (None, 0):
+                if _thr in (None, 0):
                     continue
                 _scored = _g[_g[_col].notna()]
                 if _scored.empty:
                     continue
-                _row = _scored.iloc[-1]
+                if (_a_as_of - _row["date"]).days > ACTION_STALE_DAYS:
+                    continue                    # stale - not a call
                 _sc = float(_row[_col])
 
                 def _at(days_back):
@@ -5115,6 +5331,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                            if _at(7) is not None else None),
                     "d14": (100.0 * (_sc - _at(14)) / float(_thr)
                             if _at(14) is not None else None),
+                    "near_since": _near_since(_scored, _col, float(_thr)),
                     "hiconv": _tech_confirms(_row.get("symbol"),
                                              _row["date"], _side),
                     "px7": _price_change(_row.get("symbol"),
@@ -5151,7 +5368,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
         def _a_row(r, side, tone, key):
             rid = f"{side}:{r.name}"
             _head = (f"{theme_label(r.name)}  ({r.symbol})   "
-                     f"{r.ready:.0f}% of trigger"
+                     f"{r.ready:.0f}% of the way to a signal"
                      + ("   ● FIRING NOW" if r.fired else "")
                      + ("   ◆ HIGH CONVICTION" if r.hiconv else ""))
             _was = st.session_state.get(_OPEN) == rid
@@ -5160,6 +5377,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                                  key=f"btn_{key}", width="stretch")
             if _hit:
                 st.session_state[_OPEN] = None if _was else rid
+                st.rerun()
             if st.session_state.get(_OPEN) != rid:
                 return
             st.markdown(
@@ -5173,11 +5391,33 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                     f"<span class='rf-hiconv' style='border-color:{tone};"
                     f"color:{tone}'>◆ HIGH CONVICTION</span>",
                     unsafe_allow_html=True)
-                st.caption("The crowd signal and the technical screen "
-                           "agree on this name today.", help=HIGH_CONV_HELP)
+                # the blue banner treatment, matched to the "Technical
+                # factors also correlate" one ("thats good")
+                # the (?) rides ON the banner, right after Jonathan's
+                # framework - st.markdown places its help icon at the
+                # end of the text ("put the ? right next to Jonathan's")
+                st.markdown(
+                    "<div style='background:rgba(28,131,225,0.10);"
+                    "border-radius:8px;padding:12px 16px'>"
+                    "<b>◆ HIGH CONVICTION.</b> The crowd signal and the "
+                    "technical screen (price and moving averages) agree "
+                    "on this name today — <b>Jonathan's momentum "
+                    "framework</b>, five factors behind the (?)</div>",
+                    unsafe_allow_html=True, help=HIGH_CONV_HELP)
+            # pd.notna, not `is not None`: DataFrame construction
+            # coerces the near_since column to datetime64, so a row
+            # without a streak holds NaT - which passes an
+            # `is not None` check and then crashes strftime. That
+            # crash killed everything below the row (the fired list
+            # and the radar vanished with it).
+            if pd.notna(getattr(r, "near_since", None)):
+                _ns_days = (pd.Timestamp(_a_as_of)
+                            - pd.Timestamp(r.near_since)).days
+                st.caption(f"near its trigger since "
+                           f"{pd.Timestamp(r.near_since):%d %b %Y} "
+                           f"({_ns_days}d)")
             _c1, _c2, _c3 = st.columns(3)
-            _c1.metric(f"of {side.split()[0].lower()} trigger",
-                       f"{r.ready:.0f}%")
+            _c1.metric("% of the way to a signal", f"{r.ready:.0f}%")
             for _c, _v, _lbl in ((_c2, r.d7, "7d change"),
                                  (_c3, r.d14, "14d change")):
                 if _v is None:
@@ -5209,15 +5449,131 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 + ("" if r.age <= 3 else
                    f"  Scored {r.score_date:%d %b %Y}, {r.age}d ago - the "
                    "name has not been scored since."))
+            # THE INGREDIENTS, in the open. The readiness number is a
+            # model output; these are the observable inputs behind it,
+            # straight from the text-free aggregates - so a reader can
+            # see WHAT is pushing the name toward its trigger instead of
+            # taking a percentage on faith.
+            # shown in the open, not behind a dropdown ("no need to
+            # dropdown - just show this by default")
+            st.markdown("**What makes it close to a trigger?**")
+            with st.container():
+                _ing = _ingredients(r.name)
+                if _ing is None:
+                    st.caption("no aggregate history for this name")
+                else:
+                    (_pd7, _pchg, _hyp, _nb, _nb5, _boomed_i,
+                     _shr, _shr4) = _ing
+                    _l1, _l2, _l3 = st.columns(3)
+                    _l1.metric("posts, 7d vs prior week",
+                               f"{_pchg:+.0%}" if _pchg is not None
+                               else "-")
+                    _l2.metric("vs its own 120d norm",
+                               f"{_hyp:.1f}×" if _hyp is not None else "-",
+                               delta=("elevated" if (_hyp or 0) >= 2
+                                      else "normal range"),
+                               delta_color="off")
+                    _l3.metric("net bullishness",
+                               f"{_nb:+.2f}" if _nb is not None else "-",
+                               delta=(f"{_nb5:+.2f} over 5d"
+                                      if _nb5 is not None else None),
+                               delta_color="off")
+                    # second row (approved additions): persistence,
+                    # size in the room, breadth of the conversation
+                    _l4, _l5, _l6 = st.columns(3)
+                    _bdy = None
+                    if pd.notna(getattr(r, "near_since", None)):
+                        _bdy = (pd.Timestamp(_a_as_of)
+                                - pd.Timestamp(r.near_since)).days + 1
+                    _l4.metric("days building",
+                               f"{_bdy}d" if _bdy is not None else "new",
+                               delta=("consecutive days near the "
+                                      "trigger" if _bdy is not None
+                                      else "first day near the trigger"),
+                               delta_color="off")
+                    _l5.metric("share of theme chatter",
+                               f"{_shr:.1%}" if _shr is not None else "-",
+                               delta=(f"4wk avg {_shr4:.1%}"
+                                      if _shr4 is not None else None),
+                               delta_color="off")
+                    # breadth tile removed on request ("just remove the
+                    # tile that says breadth") - _l6 stays empty so the
+                    # two rows keep the same grid
+                    # methodology caption removed on request ("no need
+                    # this") - the tiles stand on their own
             draw_chart(r.name, "", key)
 
-        def _a_list(side, tone, blurb):
+        def _ingredients(nm):
+            """(posts_day7, wow_change, hype_x, net_bull, nb_5d_chg,
+            boomed) from the aggregates - observable, no model."""
+            if theme_counts is None or not len(theme_counts):
+                return None
+            tcn = theme_counts[theme_counts["theme"] == nm]
+            if not len(tcn):
+                return None
+            s = (tcn.set_index("date")["mention_count"].sort_index()
+                 .resample("D").sum())
+            if _a_as_of is not None:
+                s = s[s.index <= pd.Timestamp(_a_as_of)]
+            if not len(s):
+                return None
+            wk = float(s.tail(7).mean())
+            prev = float(s.tail(14).head(7).mean()) if len(s) >= 14 else None
+            wow = ((wk / prev - 1) if prev else None)
+            med120 = float(s.tail(120).rolling(7).mean().median()) \
+                if len(s) >= 30 else None
+            hyp = (wk / med120) if med120 else None
+            nb = nb5 = None
+            if theme_sentiment is not None and len(theme_sentiment):
+                tsn = theme_sentiment[theme_sentiment["theme"] == nm]
+                if len(tsn):
+                    q = tsn.set_index("date").sort_index()
+                    if _a_as_of is not None:
+                        q = q[q.index <= pd.Timestamp(_a_as_of)]
+                    if len(q):
+                        nb = float(q["net_bullish"].iloc[-1])
+                        if len(q) > 5:
+                            nb5 = nb - float(q["net_bullish"].iloc[-6])
+            _bmn = False
+            if dk is not None and len(dk):
+                _gg = dk[dk["name"] == nm]
+                if _a_as_of is not None:
+                    _gg = _gg[_gg["date"] <= pd.Timestamp(_a_as_of)]
+                _esn = eligible_scored_now(_gg.sort_values("date"))
+                if _esn is not None:
+                    _bmn = _esn[1]
+            # share of ALL theme chatter (with the 4-week average for
+            # contrast): how big this theme is in the room, not just
+            # against its own history
+            shr = shr4 = None
+            _tot = (theme_counts.groupby("date")["mention_count"].sum()
+                    .sort_index().resample("D").sum())
+            if _a_as_of is not None:
+                _tot = _tot[_tot.index <= pd.Timestamp(_a_as_of)]
+            _wt = float(_tot.tail(7).sum())
+            if _wt:
+                shr = float(s.tail(7).sum()) / _wt
+            _t28 = float(_tot.tail(28).sum())
+            if _t28:
+                shr4 = float(s.tail(28).sum()) / _t28
+            return wk, wow, hyp, nb, nb5, _bmn, shr, shr4
+
+        def _a_list(side, tone, blurb, title=None):
             st.markdown(f"<div class='rf-actionhead' style='color:{tone}'>"
-                        f"{side}</div>", unsafe_allow_html=True)
+                        f"{title or side}</div>", unsafe_allow_html=True)
             st.caption(blurb)
             rows = _a_pick(side)
             if rows is None or rows.empty:
-                st.caption("nothing scored on this side today")
+                if side == "CUT EXPOSURE":
+                    st.caption(
+                        "Nothing on this side today - which is quite "
+                        "rare, and worth reading as information: this "
+                        "tracker exists mainly to catch bubbles, and an "
+                        "empty reduce-exposure list means no tracked "
+                        "theme is currently both run-up and crowded "
+                        "enough to be near a top call.")
+                else:
+                    st.caption("nothing scored on this side today")
                 return
             for _r in rows.itertuples():
                 _a_row(_r, side, tone,
@@ -5228,11 +5584,14 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
         # the charts inside them need the whole measure.
         _a_list("CUT EXPOSURE", BEAR,
                 "Names that have already run and are topping out. "
-                "Closest to firing first.")
+                "Closest to firing first.",
+                title="Extreme Bullishness — Consider Reducing Exposure")
         st.markdown('<div class="rf-rule"></div>', unsafe_allow_html=True)
         _a_list("INCREASE EXPOSURE", BULL,
                 "Names the crowd is arriving at, before the run. "
-                "Closest to firing first.")
+                "Closest to firing first.",
+                title="Start of Bullishness — Consider Increasing "
+                      "Exposure")
 
         # ---- LAST FIRED SIGNALS ------------------------------------------
         # The lists above are about what has NOT fired yet. This is the
@@ -5283,6 +5642,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                                       width="stretch")
                 if _hitf:
                     st.session_state[_OPEN] = None if _wasf else _fid
+                    st.rerun()
                 if st.session_state.get(_OPEN) != _fid:
                     continue
                 if _hc_f:
@@ -5290,17 +5650,23 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                         f"<span class='rf-hiconv' style='border-color:"
                         f"{_tone};color:{_tone}'>◆ HIGH CONVICTION</span>",
                         unsafe_allow_html=True)
-                    st.caption("The technical screen agreed with this "
-                               "signal on the day it fired.",
-                               help=HIGH_CONV_HELP)
+                    st.markdown(
+                        "<div style='background:rgba(28,131,225,0.10);"
+                        "border-radius:8px;padding:12px 16px'>"
+                        "<b>◆ HIGH CONVICTION.</b> The technical screen "
+                        "(price and moving averages) agreed with this "
+                        "signal on the day it fired — <b>Jonathan's "
+                        "momentum framework</b>, five factors behind "
+                        "the (?)</div>",
+                        unsafe_allow_html=True, help=HIGH_CONV_HELP)
                 draw_chart(_f["name"], "",
                            f"{key_prefix}_fired_{_f['name']}_"
                            f"{_f['date']:%Y%m%d}")
 
         st.markdown('<div class="rf-rule"></div>', unsafe_allow_html=True)
         st.toggle(
-            "Show the full list - every tracked name and the side live "
-            "today", key="show_full_list", value=True,
+            "Show the full list - every tracked name and the side the "
+            "desk is watching today", key="show_full_list", value=True,
             help="The complete radar: every instrument in the store, "
                  "ranked by how close it is to its trigger, whether or "
                  "not it is near one.")
@@ -5665,6 +6031,18 @@ if active_tab == MAIN_TAB and st.session_state.get("show_full_list"):
     # traded through an anchor ETF.
     _dkr = _hide(desk[(desk["date"] <= _as_of_r)
                       & (desk["kind"] == "theme")])
+    def _c28(nm):
+        """This theme's tagged posts in the trailing 28 days - the number
+        the measurability floor is compared against."""
+        if theme_counts is None or not len(theme_counts):
+            return 0
+        t = theme_counts[theme_counts["theme"] == nm]
+        if not len(t):
+            return 0
+        cut28 = pd.to_datetime(_as_of_r) - pd.Timedelta(days=28)
+        return int(t[pd.to_datetime(t["date"]) > cut28]
+                   ["mention_count"].sum())
+
     _rows_r = []
     for _n, _g in _dkr.groupby("name"):
         _g = _g.sort_values("date")
@@ -5686,7 +6064,23 @@ if active_tab == MAIN_TAB and st.session_state.get("show_full_list"):
         _h6m = _h.loc[_h.index >= _h.index.max() - pd.Timedelta(days=183)]
         _spark = (_h6m.resample("3D").mean().dropna().round(3).tolist()
                   if len(_h6m) > 3 else None)
-        _boomed = bool(_cur.get("boomed120", False))
+        _es_r = eligible_scored_now(_g)
+        _boomed = _es_r[1] if _es_r is not None \
+            else bool(_cur.get("boomed120", False))
+        if _es_r is not None:
+            # magnitude and freshness from the SAME row the side came
+            # from. The per-column "last scored row" values happen to
+            # coincide today (every scored row carries both sides), but
+            # the moment the pipeline writes one-sided rows they drift:
+            # a wrong-day score under the right side label, and fresh
+            # IN-side names marked quiet because freshness was keyed to
+            # the OUT column's day.
+            _er_row = _es_r[0]
+            _out_day = _er_row["date"]
+            if OUT_SCORE in _er_row.index and pd.notna(_er_row[OUT_SCORE]):
+                _out_sc = float(_er_row[OUT_SCORE])
+            if IN_SCORE in _er_row.index and pd.notna(_er_row[IN_SCORE]):
+                _in_sc = float(_er_row[IN_SCORE])
         _elig = _boomed or XP_TRIGGER
         # FRESHNESS OUTRANKS SIZE. Some names' newest scored row is
         # years old (a name can drop out of the scored universe and
@@ -5719,8 +6113,14 @@ if active_tab == MAIN_TAB and st.session_state.get("show_full_list"):
                        else round(max(-100.0, min(100.0, _sgn)))),
             "side": "CUT EXPOSURE" if _boomed else "INCREASE EXPOSURE",
             "fresh": _fresh,
+            # "(stale)" said the data was old; the truth is the CROWD
+            # went quiet - chatter fell under the measurability floor
+            # and scoring paused. Say that, with the live 28-day count,
+            # so the row reads as the tool working rather than broken.
             "scored": ("-" if _out_day is None
-                       else (f"{pd.Timestamp(_out_day):%d %b %Y} (stale)"
+                       else (f"{pd.Timestamp(_out_day):%d %b %Y} · "
+                             f"quiet since ({_c28(_n)}/"
+                             f"{EUPHORIA_MIN_COVERAGE} posts, 28d)"
                              if not _fresh
                              else f"{pd.Timestamp(_out_day):%d %b}")),
         })
@@ -5734,7 +6134,7 @@ if active_tab == MAIN_TAB and st.session_state.get("show_full_list"):
         _disp_r = pd.DataFrame({
             "name": _radar["name"].map(theme_label), "ticker": _radar["ticker"],
             "signed readiness": _radar["signed"],
-            "side live today": _radar["side"],
+            "watch side today": _radar["side"],
             "retail attention (vs own year)": _radar["att_pct"],
             "attention, last 6 months": _radar["spark"],
             "scored as of": _radar["scored"],
@@ -7386,43 +7786,10 @@ if active_tab == "AI Pulse":
                             "(and therefore carry a sentiment read).")
         _k4.metric("as of", f"{pd.Timestamp(_day):%d %b %Y}")
 
-        _snap = _snapshot_text(_mr)
-        if _snap:
-            st.markdown(f"> {_snap}")
-            st.caption("Written from the numbers, not by the model — so "
-                       "it moves with the slider. The model's read is "
-                       "richer and lives below; generate it for a "
-                       "specific day with `--as-of`.")
-
-        _t1, _t2 = st.columns(2)
-        with _t1:
-            st.markdown("**What the crowd was talking about**")
-            for _nm, _sh, _rt in (_mr.get("top") or []):
-                _rr = f"  ·  {_rt:.2f}x its 4-week average" if _rt else ""
-                st.markdown(f"- **{theme_label(_nm)}** — {_sh:.1%} of "
-                            f"theme chatter{_rr}")
-            if _mr.get("loud") is not None and len(_mr["loud"]):
-                st.caption("loudest names: "
-                           + ", ".join(f"{t} ({int(n)})"
-                                       for t, n in _mr["loud"].head(8).items()))
-        with _t2:
-            st.markdown("**How it felt**")
-            if _mr.get("movers"):
-                st.markdown("- heating up: "
-                            + ", ".join(f"**{theme_label(k)}** {v:.2f}x"
-                                        for k, v in _mr["movers"]))
-            if _mr.get("faders"):
-                st.markdown("- cooling: "
-                            + ", ".join(f"**{theme_label(k)}** {v:.2f}x"
-                                        for k, v in _mr["faders"]))
-            if _mr.get("most_bull") is not None:
-                st.markdown("- most bullish: "
-                            + ", ".join(f"**{theme_label(k)}** {v:+.2f}"
-                                        for k, v in _mr["most_bull"].items()))
-            if _mr.get("most_bear") is not None:
-                st.markdown("- least bullish: "
-                            + ", ".join(f"**{theme_label(k)}** {v:+.2f}"
-                                        for k, v in _mr["most_bear"].items()))
+        # numbers-derived digest (snapshot quote + "what the crowd was
+        # talking about" / "how it felt" columns) removed on request
+        # ("remove this section") - the model's own pulse below carries
+        # the read
         _pp = os.path.join(PROCESSED_DIR,
                            f"ai_pulse_{pd.Timestamp(_day):%Y-%m-%d}.json")
         if os.path.exists(_pp):
@@ -7646,6 +8013,21 @@ if active_tab == "AI Pulse":
     # ---- 1. THE POLL: what the AI recommends when asked like retail --
     st.markdown("## B - What the AI is recommending to retail")
     st.caption("The POLL: at every data refresh the pipeline itself asks the model the questions a retail trader asks (config/ai_poll_prompts.csv - editable) and records every name and theme it recommends - a direct reading of the advice flowing from AI into the crowd. The panel is 30 prompts: the plain questions retail types, plus the personas and agent scaffolds retail actually runs - the hedge-fund-PM and Warren-Buffett system prompts the popular open-source AI-investing repos ship, the bull-vs-bear-then-PM debate pipeline, the JSON-decision agent loop, and the screening, portfolio-rating, swing-setup and options-flow asks that circulate as copy-paste prompts. No backfill is possible; the series starts the day you start polling, and its forward test against the flags is pre-registered in notebook 09 \u00a72b.")
+    # the full prompt panel, on request ("add all the prompts in a
+    # drop down") - read straight from the editable CSV so the list
+    # can never drift from what the poll actually asks; rendered
+    # before the data branch so it shows even with no runs on record
+    _ppf = os.path.join("config", "ai_poll_prompts.csv")
+    if os.path.exists(_ppf):
+        with st.expander("the prompts the poll asks"):
+            try:
+                _ppd = pd.read_csv(_ppf)
+                for _fam, _fg in _ppd.groupby("family", sort=False):
+                    st.markdown(f"**{_fam}**")
+                    for _pr in _fg.itertuples():
+                        st.markdown(f"- `{_pr.prompt_id}` — {_pr.prompt}")
+            except Exception:
+                st.caption("could not read config/ai_poll_prompts.csv")
     _pl = _ai_poll_load()
     _pl = (_pl[~_pl["mock"].astype(bool)]
            if _pl is not None and "mock" in _pl.columns else _pl)
