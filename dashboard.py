@@ -1007,7 +1007,7 @@ p, li, [data-testid="stMarkdownContainer"] {{
 hr {{ border: none; border-top: 1px solid {HAIRLINE}; margin: 2.2rem 0; }}
 a {{ color: {NAVY}; }}
 
-/* --- the statistic counter, GIC's signature component ---------------
+/* --- the statistic counter, the house signature component -----------
    Huge number, tiny uppercase label, plenty of air.  This is the single
    most recognisable piece of the design language, so the metric row gets
    it verbatim rather than approximately. */
@@ -2157,11 +2157,21 @@ with h_left:
         'attention is building, and where it is ending.</div>'
         f'<div class="rf-sub">last update: '
         f'{pd.Timestamp.now():%d/%m/%Y, %H:%M:%S}</div>'
-        '<div class="rf-credit">Alex Brown - GIP 2026 Project - '
-        'MAARS Global Macro</div>',
+        # ON THE HOSTED COPY, NO ORG BRANDING (request: "no mention of
+        # GIC / its things in the streamlit"). LOCAL_CONTROLS rides on
+        # the gitignored .local_controls file, so the desk machine
+        # keeps the full credit and the hosted clone never sees it -
+        # one codebase, no second branch to maintain.
+        + ('<div class="rf-credit">Alex Brown - GIP 2026 Project - '
+           'MAARS Global Macro</div>' if LOCAL_CONTROLS else
+           '<div class="rf-credit">Alex Brown - Intern 2026 Project'
+           '</div>'),
         unsafe_allow_html=True)
 with h_right:
-    st.markdown(HEADER_MARK_HTML, unsafe_allow_html=True)
+    # the animated header mark reads as an org logo - hosted copy
+    # shows nothing in that corner
+    if LOCAL_CONTROLS:
+        st.markdown(HEADER_MARK_HTML, unsafe_allow_html=True)
 st.markdown('<div class="rf-rule-heavy"></div>', unsafe_allow_html=True)
 
 st.sidebar.title("RetailRadar")
@@ -2777,7 +2787,10 @@ elif prices is None:
 st.sidebar.divider()
 st.sidebar.caption(
     "Special thanks to Shawn, Wang Han, Jonathan, Henry, and the whole "
-    "of FIMA and GIC that helped with this project.")
+    "of FIMA and GIC that helped with this project."
+    if LOCAL_CONTROLS else
+    "Special thanks to Shawn, Wang Han, Jonathan, Henry, and everyone "
+    "that helped with this project.")
 
 # ---------------------------------------------------------------------------
 # topline metric strip
