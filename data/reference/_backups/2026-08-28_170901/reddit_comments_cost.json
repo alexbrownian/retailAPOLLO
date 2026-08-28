@@ -1,0 +1,90 @@
+{
+  "alpha": 0.2,
+  "subs": {
+    "Bitcoin": {
+      "comments_per_page": 49.873251358132926,
+      "n": 23,
+      "pages_per_day": 5.379790285343404
+    },
+    "Bogleheads": {
+      "comments_per_page": 46.66199347179845,
+      "n": 23,
+      "pages_per_day": 2.418620779181251
+    },
+    "CryptoCurrency": {
+      "comments_per_page": 47.28336714270772,
+      "n": 24,
+      "pages_per_day": 2.3322782653021337
+    },
+    "Daytrading": {
+      "comments_per_page": 48.2433445338916,
+      "n": 24,
+      "pages_per_day": 3.367877880395783
+    },
+    "SecurityAnalysis": {
+      "comments_per_page": 1.9132372462460303,
+      "n": 25,
+      "pages_per_day": 0.38135326493248284
+    },
+    "StockMarket": {
+      "comments_per_page": 46.99436829696886,
+      "n": 25,
+      "pages_per_day": 1.6205919570318015
+    },
+    "ValueInvesting": {
+      "comments_per_page": 46.92469096818713,
+      "n": 24,
+      "pages_per_day": 2.435286373771664
+    },
+    "dividends": {
+      "comments_per_page": 44.75567618866053,
+      "n": 25,
+      "pages_per_day": 1.9257781995551573
+    },
+    "finance": {
+      "comments_per_page": 23.439926718644045,
+      "n": 23,
+      "pages_per_day": 0.5410971628060586
+    },
+    "financialindependence": {
+      "comments_per_page": 45.22203013862704,
+      "n": 24,
+      "pages_per_day": 1.8810555142980532
+    },
+    "investing": {
+      "comments_per_page": 42.00368334531119,
+      "n": 27,
+      "pages_per_day": 1.6921657662625176
+    },
+    "options": {
+      "comments_per_page": 44.50624654603984,
+      "n": 25,
+      "pages_per_day": 1.4719287243197576
+    },
+    "pennystocks": {
+      "comments_per_page": 41.80541606517529,
+      "n": 24,
+      "pages_per_day": 1.2949054216773714
+    },
+    "personalfinance": {
+      "comments_per_page": 47.45811056863979,
+      "n": 26,
+      "pages_per_day": 5.608801751566153
+    },
+    "stocks": {
+      "comments_per_page": 43.966851976800235,
+      "n": 26,
+      "pages_per_day": 2.766371568006157
+    },
+    "thetagang": {
+      "comments_per_page": 44.76339334165573,
+      "n": 23,
+      "pages_per_day": 1.7121194977221224
+    },
+    "wallstreetbets": {
+      "comments_per_page": 67.21362517154516,
+      "n": 28,
+      "pages_per_day": 16.33071923638859
+    }
+  }
+}

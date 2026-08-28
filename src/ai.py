@@ -158,7 +158,16 @@ def _connect_anthropic():
         return None, (f"anthropic package not installed ({e}) - "
                       "pip install anthropic")
     try:
-        return anthropic.Anthropic(api_key=key), None
+        # HARD TIMEOUT (defect report: a network that silently drops
+        # traffic to the endpoint accepts the connection and then never
+        # answers - the SDK's default 10-minute timeout made every
+        # attempt look like a hang. 60s is generous for a real answer
+        # and turns a black-hole network into a clear error in a
+        # minute, not half an hour of retries. max_retries=0: chat()
+        # already does its own retrying, the SDK doubling it quadrupled
+        # the wait.
+        return anthropic.Anthropic(api_key=key, timeout=60.0,
+                                   max_retries=0), None
     except Exception as e:                                   # noqa: BLE001
         return None, f"Anthropic client init failed ({type(e).__name__}: {e})"
 
@@ -258,8 +267,20 @@ def chat(prompt: str, system: str | None = None, *,
             last = e
             if attempt < retries:
                 time.sleep(2 * (attempt + 1))
+    _hint = ""
+    if type(last).__name__ == "APIConnectionError":
+        # the SDK's str() is often empty here - the real reason (DNS,
+        # proxy, TLS interception) lives in the cause chain
+        _cause = getattr(last, "__cause__", None)
+        if _cause is not None:
+            _hint += f" | cause: {type(_cause).__name__}: {_cause}"
+        _hint += (" | the machine could not reach the endpoint at all: "
+                  "check the network/VPN (a corporate proxy that "
+                  "intercepts TLS needs `pip install pip-system-certs` "
+                  "in THIS venv), and that the provider host is "
+                  "reachable from this machine")
     raise RuntimeError(f"LLM call failed after {retries + 1} tries: "
-                       f"{type(last).__name__}: {last}")
+                       f"{type(last).__name__}: {last}{_hint}")
 
 
 def _call_openai(client, prompt, system, max_tokens, temperature) -> str:

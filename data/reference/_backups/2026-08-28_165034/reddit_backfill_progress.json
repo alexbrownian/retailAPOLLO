@@ -1,0 +1,244 @@
+{
+ "chunks": {
+  "2023-04-01_2023-05-01": {
+   "posts": 60994,
+   "secs": 1413.2,
+   "done_utc": "2026-08-11T09:29:51"
+  },
+  "2023-05-01_2023-06-01": {
+   "posts": 59537,
+   "secs": 1994.3,
+   "done_utc": "2026-08-11T10:03:05"
+  },
+  "2023-06-01_2023-07-01": {
+   "posts": 52817,
+   "secs": 1350.7,
+   "done_utc": "2026-08-11T10:25:36"
+  },
+  "2023-07-01_2023-08-01": {
+   "posts": 16397,
+   "secs": 1332.7,
+   "done_utc": "2026-08-13T12:38:43"
+  },
+  "2023-08-01_2023-09-01": {
+   "posts": 62028,
+   "secs": 2660.0,
+   "done_utc": "2026-08-13T13:23:03"
+  },
+  "2023-09-01_2023-10-01": {
+   "posts": 51304,
+   "secs": 1624.0,
+   "done_utc": "2026-08-13T13:50:07"
+  },
+  "2023-10-01_2023-11-01": {
+   "posts": 47688,
+   "secs": 1541.2,
+   "done_utc": "2026-08-13T14:15:48"
+  },
+  "2023-11-01_2023-12-01": {
+   "posts": 47511,
+   "secs": 14470.6,
+   "done_utc": "2026-08-13T18:16:59"
+  },
+  "2023-12-01_2024-01-01": {
+   "posts": 54873,
+   "secs": 1440.3,
+   "done_utc": "2026-08-13T18:40:59"
+  },
+  "2024-01-01_2024-02-01": {
+   "posts": 64224,
+   "secs": 22335.9,
+   "done_utc": "2026-08-14T00:53:15"
+  },
+  "2024-02-01_2024-03-01": {
+   "posts": 70023,
+   "secs": 1828.9,
+   "done_utc": "2026-08-15T04:26:10"
+  },
+  "2024-03-01_2024-04-01": {
+   "posts": 83432,
+   "secs": 2374.0,
+   "done_utc": "2026-08-15T05:05:44"
+  },
+  "2024-04-01_2024-05-01": {
+   "posts": 61027,
+   "secs": 3413.6,
+   "done_utc": "2026-08-15T06:02:37"
+  },
+  "2024-05-01_2024-06-01": {
+   "posts": 62267,
+   "secs": 4562.6,
+   "done_utc": "2026-08-15T07:18:40"
+  },
+  "2024-06-01_2024-07-01": {
+   "posts": 55434,
+   "secs": 61460.5,
+   "done_utc": "2026-08-16T00:23:00"
+  },
+  "2024-07-01_2024-08-01": {
+   "posts": 54470,
+   "secs": 40825.6,
+   "done_utc": "2026-08-16T11:43:26"
+  },
+  "2024-09-01_2024-10-01": {
+   "posts": 12237,
+   "secs": 64.4,
+   "done_utc": "2026-08-21T02:19:28"
+  },
+  "2024-10-01_2024-11-01": {
+   "posts": 14400,
+   "secs": 83.8,
+   "done_utc": "2026-08-21T02:20:52"
+  },
+  "2024-11-01_2024-12-01": {
+   "posts": 18980,
+   "secs": 80.9,
+   "done_utc": "2026-08-21T02:22:13"
+  },
+  "2024-12-01_2025-01-01": {
+   "posts": 18318,
+   "secs": 71.3,
+   "done_utc": "2026-08-21T02:23:24"
+  },
+  "2025-01-01_2025-02-01": {
+   "posts": 17930,
+   "secs": 70.9,
+   "done_utc": "2026-08-21T02:24:35"
+  },
+  "2025-02-01_2025-03-01": {
+   "posts": 15649,
+   "secs": 57.5,
+   "done_utc": "2026-08-21T02:25:32"
+  },
+  "2025-03-01_2025-04-01": {
+   "posts": 13816,
+   "secs": 36.4,
+   "done_utc": "2026-08-21T02:26:09"
+  },
+  "2025-04-01_2025-05-01": {
+   "posts": 21360,
+   "secs": 63.4,
+   "done_utc": "2026-08-21T02:27:12"
+  },
+  "2025-05-01_2025-06-01": {
+   "posts": 14236,
+   "secs": 44.6,
+   "done_utc": "2026-08-21T02:27:57"
+  },
+  "2025-06-01_2025-07-01": {
+   "posts": 13003,
+   "secs": 49.7,
+   "done_utc": "2026-08-21T02:28:47"
+  },
+  "2025-07-01_2025-08-01": {
+   "posts": 20986,
+   "secs": 66.6,
+   "done_utc": "2026-08-21T02:29:53"
+  },
+  "2025-08-01_2025-09-01": {
+   "posts": 14787,
+   "secs": 54.8,
+   "done_utc": "2026-08-21T02:30:48"
+  },
+  "2025-09-01_2025-10-01": {
+   "posts": 14198,
+   "secs": 45.5,
+   "done_utc": "2026-08-21T02:31:34"
+  },
+  "2025-10-01_2025-11-01": {
+   "posts": 20195,
+   "secs": 86.5,
+   "done_utc": "2026-08-21T02:33:00"
+  },
+  "2025-11-01_2025-12-01": {
+   "posts": 13519,
+   "secs": 57.9,
+   "done_utc": "2026-08-21T02:33:58"
+  },
+  "2025-12-01_2026-01-01": {
+   "posts": 10321,
+   "secs": 32.3,
+   "done_utc": "2026-08-21T02:34:30"
+  },
+  "2024-09-01_2024-10-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 35524,
+   "secs": 65.3,
+   "done_utc": "2026-08-21T03:36:49"
+  },
+  "2024-10-01_2024-11-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 37228,
+   "secs": 75.4,
+   "done_utc": "2026-08-21T03:38:05"
+  },
+  "2024-11-01_2024-12-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 44553,
+   "secs": 98.2,
+   "done_utc": "2026-08-21T03:39:43"
+  },
+  "2024-12-01_2025-01-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 57133,
+   "secs": 97.8,
+   "done_utc": "2026-08-21T03:41:21"
+  },
+  "2025-01-01_2025-02-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 58648,
+   "secs": 102.8,
+   "done_utc": "2026-08-21T03:43:04"
+  },
+  "2025-02-01_2025-03-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 46197,
+   "secs": 77.9,
+   "done_utc": "2026-08-21T03:44:21"
+  },
+  "2025-03-01_2025-04-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 41649,
+   "secs": 83.1,
+   "done_utc": "2026-08-21T03:45:45"
+  },
+  "2025-04-01_2025-05-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 42433,
+   "secs": 78.4,
+   "done_utc": "2026-08-21T03:47:03"
+  },
+  "2025-05-01_2025-06-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 38607,
+   "secs": 63.8,
+   "done_utc": "2026-08-21T03:48:07"
+  },
+  "2025-06-01_2025-07-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 34818,
+   "secs": 63.1,
+   "done_utc": "2026-08-21T03:49:10"
+  },
+  "2025-07-01_2025-08-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 44229,
+   "secs": 77.8,
+   "done_utc": "2026-08-21T03:50:28"
+  },
+  "2025-08-01_2025-09-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 40731,
+   "secs": 64.8,
+   "done_utc": "2026-08-21T03:51:33"
+  },
+  "2025-09-01_2025-10-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 36034,
+   "secs": 52.9,
+   "done_utc": "2026-08-21T03:52:25"
+  },
+  "2025-10-01_2025-11-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 39480,
+   "secs": 77.4,
+   "done_utc": "2026-08-21T03:53:43"
+  },
+  "2025-11-01_2025-12-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 35045,
+   "secs": 57.5,
+   "done_utc": "2026-08-21T03:54:40"
+  },
+  "2025-12-01_2026-01-01#bitcoin+bogleheads+cryptocurrency+daytrading+dividends+finance+financialindependence+investing+options+pennystocks+personalfinance+securityanalysis+stockmarket+thetagang": {
+   "posts": 31694,
+   "secs": 58.8,
+   "done_utc": "2026-08-21T03:55:39"
+  }
+ }
+}

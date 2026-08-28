@@ -1,0 +1,502 @@
+{
+"data/raw/RedditComments/comments_2021-01-01_2021-07-01.jsonl.zst": [
+4461767,
+1785118457
+],
+"data/raw/RedditComments/comments_2025-07-25_2026-07-26.jsonl.zst": [
+9770092,
+1785118459
+],
+"data/raw/RedditComments/comments_2026-01-01_2026-07-01.jsonl.zst": [
+43465305,
+1785118465
+],
+"data/raw/RedditComments/comments_2026-07-24.jsonl.zst": [
+12849,
+1785118466
+],
+"data/raw/RedditComments/comments_2026-07-29.jsonl.zst": [
+3498059,
+1785317499
+],
+"data/raw/StockTwits/stocktwits_2026-07-19.jsonl.zst": [
+940981,
+1784426512
+],
+"data/raw/StockTwits/stocktwits_2026-07-29.jsonl.zst": [
+322948,
+1785317146
+],
+"data/raw/RedditComments/comments_2026-01-01_2026-07-25.jsonl.zst": [
+1361766,
+1785118466
+],
+"data/raw/RedditComments/comments_2026-07-24_2026-07-25.jsonl.zst": [
+1213,
+1785118466
+],
+"data/raw/RedditComments/comments_2026-08-04.jsonl.zst": [
+4412956,
+1785846201
+],
+"data/raw/StockTwits/stocktwits_2026-07-21.jsonl.zst": [
+315753,
+1784595496
+],
+"data/raw/StockTwits/stocktwits_2026-07-24.jsonl.zst": [
+320171,
+1784860847
+],
+"data/raw/StockTwits/stocktwits_2026-07-27.jsonl.zst": [
+313645,
+1785160109
+],
+"data/raw/StockTwits/stocktwits_2026-08-04.jsonl.zst": [
+1828769,
+1785854755
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-07-19_092220.jsonl.zst": [
+3902743,
+1784424681
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-07-19_093725.jsonl.zst": [
+1958,
+1784425386
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-07-19_100032.jsonl.zst": [
+8727,
+1784426798
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-07-21_085641.jsonl.zst": [
+841480,
+1784595926
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-07-24_103926.jsonl.zst": [
+1671629,
+1784860897
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-07-27_214706.jsonl.zst": [
+1485896,
+1785160143
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-07-29_172421.jsonl.zst": [
+1012511,
+1785317155
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-04_201212.jsonl.zst": [
+3917584,
+1785845799
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-04_205915.jsonl.zst": [
+28835,
+1785848413
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-04_210335.jsonl.zst": [
+3594,
+1785848678
+],
+"data/raw/RedditComments/comments_2026-08-04_2.jsonl.zst": [
+3270879,
+1785849945
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-04_211328.jsonl.zst": [
+3954483,
+1785849628
+],
+"data/raw/RedditComments/comments_2026-08-04_3.jsonl.zst": [
+416355,
+1785852134
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-04_214745.jsonl.zst": [
+23571,
+1785851428
+],
+"data/raw/RedditComments/comments_2026-08-04_4.jsonl.zst": [
+546930,
+1785873152
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-04_224431.jsonl.zst": [
+39150,
+1785854756
+],
+"data/raw/RedditComments/comments_2026-08-05.jsonl.zst": [
+2028802,
+1785895559
+],
+"data/raw/StockTwits/stocktwits_2026-08-05.jsonl.zst": [
+627800,
+1785918866
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-05_095554.jsonl.zst": [
+386382,
+1785895034
+],
+"data/raw/RedditComments/comments_2026-08-05_2.jsonl.zst": [
+667084,
+1785919030
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-05_163307.jsonl.zst": [
+109575,
+1785918867
+],
+"data/raw/RedditComments/comments_2026-08-06.jsonl.zst": [
+788563,
+1785980919
+],
+"data/raw/RedditComments/comments_2026-08-11.jsonl.zst": [
+3530162,
+1786418663
+],
+"data/raw/StockTwits/stocktwits_2026-08-06.jsonl.zst": [
+321289,
+1785980832
+],
+"data/raw/StockTwits/stocktwits_2026-08-11.jsonl.zst": [
+324215,
+1786418182
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-06_094556.jsonl.zst": [
+513086,
+1785980833
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-11_111459.jsonl.zst": [
+2589650,
+1786418294
+],
+"data/raw/RedditComments/comments_2026-08-13.jsonl.zst": [
+3362517,
+1786612354
+],
+"data/raw/StockTwits/stocktwits_2026-08-13.jsonl.zst": [
+329129,
+1786611805
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-11_170618.jsonl.zst": [
+19049358,
+1786440591
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-11_172952.jsonl.zst": [
+18273910,
+1786442585
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-11_180306.jsonl.zst": [
+16318530,
+1786443936
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-11_182537.jsonl.zst": [
+21940583,
+1786496391
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-13_170207.jsonl.zst": [
+1716386,
+1786611831
+],
+"data/raw/RedditComments/comments_2026-08-21.jsonl.zst": [
+3071299,
+1787300200
+],
+"data/raw/RedditComments/comments_2026-08-21_2.jsonl.zst": [
+22636,
+1787301732
+],
+"data/raw/RedditComments/comments_2026-08-21_3.jsonl.zst": [
+105862,
+1787302045
+],
+"data/raw/StockTwits/stocktwits_2026-08-21.jsonl.zst": [
+644429,
+1787302055
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-13_201632.jsonl.zst": [
+7199422,
+1786624723
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-13_203845.jsonl.zst": [
+27731127,
+1786627383
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-13_212304.jsonl.zst": [
+22794813,
+1786629007
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-13_215008.jsonl.zst": [
+19948446,
+1786630548
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-13_221549.jsonl.zst": [
+19640529,
+1786645019
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-14_021659.jsonl.zst": [
+22042438,
+1786646459
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-14_024100.jsonl.zst": [
+25829474,
+1786668795
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-15_115542.jsonl.zst": [
+28242453,
+1786767970
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-15_122611.jsonl.zst": [
+32145612,
+1786770343
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-15_130545.jsonl.zst": [
+24480344,
+1786773757
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-15_140239.jsonl.zst": [
+23954000,
+1786778320
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-15_151841.jsonl.zst": [
+21197026,
+1786839780
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-16_082302.jsonl.zst": [
+21533297,
+1786880606
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-20_211902.jsonl.zst": [
+20944002,
+1787274666
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_101825.jsonl.zst": [
+2002752,
+1787278768
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_101929.jsonl.zst": [
+2171520,
+1787278852
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_102052.jsonl.zst": [
+2516586,
+1787278933
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_102213.jsonl.zst": [
+2506771,
+1787279004
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_102325.jsonl.zst": [
+2737203,
+1787279075
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_102436.jsonl.zst": [
+2436748,
+1787279132
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_102534.jsonl.zst": [
+2252479,
+1787279169
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_102611.jsonl.zst": [
+3328120,
+1787279232
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_102714.jsonl.zst": [
+2446599,
+1787279277
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_102758.jsonl.zst": [
+2231117,
+1787279326
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_102847.jsonl.zst": [
+2888809,
+1787279393
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_102955.jsonl.zst": [
+2330604,
+1787279448
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_103049.jsonl.zst": [
+2245945,
+1787279493
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_103135.jsonl.zst": [
+2827437,
+1787279580
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_103305.jsonl.zst": [
+2105113,
+1787279638
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_103359.jsonl.zst": [
+2085821,
+1787279670
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_113545.jsonl.zst": [
+6713400,
+1787283409
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_113650.jsonl.zst": [
+6994439,
+1787283485
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_113805.jsonl.zst": [
+7623926,
+1787283583
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_113945.jsonl.zst": [
+9589213,
+1787283681
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_114122.jsonl.zst": [
+10423898,
+1787283783
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_114305.jsonl.zst": [
+8220481,
+1787283861
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_114423.jsonl.zst": [
+7912989,
+1787283944
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_114546.jsonl.zst": [
+8439839,
+1787284023
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_114705.jsonl.zst": [
+7507686,
+1787284087
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_114808.jsonl.zst": [
+6994853,
+1787284149
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_114913.jsonl.zst": [
+8365281,
+1787284228
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_115029.jsonl.zst": [
+7742261,
+1787284292
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_115133.jsonl.zst": [
+7085455,
+1787284345
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_115226.jsonl.zst": [
+8074165,
+1787284423
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_115344.jsonl.zst": [
+6966110,
+1787284480
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_115441.jsonl.zst": [
+6700872,
+1787284539
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_160432.jsonl.zst": [
+3848799,
+1787299703
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-21_164618.jsonl.zst": [
+14517,
+1787302055
+],
+"data/raw/RedditComments/comments_2026-08-24.jsonl.zst": [
+3010175,
+1787537149
+],
+"data/raw/RedditComments/comments_2026-08-24_2.jsonl.zst": [
+39334,
+1787537971
+],
+"data/raw/StockTwits/stocktwits_2026-08-24.jsonl.zst": [
+2516048,
+1787560609
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-24_085238.jsonl.zst": [
+1344970,
+1787532900
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-24_095713.jsonl.zst": [
+22394,
+1787536710
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-24_101814.jsonl.zst": [
+10691,
+1787537968
+],
+"data/raw/RedditComments/comments_2026-08-24_3.jsonl.zst": [
+60561,
+1787539383
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-24_104240.jsonl.zst": [
+4669,
+1787539454
+],
+"data/raw/RedditComments/comments_2026-08-24_4.jsonl.zst": [
+230863,
+1787557678
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-24_154718.jsonl.zst": [
+73203,
+1787557715
+],
+"data/raw/RedditComments/comments_2026-08-24_5.jsonl.zst": [
+5538,
+1787558676
+],
+"data/raw/RedditComments/comments_2026-08-24_6.jsonl.zst": [
+15148,
+1787558824
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-24_160638.jsonl.zst": [
+6070,
+1787558871
+],
+"data/raw/RedditComments/comments_2026-08-24_7.jsonl.zst": [
+12890,
+1787559576
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-24_161912.jsonl.zst": [
+2354,
+1787559625
+],
+"data/raw/RedditComments/comments_2026-08-24_8.jsonl.zst": [
+14740,
+1787560559
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-24_163536.jsonl.zst": [
+5904,
+1787560608
+],
+"data/raw/RedditComments/comments_2026-08-25.jsonl.zst": [
+508284,
+1787624632
+],
+"data/raw/StockTwits/stocktwits_2026-08-25.jsonl.zst": [
+337040,
+1787624636
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-25_102240.jsonl.zst": [
+441301,
+1787624649
+],
+"data/raw/RedditComments/comments_2026-08-26.jsonl.zst": [
+935770,
+1787710486
+],
+"data/raw/StockTwits/stocktwits_2026-08-26.jsonl.zst": [
+630581,
+1787711519
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-26_101239.jsonl.zst": [
+536322,
+1787710507
+],
+"data/raw/RedditComments/comments_2026-08-26_2.jsonl.zst": [
+62798,
+1787711515
+],
+"data/raw/RedditLive/reddit_live_arctic_2026-08-26_103044.jsonl.zst": [
+2684,
+1787711564
+]
+}

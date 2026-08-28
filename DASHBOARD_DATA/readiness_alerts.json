@@ -1,18 +1,18 @@
 {
  "threshold": 0.9,
- "built": "2026-08-26 02:41",
+ "built": "2026-08-28 09:29",
  "alerts": [
   {
    "name": "gold_metals",
    "symbol": "GLD",
-   "signed_readiness": 0.9,
+   "signed_readiness": 0.903,
    "side": "GET IN",
    "as_of": "2026-08-24"
   },
   {
    "name": "short_squeeze",
    "symbol": "ARKK",
-   "signed_readiness": 0.911,
+   "signed_readiness": 0.914,
    "side": "GET IN",
    "as_of": "2026-08-24"
   }
