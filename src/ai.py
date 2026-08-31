@@ -161,12 +161,15 @@ def _connect_anthropic():
         # HARD TIMEOUT (defect report: a network that silently drops
         # traffic to the endpoint accepts the connection and then never
         # answers - the SDK's default 10-minute timeout made every
-        # attempt look like a hang. 60s is generous for a real answer
-        # and turns a black-hole network into a clear error in a
-        # minute, not half an hour of retries. max_retries=0: chat()
-        # already does its own retrying, the SDK doubling it quadrupled
-        # the wait.
-        return anthropic.Anthropic(api_key=key, timeout=60.0,
+        # attempt look like a hang). 60s proved TOO tight: the pulse's
+        # 8000-token generations legitimately run past a minute and
+        # came back APITimeoutError while the poll's small calls
+        # passed. 300s covers the largest real generation with room to
+        # spare and still turns a black-hole network into a clear error
+        # in minutes, not half an hour. max_retries=0: chat() already
+        # does its own retrying, the SDK doubling it quadrupled the
+        # wait.
+        return anthropic.Anthropic(api_key=key, timeout=300.0,
                                    max_retries=0), None
     except Exception as e:                                   # noqa: BLE001
         return None, f"Anthropic client init failed ({type(e).__name__}: {e})"

@@ -2247,6 +2247,29 @@ if _bs is not None:
 theme_counts = load(THEME_COUNTS)
 # ticker mentions, for the euphoria tabs' attention sort (singles side)
 ticker_counts = load(TICKER_COUNTS)
+# per-day model component readings (written by the phases step from
+# 2026-08-31; absent on older bundles - the hover then falls back to
+# the observable-ingredient bars)
+desk_components = load("euphoria_desk_components.parquet")
+
+
+@st.cache_resource(show_spinner=False)
+def _desk_weights():
+    """The frozen logit weights + plain labels, for the hover's
+    stacked reading-x-weight bar. None when the insight file is
+    absent or unreadable."""
+    _p = os.path.join(PROCESSED_DIR, "desk_model_insight.json")
+    if not os.path.exists(_p):
+        return None
+    try:
+        _j = json.load(open(_p))
+        return {"in": (_j.get("get_in") or {}).get("logit_weights")
+                or {},
+                "out": (_j.get("get_out") or {}).get("logit_weights")
+                or {},
+                "labels": _j.get("plain_labels") or {}}
+    except Exception:                                    # noqa: BLE001
+        return None
 euph = load("euphoria_levels.parquet")
 if euph is not None:
     euph["date"] = pd.to_datetime(euph["date"])
@@ -5010,6 +5033,9 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                     pd.date_range(_sr.index.min(),
                                   _sr.index.max())).ffill(limit=7)
                 _fb = go.Figure()
+                # bands carry NO hover of their own - the overlay trace
+                # below owns the hover, so each day shows ONE readout
+                # instead of two half-readouts
                 _fb.add_scatter(x=_sr.index, y=_sr.clip(lower=0),
                                 name="INCREASE side · distance to "
                                      "its line",
@@ -5017,9 +5043,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                                 line=dict(width=0.8, color=TEAL),
                                 fill="tozeroy",
                                 fillcolor="rgba(46,110,126,0.35)",
-                                hovertemplate="%{x|%d %b %y} · %{y:.2f} "
-                                              "of the way<extra>INCREASE "
-                                              "side</extra>")
+                                hoverinfo="skip")
                 _fb.add_scatter(x=_sr.index, y=_sr.clip(upper=0),
                                 name="CUT side · shown once the "
                                      "name has run up",
@@ -5027,23 +5051,242 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                                 line=dict(width=0.8, color=BEAR),
                                 fill="tozeroy",
                                 fillcolor="rgba(166,61,44,0.35)",
-                                hovertemplate="%{x|%d %b %y} · "
-                                              "%{y:.2f}<extra>CUT "
-                                              "side</extra>")
-                if "retail_flow_disp" in _srg.columns:
-                    _rfs = _srg["retail_flow_disp"].dropna()
-                    _rfs = _rfs[~_rfs.index.duplicated()]
-                    if len(_rfs) > 5:
-                        _rfs = _rfs.reindex(pd.date_range(
-                            _rfs.index.min(), _rfs.index.max()))
-                        _fb.add_scatter(
-                            x=_rfs.index, y=_rfs.values,
-                            name="RAW retail flow (live)",
-                            mode="lines",
-                            line=dict(width=2.0, color=INK),
-                            hovertemplate="%{x|%d %b %y} · "
-                                          "%{y:+.2f}<extra>retail "
-                                          "flow</extra>")
+                                hoverinfo="skip")
+                # black raw-retail-flow line REMOVED on request ("it
+                # doesnt make sense") - replaced by the decision hover
+                # below, which shows the model's stored readings and
+                # each fire-check at that day (approved wording).
+                _b_day = (_b_g.astype(float).reindex(_rin.index)
+                          .fillna(0.0)
+                          .reindex(_sr.index).ffill(limit=7)
+                          .fillna(0.0) >= 0.5)
+                _hy_day = (_srg["hype_raw"]
+                           [~_srg["hype_raw"].index.duplicated()]
+                           .reindex(_rin.index)
+                           .reindex(_sr.index).ffill(limit=7)) \
+                    if "hype_raw" in _srg.columns else None
+                _fi_all = {s: set(v) for s, v in (
+                    ("in", _srg.index[_srg[sig_col("get_in", _srg)]
+                                      .astype(bool)]
+                     if sig_col("get_in", _srg) in _srg.columns else []),
+                    ("out", _srg.index[_srg[sig_col("get_out", _srg)]
+                                       .astype(bool)]
+                     if sig_col("get_out", _srg) in _srg.columns else []),
+                )}
+                def _hbar(frac, colour, n=14):
+                    # a bar gauge that survives inside a plotly hover:
+                    # filled blocks in the side's colour, the remainder
+                    # in light grey, the fire level = the full bar. The
+                    # "▕" cap marks the threshold visually.
+                    _f = max(0, min(n, int(round(frac * n))))
+                    return ("<span style='color:" + colour + "'>"
+                            + "█" * _f + "</span>"
+                            + "<span style='color:#c9cfd8'>"
+                            + "░" * (n - _f) + "</span>▕")
+                # FACTOR SERIES for the hover bars (approved): the same
+                # observable ingredients the tiles show - posts vs the
+                # prior week, attention vs the name's own normal, net
+                # bullishness - computed per DAY from the published
+                # aggregates. NOT the model's internal weighted
+                # readings (those are not in the published data); a
+                # name absent from the aggregates shows fewer bars.
+                _po_d = _at_d = _nb_d = None
+                try:
+                    if theme_counts is not None and len(theme_counts):
+                        _tcn = theme_counts[
+                            theme_counts["theme"] == name]
+                        if len(_tcn):
+                            _s_f = (_tcn.set_index("date")
+                                    ["mention_count"].sort_index()
+                                    .resample("D").sum())
+                            _wk_f = _s_f.rolling(
+                                7, min_periods=3).mean()
+                            _po_d = (_wk_f / _wk_f.shift(7)
+                                     - 1).reindex(_sr.index)
+                            _md_f = _wk_f.rolling(
+                                120, min_periods=30).median()
+                            _at_d = (_wk_f / _md_f).reindex(_sr.index)
+                    if (theme_sentiment is not None
+                            and len(theme_sentiment)):
+                        _tsn = theme_sentiment[
+                            theme_sentiment["theme"] == name]
+                        if len(_tsn):
+                            _nb_d = (_tsn.set_index("date")
+                                     ["net_bullish"].sort_index()
+                                     [lambda x: ~x.index.duplicated()]
+                                     .resample("D").mean()
+                                     .ffill(limit=7)
+                                     .reindex(_sr.index))
+                except Exception:                        # noqa: BLE001
+                    _po_d = _at_d = _nb_d = None
+
+                def _fin(x):
+                    return (x is not None and pd.notna(x)
+                            and abs(float(x)) != float("inf"))
+                # STACKED CONTRIBUTIONS (approved: "factor + factor +
+                # factor ends up being more than the threshold"). When
+                # the components store exists, each day's bar is split
+                # by what the model is actually adding up - the frozen
+                # logit weights x that day's readings - grouped into
+                # three legible buckets. The bar's TOTAL length stays
+                # the true progress (score/trigger), so segment widths
+                # are each bucket's share of the positive sum.
+                _BUCKETS = (
+                    ("posts & attention", "#3a6ea5",
+                     ("attention_accel", "hype_ratio", "influx_speed",
+                      "attention_convexity", "e1", "e3")),
+                    ("sentiment", "#a07d2e",
+                     ("bull_inflection", "bull_level", "bull_persist")),
+                    ("price", "#5b6673",
+                     ("price_runup", "price_ret21")),
+                )
+                _cmpN = None
+                _W = _desk_weights()
+                if (desk_components is not None
+                        and len(desk_components) and _W
+                        and (_W["in"] or _W["out"])):
+                    _cgc = desk_components[
+                        desk_components["name"] == name]
+                    if len(_cgc):
+                        _cgc = (_cgc.set_index("date").sort_index()
+                                [lambda x: ~x.index.duplicated()])
+                        _cmpN = (_cgc.drop(columns=["name"],
+                                           errors="ignore")
+                                 .reindex(_sr.index).ffill(limit=7))
+
+                def _stack_lines(_d, _v, _pct, _col_h):
+                    """(bar_line, contribs_line, pulling_line|None) for
+                    one day, or None when no components that day."""
+                    if _cmpN is None or _d not in _cmpN.index:
+                        return None
+                    _row_c = _cmpN.loc[_d]
+                    _wts = _W["out"] if _v < 0 else _W["in"]
+                    _bk = []
+                    _negs = []
+                    _any = False
+                    for _bl, _bc, _fs in _BUCKETS:
+                        _s = 0.0
+                        for _f in _fs:
+                            _val = _row_c.get(_f)
+                            _wf = _wts.get(_f)
+                            if _wf is None or not _fin(_val):
+                                continue
+                            _c = float(_wf) * float(_val)
+                            _any = True
+                            _s += _c
+                            if _c <= -0.10:
+                                _negs.append(
+                                    (_W["labels"].get(_f, _f), _c))
+                        _bk.append((_bl, _bc, _s))
+                    if not _any:
+                        return None
+                    _tp = sum(max(_s, 0.0) for _bl, _bc, _s in _bk)
+                    _n_ch = max(1, int(round(min(_pct, 1.15) * 14)))
+                    _segs = ""
+                    _used = 0
+                    _live = [(_bl, _bc, _s) for _bl, _bc, _s in _bk
+                             if _s > 0]
+                    for _i2, (_bl, _bc, _s) in enumerate(_live):
+                        _w_ch = (max(1, int(round(_s / _tp * _n_ch)))
+                                 if _i2 < len(_live) - 1
+                                 else max(1, _n_ch - _used)) \
+                            if _tp > 0 else 0
+                        _used += _w_ch
+                        _segs += (f"<span style='color:{_bc}'>"
+                                  + "█" * _w_ch + "</span>")
+                    _rest = max(0, 14 - min(_used, 14))
+                    _l_bar = ("makeup  " + _segs
+                              + "<span style='color:#c9cfd8'>"
+                              + "░" * _rest + "</span>▕ "
+                              + f"<b>{min(_pct, 1.15):.0%}</b>"
+                              "  (fires at 100%)")
+                    _l_ct = " · ".join(
+                        f"<span style='color:{_bc}'>█</span> {_bl} "
+                        f"<b>{_s:+.2f}</b>" for _bl, _bc, _s in _bk)
+                    _l_ng = ("pulling back: " + " · ".join(
+                        f"{_nl} {_nc:+.2f}" for _nl, _nc in _negs[:3])
+                        if _negs else None)
+                    return _l_bar, _l_ct, _l_ng
+                _htxt = []
+                for _d, _v in _sr.items():
+                    if pd.isna(_v):
+                        _htxt.append("")
+                        continue
+                    _red = _v < 0
+                    _sd = "out" if _red else "in"
+                    _col_h = BEAR if _red else TEAL
+                    _pct = min(abs(_v), 1.15)
+                    _at = abs(_v) >= 1.0
+                    _gate_ok = bool(_b_day.get(_d, False)) if _red \
+                        else True
+                    _cool = not any(
+                        0 < (_d - f).days <= 21 for f in _fi_all[_sd])
+                    _fired_td = _d in _fi_all[_sd]
+                    _l1h = (f"<b>{_d:%d %b %y}</b> · "
+                            + ("red — reducing side"
+                               if _red else "teal — increasing side"))
+                    _stk = _stack_lines(_d, _v, _pct, _col_h)
+                    if _stk is not None:
+                        _rows_h = [_stk[0], _stk[1]]
+                        if _stk[2]:
+                            _rows_h.append(_stk[2])
+                        _ck = (lambda b: "✓" if b else "✗")
+                        _l4h = ("<b>FIRED today</b>" if _fired_td else
+                                f"at its line? {_ck(_at)} · allowed "
+                                f"to fire? {_ck(_gate_ok)} · rested "
+                                f"(no signal in 21d)? {_ck(_cool)}")
+                        _htxt.append("<br>".join(
+                            [_l1h] + _rows_h + [_l4h]))
+                        continue
+                    _rows_h = [f"to a signal  {_hbar(_pct, _col_h)} "
+                               f"<b>{_pct:.0%}</b>  (fires at 100%)"]
+                    _po = _po_d.get(_d) if _po_d is not None else None
+                    if _fin(_po):
+                        _po = float(_po)
+                        _rows_h.append(
+                            f"posts, wk vs prior  "
+                            f"{_hbar(max(0.0, min(_po, 1.0)), _col_h)} "
+                            f"<b>{min(_po, 9.99):+.0%}</b>")
+                    _atv = _at_d.get(_d) if _at_d is not None else None
+                    if _fin(_atv):
+                        _atv = float(_atv)
+                        _rows_h.append(
+                            f"attention  "
+                            f"{_hbar(min(_atv / 2.0, 1.0), _col_h)} "
+                            f"<b>{_atv:.1f}×</b> its normal "
+                            "(2× = elevated)")
+                    _nbv = _nb_d.get(_d) if _nb_d is not None else None
+                    if _fin(_nbv):
+                        _nbv = float(_nbv)
+                        _rows_h.append(
+                            f"bullishness  "
+                            f"{_hbar(max(0.0, min(_nbv, 1.0)), _col_h)} "
+                            f"<b>{_nbv:+.2f}</b>  (full bar = +1)")
+                    if len(_rows_h) == 1:
+                        # aggregates hold nothing for this name (a
+                        # single, or a data gap) - fall back to the
+                        # stored crowd-heat ratio so the hover never
+                        # goes bare
+                        _hy = (float(_hy_day.get(_d))
+                               if _hy_day is not None
+                               and pd.notna(_hy_day.get(_d)) else None)
+                        if _hy is not None:
+                            _rows_h.append(
+                                f"interest  "
+                                f"{_hbar(min(_hy / 2.0, 1.0), _col_h)} "
+                                f"<b>{_hy:.1f}×</b> its normal")
+                    _ck = (lambda b: "✓" if b else "✗")
+                    _l4h = ("<b>FIRED today</b>" if _fired_td else
+                            f"at its line? {_ck(_at)} · allowed to "
+                            f"fire? {_ck(_gate_ok)} · rested (no "
+                            f"signal in 21d)? {_ck(_cool)}")
+                    _htxt.append("<br>".join(
+                        [_l1h] + _rows_h + [_l4h]))
+                _fb.add_scatter(
+                    x=_sr.index, y=_sr, mode="lines",
+                    line=dict(width=0.5, color="rgba(0,0,0,0)"),
+                    showlegend=False, text=_htxt,
+                    hovertemplate="%{text}<extra></extra>")
                 # fired calls sit ON the curve; fall back to the line
                 # they fired at when the curve has no reading that day
                 # Each marker sits at ITS OWN side's score that day,
@@ -5151,13 +5394,13 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                     "side at its own level - so every ▲▼ sits on its "
                     "own colour, touching its line. ◇ = reached its "
                     "line but the 21-day cooldown or the gate held it. "
-                    "The black line is the raw retail flow. Empty "
-                    "means not enough posts to be conclusive.")
-                if "retail_flow_disp" not in _srg.columns:
-                    st.caption("retail-flow dial not in this store yet "
-                               "- run `python -m analytics."
-                               "run_analytics --what phases` once to "
-                               "compute it")
+                    "**Hover any day** for the readings and the three "
+                    "fire-checks. Empty means not enough posts to be "
+                    "conclusive."
+                    + (" In the hover bar, blue = posts & attention, "
+                       "gold = sentiment, grey = price — each sized "
+                       "by what it adds to that day's score."
+                       if _cmpN is not None else ""))
         st.markdown(
             f"<span style='font-size:11px;color:{INK_MUTED}'>"
             "how to read this chart</span>",
@@ -5455,13 +5698,12 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                     f"price are both {_dirw} over 7 and 14 days "
                     f"(price {r.px7:+.1f}% / {r.px14:+.1f}%), so the crowd "
                     "read and the price action point the same way.")
-            st.caption(
-                f"100% is the trigger - this name's score divided by the "
-                f"frozen {side} cut. The changes are in the same units, "
-                "so +6 means six points closer to firing."
-                + ("" if r.age <= 3 else
-                   f"  Scored {r.score_date:%d %b %Y}, {r.age}d ago - the "
-                   "name has not been scored since."))
+            # "100% is the trigger..." caption removed on request; the
+            # staleness warning stays - a reader must still know when a
+            # reading is days old
+            if r.age > 3:
+                st.caption(f"Scored {r.score_date:%d %b %Y}, {r.age}d "
+                           "ago - the name has not been scored since.")
             # THE INGREDIENTS, in the open. The readiness number is a
             # model output; these are the observable inputs behind it,
             # straight from the text-free aggregates - so a reader can
@@ -5477,33 +5719,54 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 else:
                     (_pd7, _pchg, _hyp, _nb, _nb5, _boomed_i,
                      _shr, _shr4) = _ing
-                    _l1, _l2, _l3 = st.columns(3)
-                    _l1.metric("posts, 7d vs prior week",
-                               f"{_pchg:+.0%}" if _pchg is not None
-                               else "-")
-                    _l2.metric("vs its own 120d norm",
-                               f"{_hyp:.1f}×" if _hyp is not None else "-",
-                               delta=("elevated" if (_hyp or 0) >= 2
-                                      else "normal range"),
-                               delta_color="off")
-                    _l3.metric("net bullishness",
-                               f"{_nb:+.2f}" if _nb is not None else "-",
-                               delta=(f"{_nb5:+.2f} over 5d"
-                                      if _nb5 is not None else None),
-                               delta_color="off")
-                    # second row (approved additions): persistence,
-                    # size in the room, breadth of the conversation
-                    _l4, _l5, _l6 = st.columns(3)
+                    # DRIVER flags FIRST, so the hot tiles themselves
+                    # can be highlighted ("bold the tile that has it")
+                    # - a driver tile gets a border. Thresholds are the
+                    # tiles' own conventions (2x = elevated; +-0.5
+                    # bullishness is very one-sided).
                     _bdy = None
                     if pd.notna(getattr(r, "near_since", None)):
                         _bdy = (pd.Timestamp(_a_as_of)
                                 - pd.Timestamp(r.near_since)).days + 1
+                    _dr_posts = _pchg is not None and _pchg >= 0.25
+                    _dr_att = _hyp is not None and _hyp >= 1.5
+                    _dr_nb = _nb is not None and _nb >= 0.5
+                    _dr_nb5 = _nb5 is not None and _nb5 >= 0.15
+                    _dr_days = _bdy is not None and _bdy >= 3
+                    _l1, _l2, _l3 = st.columns(3)
+                    _l1.metric("posts, 7d vs prior week",
+                               f"{_pchg:+.0%}" if _pchg is not None
+                               else "-",
+                               delta=("driving the signal"
+                                      if _dr_posts else None),
+                               delta_color="off", border=_dr_posts)
+                    _l2.metric("vs its own 120d norm",
+                               f"{_hyp:.1f}×" if _hyp is not None else "-",
+                               delta=("driving the signal" if _dr_att
+                                      else ("elevated"
+                                            if (_hyp or 0) >= 2
+                                            else "normal range")),
+                               delta_color="off", border=_dr_att)
+                    _l3.metric("net bullishness",
+                               f"{_nb:+.2f}" if _nb is not None else "-",
+                               delta=(("driving the signal · "
+                                       if (_dr_nb or _dr_nb5) else "")
+                                      + (f"{_nb5:+.2f} over 5d"
+                                         if _nb5 is not None else "")
+                                      or None),
+                               delta_color="off",
+                               border=(_dr_nb or _dr_nb5))
+                    # second row (approved additions): persistence,
+                    # size in the room
+                    _l4, _l5, _l6 = st.columns(3)
                     _l4.metric("days building",
                                f"{_bdy}d" if _bdy is not None else "new",
-                               delta=("consecutive days near the "
-                                      "trigger" if _bdy is not None
+                               delta=(("driving the signal"
+                                       if _dr_days else
+                                       "consecutive days near the "
+                                       "trigger") if _bdy is not None
                                       else "first day near the trigger"),
-                               delta_color="off")
+                               delta_color="off", border=_dr_days)
                     _l5.metric("share of theme chatter",
                                f"{_shr:.1%}" if _shr is not None else "-",
                                delta=(f"4wk avg {_shr4:.1%}"
@@ -5512,8 +5775,32 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                     # breadth tile removed on request ("just remove the
                     # tile that says breadth") - _l6 stays empty so the
                     # two rows keep the same grid
-                    # methodology caption removed on request ("no need
-                    # this") - the tiles stand on their own
+                    # THE DRIVERS, named. Price line removed on request
+                    # - the run-up state already shows in the chart.
+                    _drv = []
+                    if _dr_posts:
+                        _drv.append(f"posts +{_pchg:.0%} vs prior week")
+                    if _dr_att:
+                        _drv.append(f"attention {_hyp:.1f}× its normal")
+                    if _dr_nb:
+                        _drv.append("very one-sided bullishness "
+                                    f"({_nb:+.2f})")
+                    if _dr_nb5:
+                        _drv.append(f"mood turning up ({_nb5:+.2f} "
+                                    "in 5d)")
+                    if _dr_days:
+                        _drv.append(f"{_bdy} days building")
+                    if _drv:
+                        st.markdown(
+                            f"<div style='font-size:13.5px;"
+                            f"margin:4px 0 2px 0;color:{tone}'>"
+                            "<b>What's pushing it toward the "
+                            "trigger:</b> " + " · ".join(_drv)
+                            + "</div>", unsafe_allow_html=True)
+                    else:
+                        st.caption("no single reading is extreme - "
+                                   "the score comes from several "
+                                   "mildly elevated readings together")
             draw_chart(r.name, "", key)
 
         def _ingredients(nm):
@@ -5571,9 +5858,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 shr4 = float(s.tail(28).sum()) / _t28
             return wk, wow, hyp, nb, nb5, _bmn, shr, shr4
 
-        def _a_list(side, tone, blurb, title=None):
+        def _a_list(side, tone, blurb, title=None, head_help=None):
             st.markdown(f"<div class='rf-actionhead' style='color:{tone}'>"
-                        f"{title or side}</div>", unsafe_allow_html=True)
+                        f"{title or side}</div>", unsafe_allow_html=True,
+                        help=head_help)
             st.caption(blurb)
             rows = _a_pick(side)
             if rows is None or rows.empty:
@@ -5598,13 +5886,35 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
         _a_list("CUT EXPOSURE", BEAR,
                 "Names that have already run and are topping out. "
                 "Closest to firing first.",
-                title="Extreme Bullishness — Consider Reducing Exposure")
+                title="Extreme Bullishness — Consider Reducing Exposure",
+                head_help=(
+                    "**What this list means:**\n\n"
+                    "- Every name here has **already had its big price "
+                    "run** — up at least 20% from its recent low.\n"
+                    "- The % measures how much today looks like past "
+                    "peaks:\n"
+                    "  - a lot more posts than before\n"
+                    "  - almost everyone bullish\n"
+                    "  - it has lasted a while\n"
+                    "  - the price has run a long way"))
         st.markdown('<div class="rf-rule"></div>', unsafe_allow_html=True)
         _a_list("INCREASE EXPOSURE", BULL,
                 "Names the crowd is arriving at, before the run. "
                 "Closest to firing first.",
                 title="Start of Bullishness — Consider Increasing "
-                      "Exposure")
+                      "Exposure",
+                head_help=(
+                    "**What this list means:**\n\n"
+                    "- These names have **not had their price run yet** "
+                    "— the interest is arriving first.\n"
+                    "- The % measures how much interest is building "
+                    "versus before:\n"
+                    "  - more posts than usual\n"
+                    "  - growing faster and faster\n"
+                    "  - the mood turning positive\n"
+                    "  - the price starting to move\n"
+                    "- ◆ HIGH CONVICTION means price trends (moving "
+                    "averages and momentum) also agree that same day."))
 
         # ---- LAST FIRED SIGNALS ------------------------------------------
         # The lists above are about what has NOT fired yet. This is the
@@ -7304,7 +7614,20 @@ if active_tab == "Influence tracker":
 
         with _i4:
             # ---- 5. the influence map -------------------------------------
-            st.markdown("#### 5. The influence map - who replies to whom")
+            st.markdown("#### 5. The influence map - who replies to whom",
+                        help=(
+                "**How to read the map:**\n\n"
+                "- Every **dot** is one poster.\n"
+                "- A **line** between two dots means one replies to the "
+                "other; people who reply to each other a lot get pulled "
+                "close together.\n"
+                "- **Dot size** = how many people reply to them (the "
+                "bigger, the more the room responds).\n"
+                "- **Colour** = the influence score - how much engagement "
+                "what they post actually gets.\n"
+                "- Only the densely connected core of the network is "
+                "drawn - the thousands of one-off posters around it are "
+                "left out so the picture stays readable."))
             if not os.path.exists(_INFL_EDGES):
                 st.info("no reply_edges.parquet in the store yet - the map "
                         "appears after one comment pull.")
@@ -7428,7 +7751,15 @@ if active_tab == "Influence tracker":
 
 # ---- TOP TRENDS ----
 if active_tab == "Top trends":
-    st.subheader("Most-mentioned themes (rank 1 = top trending)")
+    st.subheader("Most-mentioned themes (rank 1 = top trending)",
+                 help=(
+        "**How this ranking works:**\n\n"
+        "- Themes are ranked by **how much of the conversation they took "
+        "up** in the chosen window - total mentions, biggest first.\n"
+        "- This is about SIZE: the themes everyone is already talking "
+        "about.\n"
+        "- For what is growing fastest instead, use the Emerging trends "
+        "tab."))
     st.caption("Each chart is the PM view: the anchor "
                "ETF's price, the crowd's attention and the crowd's mood "
                "on ONE graph - price up + attention up + sentiment up "
@@ -7463,7 +7794,17 @@ if active_tab == "Top trends":
 
 # ---- EMERGING TRENDS ----
 if active_tab == "Emerging trends":
-    st.subheader("Emerging = fastest-GROWING tradeable themes (rank 1 = hottest)")
+    st.subheader("Emerging = fastest-GROWING tradeable themes (rank 1 = hottest)",
+                 help=(
+        "**How this ranking works:**\n\n"
+        "- Themes are ranked by how fast their **share of the "
+        "conversation is growing** over the lookback - not by how big "
+        "they are.\n"
+        "- Rank 1 = the crowd is arriving fastest right now, even if "
+        "the theme is still small.\n"
+        "- Only themes with a tradeable ETF are ranked.\n"
+        "- The slider trades speed for steadiness: 7 days catches the "
+        "newest arrivals, 21 days rewards a sustained build-up."))
     st.caption("Only themes with an approved instrument are ranked. "
                "'Growing' = average change in share-of-conversation over the "
                "chosen lookback - positive means the crowd is arriving.")
@@ -8025,7 +8366,7 @@ if active_tab == "AI Pulse":
     st.divider()
     # ---- 1. THE POLL: what the AI recommends when asked like retail --
     st.markdown("## B - What the AI is recommending to retail")
-    st.caption("The POLL: at every data refresh the pipeline itself asks the model the questions a retail trader asks (config/ai_poll_prompts.csv - editable) and records every name and theme it recommends - a direct reading of the advice flowing from AI into the crowd. The panel is 30 prompts: the plain questions retail types, plus the personas and agent scaffolds retail actually runs - the hedge-fund-PM and Warren-Buffett system prompts the popular open-source AI-investing repos ship, the bull-vs-bear-then-PM debate pipeline, the JSON-decision agent loop, and the screening, portfolio-rating, swing-setup and options-flow asks that circulate as copy-paste prompts. No backfill is possible; the series starts the day you start polling, and its forward test against the flags is pre-registered in notebook 09 \u00a72b.")
+    st.caption("The POLL: at every data refresh the pipeline itself asks the model the questions a retail trader asks (config/ai_poll_prompts.csv - editable) and records every name and theme it recommends - a direct reading of the advice flowing from AI into the crowd. The panel is 12 prompts, one per kind of asker: the plain questions retail types, the hedge-fund-PM and Warren-Buffett personas the popular open-source AI-investing repos ship as system prompts, the JSON-decision agent loop, a value screen and the meme-squeeze ask - balanced so gold, dividends and the boring-portfolio ask sit beside the single AI ask. No backfill is possible; the series starts the day you start polling, and its forward test against the flags is pre-registered in notebook 09 \u00a72b.")
     # the full prompt panel, on request ("add all the prompts in a
     # drop down") - read straight from the editable CSV so the list
     # can never drift from what the poll actually asks; rendered

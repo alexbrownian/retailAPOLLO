@@ -13,16 +13,17 @@ into the crowd.  This module runs that poll at the end of every
 update_data pass:
 
   * the PROMPT PANEL lives in config/ai_poll_prompts.csv (editable, one
-    retail-style question per row).  Expanded 2026-08-04 from 12 to 30
-    on the desk's instruction to "look at what people have currently set
-    up as AI trading agents and see what prompts or systems they use and
-    we copy that": p13-p30 are lifted from the scaffolds retail actually
-    runs - the hedge-fund-PM and Warren-Buffett personas that the
-    most-starred open-source AI-investing repos ship as system prompts,
-    the bull-vs-bear-then-PM debate pipeline, the JSON-decision agent
-    loop people schedule against a broker API, plus the screening,
-    portfolio-rating, swing-setup and options-flow asks that circulate
-    as copy-paste prompts.  The `family` column tags each one (plain,
+    retail-style question per row).  History: 12 -> 30 on 2026-08-04
+    (copying the scaffolds retail actually runs - hedge-fund-PM and
+    Warren-Buffett personas from the most-starred AI-investing repos,
+    the JSON-decision agent loop, the copy-paste screens); +6 balance
+    prompts on 2026-08-28; then CUT BACK to 12 the same day ("its too
+    much now") - one prompt per family kept, chosen so the panel is
+    not read as purely a tech chase (gold, dividends, value screen and
+    the boring-portfolio ask sit beside the single AI ask). A retired
+    prompt_id's history stays in the store and its series simply ends;
+    re-adding the same id later resumes it.
+    The `family` column tags each one (plain,
     theme, persona, agent, screen, portfolio, momentum, risk, thesis) so
     the series can be read by TYPE of asker as well as in aggregate -
     whether the persona scaffolds recommend something different from the

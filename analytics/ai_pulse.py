@@ -836,8 +836,13 @@ def generate(log=print, as_of=None) -> tuple[bool, str]:
         # the ONLY call that receives the evidence pack
         log("AI PULSE: call 3 - catalysts (posts) and divergences "
             "(posts vs the measured numbers)")
+        # 8000, not 4000: on busy days this answer legitimately runs
+        # past 4k tokens and the truncation guard failed the whole
+        # pulse three tries in a row (2026-08-28, 21:14-21:17) before
+        # a shorter draw squeaked under the bar at 21:18. Same ceiling
+        # as calls 1-2; costs tokens on this call only, never calls.
         watch = ai.chat(_watch_prompt(ev, posts), system=_WATCH_SYSTEM,
-                        want_json=True, max_tokens=4000)
+                        want_json=True, max_tokens=8000)
         from src.agentic_watch import recent_samples
         log("AI PULSE: call 4 - the agentic digest")
         agentic = ai.chat(

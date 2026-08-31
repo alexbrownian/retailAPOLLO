@@ -68,6 +68,7 @@ PROCESSED_FILES = [
     "euphoria_levels.parquet",
     "euphoria_onset.parquet",
     "euphoria_desk.parquet",
+    "euphoria_desk_components.parquet",
     "episodes.parquet",
     "phase_day_frame.parquet",
     "daily_agentic_counts.parquet",

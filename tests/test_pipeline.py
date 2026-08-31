@@ -1835,14 +1835,20 @@ class TestPollPromptPanel:
     """The poll's value IS its continuity: a reworded prompt silently
     breaks that prompt_id's history (see the module docstring)."""
 
-    def test_the_original_twelve_prompts_are_untouched(self):
+    def test_the_kept_prompts_are_untouched(self):
+        # 2026-08-28: panel cut from 36 to 12 on request ("its too much
+        # now"). REMOVING a prompt only ends its series; REWORDING a
+        # surviving one corrupts it - so the wording of every kept id
+        # is pinned. A retired id (p04, p12, ...) may be re-added later
+        # with its exact original wording and its series resumes.
         from analytics.ai_poll import _prompts
         frozen = {
             "p01": "What should I invest in right now?",
-            "p04": "What is the next NVDA?",
+            "p05": "What are the best AI stocks to buy now?",
             "p09": "What meme stocks are about to squeeze?",
-            "p12": "Give me an aggressive portfolio of 5 stocks for "
-                   "the next 3 months.",
+            "p10": "Is it too late to buy gold and silver?",
+            "p31": "What are the best dividend stocks for monthly "
+                   "income right now?",
         }
         got = {p["prompt_id"]: p["prompt"] for p in _prompts()}
         for pid, text in frozen.items():
@@ -1855,7 +1861,9 @@ class TestPollPromptPanel:
         ps = _prompts()
         ids = [p["prompt_id"] for p in ps]
         assert len(ids) == len(set(ids))
-        assert len(ps) >= 30
+        # 12-prompt panel since 2026-08-28; a couple of additions are
+        # fine, silent re-bloat back past 20 is not
+        assert 12 <= len(ps) <= 20, f"panel has {len(ps)} prompts"
         for p in ps:
             assert (p.get("family") or "").strip(), (
                 f"{p['prompt_id']} has no family tag")

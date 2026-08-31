@@ -19,7 +19,7 @@ WHAT THIS MODULE OWNS
    features + onset/top labels, shared by notebooks 02 and 03 and by the
    production detector, so research and dashboard can never drift apart.
 
-DESK DECISIONS (July 2026, recorded before any result was computed)
+PROJECT DECISIONS (July 2026, recorded before any result was computed)
 -------------------------------------------------------------------
 * ONSET HIT WINDOW: an onset alert is a HIT when it lands inside
   [trough, min(trough + 45d, peak)]. The trough is the 120d low the boom
@@ -1595,6 +1595,33 @@ def rebuild_phase_files(verbose: bool = True,
     except Exception as _rf_e:                            # noqa: BLE001
         if verbose:
             print(f"  (retail-flow dial skipped: {_rf_e})")
+    # PER-DAY MODEL COMPONENTS (approved 2026-08-31: "stacked bar,
+    # factor + factor + factor vs the threshold"). The 11 desk-bank
+    # readings per scored day, so the dashboard hover can draw each
+    # day's reading-x-weight stack. Raw feature values only - the
+    # frozen weights live in desk_model_insight.json; no text, no ids,
+    # so the file is publishable. Failure-isolated like the dial: a
+    # components bug must never cost the desk store.
+    try:
+        _lc_cmp = live_cand
+        _cmp_cols = [c for c in mld.DESK_ML_BANK
+                     if c in _lc_cmp.columns]
+        if len(_cmp_cols) >= 8:
+            _cmp = (_lc_cmp[["date", "name"] + _cmp_cols]
+                    .dropna(subset=_cmp_cols, how="all").copy())
+            for _cc in _cmp_cols:
+                _cmp[_cc] = _cmp[_cc].astype("float32")
+            _safe_write(_cmp, _os.path.join(
+                PROCESSED_DIR, "euphoria_desk_components.parquet"))
+            if verbose:
+                print(f"  saved euphoria_desk_components.parquet "
+                      f"({len(_cmp):,} rows, {len(_cmp_cols)} "
+                      "readings)")
+    except NameError:
+        pass               # rules fallback: no ML bank to publish
+    except Exception as _cmp_e:                           # noqa: BLE001
+        if verbose:
+            print(f"  (components store skipped: {_cmp_e})")
     _safe_write(ds, _os.path.join(PROCESSED_DIR, "euphoria_desk.parquet"))
     if verbose:
         print(f"  saved euphoria_desk.parquet ({len(ds):,} rows, "
@@ -1689,7 +1716,7 @@ def rebuild_phase_files(verbose: bool = True,
 #    START there is definitionally incoherent. Measured (NB06):
 #    START-within-21d-of-END adjacency 20 -> 2, LATE starts 21 -> 10,
 #    FA 169 -> 124, at a recorded cost of captures 29 -> 20 of 125.
-#    DESK DECISION: the desk stated three times that a START landing on
+#    PROJECT DECISION: the desk stated three times that a START landing on
 #    top of an END is the error that destroys PM trust; the adjacency
 #    priority overrules the raw-capture utility rule, and the cost is
 #    recorded here and in NB06, not hidden.

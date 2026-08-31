@@ -199,10 +199,29 @@ def _promote(tmp_path: str, out_path: str, tries: int = 5):
 
 
 def _pid_alive(pid: int) -> bool:
-    """Is that process still running? (Windows: tasklist has no cheap
-    equivalent of signal 0, so ask the OS via os.kill's ERROR_ACCESS path.)"""
+    """Is that process still running?
+
+    NEVER os.kill(pid, 0) on Windows: signal 0 is not a probe there -
+    it raises WinError 87 through a CPython path that surfaces as
+    SystemError, which sails PAST an except OSError and killed the
+    whole fetch the first time a stale lock existed (2026-08-28). On
+    Windows ask the kernel directly instead."""
     if pid <= 0:
         return False
+    if os.name == "nt":
+        import ctypes                                    # noqa: PLC0415
+        _STILL_ACTIVE = 259
+        _Q = 0x1000                # PROCESS_QUERY_LIMITED_INFORMATION
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(_Q, False, int(pid))
+        if not h:
+            return False           # no such process
+        try:
+            code = ctypes.c_ulong()
+            ok = k32.GetExitCodeProcess(h, ctypes.byref(code))
+            return bool(ok) and code.value == _STILL_ACTIVE
+        finally:
+            k32.CloseHandle(h)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

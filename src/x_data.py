@@ -62,15 +62,33 @@ STATUS_ID = re.compile(r"/status/(\d+)")
 
 
 def _dates_from(series) -> pd.Series:
-    """Timestamps -> 'YYYY-MM-DD'. Handles ISO strings AND unix seconds
-    (some dumps store post_date as seconds-since-1970). Mixed formats are
-    expected here, so pandas' per-element-parse warning is suppressed."""
+    """Timestamps -> 'YYYY-MM-DD'. Handles ISO strings AND unix
+    seconds or milliseconds (dumps vary). Mixed formats are expected
+    here, so pandas' per-element-parse warning is suppressed.
+
+    RANGE-GUARDED (fix 2026-08-31): a raw feed row can carry a huge
+    numeric in created_at (a tweet/status id is ~2e18). Feeding that
+    to to_datetime(unit='s') multiplies toward nanoseconds and
+    OVERFLOWS - which crashed the whole fold with FloatingPointError
+    on machines where numpy is set to raise. Only values inside a
+    sane band are treated as timestamps: seconds ~1973-2128, and the
+    matching millisecond band; anything else (ids, garbage) becomes
+    NaT and the row is dropped downstream. A snowflake id is
+    deliberately NOT decoded as a nanosecond stamp - it would produce
+    a plausible-looking wrong date."""
     import warnings
-    with warnings.catch_warnings():
+    import numpy as np
+    with warnings.catch_warnings(), \
+            np.errstate(over="ignore", invalid="ignore"):
         warnings.simplefilter("ignore", UserWarning)
         parsed = pd.to_datetime(series, errors="coerce", utc=True)
         numeric = pd.to_numeric(series, errors="coerce")
-        unix = pd.to_datetime(numeric, unit="s", utc=True, errors="coerce")
+        _sec = numeric.where((numeric >= 1e8) & (numeric < 5e9))
+        _ms = numeric.where((numeric >= 1e11) & (numeric < 5e12))
+        unix = pd.to_datetime(_sec, unit="s", utc=True,
+                              errors="coerce")
+        unix = unix.fillna(pd.to_datetime(_ms, unit="ms", utc=True,
+                                          errors="coerce"))
     parsed = parsed.fillna(unix)
     return parsed.dt.strftime("%Y-%m-%d")
 

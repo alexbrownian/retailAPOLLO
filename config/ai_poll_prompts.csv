@@ -1,31 +1,13 @@
 prompt_id,family,prompt,note
 p01,plain,What should I invest in right now?,the generic ask - the single most common phrasing
-p02,plain,What are the best stocks to buy this week?,short-horizon variant
 p03,plain,"I have $1,000 to invest, what should I buy?",small-account framing typical of retail
-p04,plain,What is the next NVDA?,the lottery-ticket ask
 p05,theme,What are the best AI stocks to buy now?,theme chase - AI
-p06,theme,Best stocks to buy after the memory chip rally?,theme follow-on - rides whatever just ran
-p07,theme,Should I buy the dip in semiconductors?,dip-buying validation ask
-p08,plain,What ETFs should I put my savings in right now?,the ETF/beginner ask
 p09,momentum,What meme stocks are about to squeeze?,the squeeze ask
 p10,theme,Is it too late to buy gold and silver?,late-cycle commodity ask
-p11,plain,What stocks is everyone on Reddit buying that are actually good?,crowd-validation ask
-p12,portfolio,Give me an aggressive portfolio of 5 stocks for the next 3 months.,the yolo portfolio ask
 p13,persona,"Act as a hedge fund portfolio manager. Give me your 5 highest conviction long positions right now with ticker, entry price, price target and stop loss.",the dominant role-play framing across shared-prompt collections
 p14,persona,"You are Warren Buffett. Using your circle of competence, moat, management quality, financial strength and valuation checklist, name the stocks you would buy today and rate each bullish, bearish or neutral with a confidence score.",compressed from the shipped system prompt of the most-starred retail AI-investing repo (virattt/ai-hedge-fund) - the investor-persona ensemble pattern
 p15,agent,"You are a disciplined algorithmic trading agent. Analyse the market and decide what to trade. Return your decision, the symbol, the quantity, your reasoning and a confidence score.",the JSON-decision contract DIY retail agents run on a schedule
-p16,agent,"Run a bull researcher versus bear researcher debate on the most talked about stock in the market right now, then act as the portfolio manager and give the final buy, sell or hold call with a position size.",the TradingAgents scaffold - parallel analysts then a bull/bear debate then PM sign-off
-p17,screen,"Act as a real-time market analyst. Find stocks with strong recent earnings, low volatility and sector momentum, and rank them by conviction.",criteria-driven screening ask - near-verbatim from a top-ranked trading-prompt listicle
 p18,screen,List stocks trading at least 20% below their 52-week high that still have above-average returns on equity.,the dip screen most often pasted verbatim
-p19,screen,Find technology stocks with a three-year revenue growth rate above 10% and give me the ticker list.,the plainest quantitative screen retail actually uses
-p20,momentum,"Build me a watchlist of 10 small cap stocks that could realistically double within a year, with the catalyst and the biggest risk for each.",the ten-bagger watchlist template
 p21,portfolio,"I have $10,000 and I am comfortable with high risk. Build me an aggressive portfolio with specific tickers and percentage weights.",risk-tolerance plus dollar-amount framing; matches the published retail-advice study setup
-p22,portfolio,"Rate my portfolio out of 10 and tell me exactly what to sell and what to buy instead. I hold 40% NVDA, 30% VOO, 20% TSLA and 10% cash.",portfolio-critique ask - the holdings are fixed on purpose so the series stays comparable
-p23,persona,"What is your single highest conviction trade for the next month? Give me one ticker, the entry, the exit and the risk.",timeframe-bounded single-name conviction ask
-p24,momentum,"Act as a swing trader with a two to four week holding period. Give me 5 setups with ticker, entry, stop and target.",the standard swing-trading prompt structure
-p25,momentum,"Which stocks are most likely to short squeeze soon? Screen for high short interest, high days to cover and rising retail chatter.",a deliberate probe rather than a documented copy-paste prompt - see the note in POST_INTERN_HANDOVER
-p26,momentum,Scan for unusual options activity and tell me which tickers big money is positioning in.,the follow-the-big-money ask
-p27,momentum,"Act as a technical analyst. Find stocks breaking out on unusual volume right now and give me entry, stop and first target.",technical-analyst persona; the brokers' own AI agents now answer this shape directly
-p28,thesis,I am about to buy NVDA because I think AI infrastructure demand keeps accelerating. Tell me what I am missing and whether you would take the trade.,the what-am-I-missing thesis-critique template
-p29,risk,Act as my risk manager. I want to put my entire account into one stock. Talk me through the risk and then tell me which single stock you would actually pick.,risk-persona layer; mirrors the aggressive/conservative/neutral risk agents in the multi-agent scaffolds
-p30,theme,"After a big AI rally what should I rotate into next? Give me 5 tickers and explain it simply, like I am a beginner.",sector-rotation plus the beginner register that dominates consumer use
+p31,plain,What are the best dividend stocks for monthly income right now?,income ask - balances the growth tilt of the panel (added 28 Aug 26; its series starts that day)
+p36,portfolio,"Build me a boring, diversified portfolio I never have to touch, with specific funds and weights.",the anti-yolo counterweight (added 28 Aug 26)
