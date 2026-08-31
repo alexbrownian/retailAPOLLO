@@ -5137,7 +5137,10 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                       "attention_convexity", "e1", "e3")),
                     ("sentiment", "#a07d2e",
                      ("bull_inflection", "bull_level", "bull_persist")),
-                    ("price", "#5b6673",
+                    # labelled "momentum", not "price", on request -
+                    # truthful: the bucket is the run-up + the 1-month
+                    # return, i.e. momentum readings
+                    ("momentum", "#5b6673",
                      ("price_runup", "price_ret21")),
                 )
                 _cmpN = None
@@ -5181,7 +5184,11 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                     if not _any:
                         return None
                     _tp = sum(max(_s, 0.0) for _bl, _bc, _s in _bk)
-                    _n_ch = max(1, int(round(min(_pct, 1.15) * 14)))
+                    # 24-wide bar (was 14) with the FIRE line as a bold
+                    # cap and the distance stated in words - "quite
+                    # unclear how many % of the way" fix
+                    _NW = 24
+                    _n_ch = max(1, int(round(min(_pct, 1.0) * _NW)))
                     _segs = ""
                     _used = 0
                     _live = [(_bl, _bc, _s) for _bl, _bc, _s in _bk
@@ -5194,12 +5201,15 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                         _used += _w_ch
                         _segs += (f"<span style='color:{_bc}'>"
                                   + "█" * _w_ch + "</span>")
-                    _rest = max(0, 14 - min(_used, 14))
-                    _l_bar = ("makeup  " + _segs
+                    _rest = max(0, _NW - min(_used, _NW))
+                    _l_bar = (_segs
                               + "<span style='color:#c9cfd8'>"
-                              + "░" * _rest + "</span>▕ "
-                              + f"<b>{min(_pct, 1.15):.0%}</b>"
-                              "  (fires at 100%)")
+                              + "░" * _rest + "</span><b>▌FIRE</b>")
+                    _l_pc = (f"<b>{min(_pct, 1.15):.0%} of the way</b>"
+                             + (f" · {max(0.0, 1 - _pct):.0%} to go"
+                                if _pct < 1.0 else
+                                " · <b>AT THE LINE</b>"))
+                    _l_bar = _l_pc + "<br>" + _l_bar
                     _l_ct = " · ".join(
                         f"<span style='color:{_bc}'>█</span> {_bl} "
                         f"<b>{_s:+.2f}</b>" for _bl, _bc, _s in _bk)
@@ -5238,8 +5248,17 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                         _htxt.append("<br>".join(
                             [_l1h] + _rows_h + [_l4h]))
                         continue
-                    _rows_h = [f"to a signal  {_hbar(_pct, _col_h)} "
-                               f"<b>{_pct:.0%}</b>  (fires at 100%)"]
+                    _f_ch = max(0, min(24,
+                                       int(round(min(_pct, 1.0) * 24))))
+                    _rows_h = [
+                        f"<b>{_pct:.0%} of the way</b>"
+                        + (f" · {max(0.0, 1 - _pct):.0%} to go"
+                           if _pct < 1.0 else " · <b>AT THE LINE</b>")
+                        + "<br>"
+                        + f"<span style='color:{_col_h}'>"
+                        + "█" * _f_ch + "</span>"
+                        + "<span style='color:#c9cfd8'>"
+                        + "░" * (24 - _f_ch) + "</span><b>▌FIRE</b>"]
                     _po = _po_d.get(_d) if _po_d is not None else None
                     if _fin(_po):
                         _po = float(_po)
@@ -5398,7 +5417,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                     "fire-checks. Empty means not enough posts to be "
                     "conclusive."
                     + (" In the hover bar, blue = posts & attention, "
-                       "gold = sentiment, grey = price — each sized "
+                       "gold = sentiment, grey = momentum — each sized "
                        "by what it adds to that day's score."
                        if _cmpN is not None else ""))
         st.markdown(
