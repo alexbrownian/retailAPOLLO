@@ -1,11 +1,11 @@
 {
  "threshold": 0.9,
- "built": "2026-08-31 06:35",
+ "built": "2026-08-31 07:31",
  "alerts": [
   {
    "name": "cloud_saas",
    "symbol": "IGV",
-   "signed_readiness": -0.939,
+   "signed_readiness": -0.94,
    "side": "GET OUT",
    "as_of": "2026-08-28"
   }
