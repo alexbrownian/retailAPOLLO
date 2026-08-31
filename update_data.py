@@ -339,6 +339,9 @@ def main():
                    help="skip the monthly dynamic-panel review (subreddit "
                         "discovery; it is watermarked and only actually "
                         "runs when >= PANEL_REVIEW_DAYS have passed)")
+    p.add_argument("--no-git", action="store_true",
+                   help="do not auto-commit/push the refreshed data "
+                        "stores (stage 6c)")
     p.add_argument("--dry-run", action="store_true", help="print the plan, run nothing")
     args = p.parse_args()
     dry = args.dry_run
@@ -778,6 +781,58 @@ def main():
             except Exception as e:             # noqa: BLE001
                 log(f"dashboard bundle skipped: {type(e).__name__}: {e}", fh)
 
+    # ---- 6c. GIT AUTO-PUBLISH: commit + push the refreshed data ----
+    # (request 2026-08-31: "update_data does this auto refresh of the
+    # dashboard each time"). The hosted Streamlit redeploys from the
+    # repo, so a refresh that stops short of a push never reaches it -
+    # which is exactly how a fresh AI pulse sat invisible for a day.
+    # DATA PATHS ONLY (DASHBOARD_DATA + ABSTRACTED_DATA): code edits
+    # are never swept into an auto-commit. Refuses to act when other
+    # files are already staged - that is the user's commit in progress,
+    # not ours. Never fatal; the summary reports what happened.
+    def _git_autopush():
+        import subprocess as _sp
+        _env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+        _paths = ["DASHBOARD_DATA", "ABSTRACTED_DATA"]
+
+        def _git(*a, timeout=120):
+            return _sp.run(["git", *a], cwd=ROOT, capture_output=True,
+                           text=True, timeout=timeout, env=_env)
+        r = _git("rev-parse", "--is-inside-work-tree")
+        if r.returncode != 0:
+            return "skipped - not a git repo"
+        r = _git("diff", "--cached", "--name-only")
+        if r.returncode == 0 and r.stdout.strip():
+            return ("skipped - you already have files staged; finish "
+                    "that commit (or unstage) and re-run")
+        r = _git("add", "--", *_paths)
+        if r.returncode != 0:
+            return f"add failed - {(r.stderr or r.stdout).strip()[:160]}"
+        if _git("diff", "--cached", "--quiet").returncode == 0:
+            return "nothing new - data unchanged since the last commit"
+        _cm = time.strftime("data refresh %Y-%m-%d %H:%M (auto-publish)")
+        r = _git("commit", "-m", _cm)
+        if r.returncode != 0:
+            return (f"commit failed - "
+                    f"{(r.stderr or r.stdout).strip()[:160]}")
+        r = _git("push", timeout=300)
+        if r.returncode != 0:
+            return ("committed locally but push FAILED - "
+                    f"{(r.stderr or r.stdout).strip()[:160]} "
+                    "- run `git push` yourself; the commit is made")
+        return "pushed - the hosted dashboard redeploys in ~1-2 min"
+
+    git_msg = "not run"
+    if not dry and not args.no_git:
+        if not safe:
+            git_msg = "skipped - the safety check failed"
+        else:
+            try:
+                git_msg = _git_autopush()
+            except Exception as e:                       # noqa: BLE001
+                git_msg = f"FAILED - {type(e).__name__}: {e}"
+        log(f"GIT PUBLISH: {git_msg}", fh)
+
     # ---- 7. RUN SUMMARY: the key facts in one glance ----
     if not dry:
         import pandas as pd
@@ -861,6 +916,7 @@ def main():
         # months-old file. State the verdict where the run is read.
         log(f"  AI poll       : {ai_poll_msg[:78]}", fh)
         log(f"  AI pulse      : {ai_pulse_msg[:78]}", fh)
+        log(f"  git publish   : {git_msg[:78]}", fh)
         log(f"  dashboard     : python -m streamlit run dashboard.py", fh)
         log("=" * 60, fh)
     # A failed fold is a failed run. Previously only the text-free check
