@@ -5054,12 +5054,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                                 hoverinfo="skip")
                 # black raw-retail-flow line REMOVED on request ("it
                 # doesnt make sense") - replaced by the decision hover
-                # below, which shows the model's stored readings and
-                # each fire-check at that day (approved wording).
-                _b_day = (_b_g.astype(float).reindex(_rin.index)
-                          .fillna(0.0)
-                          .reindex(_sr.index).ffill(limit=7)
-                          .fillna(0.0) >= 0.5)
+                # below, which shows the model's stored readings for
+                # that day.
                 _hy_day = (_srg["hype_raw"]
                            [~_srg["hype_raw"].index.duplicated()]
                            .reindex(_rin.index)
@@ -5226,27 +5222,21 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                     _sd = "out" if _red else "in"
                     _col_h = BEAR if _red else TEAL
                     _pct = min(abs(_v), 1.15)
-                    _at = abs(_v) >= 1.0
-                    _gate_ok = bool(_b_day.get(_d, False)) if _red \
-                        else True
-                    _cool = not any(
-                        0 < (_d - f).days <= 21 for f in _fi_all[_sd])
                     _fired_td = _d in _fi_all[_sd]
                     _l1h = (f"<b>{_d:%d %b %y}</b> · "
                             + ("red — reducing side"
                                if _red else "teal — increasing side"))
+                    # fire-checks line removed on request ("just make
+                    # it the bar - keep it simple"); FIRED days keep
+                    # their one bold line
                     _stk = _stack_lines(_d, _v, _pct, _col_h)
                     if _stk is not None:
                         _rows_h = [_stk[0], _stk[1]]
                         if _stk[2]:
                             _rows_h.append(_stk[2])
-                        _ck = (lambda b: "✓" if b else "✗")
-                        _l4h = ("<b>FIRED today</b>" if _fired_td else
-                                f"at its line? {_ck(_at)} · allowed "
-                                f"to fire? {_ck(_gate_ok)} · rested "
-                                f"(no signal in 21d)? {_ck(_cool)}")
-                        _htxt.append("<br>".join(
-                            [_l1h] + _rows_h + [_l4h]))
+                        if _fired_td:
+                            _rows_h.append("<b>FIRED today</b>")
+                        _htxt.append("<br>".join([_l1h] + _rows_h))
                         continue
                     _f_ch = max(0, min(24,
                                        int(round(min(_pct, 1.0) * 24))))
@@ -5294,13 +5284,9 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                                 f"interest  "
                                 f"{_hbar(min(_hy / 2.0, 1.0), _col_h)} "
                                 f"<b>{_hy:.1f}×</b> its normal")
-                    _ck = (lambda b: "✓" if b else "✗")
-                    _l4h = ("<b>FIRED today</b>" if _fired_td else
-                            f"at its line? {_ck(_at)} · allowed to "
-                            f"fire? {_ck(_gate_ok)} · rested (no "
-                            f"signal in 21d)? {_ck(_cool)}")
-                    _htxt.append("<br>".join(
-                        [_l1h] + _rows_h + [_l4h]))
+                    if _fired_td:
+                        _rows_h.append("<b>FIRED today</b>")
+                    _htxt.append("<br>".join([_l1h] + _rows_h))
                 _fb.add_scatter(
                     x=_sr.index, y=_sr, mode="lines",
                     line=dict(width=0.5, color="rgba(0,0,0,0)"),
@@ -5342,49 +5328,9 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                                                       color="white")),
                                 hovertemplate="%{x|%d %b %y}"
                                               f"<extra>{_nm_b}</extra>")
-                # one diamond per blocked stretch (the cooldown holds a
-                # crossing for 21 days by construction; a mark per day
-                # was a caterpillar of noise)
-                _fired_by_side = {}
-                for _sd_k, _cb in (("in", sig_col("get_in", _srg)),
-                                   ("out", sig_col("get_out", _srg))):
-                    _fired_by_side[_sd_k] = (
-                        set(_srg.index[_srg[_cb].astype(bool)])
-                        if _cb in _srg.columns else set())
-                # a diamond is suppressed only by ITS OWN side firing
-                # nearby - the opposite side's fire says nothing about
-                # whether this side was held. INCREASE crossings are
-                # judged on the UNMASKED series - the ungated signal
-                # stays armed through a red stretch, so a held crossing
-                # there is real even though its band is hidden; CUT
-                # crossings only on the days its gate allows (NaN days
-                # can't cross). Stretches collapse per side.
-                _blk_pts = []
-                for _ser_s, _yv_s, _sd_s in ((_sr.clip(lower=0), 1.1,
-                                              "in"),
-                                             (_sr.clip(upper=0), -1.1,
-                                              "out")):
-                    _ov = [d for d in _ser_s.index[_ser_s.abs() >= 1.0]
-                           if not any(abs((d - f).days) <= 2
-                                      for f in _fired_by_side[_sd_s])]
-                    _prev = None
-                    for d in _ov:
-                        if _prev is None or (d - _prev).days > 3:
-                            _blk_pts.append((d, _yv_s))
-                        _prev = d
-                if _blk_pts:
-                    _fb.add_scatter(
-                        x=[p[0] for p in _blk_pts],
-                        y=[p[1] for p in _blk_pts],
-                        name="at its line, held by the cooldown/gate",
-                        mode="markers",
-                        marker=dict(symbol="diamond-open", size=8,
-                                    color=INK_LABEL),
-                        hovertemplate=(
-                            "%{x|%d %b %y}<br>this side reached its "
-                            "line but no signal fired - the 21-day "
-                            "cooldown or the boom gate held it"
-                            "<extra>held</extra>"))
+                # held-diamonds REMOVED on request ("remove the thing
+                # thats like held ... no need") - the ▲▼ fires and the
+                # bar itself carry the story now
                 for _yv, _cc in ((1.0, TEAL), (-1.0, BEAR)):
                     _fb.add_hline(y=_yv, line_dash="dash", line_width=1,
                                   line_color=_cc, opacity=0.7)
@@ -5411,11 +5357,9 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                     "the curve is that side's distance to its line. On "
                     "a day a signal fires, the band shows the firing "
                     "side at its own level - so every ▲▼ sits on its "
-                    "own colour, touching its line. ◇ = reached its "
-                    "line but the 21-day cooldown or the gate held it. "
-                    "**Hover any day** for the readings and the three "
-                    "fire-checks. Empty means not enough posts to be "
-                    "conclusive."
+                    "own colour, touching its line. "
+                    "**Hover any day** for the readings behind it. "
+                    "Empty means not enough posts to be conclusive."
                     + (" In the hover bar, blue = posts & attention, "
                        "gold = sentiment, grey = momentum — each sized "
                        "by what it adds to that day's score."
