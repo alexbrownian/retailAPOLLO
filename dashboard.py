@@ -285,6 +285,15 @@ LOCAL_CONTROLS = (os.path.exists(os.path.join(ROOT, ".local_controls"))
                   or os.environ.get("RETAILAPOLLO_CONTROLS") == "1")
 
 
+def ai_text(s):
+    """Model-written free text -> markdown-safe. Streamlit renders
+    $...$ as LaTeX math, so one price mention and a later one swallowed
+    whole sentences into italic mush ("$12B ... $100" -> math; defect
+    2026-08-31). Escaping the dollar sign is enough - the model's own
+    markdown (bold, bullets) still renders."""
+    return str(s).replace("$", "\\$") if s is not None else ""
+
+
 def flag_label(name, kind):
     """The ONE way this app spells an instrument on screen.
 
@@ -8206,29 +8215,29 @@ if active_tab == "AI Pulse":
         st.caption("The whole market's mood, not its top trends - "
                    "sentiment across every forum in the panel.")
         for _b in (_vibe.get("bullets") or []):
-            st.markdown(f"- {_b}")
+            st.markdown(f"- {ai_text(_b)}")
         if not (_vibe.get("bullets") or []):
-            st.info(_pulse.get("talk_of_the_town") or "")
+            st.info(ai_text(_pulse.get("talk_of_the_town") or ""))
         _ol = str(_vibe.get("one_liner") or "").strip()
         if _ol:
             st.markdown(
                 f"<div style='border-left:4px solid {ACCENT};"
                 "padding:14px 18px;margin:6px 0 2px 0;"
                 "background:rgba(127,127,127,.06);font-size:1.15rem;"
-                f"font-style:italic'>&ldquo;{_ol}&rdquo;</div>",
+                f"font-style:italic'>&ldquo;{ai_text(_ol)}&rdquo;</div>",
                 unsafe_allow_html=True)
             st.caption("The line that sums up the week's mood - a "
                        "PARAPHRASE the model composes to capture the "
                        "register, never a real post reproduced. "
-                       + str(_vibe.get("one_liner_why", "")))
+                       + ai_text(_vibe.get("one_liner_why", "")))
 
         st.markdown("### 2 - What all the forums are saying")
-        st.info(_pulse.get("market_pulse") or "(empty)")
+        st.info(ai_text(_pulse.get("market_pulse") or "(empty)"))
         _tott = str(_pulse.get("talk_of_the_town") or "").strip()
         if _tott and (_vibe.get("bullets") or []):
             with st.expander("what the crowd keeps coming back to "
                              "(the recurring threads and arguments)"):
-                st.markdown(_tott)
+                st.markdown(ai_text(_tott))
 
         # ---- 3. per-theme read, on a DROPDOWN ----
         _tb = [b for b in (_pulse.get("theme_briefs") or [])
@@ -8266,7 +8275,7 @@ if active_tab == "AI Pulse":
             _m2.metric("vs its own 4-week pace",
                        f"{_sh.get('vs_4w_avg')}x"
                        if _sh.get("vs_4w_avg") else "-")
-            st.info(_b.get("brief", ""))
+            st.info(ai_text(_b.get("brief", "")))
 
         _cw = _pulse.get("catalyst_watch") or []
         _dv = _pulse.get("divergences") or []
@@ -8276,16 +8285,16 @@ if active_tab == "AI Pulse":
                 if _cw:
                     st.markdown("### 4 - Catalyst watch")
                     for c in _cw:
-                        st.markdown(f"- **{c.get('event', '?')}** "
+                        st.markdown(f"- **{ai_text(c.get('event', '?'))}** "
                                     f"({', '.join(c.get('themes', []))}) - "
-                                    f"{c.get('chatter', '')}")
+                                    f"{ai_text(c.get('chatter', ''))}")
             with _k2:
                 if _dv:
                     st.markdown("### 5 - Story vs numbers "
                                 "(divergences)")
                     for d in _dv:
-                        st.markdown(f"- **{d.get('name', '?')}** - "
-                                    f"{d.get('story', '')}")
+                        st.markdown(f"- **{ai_text(d.get('name', '?'))}** - "
+                                    f"{ai_text(d.get('story', ''))}")
 
         with st.expander("the measured numbers for the same week - "
                          "used ONLY by section 5 (sections 1-4 are "

@@ -339,9 +339,6 @@ def main():
                    help="skip the monthly dynamic-panel review (subreddit "
                         "discovery; it is watermarked and only actually "
                         "runs when >= PANEL_REVIEW_DAYS have passed)")
-    p.add_argument("--no-git", action="store_true",
-                   help="do not auto-commit/push the refreshed data "
-                        "stores (stage 6c)")
     p.add_argument("--dry-run", action="store_true", help="print the plan, run nothing")
     args = p.parse_args()
     dry = args.dry_run
@@ -823,7 +820,7 @@ def main():
         return "pushed - the hosted dashboard redeploys in ~1-2 min"
 
     git_msg = "not run"
-    if not dry and not args.no_git:
+    if not dry:
         if not safe:
             git_msg = "skipped - the safety check failed"
         else:

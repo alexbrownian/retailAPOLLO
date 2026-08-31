@@ -78,18 +78,29 @@ def _dates_from(series) -> pd.Series:
     a plausible-looking wrong date."""
     import warnings
     import numpy as np
-    with warnings.catch_warnings(), \
-            np.errstate(over="ignore", invalid="ignore"):
+    with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         parsed = pd.to_datetime(series, errors="coerce", utc=True)
-        numeric = pd.to_numeric(series, errors="coerce")
-        _sec = numeric.where((numeric >= 1e8) & (numeric < 5e9))
-        _ms = numeric.where((numeric >= 1e11) & (numeric < 5e12))
-        unix = pd.to_datetime(_sec, unit="s", utc=True,
-                              errors="coerce")
-        unix = unix.fillna(pd.to_datetime(_ms, unit="ms", utc=True,
-                                          errors="coerce"))
-    parsed = parsed.fillna(unix)
+    # The numeric fallback is BEST-EFFORT on top of the string parse -
+    # so it may never be allowed to kill the fold. Belt (range bands)
+    # AND braces (errstate) failed to stop a FloatingPointError on one
+    # machine's numpy/pandas pairing, so the whole fallback now sits
+    # behind a try: a row the fallback cannot date is simply dropped
+    # downstream, which is the correct cost.
+    try:
+        with warnings.catch_warnings(), np.errstate(all="ignore"):
+            warnings.simplefilter("ignore")
+            numeric = pd.to_numeric(series, errors="coerce")
+            _sec = numeric.where((numeric >= 1e8) & (numeric < 5e9))
+            _ms = numeric.where((numeric >= 1e11) & (numeric < 5e12))
+            unix = pd.to_datetime(_sec, unit="s", utc=True,
+                                  errors="coerce")
+            unix = unix.fillna(pd.to_datetime(_ms, unit="ms",
+                                              utc=True,
+                                              errors="coerce"))
+        parsed = parsed.fillna(unix)
+    except Exception:                                    # noqa: BLE001
+        pass
     return parsed.dt.strftime("%Y-%m-%d")
 
 
