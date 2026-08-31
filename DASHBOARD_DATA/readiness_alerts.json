@@ -1,34 +1,13 @@
 {
  "threshold": 0.9,
- "built": "2026-08-31 05:10",
+ "built": "2026-08-31 06:35",
  "alerts": [
-  {
-   "name": "meme_stocks",
-   "symbol": "ARKK",
-   "signed_readiness": -0.969,
-   "side": "GET OUT",
-   "as_of": "2026-08-27"
-  },
   {
    "name": "cloud_saas",
    "symbol": "IGV",
-   "signed_readiness": -0.948,
-   "side": "GET OUT",
-   "as_of": "2026-08-27"
-  },
-  {
-   "name": "short_squeeze",
-   "symbol": "ARKK",
    "signed_readiness": -0.939,
    "side": "GET OUT",
-   "as_of": "2026-08-27"
-  },
-  {
-   "name": "uranium_nuclear",
-   "symbol": "URA",
-   "signed_readiness": -0.936,
-   "side": "GET OUT",
-   "as_of": "2026-08-27"
+   "as_of": "2026-08-28"
   }
  ]
 }
