@@ -1324,10 +1324,18 @@ p, li, [data-testid="stMarkdownContainer"] p {{
     letter-spacing: -0.01em;
 }}
 .rf-actionhead {{
-    font-size: 0.86rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.14em;
-    padding-bottom: 6px; margin-bottom: 2px;
+    font-size: 1.42rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    padding-bottom: 7px; margin-bottom: 2px;
     border-bottom: 2px solid currentColor;
+}}
+/* the line under each action head. A st.caption here rendered at the
+   same tiny size as every footnote on the page, which buried the one
+   sentence that says what the list IS (request: "make the font of
+   this ... a bit bigger too"). */
+.rf-actionsub {{
+    font-size: 1.02rem; line-height: 1.45;
+    color: {INK_LABEL}; margin: 6px 0 10px 0;
 }}
 .rf-rule-heavy {{
     border-top: 2px solid {INK}; margin: 2.4rem 0 2.2rem 0;
@@ -5457,18 +5465,19 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
             st.markdown('<div class="rf-rule"></div>',
                         unsafe_allow_html=True)
 
-        # THE KEY, stated once where every reader passes. Two sentences
-        # that define the page's two states, so a first-time viewer does
-        # not have to reverse-engineer what a percentage means.
-        st.markdown(
-            "<div class='rf-keyline'>"
-            "<b>A signal</b> means at this retail level we have had "
-            "MAJOR price movements in the past (quite rare).<br>"
-            "<b>High conviction</b> means technical factors (price, "
-            "moving averages) also correlate.<br>"
-            "<b>On the way to a signal</b> means consider this theme "
-            "and use AI Pulse tab to understand more."
-            "</div>", unsafe_allow_html=True)
+        # THE KEY - now behind a dropdown on request ("can we make
+        # this a dropdown?"), exact wording unchanged.
+        with st.expander("Definitions: What do the terms on this "
+                         "page mean?"):
+            st.markdown(
+                "<div class='rf-keyline'>"
+                "<b>A signal</b> means at this retail level we have had "
+                "MAJOR price movements in the past (quite rare).<br>"
+                "<b>High conviction</b> means technical factors (price, "
+                "moving averages) also correlate.<br>"
+                "<b>On the way to a signal</b> means consider this theme "
+                "and use AI Pulse tab to understand more."
+                "</div>", unsafe_allow_html=True)
 
         # ONE SIDE PER NAME. readiness_now decides which - the WATCH
         # side, the one the desk leads with today (boomed -> CUT, else
@@ -5834,7 +5843,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
             st.markdown(f"<div class='rf-actionhead' style='color:{tone}'>"
                         f"{title or side}</div>", unsafe_allow_html=True,
                         help=head_help)
-            st.caption(blurb)
+            st.markdown(f"<div class='rf-actionsub'>{blurb}</div>",
+                        unsafe_allow_html=True)
             rows = _a_pick(side)
             if rows is None or rows.empty:
                 if side == "CUT EXPOSURE":
