@@ -555,8 +555,33 @@ def _level_outcome_frame(lv_mtime, px_mtime):
 
 def level_conditioned_stats(name, level_now, band=10.0, min_n=10):
     """Median forward px change on days this name's level sat near
-    today's. Returns (rows, pooled_flag) - pooled across all themes when
-    the name's own sample is under min_n, and says so."""
+    today's, WITH the baseline it must be read against and the
+    downside the median hides.
+
+    Returns (rows, pooled_flag) where each row is
+    (horizon, median, n, baseline_median, p_loss, p10).
+
+    WHY THE EXTRA THREE. Shown alone, the median read as an argument
+    AGAINST the CUT call sitting beside it ("if px is up at this level
+    why reduce?" - 2026-09-02). Two things were missing and both flip
+    the reading:
+
+      * NO BASELINE. Equities drift up, so almost any forward median is
+        positive. Cloud SaaS at level ~94 shows +4.8% over 84td, which
+        looks bullish until you see its own unconditional median is
+        +7.8% - the level-conditioned number is 3 POINTS WORSE than an
+        ordinary day. Across all themes at level 85+, the 84d median is
+        +3.9% against a +4.4% baseline. The raw figure was measuring
+        market drift, not the level.
+      * NO TAIL. A top call is a claim about the LEFT TAIL thickening,
+        not about the typical day. At level 85+ the median is +3.9%
+        while 39% of outcomes are losses and the worst tenth is -18%.
+        A median can rise while the tail gets much worse.
+
+    The baseline is the same population WITHOUT the level condition
+    (this name's own history, or the pool when pooled), so the two
+    numbers differ in exactly one thing: the level.
+    """
     lf = _level_outcome_frame(
         _mtime(os.path.join(PROCESSED_DIR, "euphoria_levels.parquet")),
         _mtime(PRICES_PATH))
@@ -566,11 +591,22 @@ def level_conditioned_stats(name, level_now, band=10.0, min_n=10):
     own = lf[m & (lf["name"] == name)]
     pooled = len(own.dropna(subset=["f5"])) < min_n
     d = lf[m] if pooled else own
+    # BASELINE = days NOT in the band. Using the full history made the
+    # baseline a SUPERSET of the band (33% of Cloud SaaS's history sits
+    # inside +-10 of a mid-range level), so the two medians were largely
+    # the same days and every difference collapsed toward 0.0pp. The
+    # complement is the honest contrast: days like today vs days unlike.
+    base = (lf[~m] if pooled
+            else lf[(lf["name"] == name) & ~m])
     rows = []
     for h in (5, 20, 84):
         v = d[f"f{h}"].dropna()
-        if len(v):
-            rows.append((h, float(v.median()), int(len(v))))
+        if not len(v):
+            continue
+        b = base[f"f{h}"].dropna()
+        rows.append((h, float(v.median()), int(len(v)),
+                     float(b.median()) if len(b) else None,
+                     float((v < 0).mean()), float(v.quantile(0.10))))
     return (rows or None), pooled
 
 
@@ -4271,7 +4307,14 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                     (f"change over {ROLL} days", f"{_now - _ref:+.0f}",
                      None),
                 ]
-            _gc, _f1, _f2, _f3 = st.columns([1.05, 0.85, 1.00, 1.25])
+            # TWO COLUMNS, not four. The gauge is tall; the facts
+            # beside it are two lines each, so a four-column strip left
+            # the whole right half empty and pushed the level record
+            # into a narrow gutter below ("format it nicer ... in the
+            # white space"). Now: gauge on the left, and everything
+            # else stacked in ONE wide right-hand block that fills the
+            # space the gauge's height creates.
+            _gc, _rt = st.columns([1.0, 2.05])
             with _gc:
                 _g_title = _g_band = _g_bcol = None
                 if _ready is not None:
@@ -4305,17 +4348,20 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                         + "</span>", unsafe_allow_html=True)
                 # subtitle line removed on request ("remove this") -
                 # the dial's own title already names the side and scale
-            with _f1:
-                st.markdown(_facts(_facts_rows), unsafe_allow_html=True)
-            with _f2:
-                # Trimmed to the one fact a reader acts on. The state
-                # words (calm/quiet), the window peak and the in/out
-                # counts were removed by request - they described the
-                # chart the reader is already looking at.
-                st.markdown(_facts([
-                    ("last signal", _last_sig, _last_col),
-                ]), unsafe_allow_html=True)
-            with _f3:
+            with _rt:
+                _f1, _f2 = st.columns(2)
+                with _f1:
+                    st.markdown(_facts(_facts_rows),
+                                unsafe_allow_html=True)
+                with _f2:
+                    # Trimmed to the one fact a reader acts on. The
+                    # state words (calm/quiet), the window peak and the
+                    # in/out counts were removed by request - they
+                    # described the chart the reader is already
+                    # looking at.
+                    st.markdown(_facts([
+                        ("last signal", _last_sig, _last_col),
+                    ]), unsafe_allow_html=True)
                 # CONDITIONED ON TODAY, not on past signals. The old
                 # block showed the median move after this name's own
                 # fired signals - n=1 on most names, a story rather than
@@ -4324,24 +4370,78 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 # TODAY, what did price do next? Same-name days first;
                 # pooled across all themes when the name alone is too
                 # thin, and labelled when it is.
-                _rows = []
-                _small = (f"<span style='font-size:15px;"
-                          f"color:{INK_LABEL}'>")
                 _cond, _pooled = level_conditioned_stats(name, _now)
                 if _cond:
-                    _cs = " / ".join(f"{v:+.1%}" for _h, v, _n in _cond)
-                    _cn = min(_n for _h, _v, _n in _cond)
-                    _rows.append(
-                        ("at a trigger level like today's · "
-                         "median px after 5/20/84 td",
-                         f"{_cs}{_small} · n≥{_cn}"
-                         + (" · all themes pooled" if _pooled
-                            else " · this name") + "</span>",
-                         None))
+                    # A TABLE, not three wrapped sentences in a gutter.
+                    # One row per horizon so the eye compares DOWN a
+                    # column (median vs its baseline vs the downside)
+                    # instead of parsing "+0.7% / +2.4% / +8.7%" and
+                    # mentally aligning it with two more triples.
+                    _HN = {5: "1 week", 20: "1 month", 84: "4 months"}
+                    _cn = min(r[2] for r in _cond)
+                    _hd = ("<tr>"
+                           + "".join(
+                               f"<th style='text-align:{a};padding:"
+                               f"3px 10px 6px 0;font-size:10px;"
+                               f"letter-spacing:.08em;text-transform:"
+                               f"uppercase;color:{INK_LABEL};"
+                               f"font-weight:600;width:{w}'>{t}</th>"
+                               for t, a, w in (
+                                   ("", "left", "20%"),
+                                   ("median move", "right", "18%"),
+                                   ("vs a day unlike today",
+                                    "right", "26%"),
+                                   ("ended lower", "right", "18%"),
+                                   ("worst tenth", "right", "18%")))
+                           + "</tr>")
+                    _bd = ""
+                    for _h, _v, _n, _b, _pl, _p10 in _cond:
+                        _dif = (None if _b is None else (_v - _b) * 100)
+                        _dc = (INK_LABEL if _dif is None or abs(_dif) < 0.5
+                               else (BULL if _dif > 0 else BEAR))
+                        _ds = ("-" if _dif is None
+                               else ("about the same" if abs(_dif) < 0.5
+                                     else f"{_dif:+.1f}pp"))
+                        _bd += (
+                            "<tr>"
+                            f"<td style='padding:4px 14px 4px 0;"
+                            f"color:{INK_LABEL};font-size:13px'>"
+                            f"{_HN.get(_h, str(_h))}"
+                            f"<span style='color:{INK_MUTED};"
+                            f"font-size:11px'> · {_h}td</span></td>"
+                            f"<td style='text-align:right;padding:"
+                            f"4px 14px;font-size:17px;font-weight:600;"
+                            f"color:{INK}'>{_v:+.1%}</td>"
+                            f"<td style='text-align:right;padding:"
+                            f"4px 14px;font-size:15px;font-weight:600;"
+                            f"color:{_dc}'>{_ds}</td>"
+                            f"<td style='text-align:right;padding:"
+                            f"4px 14px;font-size:15px;color:{INK}'>"
+                            f"{_pl:.0%}</td>"
+                            f"<td style='text-align:right;padding:"
+                            f"4px 0;font-size:15px;color:{BEAR}'>"
+                            f"{_p10:+.1%}</td></tr>")
+                    st.markdown(
+                        f"<div style='font-size:10px;letter-spacing:"
+                        f".09em;text-transform:uppercase;"
+                        f"color:{INK_LABEL};margin-bottom:2px'>"
+                        "what followed, the other times attention sat "
+                        f"where it sits today</div>"
+                        "<table style='border-collapse:collapse;"
+                        "width:100%;table-layout:fixed;"
+                        f"margin:0 0 4px 0'>{_hd}{_bd}</table>"
+                        f"<div style='font-size:11px;color:{INK_MUTED};"
+                        "margin-bottom:6px'>"
+                        f"n≥{_cn} such days · "
+                        + ("all themes pooled" if _pooled
+                           else "this name only")
+                        + " · attention level, not the signal score"
+                        "</div>", unsafe_allow_html=True)
                 else:
-                    _rows.append(("at a trigger level like today's",
-                                  "no comparable days on record", None))
-                st.markdown(_facts(_rows), unsafe_allow_html=True)
+                    st.markdown(_facts([
+                        ("what followed at this attention level",
+                         "no comparable days on record", None)]),
+                        unsafe_allow_html=True)
                 st.markdown(
                     f"<span style='font-size:11px;color:{INK_MUTED}'>"
                     "what this record means</span>",
@@ -4355,7 +4455,30 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                          "tracked theme and the row says so. It is a "
                          "conditional base rate, not a forecast: it says "
                          "what usually followed this crowd state, over "
-                         "the history this project holds.")
+                         "the history this project holds.\n\n"
+                         "**Read the second column, not the first.** "
+                         "Equities drift up, so almost any forward "
+                         "median is positive - on its own the top line "
+                         "mostly measures that drift. *vs its own "
+                         "normal day* subtracts the median of this "
+                         "name's days OUTSIDE the band - the days "
+                         "unlike today - over the same horizons, "
+                         "so the two figures differ in exactly one "
+                         "thing: the attention level. Negative means "
+                         "days like today did WORSE than an ordinary "
+                         "day.\n\n"
+                         "**And a median is not the risk.** A reduce-"
+                         "exposure call is about the left tail getting "
+                         "fatter, which a median hides: across themes "
+                         "at high attention the median is positive "
+                         "while roughly 2 days in 5 end lower and the "
+                         "worst tenth is far into the red. The last "
+                         "two columns state that directly.\n\n"
+                         "Note this row conditions on the ATTENTION "
+                         "LEVEL alone, while the signal beside it "
+                         "conditions on eleven measurements plus the "
+                         "run-up gate - so the two are answering "
+                         "different questions and need not agree.")
                 _log_scale = st.toggle(
                     "log price scale", key=f"{key}_log",
                     help="Plot the price on a logarithmic axis, so equal "
