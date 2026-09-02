@@ -587,7 +587,13 @@ def level_conditioned_stats(name, level_now, band=10.0, min_n=10):
 # now label as "ARK Innovation". Shown together they render two
 # identical rows in every instrument list, which cannot be told apart
 # when picking one. The squeeze theme is kept as the ARKK line.
-HIDDEN_THEMES = {"meme_stocks"}
+#
+# japan: anchored to 1622 JT, which is TOPIX-17 Autos & Transport
+# Equipment rather than broad Japan - a narrow line the desk does not
+# want on the page (request 2026-09-02). Hidden for DISPLAY only: the
+# name stays in the stores and in every fit, so no threshold moves and
+# the history stays intact if it is ever unhidden.
+HIDDEN_THEMES = {"meme_stocks", "japan"}
 
 # Landing-page sizing. A name is worth showing when its score has
 # reached this share of its own trigger; below that the page still
@@ -2859,18 +2865,9 @@ st.sidebar.caption(
 # ---------------------------------------------------------------------------
 # topline metric strip
 # ---------------------------------------------------------------------------
-_m1, _m2, _m3, _m4, _m5 = st.columns(5)
-_e_now = _alerts_w = 0
+_m3, _m4, _m5 = st.columns(3)
 _hottest, _hottest_share = "-", None
 if euph is not None and len(euph):
-    # THEMES ONLY, like the readiness banner below. Single names are no
-    # longer shown anywhere, so counting them here would produce a
-    # headline that cannot be reconciled with any tab - the same defect
-    # recorded in review #8, where this metric counted a
-    # detector the tabs did not draw.
-    _eu_t = euph[euph["kind"] == "theme"] if "kind" in euph.columns else euph
-    _latest = _eu_t[_eu_t["date"] == _eu_t["date"].max()]
-    _e_now = int((_latest["level"] >= 70).sum())
     # HOTTEST = the theme with the most RETAIL ATTENTION right now: the
     # largest share of the tradeable
     # universe's total mentions over the trailing 7 days - the same
@@ -2895,21 +2892,9 @@ if euph is not None and len(euph):
                 # is a magnitude, not a rise or a fall.
                 _hottest = theme_label(_s_h.idxmax())
                 _hottest_share = f"{_s_h.max():.0%} of mentions"
-    # the DESK flags - the ones every chart draws (review 2026-08-02
-    # #8: this metric counted the retired level-detector's alerts, so
-    # the headline could not be reconciled with the tabs).  Falls back
-    # to the level alerts only when no desk store exists.
-    if desk is not None and len(desk):
-        _dk_t = (desk[desk["kind"] == "theme"]
-                 if "kind" in desk.columns else desk)      # themes only
-        _dw = clip_window(_dk_t, "date", lo, hi)
-        _alerts_w = int(_dw[sig_col("get_out", _dw)].astype(bool).sum()
-                        + _dw[sig_col("get_in", _dw)].astype(bool).sum())
-    else:
-        _ew = clip_window(euph, "date", lo, hi)
-        _alerts_w = int(_ew["alert"].sum())
-_m1.metric("crowd heat alerts in window", _alerts_w)
-_m2.metric("instruments at level 70+", _e_now)
+# "crowd heat alerts in window" and "instruments at level 70+" removed
+# on request - the landing lists already say what is live today, and
+# the level counter belonged to the retired level detector.
 _m3.metric("most retail attention (7d)", _hottest,
            delta=_hottest_share, delta_color="off")
 _m4.metric("data through", str(data_max.date()))
