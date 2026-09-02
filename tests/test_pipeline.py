@@ -1831,6 +1831,76 @@ class TestPulseNoFillerRule:
         assert _is_filler("minimal discussion")
 
 
+class TestWatchSideIsStable:
+    """The DISPLAY gate must not flip on knife-edge noise.
+
+    Reported 2026-09-01: "why does it go from cut exposure one day to
+    increase the next?" The raw boomed120 is an instantaneous test
+    against a hard bar, so a name parked near it flipped sides on
+    rounding (96% of measured flips were within 5pp of the bar).
+    boomed120_stable adds hysteresis + an ASYMMETRIC debounce. All
+    three properties below are load-bearing; the asymmetry especially,
+    because debouncing the turn-ON put 14 of 124 real CUT calls on a
+    day the display still called teal."""
+
+    @staticmethod
+    def _frame(px):
+        import pandas as pd
+        from analytics.euphoria_phases import boomed120_frame
+
+        class _ES:
+            def __init__(s):
+                s.name, s.symbol, s.kind = "t", "T", "theme"
+        return boomed120_frame([_ES()], {"T": px})
+
+    def _px(self, tail):
+        import pandas as pd
+        import numpy as np
+        idx = pd.date_range("2025-01-01", periods=150 + len(tail),
+                            freq="D")
+        return pd.Series(np.r_[np.full(150, 100.0), tail], index=idx)
+
+    def test_knife_edge_noise_does_not_flip_the_displayed_side(self):
+        import numpy as np
+        px = self._px(100 * (1 + 0.20 + 0.02
+                             * np.sin(np.arange(250) / 2.0)))
+        f = self._frame(px)
+        raw = f["boomed120"].values
+        stb = f["boomed120_stable"].values
+        n_raw = int((raw[1:] != raw[:-1]).sum())
+        n_stb = int((stb[1:] != stb[:-1]).sum())
+        assert n_raw > 8, "fixture must actually chatter"
+        assert n_stb <= 2, f"displayed side still chatters: {n_stb}"
+
+    def test_a_real_breakout_registers_immediately(self):
+        # NOT debounced on the way in: a CUT can only fire on a
+        # run-up day, so a lag here re-creates the red-marker-on-a-
+        # teal-band contradiction.
+        import numpy as np
+        f = self._frame(self._px(np.linspace(100, 180, 250)))
+        assert (int(np.argmax(f["boomed120"].values))
+                == int(np.argmax(f["boomed120_stable"].values)))
+
+    def test_leaving_the_run_up_state_is_slower_than_entering(self):
+        import numpy as np
+        f = self._frame(self._px(np.r_[np.linspace(100, 130, 60),
+                                       np.linspace(130, 112, 190)]))
+        last_raw = len(f) - 1 - int(np.argmax(f["boomed120"]
+                                              .values[::-1]))
+        last_stb = len(f) - 1 - int(np.argmax(f["boomed120_stable"]
+                                              .values[::-1]))
+        assert last_stb > last_raw, "hysteresis is not holding"
+
+    def test_the_model_gate_itself_is_untouched(self):
+        """boomed120 is what every frozen threshold was calibrated
+        against; the stable twin is display-only."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "dashboard.py"
+               ).read_text(encoding="utf-8")
+        assert "def watch_gate(" in src
+        assert "boomed120_stable" in src
+
+
 class TestPollPromptPanel:
     """The poll's value IS its continuity: a reworded prompt silently
     breaks that prompt_id's history (see the module docstring)."""

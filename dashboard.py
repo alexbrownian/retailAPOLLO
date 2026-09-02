@@ -285,6 +285,30 @@ LOCAL_CONTROLS = (os.path.exists(os.path.join(ROOT, ".local_controls"))
                   or os.environ.get("RETAILAPOLLO_CONTROLS") == "1")
 
 
+def watch_gate(row_or_frame):
+    """The gate used to decide WHICH SIDE IS DISPLAYED.
+
+    Prefers boomed120_stable - the hysteresis+debounce twin the phases
+    step writes (see boomed120_frame) - and falls back to the raw
+    boomed120 on bundles published before it existed. FIRES are never
+    routed through here: they are read from the stored get_in/get_out
+    columns, which the model computed against the raw gate.
+    """
+    if row_or_frame is None:
+        return False
+    if hasattr(row_or_frame, "columns"):            # frame -> Series
+        for c in ("boomed120_stable", "boomed120"):
+            if c in row_or_frame.columns:
+                return row_or_frame[c].fillna(False).astype(bool)
+        import pandas as _pd
+        return _pd.Series(False, index=row_or_frame.index)
+    for c in ("boomed120_stable", "boomed120"):     # row -> bool
+        v = row_or_frame.get(c)
+        if v is not None and pd.notna(v):
+            return bool(v)
+    return False
+
+
 def ai_text(s):
     """Model-written free text -> markdown-safe. Streamlit renders
     $...$ as LaTeX math, so one price mention and a later one swallowed
@@ -610,7 +634,7 @@ def eligible_scored_now(g):
     never disagree about which side a name is on."""
     if g is None or not len(g):
         return None
-    b = g["boomed120"].fillna(False).astype(bool)
+    b = watch_gate(g)
     ok = pd.Series(False, index=g.index)
     if OUT_SCORE in g.columns:
         ok |= (b & g[OUT_SCORE].notna())
@@ -1652,7 +1676,7 @@ def readiness_now(dk_row, thr_in, thr_out):
                 cands.append((100.0 * float(sc) / float(thr), side,
                               float(sc), float(thr)))
         return max(cands) if cands else None
-    boomed = bool(dk_row.get("boomed120", False))
+    boomed = watch_gate(dk_row)
     side, sc, thr = (("CUT EXPOSURE", dk_row.get("out_score"), thr_out)
                      if boomed else
                      ("INCREASE EXPOSURE", dk_row.get("in_score"), thr_in))
@@ -4033,7 +4057,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
         _hc_side = ("CUT EXPOSURE" if state == "ENDING"
                     else "INCREASE EXPOSURE" if state == "STARTING"
                     else ("CUT EXPOSURE"
-                          if bool(one.iloc[-1].get("boomed120", False))
+                          if watch_gate(one.iloc[-1])
                           else "INCREASE EXPOSURE"))
         if _tech_confirms(sym, one["date"].max(), _hc_side):
             st.markdown(
@@ -4983,7 +5007,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 # at its own side's value, so an ungated INCREASE that
                 # fires inside a red stretch draws its teal triangle AT
                 # the INCREASE line, on top of the red band.
-                _b_g = _srg["boomed120"].fillna(False).astype(bool)
+                _b_g = watch_gate(_srg)
                 _rin = (_srg[IN_SCORE] / float(_thr_in_d)).clip(0, 1.15)
                 _rin = _rin[~_rin.index.duplicated()]
                 _rout = (_srg[OUT_SCORE] / float(_thr_out_d)).clip(0, 1.15)
@@ -5368,19 +5392,9 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 _axes_fidelity(_theme(_fb))
                 st.plotly_chart(_fb, width="stretch",
                                 key=f"{key}_srband")
-                st.caption(
-                    "**One band at a time.** Teal until the name has "
-                    "run up (20% above its 120-day low), red after; "
-                    "the curve is that side's distance to its line. On "
-                    "a day a signal fires, the band shows the firing "
-                    "side at its own level - so every ▲▼ sits on its "
-                    "own colour, touching its line. "
-                    "**Hover any day** for the readings behind it. "
-                    "Empty means not enough posts to be conclusive."
-                    + (" In the hover bar, blue = posts & attention, "
-                       "gold = sentiment, grey = momentum — each sized "
-                       "by what it adds to that day's score."
-                       if _cmpN is not None else ""))
+                # band caption removed on request ("no need that txt") -
+                # the legend names the two sides and the hover carries
+                # the detail, so the paragraph was restating the chart
         st.markdown(
             f"<span style='font-size:11px;color:{INK_MUTED}'>"
             "how to read this chart</span>",
@@ -6052,7 +6066,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 continue
             _cur = _g.iloc[-1]
             _old = _g[_g["date"] <= _prev]
-            _boomed = bool(_cur.get("boomed120", False))
+            _boomed = watch_gate(_cur)
             # INFLECTION joins the watchlist as a third SIDE (desk
             # requirement: rank by proximity to an
             # inflection). It is always eligible - the inflection head has no
@@ -6371,7 +6385,7 @@ if active_tab == MAIN_TAB and st.session_state.get("show_full_list"):
                   if len(_h6m) > 3 else None)
         _es_r = eligible_scored_now(_g)
         _boomed = _es_r[1] if _es_r is not None \
-            else bool(_cur.get("boomed120", False))
+            else watch_gate(_cur)
         if _es_r is not None:
             # magnitude and freshness from the SAME row the side came
             # from. The per-column "last scored row" values happen to

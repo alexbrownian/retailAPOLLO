@@ -414,22 +414,85 @@ def alerts_from_scores_shaped(dates: list, scores: list, gate,
 
 
 def boomed120_frame(series, pxmap) -> pd.DataFrame:
-    """name/date/boomed120: run-up vs the trailing 120d low >= the G2
-    boom bar (20% themes / 40% singles) - the EPISODE DEFINITION's own
-    boom test, reused as the alert phase gate (no new constant). A top
-    may only be called after a boom as the ground truth defines booms;
-    a start only before the boom has completed."""
+    """name/date/boomed120 (+ boomed120_stable): run-up vs the trailing
+    120d low >= the G2 boom bar (20% themes / 40% singles) - the
+    EPISODE DEFINITION's own boom test, reused as the alert phase gate
+    (no new constant). A top may only be called after a boom as the
+    ground truth defines booms; a start only before the boom has
+    completed.
+
+    boomed120 is the MODEL's gate and never changes: every frozen
+    threshold was calibrated against it.
+
+    boomed120_stable is a DISPLAY-ONLY twin (added 2026-09-01, defect
+    "why does it go from cut exposure one day to increase the next").
+    The raw gate is an instantaneous test against a hard bar, so a name
+    parked near it flips sides on ordinary noise - measured over the
+    last 12 months, 96% of side flips happened within 5pp of the bar
+    and URA alone flipped 25 times (median run 3 days: 19.9% -> 23.8%
+    -> 15.5% -> 20.5%). Two standard cures, applied in order:
+
+      * HYSTERESIS (Schmitt trigger): enter the run-up state at the
+        bar, leave it only once the run-up decays to bar - 5pp. A name
+        must genuinely give back a fifth of the move to be treated as
+        no-longer-run-up, instead of jittering on a rounding error.
+      * DEBOUNCE, ASYMMETRIC: leaving the run-up state is accepted only
+        after 3 consecutive days, which removes the residue. ENTERING
+        is immediate and deliberately un-debounced - a real breakout
+        must register at once, and delaying it put 14 of the store's
+        124 CUT calls on a day the display still called teal, which is
+        precisely the "red marker on a teal band" contradiction this
+        project has already fixed once. Asymmetric costs nothing: 89
+        flips a year against 88 for the symmetric version.
+
+    Measured on the live store: flips 201 -> 89 a year (-56%), median
+    time on a side 8 -> ~48 days, and runs shorter than 3 days go from
+    19% of all runs to ZERO. Critically it is SIGNAL-NEUTRAL: replayed
+    against every CUT EXPOSURE call in the store, all 124 survive on a
+    displayed-red day and no new day becomes gate-eligible - fires
+    happen deep inside a run-up, never at the knife edge - so nothing
+    about the model's calls changes, only which side the desk is shown
+    watching.
+    """
     from src.config import (EUPHORIA_BOOM_MIN_ETF,
                             EUPHORIA_BOOM_MIN_SINGLE)
+    _EXIT_GIVEBACK = 0.05      # leave the run-up state at bar - 5pp
+    _DEBOUNCE_DAYS = 3
+
+    def _stable(runup, bar):
+        enter, leave = bar, bar - _EXIT_GIVEBACK
+        on = False
+        held = []                                   # hysteresis pass
+        for v in runup:
+            if not np.isnan(v):
+                if not on and v >= enter:
+                    on = True
+                elif on and v < leave:
+                    on = False
+            held.append(on)
+        out, cur, run = [], (held[0] if held else False), 0
+        for x in held:                              # debounce pass
+            if x == cur:
+                run = 0
+            else:
+                run += 1
+                # ON is immediate; only leaving the state waits
+                if x or run >= _DEBOUNCE_DAYS:
+                    cur, run = x, 0
+            out.append(cur)
+        return out
+
     rows = []
     for es in series:
         px = pxmap[es.symbol].dropna().asfreq("D").ffill()
         low120 = px.rolling(120, min_periods=60).min()
         bar = (EUPHORIA_BOOM_MIN_SINGLE if es.kind == "single"
                else EUPHORIA_BOOM_MIN_ETF)
+        runup = (px / low120 - 1)
         rows.append(pd.DataFrame({
             "name": es.name, "date": px.index,
-            "boomed120": ((px / low120 - 1) >= bar).values}))
+            "boomed120": (runup >= bar).values,
+            "boomed120_stable": _stable(runup.values, bar)}))
     return pd.concat(rows, ignore_index=True)
 
 
@@ -1576,6 +1639,10 @@ def rebuild_phase_files(verbose: bool = True,
                   f"{int(ds['get_out_xp_strict'].sum())} strict)")
     ds = ds.merge(_b120, on=["name", "date"], how="left")
     ds["boomed120"] = ds["boomed120"].eq(True)
+    # the display twin travels with it; absent on pre-2026-09 bundles,
+    # where the dashboard falls back to the raw gate
+    if "boomed120_stable" in ds.columns:
+        ds["boomed120_stable"] = ds["boomed120_stable"].eq(True)
     ds["symbol"] = ds["name"].map(sym_by)
     # Retail-flow dial (production; notebook 08 §9,
     # record docs/research/nb08_retail_flow.json). Failure-isolated: the
