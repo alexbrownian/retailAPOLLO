@@ -134,6 +134,10 @@
   "RedditComments\\comments_2026-09-01_2.jsonl.zst": 68155,
   "RedditComments\\comments_2026-09-02.jsonl.zst": 799570,
   "RedditLive\\reddit_live_arctic_2026-09-02_104431.jsonl.zst": 39032,
-  "RedditComments\\comments_2026-09-02_2.jsonl.zst": 188929
+  "RedditComments\\comments_2026-09-02_2.jsonl.zst": 188929,
+  "RedditLive\\reddit_live_arctic_2026-09-03_221731.jsonl.zst": 702050,
+  "RedditLive\\reddit_live_arctic_2026-09-04_092459.jsonl.zst": 339429,
+  "RedditComments\\comments_2026-09-03.jsonl.zst": 681416,
+  "RedditComments\\comments_2026-09-04.jsonl.zst": 888036
  }
 }

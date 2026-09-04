@@ -2237,6 +2237,161 @@ class TestFlagLabelsAndConfigReload:
         assert len(clean("A" * 90)) <= 38 and clean("A" * 90).endswith("…")
 
 
+class TestDataFreshnessIsVisible:
+    """A dashboard must be able to say that its DATA is out of date.
+
+    Distinct from TestStaleTabIsVisible, which is about a stale
+    *process* serving an old dashboard.py. This one is about a
+    perfectly healthy process serving perfectly stale numbers: the
+    masthead used to print `last update: <now>` - the render time -
+    which reads as "just updated" on a page whose newest reading is
+    three weeks old. A reader had no way to tell."""
+
+    @staticmethod
+    def _src():
+        from pathlib import Path
+        return (Path(__file__).resolve().parents[1] / "dashboard.py"
+                ).read_text(encoding="utf-8")
+
+    @staticmethod
+    def _fresh():
+        """dashboard.py cannot be imported in a test (importing it runs
+        the whole app), so the pure function is compiled out of the
+        source on its own - the same trick the security-name test
+        uses."""
+        import pandas as pd
+        src = TestDataFreshnessIsVisible._src()
+        start = src.index("_FRESH_OK, _FRESH_LATE, _FRESH_STALE =")
+        end = src.index("h_left, h_right = st.columns", start)
+        ns = {"pd": pd}
+        exec(src[start:end], ns)
+        return ns
+
+    def test_the_masthead_no_longer_passes_render_time_off_as_freshness(self):
+        src = self._src()
+        _live = [ln for ln in src.splitlines()
+                 if "last update:" in ln and not ln.lstrip().startswith("#")]
+        assert not _live, (
+            "the masthead is printing the render clock again - that "
+            f"says 'just updated' on three-week-old numbers: {_live}")
+        assert "data through " in src
+
+    def test_a_weekend_does_not_make_monday_look_late(self):
+        """The whole reason this counts BUSINESS days. Friday's data
+        read on Monday morning is current; a calendar-day rule would
+        paint the masthead amber every Monday, and a weekly false
+        alarm is a warning nobody reads."""
+        import pandas as pd
+        ns = self._fresh()
+        lvl, bd = ns["_data_freshness"](pd.Timestamp("2026-08-28"),   # Fri
+                                        pd.Timestamp("2026-08-31"))   # Mon
+        assert lvl == ns["_FRESH_OK"], (lvl, bd)
+        assert bd <= 1
+
+    def test_same_day_and_yesterday_are_current(self):
+        import pandas as pd
+        ns = self._fresh()
+        for d in ("2026-09-02", "2026-09-01"):      # Wed today, Tue
+            lvl, _ = ns["_data_freshness"](pd.Timestamp(d),
+                                           pd.Timestamp("2026-09-02"))
+            assert lvl == ns["_FRESH_OK"], d
+
+    def test_two_business_days_is_late_and_a_working_week_is_stale(self):
+        import pandas as pd
+        ns = self._fresh()
+        today = pd.Timestamp("2026-09-04")                 # Friday
+        lvl, bd = ns["_data_freshness"](pd.Timestamp("2026-09-02"), today)
+        assert (lvl, bd) == (ns["_FRESH_LATE"], 2)
+        lvl, bd = ns["_data_freshness"](pd.Timestamp("2026-08-28"), today)
+        assert lvl == ns["_FRESH_STALE"] and bd >= 5
+
+    def test_a_missing_date_counts_as_stale_not_as_fine(self):
+        """Silence about freshness is the exact failure this removes."""
+        import pandas as pd
+        ns = self._fresh()
+        assert ns["_data_freshness"](None,
+                                     pd.Timestamp("2026-09-04"))[0] \
+            == ns["_FRESH_STALE"]
+        assert ns["_data_freshness"](pd.NaT,
+                                     pd.Timestamp("2026-09-04"))[0] \
+            == ns["_FRESH_STALE"]
+
+    def test_a_future_date_never_reports_negative_age(self):
+        import pandas as pd
+        ns = self._fresh()
+        lvl, bd = ns["_data_freshness"](pd.Timestamp("2026-09-10"),
+                                        pd.Timestamp("2026-09-04"))
+        assert lvl == ns["_FRESH_OK"] and bd == 0
+
+    def test_the_notice_tells_the_reader_what_to_do(self):
+        """A warning that only states a fact is half a warning. The
+        hosted copy points at the owner; the desk copy names the
+        command, because there the reader IS the person who can fix
+        it."""
+        src = self._src()
+        assert "Contact the dashboard owner to refresh it or check" in src
+        assert "for issues." in src
+        assert "update_data.py</code> on this machine" in src
+        assert "LOCAL_CONTROLS else" in src
+
+    def test_a_half_applied_deploy_is_diagnosed_separately(self):
+        """The other failure with the same symptom: the pipeline DID
+        run, the page just never picked it up. Same screen, opposite
+        fix - so it gets its own message, and it outranks the age line
+        because sending the reader to re-run a pipeline that already
+        ran is the wrong instruction."""
+        src = self._src()
+        assert "publish_manifest.json" in src
+        assert "_deploy_behind = (_pub_through is not None" in src
+        assert "This page is not drawing the newest published data." in src
+        # the deploy branch is tested FIRST - it must win over the age
+        # branch, not be shadowed by it
+        _i_dep = src.index("if _deploy_behind:")
+        _i_age = src.index("elif _fresh_lvl == _FRESH_OK:")
+        assert _i_dep < _i_age
+
+    def test_only_published_ahead_is_a_fault(self):
+        """A workstation that has run the pipeline and not published
+        yet has a manifest BEHIND its data. That is the normal state of
+        a desk machine mid-morning and must stay silent - so the
+        comparison is strictly one-directional."""
+        src = self._src()
+        _line = [ln for ln in src.splitlines()
+                 if "_pub_through > pd.Timestamp(data_max)" in ln]
+        assert _line, "the deploy check is no longer one-directional"
+        assert "_pub_through <" not in src and "_pub_through !=" not in src
+
+    def test_the_publisher_writes_the_manifest_it_depends_on(self):
+        """The dashboard check is only as good as the manifest, so the
+        publisher must write one on every real publish - and must not
+        fail a publish if it cannot."""
+        from pathlib import Path
+        pub = (Path(__file__).resolve().parents[1] / "tools"
+               / "publish_dashboard.py").read_text(encoding="utf-8")
+        assert '"publish_manifest.json"' in pub
+        assert '"data_through"' in pub and '"published_at"' in pub
+        assert "publish manifest skipped" in pub, (
+            "manifest writing must be failure-isolated - a bundle "
+            "without one is an older bundle, never a broken publish")
+
+    def test_the_manifest_survives_a_round_trip(self):
+        """The dashboard parses data_through with pd.Timestamp and
+        published_at as a UTC stamp it then strips. Both shapes the
+        publisher writes must survive that."""
+        import pandas as pd
+        from datetime import datetime, timezone
+        _at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        assert pd.Timestamp("2026-09-03") == pd.Timestamp("2026-09-03")
+        assert pd.Timestamp(_at).tz_localize(None) is not None
+
+    def test_the_notice_is_severity_coloured_from_the_palette(self):
+        """No hard-coded hexes - ochre for late, brick for stale, the
+        same two colours the charts use for warning and danger."""
+        src = self._src()
+        assert "_fresh_col = BEAR if _fresh_lvl == _FRESH_STALE else OCHRE" \
+            in src
+
+
 class TestStaleTabIsVisible:
     """A running dashboard must be able to say that it is out of date.
 

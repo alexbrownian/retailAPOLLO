@@ -744,7 +744,8 @@ SLATE_LIGHT = "#B9BFC7"    # same series, on a day that could not fire
 # screen-bright trading ones.  Both stay legible printed or projected.
 BULL = "#1F6F5C"          # muted teal-green - long / bullish
 BEAR = "#A6413B"          # muted brick      - short / bearish
-TEAL = "#2E6E7E"          # the one cool accent (GET IN markers)
+TEAL = "#2E6E7E"          # cool accent (masthead eyebrow, attention series)
+GETIN = "#1E7A4F"         # the INCREASE-EXPOSURE green (was TEAL; "green, not teal")
 OCHRE = "#8A6D1F"         # the danger state - warning without alarm
 
 FONT_STACK = ("Inter, 'Neue Haas Grotesk', 'Helvetica Now', "
@@ -1234,6 +1235,16 @@ div[data-baseweb="select"] > div, div[data-baseweb="input"] > div {{
     text-transform: uppercase; letter-spacing: 0.09em;
 }}
 .rf-credit {{ color: {INK_LABEL}; font-size: 0.72rem; margin-top: 6px; }}
+/* THE FRESHNESS LINE.  Same slot as .rf-sub, but when the data is not
+   current it stops whispering: full sentence case instead of small
+   uppercase, a coloured rule down its left edge, and the colour set
+   inline by severity (ochre = late, brick = stale).  A masthead line
+   is the one place a reader looks before trusting a number, which is
+   why the notice lives here and not in the sidebar. */
+.rf-stale {{
+    font-size: 0.86rem; line-height: 1.45; font-weight: 400;
+    border-left: 3px solid; padding: 3px 0 3px 10px; margin: 3px 0 2px 0;
+}}
 .rf-rule {{ border-top: 1px solid {HAIRLINE}; margin: 1.4rem 0 1.9rem 0; }}
 
 /* --- tab bar: the selected view reads as SELECTED --------------------
@@ -1620,6 +1631,20 @@ def _theme(fig):
              tickcolor=HAIRLINE, tickfont=dict(size=10, color=INK_MUTED),
              title_font=dict(size=11, color=INK_LABEL))
     return fig
+
+
+# STACKED CHARTS SHARE A LEFT GUTTER (defect report: "make sure the
+# graphs of price and the below align i think it glitched").  Plotly
+# sizes each figure's left margin to ITS OWN y tick labels, so the price
+# panel (labels like "1,480") started 68 px further left than the band
+# panel below it (labels "at INCREASE EXPOSURE") - two charts on the
+# same dates whose x axes did not line up.  Both panels now pin the same
+# explicit gutter and switch y automargin OFF, so the plot areas start
+# and end on the same pixel at any window width.  136 px is the widest
+# band label measured at 10 px plus the tick and a little headroom for
+# Inter; x automargin is left ON so the angled date labels still size
+# their own bottom margin.
+STACK_GUTTER_PX = 136
 
 
 def _axes_fidelity(fig):
@@ -2226,6 +2251,48 @@ def dim_outside(fig, window_lo, focus_start, label):
 # ---------------------------------------------------------------------------
 st.markdown(INSTITUTIONAL_CSS, unsafe_allow_html=True)
 
+# ---- IS THIS THE NEWEST DATA?  (2026-09-04)
+#
+# The masthead used to print `last update: <now>`, which is the moment
+# THE PAGE RENDERED - it says "just updated" on a dashboard whose data
+# stopped three weeks ago, and a reader has no way to tell.  What a
+# reader actually needs to know is the date of the newest reading and
+# whether the pipeline is behind on it.
+#
+# BUSINESS days, not calendar days.  The pipeline has nothing to add on
+# a Saturday, so a Monday morning looking at Friday's data is CURRENT.
+# Counting calendar days would paint an amber line across the masthead
+# every single Monday, and a warning that cries wolf weekly is a
+# warning nobody reads.
+#
+# The bands: 0-1 business days behind is normal (today's run may not
+# have happened yet).  2-4 is LATE - probably a missed run, possibly
+# nothing.  5+ is a whole working week with no new data: STALE, and by
+# then something is wrong rather than merely late.
+_FRESH_OK, _FRESH_LATE, _FRESH_STALE = "ok", "late", "stale"
+_FRESH_LATE_BD = 2
+_FRESH_STALE_BD = 5
+
+
+def _data_freshness(data_max, today):
+    """(level, business_days_behind) for the newest data date.
+
+    Pure - no Streamlit, no globals - so the bands can be tested
+    without standing the app up.  An absent or unreadable date counts
+    as STALE: silence about freshness is the failure mode this exists
+    to remove."""
+    import numpy as _np
+    if data_max is None or pd.isna(data_max):
+        return _FRESH_STALE, None
+    _b = max(0, int(_np.busday_count(pd.Timestamp(data_max).date(),
+                                     pd.Timestamp(today).date())))
+    if _b >= _FRESH_STALE_BD:
+        return _FRESH_STALE, _b
+    if _b >= _FRESH_LATE_BD:
+        return _FRESH_LATE, _b
+    return _FRESH_OK, _b
+
+
 h_left, h_right = st.columns([5, 1])
 with h_left:
     # EDITORIAL MASTHEAD (experiment). Same elements, same order, same
@@ -2237,18 +2304,24 @@ with h_left:
         '<div><span class="rf-dot">&#9679;</span> '
         '<span class="rf-title">RetailRadar</span></div>'
         '<div class="rf-standfirst">A real-time read on where retail '
-        'attention is building, and where it is ending.</div>'
-        f'<div class="rf-sub">last update: '
-        f'{pd.Timestamp.now():%d/%m/%Y, %H:%M:%S}</div>'
+        'attention is building, and where it is ending.</div>',
+        unsafe_allow_html=True)
+    # THE FRESHNESS LINE goes here, but the newest data date is not
+    # known until the aggregates load a hundred lines below - so the
+    # masthead reserves the slot now and fills it then. Keeping it in
+    # the masthead (rather than moving the load up) means the header
+    # still paints immediately on a cold cache.
+    _fresh_slot = st.empty()
+    st.markdown(
         # ON THE HOSTED COPY, NO ORG BRANDING (request: "no mention of
         # GIC / its things in the streamlit"). LOCAL_CONTROLS rides on
         # the gitignored .local_controls file, so the desk machine
         # keeps the full credit and the hosted clone never sees it -
         # one codebase, no second branch to maintain.
-        + ('<div class="rf-credit">Alex Brown - GIP 2026 Project - '
-           'MAARS Global Macro</div>' if LOCAL_CONTROLS else
-           '<div class="rf-credit">Alex Brown - Intern 2026 Project'
-           '</div>'),
+        ('<div class="rf-credit">Alex Brown - GIP 2026 Project - '
+         'MAARS Global Macro</div>' if LOCAL_CONTROLS else
+         '<div class="rf-credit">Alex Brown - Intern 2026 Project'
+         '</div>'),
         unsafe_allow_html=True)
 with h_right:
     # the animated header mark reads as an org logo - hosted copy
@@ -2435,6 +2508,101 @@ if theme_counts is None:
 
 data_max = theme_counts["date"].max()
 today = pd.Timestamp.today().normalize()
+# ---- FILL THE MASTHEAD FRESHNESS LINE (see _data_freshness above).
+# This is the ONE place on the page that answers "am I looking at
+# current numbers?", so it names the newest reading's date either way -
+# and when the pipeline is behind it says so in a full sentence and
+# tells the reader what to do about it. The instruction differs by
+# copy: on the desk machine the reader IS the person who can fix it, so
+# it names the command; on the hosted clone the reader usually is not,
+# so it points them at the owner.
+_fresh_lvl, _fresh_bd = _data_freshness(data_max, today)
+
+# ---- ...AND IS THE PAGE DRAWING WHAT WAS PUBLISHED?
+#
+# The age check above answers "has the pipeline run lately". It cannot
+# answer the OTHER question a stale-looking page raises: "I refreshed
+# it - why is it still old?" Those two have the same symptom and
+# opposite fixes, and a page that cannot tell them apart sends the
+# reader to re-run a pipeline that already ran.
+#
+# tools/publish_dashboard.py writes publish_manifest.json INTO the
+# committed bundle, so the checkout carries a record of what the last
+# publish contained. If that record is ahead of the data this page
+# actually loaded, the refresh reached the repository and stopped
+# there - a bundle that never got placed into data/processed, or a
+# container still serving the previous copy. That is a deploy problem,
+# not a data problem, and it is the only one of the two a running page
+# can diagnose about itself.
+_pub_path = os.path.join(BUNDLE_DIR, "publish_manifest.json")
+_pub = (_read_json(_pub_path, _mtime(_pub_path))
+        if os.path.exists(_pub_path) else None)
+_pub_through = _pub_at = None
+if isinstance(_pub, dict):
+    try:
+        if _pub.get("data_through"):
+            _pub_through = pd.Timestamp(_pub["data_through"])
+        if _pub.get("published_at"):
+            _pub_at = pd.Timestamp(_pub["published_at"]).tz_localize(None)
+    except (ValueError, TypeError):       # a hand-edited manifest
+        _pub_through = _pub_at = None
+# Only ONE direction is a fault. Published AHEAD of what loaded = the
+# deploy is half-applied. Published BEHIND = the desk machine has run
+# the pipeline and not published yet, which is the normal state of a
+# workstation mid-morning and must stay silent.
+_deploy_behind = (_pub_through is not None and pd.notna(data_max)
+                  and _pub_through > pd.Timestamp(data_max))
+
+_fresh_fix = ("Restart the Streamlit server on this machine."
+              if LOCAL_CONTROLS else
+              "Contact the dashboard owner to refresh it or check "
+              "for issues.")
+if _deploy_behind:
+    _fresh_slot.markdown(
+        f'<div class="rf-stale" style="color:{BEAR};border-color:{BEAR}">'
+        f'<b>This page is not drawing the newest published data.</b> '
+        f'The published bundle runs to '
+        f'{_pub_through:%d %b %Y}'
+        + (f' (published {_pub_at:%d %b %H:%M} UTC)' if _pub_at is not None
+           else '')
+        + f', but this page has loaded data through '
+        f'{pd.Timestamp(data_max):%d %b %Y} &mdash; the refresh reached '
+        f'the repository and not this app. {_fresh_fix}</div>',
+        unsafe_allow_html=True)
+elif _fresh_lvl == _FRESH_OK:
+    _fresh_slot.markdown(
+        f'<div class="rf-sub">data through '
+        f'{pd.Timestamp(data_max):%d %b %Y}'
+        + (f' &middot; published {_pub_at:%d %b %H:%M} UTC'
+           if _pub_at is not None else '')
+        + f' &middot; page loaded {pd.Timestamp.now():%d/%m/%Y, %H:%M}'
+        '</div>',
+        unsafe_allow_html=True)
+else:
+    # The pipeline itself is behind. Same slot, escalating colour, and
+    # the instruction differs by copy: on the desk machine the reader
+    # IS the person who can fix it, so it names the command; on the
+    # hosted clone the reader usually is not, so it points at the owner.
+    _fresh_col = BEAR if _fresh_lvl == _FRESH_STALE else OCHRE
+    _fresh_lead = ("This dashboard is NOT showing the newest data"
+                   if _fresh_lvl == _FRESH_STALE
+                   else "This dashboard may not be showing the newest "
+                        "data")
+    _fresh_age = (f"{_fresh_bd} business day"
+                  f"{'' if _fresh_bd == 1 else 's'} behind"
+                  if _fresh_bd is not None else "age unknown")
+    _fresh_run = ("Run <code>update_data.py</code> on this machine to "
+                  "refresh it, or check the pipeline log for errors."
+                  if LOCAL_CONTROLS else
+                  "Contact the dashboard owner to refresh it or check "
+                  "for issues.")
+    _fresh_slot.markdown(
+        f'<div class="rf-stale" style="color:{_fresh_col};'
+        f'border-color:{_fresh_col}">'
+        f'<b>{_fresh_lead}.</b> The newest reading is '
+        f'{pd.Timestamp(data_max):%d %b %Y} &mdash; {_fresh_age}. '
+        f'{_fresh_run}</div>',
+        unsafe_allow_html=True)
 # default view: 1 Jan 2026 onwards (the start of dense backfilled
 # coverage); falls back to trailing-365d if the data ends before that
 _default_lo = pd.Timestamp("2026-01-01")
@@ -3064,7 +3232,7 @@ started celebrating it. That is a late-stage condition, not a bullish one.
 
 **The two lines on the chart - that is the whole signal.**
 
-- **Blue line = INCREASE EXPOSURE.** Euphoria is *starting*. The crowd is arriving.
+- **Green line = INCREASE EXPOSURE.** Euphoria is *starting*. The crowd is arriving.
 - **Red line = CUT EXPOSURE.** Euphoria is *ending*. Historically the price top
   is close - this is the line to bring to a PM.
 
@@ -3169,7 +3337,7 @@ started celebrating it. That is a late-stage condition, not a bullish one.
 
 **The two lines on the chart - that is the whole signal.**
 
-- **Blue line = INCREASE EXPOSURE.** Euphoria is *starting*. The crowd is arriving.
+- **Green line = INCREASE EXPOSURE.** Euphoria is *starting*. The crowd is arriving.
 - **Red line = CUT EXPOSURE.** Euphoria is *ending*. Historically the price top
   is close - this is the line to bring to a PM.
 
@@ -3315,7 +3483,7 @@ sufficient to measure, and the level crosses the walk-forward threshold
 maximal, mood rolling over: the last stage before tops). One alert per
 21d episode.
 
-**The STARTING line (blue)** comes from the onset detector (July-2026
+**The STARTING line (green)** comes from the onset detector (July-2026
 phases study winner): the mean of five crowd-only onset features -
 attention acceleration, hype ratio, bullish inflection, influx speed,
 super-exponential attention - gated by coverage and by attention above
@@ -3341,7 +3509,7 @@ budget), AP 0.540 against a 0.498 base rate, median warning 7 days. The
 54d re-fit of 2026-07-29 supersedes those: 22/98, 10 FAs
 (0.083/instrument-year), AP 0.615, 9-day warning; and CONSIDER came inside
 its own budget for the first time at 0.200.
-**CONSIDER (blue)** = the onset detector made PHASE-AWARE: a day
+**CONSIDER (green)** = the onset detector made PHASE-AWARE: a day
 that already satisfies every ending gate is end-stage, and a "start"
 there is incoherent - so it cannot fire. That cut start-next-to-end
 adjacency from 20 to 2 and late starts from 21 to 10, at a recorded
@@ -4052,13 +4220,13 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
         thr_out_d = _thr_out_d
 
         # ---- HEADER, then DIAL + FACTS + RECORD on ONE ROW, then chart.
-        _sig_all = sorted([(d, "INCREASE EXPOSURE", TEAL) for d in onset_alerts]
+        _sig_all = sorted([(d, "INCREASE EXPOSURE", GETIN) for d in onset_alerts]
                           + [(d, "CUT EXPOSURE", BEAR) for d in top_alerts])
         _last_sig = (f"{_sig_all[-1][1]} · "
                      f"{pd.Timestamp(_sig_all[-1][0]).strftime('%d %b %y')}"
                      if _sig_all else "none in window")
         _last_col = _sig_all[-1][2] if _sig_all else INK_MUTED
-        _badge = {"STARTING": (TEAL, "INCREASE EXPOSURE: attention building — expect growth"),
+        _badge = {"STARTING": (GETIN, "INCREASE EXPOSURE: attention building — expect growth"),
                   "ENDING": (BEAR, "CUT EXPOSURE: attention topping — expect a fall")}.get(
                       state, (INK_MUTED, "no live signal"))
         st.markdown(
@@ -4174,7 +4342,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 return ("QUIET", INK_MUTED,
                         "no meaningful crowd state either way")
             if _arc_in[0] <= _ang <= _arc_in[1] and _r >= _arc_in[2]:
-                return ("BUILDING", TEAL,
+                return ("BUILDING", GETIN,
                         "crowd arriving, not yet extreme - the entry side "
                         "of the clock")
             if _arc_out[0] <= _ang <= _arc_out[1] and _r >= _arc_out[2]:
@@ -4229,7 +4397,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                         "the state until the 21d episode window closes")
             if _last_i is not None:
                 _n_ = (_day - _last_i).days
-                return ("ENTRY WINDOW", TEAL,
+                return ("ENTRY WINDOW", GETIN,
                         f"INCREASE EXPOSURE fired {_n_}d ago - the rally window is "
                         "open; this flag owns the state until the 21d "
                         "episode window closes")
@@ -4327,7 +4495,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                     # here; referencing it crashed every INCREASE-side
                     # chart while the CUT branch sailed past the test.
                     _g_bcol = (BEAR if _rd_side == "CUT EXPOSURE"
-                               else TEAL)
+                               else GETIN)
                 st.plotly_chart(
                     fig_euphoria_gauge(_g_now, _g_ref,
                                        _dgr and _ready is None, _g_z,
@@ -4687,7 +4855,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 parts.append(f"<span style='color:{BEAR}'><b>★ CUT EXPOSURE "
                              "FIRED today</b></span>")
             elif _d in _fired_in_days:
-                parts.append(f"<span style='color:{TEAL}'><b>★ INCREASE EXPOSURE "
+                parts.append(f"<span style='color:{GETIN}'><b>★ INCREASE EXPOSURE "
                              "FIRED today</b></span>")
             if _no_desk and _on_mean is None:
                 # outside the detector's universe: the clock would read
@@ -4784,16 +4952,16 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 _on_row = any(pd.notna(s.iloc[_i2]) for _, s in _in_bank)
                 if not _on_row:
                     parts.append(
-                        f"<span style='color:{TEAL}'><b>INCREASE EXPOSURE (entry)"
+                        f"<span style='color:{GETIN}'><b>INCREASE EXPOSURE (entry)"
                         "</b></span> ▱▱▱▱▱▱▱▱▱▱ 0% - crowd below its "
                         "own normal (&lt;1.0x); entry tracking starts at "
                         f"{EUPHORIA_ONSET_HYPE_MIN:.2f}x")
                     return
                 _tot_i = _in_f.iloc[_i2]
-                _head = (f"<span style='color:{TEAL}'><b>INCREASE EXPOSURE "
+                _head = (f"<span style='color:{GETIN}'><b>INCREASE EXPOSURE "
                          "(entry)</b></span> ")
                 _head += _tbar(-(float(_tot_i) if pd.notna(_tot_i)
-                                 else 0.0), TEAL)
+                                 else 0.0), GETIN)
                 if pd.notna(_in_s.iloc[_i2]) and not _es_i:
                     _head += " · could fire today"
                 parts.append(_head)
@@ -4920,7 +5088,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
         # the hover arithmetic, so a dot cannot drift off its alert.
         _fx, _fy, _fc, _ft = [], [], [], []
         for _d, _nm, _c in ([(d, "CUT EXPOSURE", BEAR) for d in top_alerts]
-                            + [(d, "INCREASE EXPOSURE", TEAL) for d in onset_alerts]):
+                            + [(d, "INCREASE EXPOSURE", GETIN) for d in onset_alerts]):
             _t = pd.Timestamp(_d)
             _cpos = _carrier.index.searchsorted(_t)
             if _cpos < len(_carrier) and pd.notna(_carrier.iloc[_cpos]):
@@ -4985,7 +5153,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                     name="possible inflection (context)", text=_tt,
                     hovertemplate="%{text}<extra></extra>"))
         for d in onset_alerts:                       # GET IN
-            fig.add_vline(x=_ms(d), line_color=TEAL, line_width=1.6,
+            fig.add_vline(x=_ms(d), line_color=GETIN, line_width=1.6,
                           opacity=0.9)
         for d in top_alerts:                         # GET OUT
             fig.add_vline(x=_ms(d), line_color=BEAR, line_width=1.6,
@@ -4997,7 +5165,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
         # day it fired, so a HIGH CONVICTION signal is identifiable on
         # the chart itself and not only in the lists.
         marks = sorted(
-            [(d, "INCREASE EXPOSURE", TEAL,
+            [(d, "INCREASE EXPOSURE", GETIN,
               _tech_confirms(sym, d, "INCREASE EXPOSURE"))
              for d in onset_alerts]
             + [(d, "CUT EXPOSURE", BEAR,
@@ -5047,7 +5215,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
         fig.update_layout(title=dict(text=""),
                           height=380 + 14 * max(0, _lbl_rows - 2),
                           hovermode="x unified",
-                          margin=dict(l=10, r=10,
+                          margin=dict(l=STACK_GUTTER_PX, r=10,
                                       t=24 + 14 * _lbl_rows, b=66),
                           showlegend=True,
                           legend=dict(orientation="h", yref="container",
@@ -5058,7 +5226,12 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
         # axis transform changes nothing measured.
         fig.update_yaxes(title_text=("price (USD)" if _px_ok
                                      else "crowd heat level"),
-                         type="log" if _log_scale else "linear")
+                         type="log" if _log_scale else "linear",
+                         automargin=False)
+        # same window as the band below - the band was pinned to
+        # [w0, w1] while this one auto-ranged with plotly's padding, so
+        # the two panels disagreed about where the dates sat
+        fig.update_xaxes(range=[w0, w1])
         _axes_fidelity(_theme(fig))
         st.plotly_chart(fig, width="stretch", key=key)
         # ---- THE COMBINED BAND (notebook 08 §11.4:
@@ -5107,13 +5280,13 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 # though the line breaks, so the two bands painted over
                 # each other as long diagonal wedges. The only airtight
                 # shape is a SINGLE signed series - one value per day,
-                # teal when positive (watching INCREASE), red when
+                # green when positive (watching INCREASE), red when
                 # negative (run up -> watching CUT) - from which both
                 # traces are clipped. Both drawn at once is then
                 # impossible by construction, not by masking. The
                 # MARKERS still tell the firing truth: each fire plots
                 # at its own side's value, so an ungated INCREASE that
-                # fires inside a red stretch draws its teal triangle AT
+                # fires inside a red stretch draws its green triangle AT
                 # the INCREASE line, on top of the red band.
                 _b_g = watch_gate(_srg)
                 _rin = (_srg[IN_SCORE] / float(_thr_in_d)).clip(0, 1.15)
@@ -5189,9 +5362,9 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                                 name="INCREASE side · distance to "
                                      "its line",
                                 mode="lines",
-                                line=dict(width=0.8, color=TEAL),
+                                line=dict(width=0.8, color=GETIN),
                                 fill="tozeroy",
-                                fillcolor="rgba(46,110,126,0.35)",
+                                fillcolor="rgba(30,122,79,0.35)",
                                 hoverinfo="skip")
                 _fb.add_scatter(x=_sr.index, y=_sr.clip(upper=0),
                                 name="CUT side · shown once the "
@@ -5369,12 +5542,12 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                         continue
                     _red = _v < 0
                     _sd = "out" if _red else "in"
-                    _col_h = BEAR if _red else TEAL
+                    _col_h = BEAR if _red else GETIN
                     _pct = min(abs(_v), 1.15)
                     _fired_td = _d in _fi_all[_sd]
                     _l1h = (f"<b>{_d:%d %b %y}</b> · "
                             + ("red — reducing side"
-                               if _red else "teal — increasing side"))
+                               if _red else "green — increasing side"))
                     # fire-checks line removed on request ("just make
                     # it the bar - keep it simple"); FIRED days keep
                     # their one bold line
@@ -5446,7 +5619,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 # Each marker sits at ITS OWN side's score that day,
                 # never at the signed band's value: get_in_nogate can
                 # fire on a boomed day, where the signed band shows the
-                # CUT side - plotting there put a teal "INCREASE fired"
+                # CUT side - plotting there put a green "INCREASE fired"
                 # triangle deep in the red fill at the WRONG quantity.
                 # 36 of the store's 40 nogate fires land on boomed days,
                 # so this was the rule, not the exception.
@@ -5458,7 +5631,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 _y_in = _y_in[~_y_in.index.duplicated()]
                 _y_out = _y_out[~_y_out.index.duplicated()]
                 for _col_b, _mk_b, _cc_b, _own_y, _line_y, _nm_b in (
-                        (sig_col("get_in", _srg), "triangle-up", TEAL,
+                        (sig_col("get_in", _srg), "triangle-up", GETIN,
                          _y_in, 1.0, "INCREASE EXPOSURE fired"),
                         (sig_col("get_out", _srg), "triangle-down", BEAR,
                          _y_out, -1.0, "CUT EXPOSURE fired")):
@@ -5480,7 +5653,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 # held-diamonds REMOVED on request ("remove the thing
                 # thats like held ... no need") - the ▲▼ fires and the
                 # bar itself carry the story now
-                for _yv, _cc in ((1.0, TEAL), (-1.0, BEAR)):
+                for _yv, _cc in ((1.0, GETIN), (-1.0, BEAR)):
                     _fb.add_hline(y=_yv, line_dash="dash", line_width=1,
                                   line_color=_cc, opacity=0.7)
                 _fb.add_hline(y=0, line_width=1, line_color=INK_MUTED)
@@ -5490,9 +5663,9 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                                 yanchor="bottom", y=0.0,
                                 xref="container", xanchor="center",
                                 x=0.5, font=dict(size=10)),
-                    margin=dict(l=10, r=10, t=4, b=34),
+                    margin=dict(l=STACK_GUTTER_PX, r=10, t=4, b=34),
                     hovermode="x unified",
-                    yaxis=dict(range=[-1.3, 1.3],
+                    yaxis=dict(range=[-1.3, 1.3], automargin=False,
                                tickvals=[-1, 0, 1],
                                ticktext=["at CUT EXPOSURE", "", "at INCREASE EXPOSURE"],
                                tickfont=dict(size=10)))
@@ -6002,7 +6175,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                     "  - it has lasted a while\n"
                     "  - the price has run a long way"))
         st.markdown('<div class="rf-rule"></div>', unsafe_allow_html=True)
-        _a_list("INCREASE EXPOSURE", BULL,
+        _a_list("INCREASE EXPOSURE", GETIN,
                 "Names the crowd is arriving at, before the run. "
                 "Closest to firing first.",
                 title="Start of Bullishness — Consider Increasing "
@@ -6046,7 +6219,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
             for _f in _fired[:ACTION_FIRED_ROWS]:
                 _ago = (pd.Timestamp(_a_as_of) - _f["date"]).days \
                     if _a_as_of is not None else None
-                _tone = BULL if _f["side"].startswith("INCREASE") else BEAR
+                _tone = GETIN if _f["side"].startswith("INCREASE") else BEAR
                 _sym_f = None
                 if dk is not None and len(dk):
                     _mf = dk[dk["name"] == _f["name"]]

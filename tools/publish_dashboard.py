@@ -218,6 +218,45 @@ def publish(with_influence: bool = False, dry_run: bool = False,
         log("influence board not published (use --with-influence to "
             "include it; it carries Reddit author handles).")
 
+    # ---- THE PUBLISH MANIFEST ------------------------------------
+    # One tiny JSON, committed WITH the bundle, saying what this
+    # publish contains: when it ran and the newest date in the
+    # aggregates it staged.
+    #
+    # It exists to separate two failures that look identical on screen
+    # ("the dashboard is showing old numbers"):
+    #   * THE PIPELINE HAS NOT RUN - the manifest is old too, and the
+    #     masthead's business-day age already says so;
+    #   * THE PIPELINE RAN AND THE PAGE DID NOT PICK IT UP - a push
+    #     that did not land, or a bundle sitting in the checkout that
+    #     was never placed into data/processed. The manifest is NEWER
+    #     than the data the page actually loaded, and only a comparison
+    #     against something published can see that.
+    # Written last, so a half-finished publish does not advertise
+    # itself as complete. Failure-isolated: a bundle without a manifest
+    # is an OLDER bundle to the dashboard, never a broken one.
+    if not dry_run:
+        try:
+            import json as _json
+            from datetime import datetime as _dt, timezone as _tz
+            import pandas as _pd
+            _tc = os.path.join(PROCESSED_DIR, "daily_theme_counts.parquet")
+            _through = None
+            if os.path.exists(_tc):
+                _d = _pd.read_parquet(_tc, columns=["date"])["date"]
+                if len(_d):
+                    _through = str(_pd.to_datetime(_d).max().date())
+            with open(os.path.join(BUNDLE_DIR, "publish_manifest.json"),
+                      "w", encoding="utf-8") as _f:
+                _json.dump({"published_at": _dt.now(_tz.utc)
+                            .strftime("%Y-%m-%dT%H:%M:%SZ"),
+                            "data_through": _through,
+                            "files": staged}, _f, indent=2)
+            log(f"publish manifest written (data through "
+                f"{_through or 'unknown'})")
+        except Exception as _e:                          # noqa: BLE001
+            log(f"publish manifest skipped: {type(_e).__name__}: {_e}")
+
     if not dry_run:
         # The marker enables the pipeline-run controls in the sidebar. It
         # is gitignored, so it exists on this machine and never on the
