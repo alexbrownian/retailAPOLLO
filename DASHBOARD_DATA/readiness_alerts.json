@@ -1,13 +1,13 @@
 {
  "threshold": 0.9,
- "built": "2026-09-07 01:07",
+ "built": "2026-09-09 08:31",
  "alerts": [
   {
-   "name": "cloud_saas",
-   "symbol": "IGV",
-   "signed_readiness": -0.912,
+   "name": "meme_stocks",
+   "symbol": "ARKK",
+   "signed_readiness": -0.923,
    "side": "GET OUT",
-   "as_of": "2026-09-01"
+   "as_of": "2026-09-04"
   }
  ]
 }

@@ -1,58 +1,45 @@
-# ABSTRACTED_DATA — the only data folder committed to the repository
+# ABSTRACTED_DATA — the committed, text-free aggregates
 
-This folder is the abstraction layer: the only project data allowed onto
-GitHub and the internal machine. It holds six small parquet files (~7 MB
-total) that carry **no post text, no authors, no post ids, no subreddit
-names** — only daily **counts** and **sentiment scores** per ticker / theme.
-No individual Reddit / X / StockTwits post can be reconstructed from them.
+The only data folder in the repository. It holds six small parquet files
+that carry **no post text, no authors, no post ids and no forum names**:
+only daily counts and sentiment scores per ticker and per theme. No
+individual post can be reconstructed from them.
 
-| file | columns |
+| File | Columns |
 |---|---|
 | `daily_ticker_counts.parquet` | date, ticker, mention_count |
 | `daily_ticker_counts_by_source.parquet` | date, ticker, source, mention_count |
 | `daily_ticker_sentiment.parquet` | date, ticker, n_posts, avg_sentiment, net_bullish |
 | `daily_theme_counts.parquet` | date, theme, mention_count |
 | `daily_theme_sentiment.parquet` | date, theme, n_posts, avg_sentiment, net_bullish |
+| `daily_term_counts.parquet` | date, term, mention_count |
 
-`source` keeps the readable labels `reddit` / `x` / `stocktwits`; no text is
+`source` keeps the labels `reddit` / `x` / `stocktwits`; no text is
 attached to them.
 
-## Why the split works
+## How it is filled
 
-The pipeline turns text into numbers at a fixed line:
+Text becomes numbers at one fixed line, and only numbers cross it.
 
-- **External machine (needs raw text):** `ingestion/build_aggregates.py`
-  reads the raw `posts.parquet` (private, gitignored) and writes the
-  aggregates above.
-- **Internal machine (numbers only):** the whole analytics layer and the
-  dashboard read only these aggregates — so they run where no raw post
-  ever exists.
+- **Full mode** (a copy holding the raw `posts.parquet`):
+  `ingestion/build_aggregates.py` rebuilds these files from text and
+  `src/abstracted_data.py::export()` copies them here.
+- **Aggregates mode** (any other copy): `ingestion/append_live_abstracted.py`
+  aggregates each run's new posts and merges the deltas in — counts add,
+  sentiment means recombine weighted by `n_posts` — so history is never
+  revised, only extended. The seen-id ledger in `data/reference/` makes
+  the merge idempotent.
 
-## Bootstrap (external machine, where `posts.parquet` lives)
+Both modes end a run with `verify_abstracted`, which fails loudly if a
+text-bearing column ever appears here. `.gitignore` blocks the raw
+stores from this folder as a second net.
+
+Routine use, in either mode:
 
 ```bash
-python update_data.py                     # builds + publishes the aggregates
-git add ABSTRACTED_DATA && git commit -m "publish abstracted aggregates"
+python update_data.py                      # fetch, screen, fold, score
+git add ABSTRACTED_DATA DASHBOARD_DATA
+git commit -m "data refresh"
 ```
 
-## Internal machine (repeat as often as data is ingested)
-
-```bash
-git pull                                  # latest ABSTRACTED_DATA
-python update_data.py                     # fetch live -> fold in -> signals
-git add ABSTRACTED_DATA && git commit -m "live update"
-```
-
-`append_live_abstracted.py` (called by update_data.py) aggregates newly
-fetched posts and **merges** them into the files — counts add, sentiment
-means recombine weighted by `n_posts`, so history is never revised, only
-extended. Raw text is then discarded. A local, gitignored ledger
-(`data/reference/abstracted_live_meta.json`) remembers which post ids were
-already folded in, so re-running folds nothing twice (first-seen-wins).
-
-## What is NOT here (by design)
-
-`posts.parquet`, `posts_slice.parquet`, raw `*.jsonl` / `*.zst` files, and
-the seen-ids ledger. `.gitignore` blocks them from this folder as a safety
-net, and every `update_data.py` run ends with a schema check that fails
-loudly if a text-bearing column ever appears here.
+Full schema and the rest of the data layout: `docs/DATA.md`.
