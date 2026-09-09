@@ -1,73 +1,87 @@
-"""
-euphoria.py
-===========
-THE EUPHORIA DETECTOR - retailAPOLLO's core signal since the July-2026
-re-aim: detect retail EUPHORIA and use it to call PRICE TOPS.
+"""The euphoria detector: crowd-only euphoria level, alerts, ground truth and walk-forward.
 
-THE AIM (what "success" means, exactly)
----------------------------------------
-For every instrument in the universe (theme anchor ETFs + hot single
-names + retail commodities), raise a EUPHORIA ALERT that lands inside
-[peak - 30 days, peak + 1 day] of a genuine price top - the closer to the
-peak the better - while keeping false alarms rare. A "genuine top" is
+Detects retail EUPHORIA from the crowd aggregates alone and uses it to
+call PRICE TOPS. For every instrument in the universe (theme anchor ETFs
++ data-chosen hot single names + retail commodities) it raises a
+EUPHORIA ALERT that should land inside [peak - 30 days, peak + 1 day] of
+a genuine price top while keeping false alarms rare. A "genuine top" is
 price-defined (below), so the test is objective and walk-forward.
 
-WHAT IS EUPHORIA? (the definition, in words)
---------------------------------------------
+Inputs:
+    theme/ticker mention counts and scored sentiment  via analytics.loaders
+    prices.parquet (PRICES_PATH)                       daily closes
+    euphoria_report.json (PROCESSED_DIR)               the frozen threshold
+
+Outputs (`main`):
+    euphoria_levels.parquet   daily level, components, gate states, alerts
+    euphoria_report.json      walk-forward record, ablation table, ML
+                              challenger verdict; rewritten on research
+                              passes only
+
+Key functions: `compute_euphoria` (features -> level for one instrument),
+`build_all_series` (the whole universe), `detect_alerts` (A0-A4),
+`ground_truth_peaks` (G1-G3), `walk_forward` (the evaluation),
+`ablation`, `ml_walk_forward` (the logistic challenger), `needs_research`
+/ `record_lags_data` (the live-vs-research decision), `main`.
+
+WHAT EUPHORIA IS
+----------------
 The state where the crowd has stopped analysing and started celebrating:
 everyone is watching one name (attention at extremes), everyone has been
 bullish for weeks (sustained one-way sentiment), new people keep arriving
-(crowd influx), the price itself has been rising FASTER THAN EXPONENTIAL
+(crowd influx), attention itself is growing faster than exponentially
 (the bubble signature), and - at the very end - the mood starts to roll
 over while the crowd is still at maximum size (the crowded-top fade).
-Every one of those clauses is a measurable rule below; the composite
-0-100 EUPHORIA LEVEL is their average, and an ALERT is a hard-threshold
-crossing with prerequisites - nothing arbitrary, nothing discretionary.
+Each clause is a measurable rule below; the composite 0-100 EUPHORIA
+LEVEL is their average, and an ALERT is a hard-threshold crossing with
+prerequisites - nothing arbitrary, nothing discretionary.
 
-RESEARCH GROUNDING (why these rules and not others)
----------------------------------------------------
+RESEARCH GROUNDING
+------------------
 * Attention extremes predict REVERSAL, not continuation: retail attention
   herding is followed by negative abnormal returns (Barber & Odean's
-  attention-induced buying; WSB/GameStop discussion-board studies;
-  "Dumb money: social network attention herding" 2025). -> rules E1/E3.
+  attention-induced buying; discussion-board studies of the GameStop
+  episode). -> rules E1/E3.
 * One-sided sentiment at extremes is contrarian: aggregated bullishness
-  peaks coincide with local price tops in Reddit/Twitter studies.
-  -> rule E2 (persistence, not level alone: a single loud day is hype,
-  weeks of one-way lean is euphoria).
-* The PRICE signature of a bubble is super-exponential (faster-than-
+  peaks coincide with local price tops in social-media studies. -> rule
+  E2 (persistence, not level alone: a single loud day is hype, weeks of
+  one-way lean is euphoria).
+* The signature of a bubble is super-exponential (faster-than-
   exponential) growth - the core of Sornette's LPPLS bubble/crash
-  framework, applied to meme stocks in arXiv:2110.06190. We use an
-  "LPPLS-lite" convexity measure: the quadratic coefficient of a rolling
-  regression of log-price on time. Positive convexity = the log price is
-  CURVING UPWARD = growth is accelerating beyond any steady exponential
-  - unsustainable by construction. -> rule E5.
+  framework, applied to meme stocks in arXiv:2110.06190. This module
+  uses an "LPPLS-lite" convexity measure: the quadratic coefficient of a
+  rolling regression of a log series on time. Positive convexity = the
+  log series is CURVING UPWARD = growth is accelerating beyond any
+  steady exponential - unsustainable by construction. -> rule E5.
 * The end-phase divergence (crowd maximal, mood fading) is the classic
-  distribution pattern - it was already this project's "crowded top"
-  flag, validated directionally in the July-2026 conviction study
-  (post-peak sentiment fade preceded drawdowns). -> rule E4.
+  distribution pattern: post-peak sentiment fade preceded drawdowns in
+  this project's own conviction study. -> rule E4.
 
-REDDIT-ONLY PREDICTION (selection rule, July 2026)
----------------------------------------------
-Every PREDICTIVE input below is built from the Reddit-derived aggregates
-(mention counts + scored sentiment). PRICE IS NEVER AN INPUT to the
-euphoria level or the alert - price appears ONLY in the ground-truth
-peak definition and the scoring, i.e. only to TEST the detector. This
-keeps the claim clean: "the crowd alone called the top", not "the crowd
-plus the chart called the top". (An earlier revision used a price-
-convexity feature and a price-boom gate; both were removed under this
-rule and replaced with their attention-space analogues below - the
-ablation table quantifies what that costs/buys.)
+CROWD-ONLY PREDICTION
+---------------------
+Every PREDICTIVE input is built from the crowd aggregates (mention counts
++ scored sentiment). PRICE IS NEVER AN INPUT to the euphoria level or the
+alert - price appears ONLY in the ground-truth peak definition and the
+scoring, i.e. only to TEST the detector. This keeps the claim clean:
+"the crowd alone called the top", not "the crowd plus the chart called
+the top". The price-convexity feature and price-boom gate this rule
+excludes are replaced by their attention-space analogues (E5, A1); the
+ablation table quantifies what that costs and buys.
 
-THE RULES (all trailing - day t uses only data <= t; all thresholds are
-percentile ranks against the SAME instrument's own trailing 365 days, so
-"extreme" always means "extreme for this name", never absolute counts
-that coverage shifts could fake)
-------------------------------------------------------------------------
+THE RULES
+---------
+All trailing (day t uses only data <= t). All thresholds are percentile
+ranks against the SAME instrument's own trailing EUPHORIA_PCT_WINDOW
+days, so "extreme" always means "extreme for this name", never an
+absolute count that coverage shifts could fake. Ranks rather than
+z-scores because the features are heavily skewed: a z on a fat-tailed
+series over- or under-reacts, a rank never does.
+
   E1  ATTENTION EXTREMITY   pct-rank of the 7d mention share
   E2  SUSTAINED BULLISHNESS pct-rank of the 28d mean net-bullish share,
                             gated by persistence: >=75% of the last 28
-                            days net-bullish (rule: "super bullish AND
-                            has been for a long time")
+                            days net-bullish ("super bullish AND has
+                            been for a long time")
   E3  CROWD INFLUX          pct-rank of the 28d CHANGE in mention share
                             (the crowd is still arriving)
   E5  SUPER-EXPONENTIAL     pct-rank of positive log-ATTENTION convexity
@@ -88,52 +102,61 @@ that coverage shifts could fake)
       over. An alert fires at a LOWER level when the fade is active,
       because the fade is the latest (and historically last) stage.
 
-THE ALERT (the red line on the dashboard)
------------------------------------------
+THE ALERT
+---------
 On day t, EUPHORIA is DECLARED for an instrument when ALL hold:
   A0  coverage gate: >= EUPHORIA_MIN_COVERAGE scored posts in the last
       28 days. Percentile "extremes" computed on a handful of posts are
-      noise wearing a costume - the thin-coverage era (2023-2025, before
-      the backfill) generates floods of fake extremes without this gate.
-      Same philosophy as MIN_TOTAL on the mention charts.
-  A1  hype prerequisite: the 7d mention share >= HYPE_MULT x its own
-      trailing 120d median ("something has to go euphoric first" -
-      measured in the crowd, not the chart: the audience must have
-      genuinely swollen, not just wobbled at a normal size)
-  A2  attention gate: E1 >= 0.90 (you cannot be euphoric quietly)
+      noise; thin-coverage eras generate floods of fake extremes without
+      this gate. Same philosophy as MIN_TOTAL on the mention charts.
+  A1  hype prerequisite: the 7d mention share >= EUPHORIA_HYPE_MULT x
+      its own trailing 120d median ("something has to go euphoric
+      first", measured in the crowd, not the chart: the audience must
+      have genuinely swollen, not just wobbled at a normal size)
+  A2  attention gate: E1 >= EUPHORIA_ATT_GATE (you cannot be euphoric
+      quietly)
   A2b sustained-bullishness gate: E2 > 0, i.e. at least 75% of the last
-      28 days were net-bullish (the desk's rule 1 - "super bullish AND
-      has been for a long time" - as a hard prerequisite, not just a
-      score component)
+      28 days were net-bullish, as a hard prerequisite and not just a
+      score component
   A3  level trigger:  EUPHORIA LEVEL >= threshold        (walk-forward)
-      OR level >= threshold - FADE_DISCOUNT and E4 active
-  A4  cooldown: >= 21 days since this instrument's last alert
+      OR level >= threshold - EUPHORIA_FADE_DISCOUNT and E4 active
+  A4  cooldown: >= EUPHORIA_COOLDOWN_DAYS since this instrument's last
+      alert
 The ONLY fitted quantity is the threshold in A3, and it is chosen
-WALK-FORWARD: for each test year, the threshold is picked purely on the
-years BEFORE it (maximising hits minus FA_PENALTY * false alarms), then
-applied unchanged. Every other number is fixed a priori and documented
-in src/config.py.
+WALK-FORWARD BY YEAR: for each test year, the threshold is picked purely
+on the years BEFORE it (maximising hits minus EUPHORIA_FA_PENALTY *
+false alarms), then applied unchanged. Fitting by calendar year keeps
+the threshold stable within a year by construction and makes a live run
+at the frozen threshold the out-of-sample use the evaluation licenses.
+Every other number is fixed a priori and documented in src/config.py.
 
-GROUND TRUTH (what counts as a top - price-only, so the test is honest)
------------------------------------------------------------------------
-A day P is a PEAK for an instrument when:
-  G1  local maximum: close(P) is the highest close in [P-21d, P+21d]
+GROUND TRUTH
+------------
+Price-only, so the test is honest. A day P is a PEAK for an instrument
+when:
+  G1  local maximum: close(P) is the highest close in
+      [P - EUPHORIA_PEAK_LOCAL_MAX_D, P + EUPHORIA_PEAK_LOCAL_MAX_D]
   G2  it followed a boom: close(P) >= (1+BOOM_MIN) * min close over the
-      preceding 120d   (BOOM_MIN: 25% ETFs/themes, 50% single names)
+      preceding EUPHORIA_BOOM_LOOKBACK_D days. BOOM_MIN is
+      EUPHORIA_BOOM_MIN_ETF for themes and EUPHORIA_BOOM_MIN_SINGLE for
+      single names (src/config.py).
   G3  it was followed by a bust: drawdown from close(P) reaches at least
-      CRASH_MIN within the next 90d (CRASH_MIN: 15% ETFs, 30% singles -
-      single names are structurally more volatile, per the desk's call)
-Peaks closer than 30d apart collapse to the higher one.
+      CRASH_MIN within EUPHORIA_CRASH_WINDOW_D days. CRASH_MIN is
+      EUPHORIA_CRASH_MIN_ETF / EUPHORIA_CRASH_MIN_SINGLE. Single names
+      carry the higher bar because, measured on this universe, they move
+      roughly twice as far as a theme ETF on the same statistic (median
+      run-up 30% vs 15%; median 90-day drawdown 14% vs 6%).
+Peaks closer than EUPHORIA_PEAK_MERGE_D apart collapse to the higher one.
 
-SCORING (the report card the walk-forward prints)
--------------------------------------------------
+SCORING
+-------
   peak capture   % of ground-truth peaks with >=1 alert in
                  [peak - 30d, peak + 1d]   <- the stated aim
   median lead    days from the capturing alert to the peak (positive =
                  early; the aim says within a month, closer the better)
   false alarms   alerts with NO qualifying peak within [alert, alert+45d]
                  (rate reported per instrument-year)
-All reported per year AND per regime so one era cannot carry the signal.
+All reported per year so one era cannot carry the signal.
 """
 
 from __future__ import annotations
@@ -167,24 +190,47 @@ from analytics.loaders import (load, THEME_COUNTS, THEME_SENT,
 # ---------------------------------------------------------------------------
 def trailing_pct_rank(s: pd.Series, window: int = EUPHORIA_PCT_WINDOW,
                       min_periods: int = EUPHORIA_MIN_HISTORY) -> pd.Series:
-    """Where does today sit inside THIS name's own trailing `window` days?
-    0 = the lowest seen lately, 1 = the highest. Percentiles (not z's)
-    because euphoria features are heavily skewed - a z on a fat-tailed
-    series over/under-reacts, a rank never does. Strictly trailing."""
+    """Trailing percentile rank of a series against its own history.
+
+    Where does today sit inside THIS name's own trailing `window` days?
+    0 = the lowest seen lately, 1 = the highest. Percentiles (not
+    z-scores) because euphoria features are heavily skewed: a z on a
+    fat-tailed series over- or under-reacts, a rank never does. Strictly
+    trailing.
+
+    Args:
+        s: The daily series.
+        window: Trailing window length in days.
+        min_periods: Days of history required before a rank is emitted.
+
+    Returns:
+        The rank in [0, 1], NaN until `min_periods` days exist.
+    """
     return s.rolling(window, min_periods=min_periods).rank(pct=True)
 
 
 def log_convexity(s: pd.Series, window: int = 60) -> pd.Series:
-    """LPPLS-lite: the quadratic coefficient of log(series) ~ a+b*t+c*t^2
-    over a rolling window. c > 0 means the LOG of the series curves
-    upward - growth is accelerating beyond any constant exponential rate,
-    the mathematical signature of an unsustainable (self-reinforcing)
-    process (Sornette). Under the Reddit-only rule this is applied to
-    ATTENTION (log(1 + mentions)), not price: contagion whose growth
-    rate is itself growing must saturate, and attention saturation is
-    where tops form. Computed with a closed-form polyfit on a fixed
-    design matrix (the window is constant, so the pseudo-inverse is
-    built once)."""
+    """LPPLS-lite: the rolling quadratic coefficient of log(series) on time.
+
+    Fits log(series) ~ a + b*t + c*t^2 over a rolling window and returns
+    c. c > 0 means the LOG of the series curves upward - growth is
+    accelerating beyond any constant exponential rate, the mathematical
+    signature of an unsustainable (self-reinforcing) process (Sornette).
+    Under the crowd-only rule this is applied to ATTENTION
+    (log(1 + mentions)), not price: contagion whose growth rate is itself
+    growing must saturate, and attention saturation is where tops form.
+
+    Computed with a closed-form polyfit on a fixed design matrix: the
+    window is constant, so the pseudo-inverse is built once.
+
+    Args:
+        s: A positive daily series (non-positive values become NaN).
+        window: The regression window in days.
+
+    Returns:
+        The quadratic coefficient per day, NaN for the first window-1
+        days and wherever the window contains a NaN.
+    """
     t = np.arange(window, dtype=float)
     t = (t - t.mean()) / window          # centred, scaled -> stable fit
     X = np.column_stack([np.ones(window), t, t * t])
@@ -193,11 +239,11 @@ def log_convexity(s: pd.Series, window: int = 60) -> pd.Series:
 
     x = logp.to_numpy(dtype=float)
     if len(x) >= window and not np.isnan(x).any():
-        # FAST PATH (2026-08-07): the rolling quadratic coefficient is a
-        # fixed dot product per window - i.e. a correlation with a fixed
-        # kernel - so compute it with one vectorised convolution instead
-        # of a Python-level rolling.apply (~50x faster; identical values,
-        # verified allclose against the apply path in the test suite).
+        # FAST PATH: the rolling quadratic coefficient is a fixed dot
+        # product per window - a correlation with a fixed kernel - so it
+        # is computed with one vectorised convolution instead of a
+        # Python-level rolling.apply (~50x faster; the test suite checks
+        # the two paths agree to allclose).
         vals = np.convolve(x, pinv[2][::-1], mode="valid")
         out = np.full(len(x), np.nan)
         out[window - 1:] = vals
@@ -211,7 +257,7 @@ def log_convexity(s: pd.Series, window: int = 60) -> pd.Series:
     return logp.rolling(window).apply(_c, raw=True)
 
 
-# kept as an alias so older imports/tests keep working - same maths
+# alias kept for existing imports and tests - same maths
 log_price_convexity = log_convexity
 
 
@@ -219,10 +265,13 @@ log_price_convexity = log_convexity
 # the instrument universe (equities + retail commodities ONLY)
 # ---------------------------------------------------------------------------
 def euphoria_themes() -> dict:
-    """theme -> anchor symbol, excluding the non-equity/commodity themes
-    the desk removed (rates_bonds, real_estate, ...). Commodities stay
-    via their retail ETFs (gold GLD, silver in fallbacks, oil XLE/USO,
-    uranium URA)."""
+    """theme -> anchor symbol for the euphoria universe.
+
+    Excludes the non-equity/commodity themes listed in
+    EUPHORIA_EXCLUDED_THEMES (rates_bonds, real_estate, ...). Commodities
+    stay via their retail ETFs (gold GLD, silver in fallbacks, oil
+    XLE/USO, uranium URA).
+    """
     return {t: sym for t, sym in THEME_ETFS.items()
             if t not in EUPHORIA_EXCLUDED_THEMES}
 
@@ -230,18 +279,19 @@ def euphoria_themes() -> dict:
 def single_name_universe(prices: pd.DataFrame,
                          top_n: int = EUPHORIA_SINGLE_TOP_N,
                          window_d: int = EUPHORIA_SINGLE_WINDOW_D) -> list:
-    """The hottest single names: the most-mentioned tickers OF THE LAST
-    `window_d` DAYS that are priced, are actually single names, and carry
-    enough scored posts for sentiment to mean anything.
+    """The hottest single names, chosen from the data rather than a hand list.
 
-    THE WINDOW (added 2026-08-04).  This function always promised to be
-    "chosen from the data, not a hand list - today's NVDA is tomorrow's
-    something else, and the whole point is catching the next one", but it
-    ranked on ALL HISTORY, and 2021 alone is 39% of every mention ever
-    recorded.  So it delivered a 2021 list: BBBY (bankrupt), SNDL, CLOV,
-    WKHS, NOK, MVIS - while MU missed the cut by 185 posts six weeks after
-    the memory theme fired a GET OUT.  Ranking over a trailing year is what
-    the docstring already claimed the function did.
+    The most-mentioned tickers OF THE LAST `window_d` DAYS that are
+    priced, are actually single names, and carry enough scored posts for
+    sentiment to mean anything.
+
+    THE WINDOW. Ranking over a trailing window rather than all history
+    matters because one mania year can dominate the cumulative count:
+    when a single year holds ~40% of every mention ever recorded, an
+    all-history ranking returns that year's list (including bankrupt
+    names) while the names actually being traded now miss the cut.
+    Today's hottest name is tomorrow's something else, and the point is
+    catching the next one.
 
     TWO EXCLUSIONS, for the same reason - the tab says SINGLE NAMES:
       * ETFs (SPY, QQQ, VXUS, SCHD ...), identified from the Nasdaq
@@ -252,26 +302,33 @@ def single_name_universe(prices: pd.DataFrame,
         FULL rebuild, and this tab should be right before that happens.
 
     THE COVERAGE FLOOR is EUPHORIA_MIN_COVERAGE scored posts measured
-    over the SAME trailing year the ranking uses - not over 28 days.
-    That single word is what took the universe from 27 names to 69
-    (2026-08-04) with no rebuild and no loosened gate, because MEMBERSHIP
-    AND FIRING ARE DIFFERENT QUESTIONS. The A0 firing gate still demands
-    EUPHORIA_MIN_COVERAGE posts in the last 28 DAYS: a name still cannot
-    raise an alert unless its euphoria is measurable right now, so signal
-    quality is protected by exactly the rule that protected it before.
-    Membership only asks whether the name is worth carrying.
-    There is also a mechanical argument for carrying MORE names than fire:
-    EUPHORIA_MIN_HISTORY requires 180 days of history before percentiles
-    exist at all, so a name that only joins the universe once it is
-    already hot cannot be scored when it matters. A broad, stable
-    universe warms names up BEFORE they go euphoric - which is the whole
-    point of 'catching the next one'.  It replaces a cumulative 3,000-post floor that had the same
-    lookback flaw as the ranking: a 2021 relic with 8,000 posts from five
-    years ago always cleared it, while the names actually being traded now
-    - MU (2,815), SNDK (721), MSTR (1,884), SMCI (924) - never could.
-    Membership of this tab now means exactly "the detector can measure
-    this name today", which is the only membership rule that cannot
-    contradict what the tab then shows.  NO NEW CONSTANT was introduced.
+    over the SAME trailing window the ranking uses - not over 28 days -
+    because MEMBERSHIP AND FIRING ARE DIFFERENT QUESTIONS. The A0 firing
+    gate still demands EUPHORIA_MIN_COVERAGE posts in the last 28 DAYS: a
+    name cannot raise an alert unless its euphoria is measurable right
+    now, so signal quality is protected by exactly the rule that
+    protected it before. Membership only asks whether the name is worth
+    carrying. There is also a mechanical argument for carrying MORE names
+    than fire: EUPHORIA_MIN_HISTORY days of history are required before
+    percentiles exist at all, so a name that only joins the universe once
+    it is already hot cannot be scored when it matters. A broad, stable
+    universe warms names up BEFORE they go euphoric. A cumulative
+    post-count floor would have the same lookback flaw as an all-history
+    ranking: a relic with thousands of posts from years ago always clears
+    it, while a name being traded now never can. Membership therefore
+    means exactly "the detector can measure this name today", the only
+    membership rule that cannot contradict what the tab then shows. No
+    new constant is introduced.
+
+    Args:
+        prices: The price store (needs a `symbol` column).
+        top_n: Maximum names to return.
+        window_d: The trailing ranking / coverage window in days.
+
+    Returns:
+        Ticker symbols, most-mentioned first, with any
+        config/single_name_overrides.csv "include" names placed first
+        and "exclude" names removed.
     """
     counts = load(TICKER_COUNTS)
     sent = load(TICKER_SENT)
@@ -296,8 +353,17 @@ def single_name_universe(prices: pd.DataFrame,
                .groupby("ticker")["n_posts"].sum())
     ranked = (recent.groupby("ticker")["mention_count"].sum()
               .sort_values(ascending=False))
-    out = []
+    # config/single_name_overrides.csv: force a priced name in or out
+    from src.settings import single_name_overrides       # noqa: PLC0415
+    overrides = single_name_overrides()
+    forced_in = [t for t, a in overrides.items()
+                 if a == "include" and t in priced]
+    excluded = {t for t, a in overrides.items() if a == "exclude"}
+
+    out = list(forced_in)
     for tick in ranked.index:
+        if tick in out or tick in excluded:
+            continue
         if tick in etfs or tick in STOP_TICKERS:
             continue
         if (tick in priced
@@ -309,6 +375,8 @@ def single_name_universe(prices: pd.DataFrame,
 
 
 def resolve_anchor(theme: str, priced: set):
+    """The first priced symbol for a theme: its anchor ETF, then its
+    fallbacks (src/themes.py); None when none is priced."""
     for sym in ([THEME_ETFS.get(theme)] if THEME_ETFS.get(theme) else []) \
             + THEME_ETF_FALLBACKS.get(theme, []):
         if sym in priced:
@@ -331,10 +399,10 @@ class EuphoriaSeries:
     e3: pd.Series = None       # crowd influx          (0-1)
     e5: pd.Series = None       # super-exponential attention (0-1)
     fade: pd.Series = None     # E4 flag (bool)
-    # the UN-GATED sentiment ingredients (2026-08-07, for the ML bank):
-    # e2 multiplies its rank by a hard 75%-persistence gate, which is one
-    # of the embedded constants the learned models exist to remove - so
-    # the bank gets the two raw ingredients and learns the interaction
+    # the UN-GATED sentiment ingredients, for the ML bank: e2 multiplies
+    # its rank by a hard 75%-persistence gate, which is one of the
+    # embedded constants the learned models exist to remove - so the
+    # bank gets the two raw ingredients and learns the interaction
     bull_level: pd.Series = None    # pct-rank of the 28d net-bullish share
     bull_persist: pd.Series = None  # fraction of last 28 posting days bullish
     boom_ok: pd.Series = None  # A1 hype prerequisite (bool, Reddit-only)
@@ -344,17 +412,18 @@ class EuphoriaSeries:
 
 def _mention_share(counts_long, entity_col, name, all_days,
                    by_source=None):
-    """(coverage-robust 7d share of total mentions in %, 7d-smoothed raw
-    mention count). The share powers E1/E3/A1; the raw count powers E5's
-    contagion fit.
+    """(coverage-robust 7d mention share in %, 7d-smoothed raw mention count).
 
-    ROBUST SINCE 2026-08-07 (analytics/robust_share.py): ratio-of-sums
-    over the 7d window + per-source stratification (tickers) + empirical-
-    Bayes shrinkage toward the name's own 120d baseline. The old
-    mean-of-daily-ratios collapsed to fake zeros on thin pull days and
-    was diluted wholesale whenever a big StockTwits/X pull landed - a
-    coverage artifact the detector then percentile-ranked as if it were
-    crowd behaviour."""
+    The share powers E1/E3/A1; the raw count powers E5's contagion fit.
+
+    The share is the robust construction in analytics/robust_share.py:
+    ratio-of-sums over the 7d window + per-source stratification
+    (tickers) + empirical-Bayes shrinkage toward the name's own 120d
+    baseline. A mean-of-daily-ratios collapses to fake zeros on thin
+    pull days and is diluted wholesale whenever a large pull from one
+    source lands - a coverage artifact the detector would then
+    percentile-rank as if it were crowd behaviour.
+    """
     from analytics.robust_share import robust_share
     share = robust_share(counts_long, entity_col, name, all_days,
                          by_source=by_source)
@@ -368,12 +437,9 @@ def _bullish_series(sent_long, entity_col, name, all_days):
     """(28d net-bullish share, persistence, 14d change, 28d post count)."""
     one = sent_long[sent_long[entity_col] == name]
     n = one.groupby("date")["n_posts"].sum().reindex(all_days).fillna(0.0)
-    # VECTORISED 2026-08-05. This was a `groupby("date").apply(lambda ...)`
-    # which, on the 306k-row sentiment store, cost 482 ms PER INSTRUMENT
-    # against 2 ms for the line below - the same arithmetic, done once per
-    # group in Python instead of once in C. Across 59 instruments and two
-    # callers that was ~84 s of pure interpreter overhead in every full
-    # analytics run. Verified `.equals()` identical before the swap.
+    # Vectorised weighted sum: a `groupby("date").apply(lambda ...)` does
+    # the same arithmetic once per group in Python (~500 ms per instrument
+    # on a 300k-row sentiment store) instead of once in C (~2 ms).
     nb = ((one["n_posts"] * one["net_bullish"]).groupby(one["date"]).sum()
           .reindex(all_days).fillna(0.0))
     roll_n = n.rolling(28, min_periods=7).sum()
@@ -393,9 +459,25 @@ def _bullish_series(sent_long, entity_col, name, all_days):
 
 def compute_euphoria(name, symbol, kind, counts_long, sent_long,
                      entity_col, by_source=None) -> EuphoriaSeries | None:
-    """Build the full euphoria series for one instrument - from the
-    Reddit aggregates ONLY (no price input; price is for testing).
-    Returns None when there is not enough data to say anything honest."""
+    """Build the full euphoria series for one instrument.
+
+    Uses the crowd aggregates ONLY - there is no price input; price is
+    for testing. A unit test enforces the absence of a price argument.
+
+    Args:
+        name: Theme name or ticker.
+        symbol: The priced symbol behind the instrument.
+        kind: "theme" or "single".
+        counts_long: Long-form mention counts.
+        sent_long: Long-form scored sentiment.
+        entity_col: "theme" or "ticker" - the entity column in both frames.
+        by_source: Optional per-source ticker counts for the stratified
+            mention share.
+
+    Returns:
+        An EuphoriaSeries, or None when there is not enough data to say
+        anything honest.
+    """
     all_days = pd.date_range(counts_long["date"].min(),
                              counts_long["date"].max(), freq="D")
 
@@ -438,10 +520,24 @@ def detect_alerts(es: EuphoriaSeries, threshold: float,
                   cooldown: int = EUPHORIA_COOLDOWN_DAYS,
                   att_gate: bool = True, e2_gate: bool = True,
                   fade_on: bool = True, hype_gate: bool = True) -> list:
-    """Apply the alert rule A1-A4 for one instrument at one threshold.
-    Returns the alert dates. The keyword switches exist ONLY so the
-    ablation study (below) can knock out one rule at a time and measure
-    what it was contributing - live runs always use the defaults."""
+    """Apply the alert rule A0-A4 for one instrument at one threshold.
+
+    The keyword switches exist ONLY so the ablation study can knock out
+    one rule at a time and measure what it was contributing - live runs
+    always use the defaults.
+
+    Args:
+        es: The instrument's EuphoriaSeries.
+        threshold: The A3 level trigger.
+        cooldown: A4 - minimum days between alerts.
+        att_gate: Apply A2 (attention gate).
+        e2_gate: Apply A2b (sustained-bullishness gate).
+        fade_on: Allow the E4 fade discount in A3.
+        hype_gate: Apply A1 (hype prerequisite).
+
+    Returns:
+        The alert dates, in order.
+    """
     lvl, fade, boom, e1 = es.level, es.fade, es.boom_ok, es.e1
     gate = es.coverage_ok.copy()
     if hype_gate:
@@ -467,10 +563,20 @@ def ground_truth_peaks(px: pd.Series, kind: str,
                        boom_min: float | None = None,
                        crash_min: float | None = None) -> list:
     """The price-only definition of a top (G1-G3 in the module docstring).
-    Returns the peak dates. boom_min/crash_min default to the frozen
-    config constants; the overrides exist for the ground-truth SWEEP
-    (notebook 03 / analytics.ml_detector --sweep), which re-runs the
-    whole evaluation under looser and stricter episode definitions."""
+
+    Args:
+        px: Daily close series indexed by date.
+        kind: "theme" or "single" - selects the config bars.
+        boom_min: Override for the G2 boom bar; the config constant when
+            None. The overrides exist for the ground-truth sweep
+            (analytics.ml_detector --sweep), which re-runs the whole
+            evaluation under looser and stricter episode definitions.
+        crash_min: Override for the G3 crash bar; config when None.
+
+    Returns:
+        The peak dates, in order, after merging peaks closer than
+        EUPHORIA_PEAK_MERGE_D; empty when fewer than 240 priced days.
+    """
     if boom_min is None:
         boom_min = (EUPHORIA_BOOM_MIN_SINGLE if kind == "single"
                     else EUPHORIA_BOOM_MIN_ETF)
@@ -507,12 +613,18 @@ def ground_truth_peaks(px: pd.Series, kind: str,
 
 
 def judgeable_window(px: pd.Series):
-    """The date range where an alert can be honestly judged: price data
-    must exist AT the alert (else no peak could even be defined there)
-    and for 45 days AFTER it (else 'no peak followed' is not knowable
-    yet - those alerts are PENDING, not false). Without this clip, every
-    pre-price-history alert would be scored a false alarm by default,
-    which is not evidence - it is missing data."""
+    """The date range where an alert can be honestly judged.
+
+    Price data must exist AT the alert (else no peak could even be
+    defined there) and for 45 days AFTER it (else "no peak followed" is
+    not knowable yet - those alerts are PENDING, not false). Without this
+    clip, every pre-price-history alert would be scored a false alarm by
+    default, which is not evidence - it is missing data.
+
+    Returns:
+        (first_judgeable_date, last_judgeable_date), or (None, None)
+        when the series is empty.
+    """
     px = px.dropna()
     if px.empty:
         return None, None
@@ -520,9 +632,18 @@ def judgeable_window(px: pd.Series):
 
 
 def score_alerts(alerts: list, peaks: list):
-    """The report card for one instrument: which peaks were captured (an
-    alert inside [peak-30d, peak+1d]), with what lead, and which alerts
-    were false (no qualifying peak within [alert, alert+45d])."""
+    """The report card for one instrument.
+
+    Args:
+        alerts: Alert dates.
+        peaks: Ground-truth peak dates.
+
+    Returns:
+        (captured, leads, false): the peaks with an alert inside
+        [peak-30d, peak+1d]; the lead in days of the nearest such alert
+        per captured peak; and the alerts with no qualifying peak within
+        [alert, alert+45d].
+    """
     captured, leads = [], []
     for p in peaks:
         window = [a for a in alerts
@@ -865,19 +986,18 @@ def needs_research(stored: dict | None, data_max_year: int) -> bool:
     EXACTLY ONE CASE: there is no usable record to read. That is the
     bootstrap - a machine with no `euphoria_report.json` has no frozen
     threshold, so it cannot score at all, and refusing to research would
-    just leave the desk with nothing.
+    just leave the pipeline with nothing to score against.
 
     `data_max_year` is accepted (and deliberately unused) so this reads
     as the pair of `record_lags_data` below, and so every caller keeps
     one signature whichever question it is asking.
 
-    2026-07-28 CHANGE OF BEHAVIOUR, and why. This function used to
-    return True on a SECOND case as well: the data rolling into a
-    calendar year the stored thresholds do not cover. That meant the
-    first `update_data` run after a new year silently turned into a full
-    walk-forward + ablation + ML pass, and the desk's live threshold
-    moved underneath it as a side effect of a data pull. Two reasons it
-    is wrong, one practical and one methodological:
+    A second trigger is deliberately NOT used: the data rolling into a
+    calendar year the stored thresholds do not cover. Firing on it would
+    turn the first data refresh of a new year into a full walk-forward +
+    ablation + ML pass, and the live threshold would move as a side
+    effect of a data pull. Two reasons that is wrong, one practical and
+    one methodological:
 
       PRACTICAL. `update_data` is the data-refresh job. A refresh that
       sometimes takes seconds and sometimes re-selects the model is not
@@ -892,13 +1012,10 @@ def needs_research(stored: dict | None, data_max_year: int) -> bool:
       January of a new year does not make the live threshold more
       correct; it makes it a moving target that no stored record
       describes. Deferring the refit to an explicit `--research` run
-      keeps the number on screen traceable to a report the desk can
-      read.
+      keeps the number on screen traceable to a stored report.
 
     The staleness itself is not swept away - `record_lags_data` reports
-    it and the pipeline prints one line telling the desk to run the
-    research pass. Recorded in DECISIONS.xlsx ("3b. Pipeline & Cadence")
-    and docs/RESEARCH_RECORD.md Class 9."""
+    it and the pipeline prints one line saying a research pass is due."""
     return not stored or not stored.get("thresholds")
 
 
@@ -909,8 +1026,8 @@ def record_lags_data(stored: dict | None, data_max_year: int):
     bootstrap case belongs to `needs_research`).
 
     A live run is still perfectly legitimate in this state, which is why
-    this returns a year rather than a boolean refusal: the desk is told
-    which year the frozen threshold was last confirmed on, and decides
+    this returns a year rather than a boolean refusal: the caller learns
+    which year the frozen threshold was last confirmed on and decides
     when to spend a research pass."""
     if not stored or not stored.get("thresholds"):
         return None
@@ -926,7 +1043,7 @@ def main(research: bool | None = None):
       challenger) runs only to BOOTSTRAP a machine that has no stored
       record at all - see `needs_research`. If the record lags the data
       the run says so in one line and still scores; it never re-selects
-      the model behind the desk's back.
+      the model as a side effect.
     research=True (run_analytics --research / the notebooks): always run
       the full validation and refresh euphoria_report.json.
     """
@@ -1030,7 +1147,7 @@ def main(research: bool | None = None):
     # (a) total utility (hits - penalty*FAs), AND (b) captures at least
     # as many peaks in the MOST RECENT year, AND (c) captures at least as
     # many peaks in total. (b) exists because the newest regime is the one
-    # the desk actually trades; (c) exists because a near-silent model can
+    # being traded; (c) exists because a near-silent model can
     # "win" on utility purely by never firing - and a top detector that
     # never fires is not a better top detector.
     ml_years = [y for y, r in ml.get("per_year", {}).items()

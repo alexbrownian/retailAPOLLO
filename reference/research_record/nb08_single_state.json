@@ -1,0 +1,435 @@
+{
+ "as_of": "2026-07-31T07:30:10",
+ "question": "one state variable to replace the two-rule display",
+ "protocol": {
+  "test_years": {
+   "get_out": [
+    2021,
+    2022,
+    2023,
+    2026
+   ],
+   "get_in": [
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025,
+    2026
+   ]
+  },
+  "fa_budget_per_iy": 0.23,
+  "cooldown_days": 21,
+  "smooth_days": 7,
+  "fa_rate_denominator": "54 instruments x test years (common to all three systems)",
+  "same_judge": "production model reproduced via desk_candidacy/run_tournament_entry and drift-guarded against nb04_evaluation.json"
+ },
+ "records": [
+  {
+   "system": "production",
+   "direction": "GET OUT",
+   "captured": 21,
+   "detectable": 98,
+   "capture rate": "21.4%",
+   "late": 0,
+   "false alarms": 9,
+   "FA/instr-yr (54-name)": 0.042,
+   "within budget": true,
+   "median warn/lead (d)": 8.0,
+   "utility (cap - FA)": 12,
+   "AP (vs base)": "0.613 vs 0.608"
+  },
+  {
+   "system": "A phase clock",
+   "direction": "GET OUT",
+   "captured": 12,
+   "detectable": 98,
+   "capture rate": "12.2%",
+   "late": 0,
+   "false alarms": 33,
+   "FA/instr-yr (54-name)": 0.153,
+   "within budget": true,
+   "median warn/lead (d)": 11.5,
+   "utility (cap - FA)": -21,
+   "AP (vs base)": "n/a - no continuous score"
+  },
+  {
+   "system": "B net score",
+   "direction": "GET OUT",
+   "captured": 16,
+   "detectable": 98,
+   "capture rate": "16.3%",
+   "late": 0,
+   "false alarms": 49,
+   "FA/instr-yr (54-name)": 0.227,
+   "within budget": true,
+   "median warn/lead (d)": 21.0,
+   "utility (cap - FA)": -33,
+   "AP (vs base)": "0.165 vs 0.075"
+  },
+  {
+   "system": "production",
+   "direction": "GET IN",
+   "captured": 17,
+   "detectable": 125,
+   "capture rate": "13.6%",
+   "late": 4,
+   "false alarms": 95,
+   "FA/instr-yr (54-name)": 0.195,
+   "within budget": true,
+   "median warn/lead (d)": 22.0,
+   "utility (cap - FA)": -78,
+   "AP (vs base)": "0.089 vs 0.068"
+  },
+  {
+   "system": "A phase clock",
+   "direction": "GET IN",
+   "captured": 9,
+   "detectable": 125,
+   "capture rate": "7.2%",
+   "late": 2,
+   "false alarms": 57,
+   "FA/instr-yr (54-name)": 0.117,
+   "within budget": true,
+   "median warn/lead (d)": 11.0,
+   "utility (cap - FA)": -48,
+   "AP (vs base)": "n/a - no continuous score"
+  },
+  {
+   "system": "B net score",
+   "direction": "GET IN",
+   "captured": 10,
+   "detectable": 125,
+   "capture rate": "8.0%",
+   "late": 9,
+   "false alarms": 183,
+   "FA/instr-yr (54-name)": 0.377,
+   "within budget": false,
+   "median warn/lead (d)": 13.0,
+   "utility (cap - FA)": -173,
+   "AP (vs base)": "0.06 vs 0.062"
+  }
+ ],
+ "co_firing_days": {
+  "definition": "both sides >= 70% of firing level, same day",
+  "production": 11,
+  "phase_clock": 0,
+  "net_score": 0,
+  "note": "A and B are zero by construction (disjoint arcs; one signed number)"
+ },
+ "state_flips": {
+  "definition": "opposite active side within <= 5 days",
+  "production": {
+   "fast": 56,
+   "total": 86
+  },
+  "phase_clock": {
+   "fast": 0,
+   "total": 66
+  },
+  "net_score_70pct_bands": {
+   "fast": 6,
+   "total": 421
+  },
+  "net_score_raw_sign": {
+   "fast": 2469,
+   "total": 2483
+  }
+ },
+ "utility_cap_minus_fa": {
+  "production": {
+   "GET OUT": 12,
+   "GET IN": -78
+  },
+  "phase_clock": {
+   "GET OUT": -21,
+   "GET IN": -48
+  },
+  "net_score": {
+   "GET OUT": -33,
+   "GET IN": -173
+  }
+ },
+ "winner": "phase_clock",
+ "frozen_winner_params": {
+  "get_in_arcs_by_year": {
+   "2018": [
+    100,
+    120,
+    0.3
+   ],
+   "2019": [
+    70,
+    120,
+    0.3
+   ],
+   "2020": [
+    70,
+    120,
+    0.3
+   ],
+   "2021": [
+    70,
+    160,
+    0.3
+   ],
+   "2022": [
+    80,
+    140,
+    0.25
+   ],
+   "2023": [
+    80,
+    120,
+    0.25
+   ],
+   "2024": [
+    80,
+    120,
+    0.25
+   ],
+   "2025": [
+    80,
+    120,
+    0.25
+   ],
+   "2026": [
+    80,
+    120,
+    0.25
+   ]
+  },
+  "get_out_arcs_by_year": {
+   "2021": [
+    -90,
+    20,
+    0.3
+   ],
+   "2022": [
+    -30,
+    20,
+    0.3
+   ],
+   "2023": [
+    -90,
+    20,
+    0.3
+   ],
+   "2026": [
+    -90,
+    20,
+    0.3
+   ]
+  },
+  "live": {
+   "get_in": [
+    80,
+    120,
+    0.25
+   ],
+   "get_out": [
+    -90,
+    20,
+    0.3
+   ]
+  },
+  "param_order": [
+   "angle_lo_deg",
+   "angle_hi_deg",
+   "r_min"
+  ]
+ },
+ "net_score_thresholds_by_year": {
+  "T_in": {
+   "2018": 0.31171307633880285,
+   "2019": 0.3079866531341502,
+   "2020": 0.304709493490291,
+   "2021": 0.29657059027416977,
+   "2022": 0.29690491659039303,
+   "2023": 0.30002346632404137,
+   "2024": 0.29939967658671635,
+   "2025": 0.2993657365742318,
+   "2026": 0.2990244126764983
+  },
+  "T_out": {
+   "2021": 0.5218491094645776,
+   "2022": 0.5251302984535905,
+   "2023": 0.5014012348202557,
+   "2026": 0.5040864088701721
+  }
+ },
+ "event_study_td": {
+  "get_out": [
+   {
+    "system": "production",
+    "horizon (td)": 5,
+    "n": 40,
+    "hit rate": 0.425,
+    "median move": 0.0145,
+    "baseline hit": 0.462
+   },
+   {
+    "system": "production",
+    "horizon (td)": 20,
+    "n": 40,
+    "hit rate": 0.575,
+    "median move": -0.0193,
+    "baseline hit": 0.445
+   },
+   {
+    "system": "production",
+    "horizon (td)": 84,
+    "n": 36,
+    "hit rate": 0.611,
+    "median move": -0.1342,
+    "baseline hit": 0.413
+   },
+   {
+    "system": "A phase clock",
+    "horizon (td)": 5,
+    "n": 46,
+    "hit rate": 0.478,
+    "median move": 0.0013,
+    "baseline hit": 0.462
+   },
+   {
+    "system": "A phase clock",
+    "horizon (td)": 20,
+    "n": 46,
+    "hit rate": 0.413,
+    "median move": 0.0054,
+    "baseline hit": 0.445
+   },
+   {
+    "system": "A phase clock",
+    "horizon (td)": 84,
+    "n": 45,
+    "hit rate": 0.667,
+    "median move": -0.0462,
+    "baseline hit": 0.413
+   },
+   {
+    "system": "B net score",
+    "horizon (td)": 5,
+    "n": 74,
+    "hit rate": 0.459,
+    "median move": 0.0017,
+    "baseline hit": 0.462
+   },
+   {
+    "system": "B net score",
+    "horizon (td)": 20,
+    "n": 74,
+    "hit rate": 0.446,
+    "median move": 0.0061,
+    "baseline hit": 0.445
+   },
+   {
+    "system": "B net score",
+    "horizon (td)": 84,
+    "n": 70,
+    "hit rate": 0.6,
+    "median move": -0.0651,
+    "baseline hit": 0.413
+   }
+  ],
+  "get_in": [
+   {
+    "system": "production",
+    "horizon (td)": 5,
+    "n": 115,
+    "hit rate": 0.539,
+    "median move": 0.0011,
+    "baseline hit": 0.535
+   },
+   {
+    "system": "production",
+    "horizon (td)": 20,
+    "n": 115,
+    "hit rate": 0.609,
+    "median move": 0.0168,
+    "baseline hit": 0.554
+   },
+   {
+    "system": "production",
+    "horizon (td)": 84,
+    "n": 115,
+    "hit rate": 0.504,
+    "median move": 0.0033,
+    "baseline hit": 0.586
+   },
+   {
+    "system": "A phase clock",
+    "horizon (td)": 5,
+    "n": 69,
+    "hit rate": 0.609,
+    "median move": 0.0075,
+    "baseline hit": 0.535
+   },
+   {
+    "system": "A phase clock",
+    "horizon (td)": 20,
+    "n": 69,
+    "hit rate": 0.638,
+    "median move": 0.028,
+    "baseline hit": 0.554
+   },
+   {
+    "system": "A phase clock",
+    "horizon (td)": 84,
+    "n": 69,
+    "hit rate": 0.551,
+    "median move": 0.0163,
+    "baseline hit": 0.586
+   },
+   {
+    "system": "B net score",
+    "horizon (td)": 5,
+    "n": 202,
+    "hit rate": 0.55,
+    "median move": 0.0045,
+    "baseline hit": 0.535
+   },
+   {
+    "system": "B net score",
+    "horizon (td)": 20,
+    "n": 202,
+    "hit rate": 0.55,
+    "median move": 0.0078,
+    "baseline hit": 0.554
+   },
+   {
+    "system": "B net score",
+    "horizon (td)": 84,
+    "n": 201,
+    "hit rate": 0.572,
+    "median move": 0.0209,
+    "baseline hit": 0.586
+   }
+  ],
+  "baseline": {
+   "5": {
+    "down": 0.46211533488492373,
+    "up": 0.5352501939487975,
+    "median": 0.002285541544308156
+   },
+   "20": {
+    "down": 0.44498319110421514,
+    "up": 0.5539016033100594,
+    "median": 0.007466276666818095
+   },
+   "84": {
+    "down": 0.41333508679642295,
+    "up": 0.5860895581273015,
+    "median": 0.02441612367609225
+   }
+  }
+ },
+ "watch_item": "net score N ranks top-days on ungated days (AP 0.165 vs 0.075 base, AUROC 0.631) - retest as a SCORE inside the production gates at next research pass",
+ "adoption_rule": "ship as live flags only if utility (captures - FA) beats the production model within budget on the same test years for BOTH directions",
+ "recommendation": "display_state",
+ "recommendation_rationale": "neither design beats the production model's flag utility in both directions (GET OUT +12 vs -21/-33); the phase clock wins the head-to-head, stays in budget both ways, and kills co-firing (28->0) and fast flips (69->0) by construction - so it ships as the displayed state while the production model keeps firing the flags"
+}

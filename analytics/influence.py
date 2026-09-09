@@ -1,105 +1,104 @@
-"""
-influence.py
-============
-THE INFLUENCE TRACKER - find the users whose calls have actually been
-right, what they are saying NOW, and who follows them.
+"""The influence tracker: which users' calls have been right, and who follows them.
 
-The module rests on three premises, each of which it then makes
-measurable on our own data rather than assuming: (a) predictive ability
-is concentrated in a SMALL subset of users, (b) that subset is NOT the
+The module rests on three premises, each of which it makes measurable
+on the project's own data rather than assuming: (a) predictive ability
+is concentrated in a small subset of users, (b) that subset is not the
 loud hubs - being replied to a lot and being right are different
-quantities, and the loud-but-wrong flag below turns the gap into a
-column instead of an anecdote, and (c) HOW users participate
-(comment-vs-post balance) is more informative than raw volume. What the
-module computes:
+quantities, and the loud-but-wrong flag turns the gap into a column
+instead of an anecdote, and (c) how users participate (comment-vs-post
+balance) is more informative than raw volume.
 
-  1. CALL EXTRACTION - every post/comment by an author that mentions a
-     ticker with clearly-signed sentiment is a directional CALL
+What the module computes:
+
+  1. Call extraction - every post or comment by an author that mentions
+     a ticker with clearly-signed sentiment is a directional call
      (author, date, ticker, direction, stance strength). Neutral chatter
-     is not a call.
-  2. CALL SCORING, VOLATILITY-AWARE - a call is judged against the next
-     HORIZON days of real closes, but the bar scales with the name's own
-     volatility:
-         tau = max(MOVE_MIN, 0.5 * sigma)
-     where sigma is the trailing 90d std of HORIZON-day moves for THAT
+     is not a call. See `extract_calls_and_edges`.
+  2. Volatility-aware call scoring - a call is judged against the next
+     HORIZON days of real closes, with a bar that scales with the name's
+     own volatility:
+         tau = max(MOVE_MIN, VOL_HALF * sigma)
+     where sigma is the trailing 90d std of HORIZON-day moves for that
      ticker. A 3% move is a real call on an index ETF and noise on a
-     meme stock - one fixed bar would misgrade both. Each judged call
-     also gets an ABNORMAL-RETURN Z (how unusual the move was vs the
-     name's own recent history), and an ENHANCED outcome (correct AND
-     |z| > 1 - the move was direction-right and genuinely significant).
-  3. AUTHOR "USEFULNESS" SCORING - three scores per author, each
-     Bayesian-shrunk toward the population mean so nobody looks
+     meme stock; one fixed bar would misgrade both. Each judged call
+     also gets an abnormal-return z (how unusual the move was against
+     the name's own recent history) and an enhanced outcome (correct and
+     the signed z >= ENH_Z: direction-right and significant). See
+     `score_calls`.
+  3. Author usefulness scoring - three scores per author, each
+     empirically-Bayes shrunk toward the population mean so nobody looks
      brilliant on three lucky calls:
-       s_conf  stance-weighted accuracy      (shrink alpha=10)
-       s_z     accuracy weighted by stance AND by the abnormal-return
-               factor w(z)=clip(1+|z|, 0.1, 2.0)   (alpha=5 - a big-|z|
-               hit is itself strong evidence, so it needs less shrink)
-       s_enh   stance-weighted ENHANCED accuracy (alpha=10)
+       s_conf  stance-weighted accuracy (prior strength PRIOR_N_CONF)
+       s_z     accuracy weighted by stance and by the abnormal-return
+               factor w(z) = clip(1 + |z|, 0.1, 2.0) (PRIOR_N_Z, smaller:
+               a big-|z| hit is itself strong evidence)
+       s_enh   stance-weighted enhanced accuracy (PRIOR_N_ENH)
      Each is min-max normalised across authors, then
-       COMPOSITE = 0.4*s_conf + 0.4*s_z + 0.2*s_enh
-     and authors with composite >= 0.66 get the HIGH tier. Both the
-     0.4 / 0.4 / 0.2 mix and the 0.66 cut are stated CONVENTIONS, fixed
-     a priori and never tuned: NB05 section 9 re-mixes the weights and
-     NB05 section 4 varies the cut, so each is priced, not asserted.
-  4. BOOM/BUST RECORD - an author's record around the euphoria
-     ground-truth peaks: bearish calls inside [peak-30d, peak+5d]
-     = "called the top"; bullish calls there = "bought the top".
-  5. THE SOCIAL INTERACTION GRAPH - an undirected WEIGHTED graph over
-     authors, an edge when one replies to another, weight = number of
-     interactions. From it: degree (distinct neighbours), weighted
-     degree, and PAGERANK. PageRank is shown as CONTEXT and never as a
-     rank: it measures who gets replied to, which is a different
-     quantity from who is right, so the board ranks by usefulness and
-     never by degree - the leave-one-out ablation in NB05 section 11 is
-     where each structural column earns its place, and raw degree is the
-     one expected to land on the harmful side. Bot filters, applied
-     before any centrality is computed, all round a-priori caps
-     (CONVENTION): edge weights capped at 100, star-topology
-     accounts (degree centrality > 0.5) and broadcast accounts
-     (> 1000 comments or > 100 posts here) excluded from graph metrics.
-  6. LOUD-BUT-WRONG FLAG - the false-positive profile, made a
-     column: top-quartile PageRank AND below-median composite. These are
-     the accounts a naive "follow the big names" desk would copy - and
-     precisely the ones the evidence says to fade.
+       composite = 0.4 * s_conf + 0.4 * s_z + 0.2 * s_enh
+     and authors with composite >= HIGH_TIER get the HIGH tier. The mix
+     and the cut are stated conventions, fixed a priori and never tuned;
+     their sensitivity is measured in `influence_ml.composite_variants`
+     and `influence_ml.label_regime_table` and recorded in
+     `reference/research_record/nb05_influence.json`. See
+     `build_author_scores`.
+  4. Boom/bust record - an author's record around the euphoria
+     ground-truth peaks: bearish calls inside [peak-30d, peak+5d] count
+     as "called the top", bullish calls there as "bought the top". See
+     `boom_bust_record`.
+  5. The social interaction graph - an undirected weighted graph over
+     authors, with an edge when one replies to another and weight equal
+     to the number of interactions. From it: degree (distinct
+     neighbours), weighted degree and PageRank. PageRank is shown as
+     context and never as a rank: it measures who gets replied to, which
+     is a different quantity from who is right, so the board ranks by
+     usefulness and never by degree. Bot filters are applied before any
+     centrality is computed, all at round a-priori caps: edge weights
+     capped at MAX_EDGE_W, star-topology accounts (degree centrality >
+     MAX_DEG_CENT) and broadcast accounts (> MAX_COMMENTS comments or >
+     MAX_POSTS posts) excluded from graph metrics. See
+     `build_graph_metrics`.
+  6. Loud-but-wrong flag - the false-positive profile as a column:
+     top-quartile PageRank and below-median composite. These are the
+     accounts a naive "follow the big names" rule would copy, and the
+     ones the evidence says to fade.
 
-STORAGE - COMMITTED, TEXT-FREE (desk decision, July 2026, reversing the
-earlier local-only rule): the store now lives in git so both machines
-share one leaderboard and every live run extends it. What is committed
-is METADATA ONLY - author names (public pseudonymous identifiers),
-dates, tickers, directions, outcomes, graph scores. NO post/comment
-text ever enters these files (same text-free contract as
-ABSTRACTED_DATA; enforced by a FORBIDDEN-column check at write time).
+Storage is committed and text-free. The store lives under
+`data/reference/influence` in version control so every copy shares one
+leaderboard and every live run extends it. What is committed is
+metadata only: author names (public pseudonymous identifiers), dates,
+tickers, directions, outcomes and graph scores. No post or comment text
+enters these files (the same text-free contract as ABSTRACTED_DATA,
+enforced by a FORBIDDEN_COLS check at write time).
 
-LIVE UPDATES: run_analytics calls update() on every pipeline run. A
+Live updates: `run_analytics` calls `update()` on every pipeline run. A
 per-file ledger (which raw files have been ingested, at what size)
-means each run only parses the NEW raw files, appends their calls and
+means each run parses only the new raw files, appends their calls and
 edges, and rescores the whole board (rescoring is cheap; parsing is
-not). A full rebuild is just deleting the ledger.
+not). Deleting the ledger forces a full rebuild.
 
-USAGE - normally NOTHING (recorded decision; see docs/DECISIONS.md). Every
-live pipeline run (update_data.py) fetches new comments and calls
-update(): the store builds itself from nothing on the first pull, new
-calls append on every later pull, and recently-made calls re-judge
-automatically once their 20-day windows have prices. No rebuilds, ever.
+Normal usage needs no manual step. Every live pipeline run
+(update_data.py) fetches new comments and calls `update()`: the store
+builds itself from nothing on the first pull, new calls append on every
+later pull, and recently-made calls are re-judged automatically once
+their HORIZON-day windows have prices.
 
-  HOW MUCH is fetched per run is BUDGETED, not unlimited (desk decision
-  2026-07-27, superseding the 2026-07-24 rule that kept comments out of
-  the live pipeline entirely). The comment crawl gets the page allowance
-  left over after this machine's other stages are paid for, out of the
-  desk's ~10-minute ceiling - see src/pipeline_budget.py. At the panel's
-  measured ~14,000 comments/day that allowance covers roughly 3 days,
-  which is why the desk runs the pipeline about twice a week. If a run
-  cannot cover the whole gap, the uncrawled pages are DEFERRED (the
-  subreddit keeps its old watermark and the next run resumes there) and
-  the board is still rescored on everything already in hand - so this
-  function's output is never silently partial, only ever less fresh.
+How much is fetched per run is budgeted, not unlimited. The comment
+crawl gets the page allowance left over after the run's other stages
+are paid for, inside the pipeline's ~10-minute ceiling (see
+src/pipeline_budget.py). At the panel's measured ~14,000 comments/day
+that allowance covers roughly 3 days, which is why the pipeline is run
+about twice a week. If a run cannot cover the whole gap, the uncrawled
+pages are deferred (the subreddit keeps its old watermark and the next
+run resumes there) and the board is still rescored on everything
+already in hand, so the output is never silently partial, only less
+fresh.
 
-Manual forms, when wanted:
+Manual forms:
     python -m analytics.influence --top 20         # print the leaderboard
     python -m analytics.influence --update         # what the pipeline runs
     python -m analytics.influence --build          # force full re-parse
     python ingestion/fetch_reddit_comments.py --backfill START END
-    (optional history deepener - the live path never needs it)
+    (optional history deepener; the live path never needs it)
 """
 
 from __future__ import annotations
@@ -164,10 +163,18 @@ def _raw_files():
 
 
 def _iter_raw_records(paths):
-    """Yield (author, created, text, kind, link_id, parent_id, rec_id)
-    from the given raw files: live Reddit posts and Arctic comment files.
-    (X/StockTwits authors could be added the same way; Reddit first - it
-    is where the reply graph lives.)"""
+    """Yield one tuple per raw record from the given files.
+
+    Reads live Reddit posts and Reddit comment archives. Deleted and
+    AutoModerator authors, and records without a timestamp, are skipped.
+    Reddit is the only source read because it is where the reply graph
+    lives; other sources could be added the same way.
+
+    Yields:
+        (author, created_utc, text, kind, link_id, parent_id, rec_id)
+        where kind is "post" or "comment" and text is the post title plus
+        body or the comment body.
+    """
     from src.clean_data import read_json_lines
     for path in paths:
         is_comment = os.sep + "RedditComments" + os.sep in path
@@ -191,12 +198,22 @@ def _iter_raw_records(paths):
 
 
 def extract_calls_and_edges(paths):
-    """One pass over the given raw files -> (calls_df, edges_df).
-    calls: rec_id, author, date, ticker, direction (+1/-1), stance, kind
-    edges: replier -> author edges, resolved through BOTH the post map
-           (t3_ link ids) and the comment map (t1_ parent ids), so
-           comment-on-comment threads count too - the graph is built
-           from exactly these interaction events."""
+    """One pass over the given raw files to extract calls and reply edges.
+
+    A record becomes one call per ticker it mentions when its sentiment
+    score clears STANCE_MIN in absolute value. Reply edges are resolved
+    through both the post map (t3_ link ids) and the comment map (t1_
+    parent ids), so comment-on-comment threads count too; the graph is
+    built from exactly these interaction events.
+
+    Args:
+        paths: Raw file paths, as returned by `_raw_files`.
+
+    Returns:
+        Tuple (calls_df, edges_df). `calls_df` has rec_id, author, date,
+        ticker, direction (+1/-1), stance and kind; `edges_df` has
+        rec_id, replier and author (the account replied to).
+    """
     from src.abstracted_data import load_universe
     from src.extract_tickers import extract_tickers_from_text
     from src.sentiment import score_text
@@ -229,8 +246,8 @@ def extract_calls_and_edges(paths):
     calls_df = pd.DataFrame(calls)
     edges = []
     for child, link, parent, rid in replies:
-        # prefer the direct parent (comment-on-comment), fall back to the
-        # post author (comment-on-post) - one edge per reply event
+        # Prefer the direct parent (comment-on-comment), fall back to the
+        # post author (comment-on-post): one edge per reply event.
         target = comment_author.get(parent) or post_author.get(parent) \
             or post_author.get(link)
         if target and target != child:
@@ -243,12 +260,27 @@ def extract_calls_and_edges(paths):
 
 
 # ---------------------------------------------------------------------------
-# 2. volatility-aware call scoring (vectorised - comment backfills can
-#    push the store past 100k calls, a per-row loop would crawl)
+# 2. volatility-aware call scoring (vectorised per ticker - comment
+#    backfills can push the store past 100k calls, a per-row loop would
+#    crawl)
 # ---------------------------------------------------------------------------
 def score_calls(calls: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
-    """Judge every call against the next HORIZON days of real closes,
-    with the volatility-scaled bar and abnormal-return z."""
+    """Judge every call against the next HORIZON days of real closes.
+
+    For each ticker the HORIZON-day forward move is computed on a
+    forward-filled daily close series; its trailing-90-day mean and std
+    (shifted so day t only sees moves that completed before t) give the
+    abnormal-return z and the bar tau = max(MOVE_MIN, VOL_HALF * std).
+
+    Args:
+        calls: Calls with date, ticker and direction columns.
+        prices: Long price table with symbol, date and px_last.
+
+    Returns:
+        A copy of `calls` with fwd_ret, z, tau, outcome ("correct",
+        "wrong", "flat", or "unscored" when no forward price exists) and
+        enhanced (bool) added.
+    """
     out = calls.copy()
     out["date"] = pd.to_datetime(out["date"])
     out["fwd_ret"] = np.nan
@@ -260,8 +292,8 @@ def score_calls(calls: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
         px = (g.sort_values("date").set_index("date")["px_last"]
               .asfreq("D").ffill())
         fwd = px.shift(-HORIZON) / px - 1          # HORIZON-day fwd move
-        # the name's own recent distribution of such moves (trailing 90d,
-        # shifted so day t only sees moves that COMPLETED before t)
+        # The name's own recent distribution of such moves (trailing 90d,
+        # shifted so day t only sees moves that completed before t).
         hist = fwd.shift(HORIZON)
         mu = hist.rolling(90, min_periods=30).mean()
         sd = hist.rolling(90, min_periods=30).std()
@@ -279,8 +311,8 @@ def score_calls(calls: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
         [signed >= out["tau"], signed <= -out["tau"]],
         ["correct", "wrong"], default="flat")
     out.loc[out["fwd_ret"].isna(), "outcome"] = "unscored"
-    # enhanced: direction right AND the move was >= 1
-    # sigma ABNORMAL for this name - significance, not just sign
+    # Enhanced: direction right and the move was at least ENH_Z sigma
+    # abnormal for this name - significance, not just sign.
     out["enhanced"] = ((out["outcome"] == "correct")
                        & (out["z"] * out["direction"] >= ENH_Z))
     return out
@@ -291,21 +323,32 @@ def score_calls(calls: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 def build_graph_metrics(edges: pd.DataFrame,
                         activity: pd.DataFrame) -> pd.DataFrame:
-    """Undirected weighted author graph -> degree, weighted degree,
-    PageRank per author, with the bot filters applied first.
-    activity: per-author n_comments / n_posts (for the broadcast filter).
-    PageRank by plain power iteration - ~15 lines, no library needed."""
+    """Degree, weighted degree and PageRank per author, bot-filtered.
+
+    Builds the undirected weighted author graph from the reply edges,
+    applies the bot filters (edge-weight cap, broadcast accounts, star
+    topology) and runs PageRank by plain power iteration.
+
+    Args:
+        edges: Reply edges with replier and author columns.
+        activity: Per-author frame indexed by author with n_comments and
+            n_posts, for the broadcast filter.
+
+    Returns:
+        Frame indexed by author with degree, weighted_degree and
+        pagerank; empty when no edges survive the filters.
+    """
     if not len(edges):
         return pd.DataFrame(columns=["degree", "weighted_degree",
                                      "pagerank"])
-    # undirected weighted edge list: count each replier<->author pair
+    # Undirected weighted edge list: count each replier<->author pair.
     pair = edges.assign(
         a=np.minimum(edges["replier"], edges["author"]),
         b=np.maximum(edges["replier"], edges["author"]))
     w = (pair.groupby(["a", "b"]).size().rename("w")
          .clip(upper=MAX_EDGE_W)                       # bot-pair cap
          .reset_index())
-    # broadcast/bot accounts contribute no graph signal at all
+    # Broadcast/bot accounts contribute no graph signal at all.
     bots = set(activity.index[(activity["n_comments"] > MAX_COMMENTS)
                               | (activity["n_posts"] > MAX_POSTS)])
     w = w[~w["a"].isin(bots) & ~w["b"].isin(bots)]
@@ -315,11 +358,11 @@ def build_graph_metrics(edges: pd.DataFrame,
     nodes = sorted(set(w["a"]) | set(w["b"]))
     idx = {n: i for i, n in enumerate(nodes)}
     n = len(nodes)
-    # star-topology filter: drop nodes linked to > half the graph. Only
-    # meaningful once the graph is real-sized - in a 10-user graph an
-    # ordinary active member exceeds any centrality cap. The live graph
-    # runs to ~12.5k nodes, which is where the filter earns its keep;
-    # n >= 50 is the floor below which it is simply switched off
+    # Star-topology filter: drop nodes linked to more than MAX_DEG_CENT of
+    # the graph. Only meaningful once the graph is real-sized - in a
+    # 10-user graph an ordinary active member exceeds any centrality cap.
+    # The live graph runs to ~12.5k nodes, where the filter earns its
+    # keep; below n = 50 it is switched off.
     stars = set()
     if n >= 50:
         deg = pd.concat([w.groupby("a").size(), w.groupby("b").size()],
@@ -333,7 +376,7 @@ def build_graph_metrics(edges: pd.DataFrame,
     if not n:
         return pd.DataFrame(columns=["degree", "weighted_degree",
                                      "pagerank"])
-    # both directions of every undirected edge
+    # Both directions of every undirected edge.
     src = np.concatenate([w["a"].map(idx).to_numpy(),
                           w["b"].map(idx).to_numpy()])
     dst = np.concatenate([w["b"].map(idx).to_numpy(),
@@ -362,8 +405,20 @@ def build_graph_metrics(edges: pd.DataFrame,
 # 4. boom/bust record + the usefulness board
 # ---------------------------------------------------------------------------
 def boom_bust_record(scored: pd.DataFrame) -> pd.DataFrame:
-    """Per author: calls inside euphoria peak windows. A BEARISH call in
-    [peak-30d, peak+5d] = called the top; a BULLISH one = bought the top."""
+    """Per author: calls inside euphoria ground-truth peak windows.
+
+    A bearish call in [peak-30d, peak+5d] counts as having called the
+    top, a bullish one as having bought it; each call counts once, at
+    the first matching peak.
+
+    Args:
+        scored: The scored calls table.
+
+    Returns:
+        Frame with author, called_tops and bought_tops; empty when prices
+        or the euphoria module are unavailable or no call falls in a
+        window.
+    """
     try:
         prices = pd.read_parquet(PRICES_PATH)
         prices["date"] = pd.to_datetime(prices["date"])
@@ -390,8 +445,11 @@ def boom_bust_record(scored: pd.DataFrame) -> pd.DataFrame:
 
 
 def _shrink(per_author_mean, n, prior_n, global_mean):
-    """Empirical-Bayes shrinkage: each author's mean is pulled toward
-    the population mean; the pull fades as evidence (n) accumulates."""
+    """Empirical-Bayes shrinkage toward the population mean.
+
+    Each author's mean is pulled toward `global_mean` with the strength
+    of `prior_n` pseudo-observations; the pull fades as evidence (n)
+    accumulates."""
     return (n * per_author_mean + prior_n * global_mean) / (n + prior_n)
 
 
@@ -404,9 +462,21 @@ def _minmax(s: pd.Series) -> pd.Series:
 
 def build_author_scores(scored: pd.DataFrame,
                         edges: pd.DataFrame) -> pd.DataFrame:
-    """The usefulness board: the three shrunk scores + composite
-    + tier, the interaction-graph metrics, participation style, the
-    boom/bust record, and each author's CURRENT stance."""
+    """Build the usefulness board, one row per author.
+
+    Combines the three shrunk scores, the composite and tier, the
+    legacy shrunk hit rate, participation style, audience, the
+    bot-filtered interaction-graph metrics, the loud-but-wrong flag,
+    the boom/bust record and each author's latest calls.
+
+    Args:
+        scored: The scored calls table from `score_calls`.
+        edges: Reply edges with replier and author columns.
+
+    Returns:
+        Frame with an `author` column and the score, count, graph and
+        record columns, sorted by composite descending.
+    """
     judged = scored[scored["outcome"].isin(["correct", "wrong"])].copy()
     judged["y"] = (judged["outcome"] == "correct").astype(float)
     judged["conf"] = judged["stance"].abs()
@@ -425,7 +495,7 @@ def build_author_scores(scored: pd.DataFrame,
     stats["hit_rate"] = stats["hits"] / stats["n_judged"].replace(0, np.nan)
     base = judged["y"].mean() if len(judged) else 0.5
 
-    # the three usefulness scores, shrunk then normalised
+    # The three usefulness scores, shrunk then normalised.
     for col, prior in (("s_conf", PRIOR_N_CONF), ("s_z", PRIOR_N_Z),
                        ("s_enh", PRIOR_N_ENH)):
         m = g[col].mean()
@@ -435,12 +505,12 @@ def build_author_scores(scored: pd.DataFrame,
     stats["composite"] = (0.4 * stats["s_conf"] + 0.4 * stats["s_z"]
                           + 0.2 * stats["s_enh"])
     stats["tier"] = np.where(stats["composite"] >= HIGH_TIER, "HIGH", "low")
-    # legacy simple shrunk hit-rate (still shown - easiest to explain)
+    # Simple shrunk hit rate, kept because it is the easiest to explain.
     stats["score"] = _shrink(stats["hit_rate"].fillna(base),
                              stats["n_judged"], PRIOR_N_CONF, base)
 
-    # participation style (premise (c): the behavioural family that
-    # carries the most information here) + audience
+    # Participation style (premise (c) in the module docstring) and
+    # audience.
     kinds = scored.groupby(["author", "kind"]).size().unstack(fill_value=0)
     stats["n_comments"] = kinds.get("comment", pd.Series(0, index=kinds.index))
     stats["n_posts"] = kinds.get("post", pd.Series(0, index=kinds.index))
@@ -456,11 +526,11 @@ def build_author_scores(scored: pd.DataFrame,
         stats["followers"] = np.nan
         stats["replies"] = np.nan
 
-    # the interaction graph (bot-filtered)
+    # The interaction graph (bot-filtered).
     gm = build_graph_metrics(edges, stats[["n_comments", "n_posts"]])
     stats = stats.join(gm, how="left")
 
-    # loud-but-wrong: the false-positive profile as a column
+    # Loud-but-wrong: the false-positive profile as a column.
     if stats["pagerank"].notna().any():
         pr_hi = stats["pagerank"] >= stats["pagerank"].quantile(0.75)
         comp_lo = stats["composite"] < stats["composite"].median()
@@ -468,7 +538,7 @@ def build_author_scores(scored: pd.DataFrame,
     else:
         stats["loud_but_wrong"] = False
 
-    # current stance: the last 3 calls, newest first
+    # Current stance: the last 3 calls, newest first.
     recent = (scored.sort_values("date", ascending=False)
               .groupby("author").head(3))
     stance = recent.groupby("author").apply(
@@ -492,6 +562,11 @@ def build_author_scores(scored: pd.DataFrame,
 # store I/O (committed + text-free, with a hard check)
 # ---------------------------------------------------------------------------
 def _safe_store_write(df: pd.DataFrame, path: str):
+    """Write a store parquet, refusing any frame that carries a text column.
+
+    Raises:
+        RuntimeError: If a FORBIDDEN_COLS column is present.
+    """
     bad = FORBIDDEN_COLS & set(c.lower() for c in df.columns)
     if bad:
         raise RuntimeError(f"REFUSING to write {path}: text columns {bad} "
@@ -500,6 +575,7 @@ def _safe_store_write(df: pd.DataFrame, path: str):
 
 
 def _load_ledger() -> dict:
+    """The ingest ledger ({"files": {relative path: size}}), empty if absent."""
     if os.path.exists(LEDGER_PATH):
         with open(LEDGER_PATH) as f:
             return json.load(f)
@@ -507,6 +583,7 @@ def _load_ledger() -> dict:
 
 
 def _new_files(ledger: dict) -> list:
+    """Raw files the ledger has not seen, or has seen at a different size."""
     out = []
     for p in _raw_files():
         key = os.path.relpath(p, RAW_DIR)
@@ -516,6 +593,7 @@ def _new_files(ledger: dict) -> list:
 
 
 def _mark_files(ledger: dict, paths: list):
+    """Record the given raw files in the ledger at their current size."""
     for p in paths:
         ledger["files"][os.path.relpath(p, RAW_DIR)] = os.path.getsize(p)
 
@@ -525,6 +603,11 @@ def _mark_files(ledger: dict, paths: list):
 # ---------------------------------------------------------------------------
 def _rebuild_board_and_save(calls: pd.DataFrame, edges: pd.DataFrame,
                             ledger: dict) -> int:
+    """Score the calls, rebuild the board, and write every store file.
+
+    Returns:
+        0, as a process exit status.
+    """
     prices = pd.read_parquet(PRICES_PATH)
     prices["date"] = pd.to_datetime(prices["date"])
     scored = score_calls(calls, prices)
@@ -545,7 +628,17 @@ def _rebuild_board_and_save(calls: pd.DataFrame, edges: pd.DataFrame,
 
 
 def build(incremental: bool = False):
-    """Full rebuild (incremental=False) or extend-with-new-files."""
+    """Build the store from the raw files and save it.
+
+    Args:
+        incremental: When True, parse only raw files the ledger has not
+            seen and merge their calls and edges into the existing
+            store; when False, ignore the ledger and re-parse everything.
+
+    Returns:
+        A process exit status: 0 on success, 1 when there is no raw data
+        or no directional call to build from.
+    """
     os.makedirs(INFLUENCE_DIR, exist_ok=True)
     ledger = _load_ledger() if incremental else {"files": {}}
     paths = _new_files(ledger)
@@ -584,9 +677,16 @@ def build(incremental: bool = False):
 
 
 def update():
-    """The live hook: parse only NEW raw files, extend the store, rescore.
-    Silent no-op when there is nothing to do (internal machine before the
-    first git pull of the store, or no new raw files)."""
+    """The live hook: parse only new raw files, extend the store, rescore.
+
+    Silent no-op when there is nothing to do: no store and no raw files
+    on this copy yet (a copy with the raw post store before its first
+    pull of the committed store), or no new raw files. Skips with a
+    message when prices are not available yet.
+
+    Returns:
+        A process exit status (0 for a no-op or success).
+    """
     has_store = os.path.exists(CALLS_PATH)
     has_new = bool(_new_files(_load_ledger()))
     if not has_store and not has_new:
@@ -598,6 +698,7 @@ def update():
 
 
 def main():
+    """CLI entry point: --build, --update, or --top N to print the board."""
     p = argparse.ArgumentParser(description="Influence tracker store")
     p.add_argument("--build", action="store_true",
                    help="full rebuild from every raw file")

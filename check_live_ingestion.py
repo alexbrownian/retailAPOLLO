@@ -1,20 +1,26 @@
-# check_live_ingestion.py
-# =======================
-# Live-data smoke test: reports, layer by layer, whether fresh data is
-# flowing through the pipeline - and where it stops if not. Read-only.
-#
-#     python check_live_ingestion.py
-#
-# It checks the four layers in flow order:
-#   1. FETCH    - are the raw live files growing? (StockTwits daily file,
-#                 x_api_live.csv.zst)
-#   2. DATASET  - what is the newest post date in posts.parquet, per source?
-#   3. DERIVED  - how fresh are the derived analytics outputs (counts, sentiment,
-#                 signals)?
-#   4. RECORD   - is today's signal snapshot and pipeline log present?
-#
-# Verdicts: [LIVE] = data within 2 days of today; [OK] = expected state;
-# [STALE]/[MISSING] = investigate (the message says what to run).
+"""Live-data smoke test: is fresh data flowing, and where does it stop?
+
+Reports, layer by layer, whether fresh data is moving through the
+pipeline. Read-only::
+
+    python check_live_ingestion.py
+
+It checks the four layers in flow order:
+
+1. FETCH: are the raw live files growing? (StockTwits daily file,
+   ``x_api_live.csv.zst``, Reddit live files)
+2. DATASET: the newest post date in ``posts.parquet``, per source (full
+   mode only; aggregates mode has no raw store and reports that as
+   expected).
+3. DERIVED: how fresh the derived analytics outputs are (counts,
+   sentiment, signals).
+4. RECORD: whether signal snapshots and a pipeline log are present.
+
+Verdicts: ``[LIVE]`` means data within 2 days of today; ``[OK]`` an
+expected state; ``[STALE]``/``[MISSING]`` means investigate (the message
+says what to run). A layer that is stale while the one before it is
+fresh points at the step between them.
+"""
 
 import datetime
 import glob
@@ -30,6 +36,7 @@ TODAY = datetime.date.today()
 
 
 def verdict(day_str):
+    """Return a freshness tag for an ISO date string (``[MISSING]`` if empty)."""
     if not day_str:
         return "[MISSING]"
     age = (TODAY - datetime.date.fromisoformat(str(day_str)[:10])).days
@@ -37,6 +44,7 @@ def verdict(day_str):
 
 
 def section(title):
+    """Print an underlined section heading."""
     print("\n" + title + "\n" + "-" * len(title))
 
 
@@ -79,7 +87,7 @@ else:
 section("2. DATASET - posts.parquet, newest post per source")
 posts = os.path.join(ROOT, "data", "processed", "posts.parquet")
 if not os.path.exists(posts):
-    print("[OK - internal machine] no posts.parquet here; live posts fold "
+    print("[OK - aggregates mode] no posts.parquet here; live posts fold "
           "into ABSTRACTED_DATA via ingestion/append_live_abstracted.py")
 else:
     try:

@@ -45,7 +45,7 @@ DESIGN RULES
     model-written summaries and paraphrases come back and are stored -
     no verbatim crowd text, no usernames, same text-free boundary as
     the committed aggregates.
-  * DEGRADE, NEVER CRASH.  No VPN / no dimsum_lite / budget spent ->
+  * DEGRADE, NEVER CRASH.  No provider / no dimsum_lite / budget spent ->
     generate() returns (False, reason); update_data logs it and moves
     on; the dashboard keeps showing the last pulse (or the samples)
     with an honest banner.
@@ -153,7 +153,7 @@ def _evidence() -> dict:
         ev["as_of"] = str(hi.date())
         # every theme with a MATERIAL share, not just the top 10: the page
         # now offers a per-theme dropdown, so the model has to be able to
-        # speak about anything the desk can select
+        # speak about anything selectable in the dashboard
         share = share[share >= THEME_BRIEF_MIN_SHARE].head(MAX_THEME_BRIEFS)
         ev["theme_mention_share_7d"] = {
             t: {"share": round(float(s), 4),
@@ -444,7 +444,7 @@ _PULSE_SYSTEM = (
     "You write the daily qualitative read of retail-investor chatter for "
     "a professional trading desk. You are reading POSTS - the actual "
     "words people wrote this week - and nothing else. Your job is to "
-    "tell the desk what the crowd is saying, arguing about and FEELING.\n"
+    "tell the reader what the crowd is saying, arguing about and FEELING.\n"
     "YOU HAVE NO STATISTICS. You are given no aggregates, no shares, no "
     "counts and no model output. Never invent a number, a percentage or "
     "a ranking. The only figures you may write are ones a post itself "
@@ -563,7 +563,7 @@ def _market_prompt(posts: list[dict]) -> str:
                         "posts below, give the SPECIFIC claims, trades "
                         "and arguments appearing there, paraphrased "
                         "from the posts. NEVER describe what a forum IS "
-                        "or what it is generally about - the desk knows "
+                        "or what it is generally about - the reader knows "
                         "that r/investing skews long-term and "
                         "r/wallstreetbets skews speculative, and a "
                         "sentence spent on it is a sentence wasted. "
@@ -601,7 +601,7 @@ def _market_prompt(posts: list[dict]) -> str:
 
 
 def _themes_prompt(by_theme: dict) -> str:
-    """Call 2 - one brief per theme the desk can select in the dropdown,
+    """Call 2 - one brief per theme selectable in the dashboard dropdown,
     each written from THAT theme's own posts and nothing else."""
     # 220-300 WORDS, desk 2026-08-05: "i want LONGER thoughts about a
     # theme please". The extra words are spent on SUBSTANCE, so the
@@ -612,7 +612,7 @@ def _themes_prompt(by_theme: dict) -> str:
            "THEME POSTS below, in the same order. Cover, in this order: "
            "(1) THE ARGUMENT - the specific case the crowd is making "
            "for or against this theme right now, paraphrased with "
-           "enough detail that a PM could repeat it; name the "
+           "enough detail that a reader could repeat it; name the "
            "instruments and the reasoning, not just the mood. "
            "(2) THE EVIDENCE THEY CITE - what facts, numbers, "
            "catalysts, earnings or events the posts point to, and "
@@ -630,7 +630,7 @@ def _themes_prompt(by_theme: dict) -> str:
            "next. Write about what THESE posts say, never about "
            "the theme in general or what people usually think about "
            "it. If a theme's posts genuinely contain nothing worth a "
-           "desk's attention, OMIT that theme entirely rather than "
+           "reader's attention, OMIT that theme entirely rather than "
            "writing that it is quiet."}
     return (f"THEME POSTS - your ONLY source. The most-engaged recent "
             f"posts for each theme:\n{json.dumps(by_theme, indent=0)}\n\n"

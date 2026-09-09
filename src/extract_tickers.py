@@ -1,20 +1,31 @@
-"""
-Extract stock tickers from WSB post Parquet (title + selftext).
+"""Ticker extraction from post text (title + selftext).
 
-Validates against a US-listed symbol universe (Nasdaq Trader files) and stop lists.
-Emits long-format rows: post_id, date, ticker, source.
+Every ticker mention counted anywhere in the project comes through
+``extract_tickers_from_text()``. A mention is validated against a
+US-listed symbol universe (Nasdaq Trader files, see ticker_universe.py)
+and three stop lists, in two passes:
 
-Cashtags ($GME) are high precision. Bare all-caps words collide with English even when
-they are valid tickers (e.g. YOU, FOR); default rules use 4–5 letter bare matches plus
-a prose stoplist. Use --mode cashtag-only for maximum precision at lower recall.
+1. Cashtags (``$GME``), which are high precision.
+2. Bare all-caps words of 4-5 letters, scanned on the original text so
+   only words the poster typed in capitals match. Bare words collide with
+   English even when they are valid tickers (YOU, FOR), so a prose stoplist
+   and a data-driven word screen apply; a configurable allowlist restores
+   real tickers the screens would otherwise drop and extends the bare pass
+   to 1-3 letter symbols.
 
-Example:
-  python -m src.extract_tickers \\
-    --in data/raw/wsb_posts_2021-01.parquet \\
-    --out data/processed/wsb_ticker_mentions_2021-01.parquet
+Pass ``cashtags_only=True`` (or ``--mode cashtag-only`` on the command
+line) for maximum precision at lower recall.
 
-Optional daily counts (for date × ticker matrices):
-  python -m src.extract_tickers --in ... --out ... --daily-out data/processed/wsb_daily_counts.parquet
+The command-line entry point reads a posts parquet and emits long-format
+rows (post_id, date, ticker, source)::
+
+    python -m src.extract_tickers \\
+      --in data/raw/wsb_posts_2021-01.parquet \\
+      --out data/processed/wsb_ticker_mentions_2021-01.parquet
+
+Optional daily counts (for date x ticker matrices)::
+
+    python -m src.extract_tickers --in ... --out ... --daily-out data/processed/wsb_daily_counts.parquet
 """
 
 from __future__ import annotations
@@ -32,24 +43,21 @@ from .ticker_universe import load_us_ticker_universe
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# JARGON, NOT TICKERS.  Symbols the crowd uses as words.
+# Jargon, not tickers: symbols the crowd uses as words.
 #
-# Maintained in config/ticker_stoplist.csv so the list can change
-# without touching code - the
-# same treatment every other mapping in this project already had.  The
-# frozenset below is the FALLBACK seed: it keeps a fresh clone working if
-# the CSV is missing, and it is the list as it stood before the move.
+# Maintained in config/ticker_stoplist.csv so the list can change without
+# touching code. The frozenset below is the fallback seed that keeps a
+# fresh clone working if the CSV is missing.
 #
-# How a symbol earns a place here: additions use a
-# falsifiable test rather than taste: many finance abbreviations have since
-# been issued to a real ETF (HYSA, DRAM, BTC, REIT, NASA, DJIA, HVAC, EBIT,
-# ROPE), so "is it a listed symbol?" cannot separate them from real
-# instruments.  What can: A FUND CANNOT BE DISCUSSED BEFORE IT IS LISTED.
-# HYSA carries 792 mentions in 2019 and 1,141 in 2020 against a fund
-# launched in 2023; DRAM carries 116 in 2018 against a fund launched in
-# 2025.  Those mentions are the words.  Symbols that pass the test - IBIT
-# (0 before 2024, its launch year), QQQI, SNDK, SPCX - are left alone, and
-# so are old, genuinely-traded ETFs like SPY, ARKK and GLD.  The reason
+# How a symbol earns a place: additions use a falsifiable test rather
+# than taste. Many finance abbreviations have been issued to a real ETF
+# (HYSA, DRAM, BTC, REIT, NASA, DJIA, HVAC, EBIT, ROPE), so "is it a
+# listed symbol?" cannot separate them from real instruments. What can: a
+# fund cannot be discussed before it is listed. HYSA carries hundreds of
+# mentions per year before its fund launched; DRAM likewise. Those
+# mentions are the words. Symbols that pass the test (IBIT, with no
+# mentions before its launch year; QQQI, SNDK, SPCX) are left alone, and
+# so are old, genuinely traded ETFs like SPY, ARKK and GLD. The reason
 # column in the CSV records the evidence per row.
 # ---------------------------------------------------------------------------
 _STOP_TICKERS_SEED: frozenset[str] = frozenset(
@@ -67,9 +75,20 @@ STOPLIST_CSV = (
 
 
 def load_stop_tickers(path: Path = STOPLIST_CSV) -> frozenset[str]:
-    """The desk-editable jargon list. Falls back to the built-in seed when
-    the CSV is absent; raises on a malformed one, because a stoplist that
-    silently loads empty would let 'CEO' back into the mention counts."""
+    """Loads the user-editable jargon stoplist.
+
+    Args:
+        path: CSV with a 'symbol' column.
+
+    Returns:
+        Upper-cased symbols from the CSV, or the built-in seed when the
+        file is absent.
+
+    Raises:
+        ValueError: When the CSV lacks a 'symbol' column or has no usable
+            rows. A stoplist that silently loaded empty would let 'CEO'
+            back into the mention counts.
+    """
     if not Path(path).is_file():
         return _STOP_TICKERS_SEED
     df = pd.read_csv(path)
@@ -85,37 +104,33 @@ STOP_TICKERS: frozenset[str] = load_stop_tickers()
 
 
 # ---------------------------------------------------------------------------
-# THE ALLOWLIST - real tickers the bare-word pass would otherwise never see.
+# The allowlist: real tickers the bare-word pass would otherwise never see.
 #
-# Rationale: short all-caps symbols (e.g. MU) were not being
-# counted. Two separate gaps, one mechanism:
+# It closes two separate gaps with one mechanism:
 #
-#   1. TOO SHORT. `WORD_BARE` is [A-Z]{4,5}, so every 1-3 letter ticker was
-#      invisible in bare form and counted ONLY when someone typed a $ sign.
-#      Measured over six days of comments: MU appears 265 times in bare CAPS
-#      against SIX $MU cashtags - a ~44x undercount on the very name behind
-#      the June-2026 memory GET OUT. AMD 58 vs 0, IBM 48 vs 0, QQQ 109 vs 2.
-#      Reddit barely uses cashtags at all, so "cashtag only" means "almost
-#      never counted".
-#   2. ENGLISH-WORD COLLISION. META, SOFI, HOOD, COIN, UBER, SHOP and friends
-#      were classified `cashtag_only` by the word-frequency screen because
-#      their lower-case forms are common English. That is right for "meta"
-#      and wrong for "META".
+#   1. Too short. WORD_BARE is [A-Z]{4,5}, so every 1-3 letter ticker is
+#      invisible in bare form and counted only when someone types a $
+#      sign. Reddit barely uses cashtags, so for names like MU, AMD, IBM
+#      and QQQ "cashtag only" means "almost never counted" (bare CAPS
+#      mentions outnumber cashtags by well over an order of magnitude).
+#   2. English-word collision. META, SOFI, HOOD, COIN, UBER, SHOP and
+#      similar names are classified `cashtag_only` by the word-frequency
+#      screen because their lower-case forms are common English. That is
+#      right for "meta" and wrong for "META".
 #
-# The safety property both rely on: THE BARE PASS IS ALREADY CASE-SENSITIVE
-# (it scans the original text, never the uppercased copy), so an allowlisted
-# symbol only matches when the poster actually typed it in capitals. "coin"
-# stays a word; "COIN" becomes Coinbase.
+# The safety property both rely on: the bare pass is case-sensitive (it
+# scans the original text, never the uppercased copy), so an allowlisted
+# symbol only matches when the poster actually typed it in capitals.
+# "coin" stays a word; "COIN" becomes Coinbase.
 #
-# WHAT IS DELIBERATELY NOT HERE, and why - the exclusions are the evidence
-# that this list is judged rather than stuffed: AI (1,468 CAPS hits, the
-# technology), PE (125, price/earnings), EV, IT - all finance or tech
-# abbreviations already in the jargon stoplist; the single letters X, T, C, V
-# and F, which collide with everything; and CAT, KO, GOLD, COST, LOW, NOW and
-# TEAM, where the measured CAPS share showed the English word winning.
+# Deliberately not on the list: AI (the technology), PE (price/earnings),
+# EV, IT, all finance or tech abbreviations already in the jargon
+# stoplist; the single letters X, T, C, V and F, which collide with
+# everything; and CAT, KO, GOLD, COST, LOW, NOW and TEAM, where the
+# measured CAPS share showed the English word winning.
 #
-# CHANGING THIS FILE CHANGES EVERY MENTION COUNT, so it takes effect at
-# INGESTION: run a FULL rebuild for history to re-count under it.
+# Changing this file changes every mention count, and it takes effect at
+# ingestion: run a full rebuild for history to re-count under it.
 # ---------------------------------------------------------------------------
 ALLOWLIST_CSV = (
     Path(__file__).resolve().parent.parent / "config" / "ticker_allowlist.csv"
@@ -123,8 +138,18 @@ ALLOWLIST_CSV = (
 
 
 def load_allow_tickers(path: Path = ALLOWLIST_CSV) -> frozenset[str]:
-    """Desk-editable. An empty/missing file simply means no allowlist, which
-    is the legacy behaviour retained for comparison."""
+    """Loads the user-editable allowlist.
+
+    Args:
+        path: CSV with a 'symbol' column.
+
+    Returns:
+        Upper-cased symbols from the CSV. A missing file means no
+        allowlist, which is the previous behaviour.
+
+    Raises:
+        ValueError: When the CSV lacks a 'symbol' column.
+    """
     if not Path(path).is_file():
         return frozenset()
     df = pd.read_csv(path)
@@ -135,16 +160,16 @@ def load_allow_tickers(path: Path = ALLOWLIST_CSV) -> frozenset[str]:
 
 
 ALLOW_TICKERS: frozenset[str] = load_allow_tickers()
-# the ones WORD_BARE cannot reach on its own (1-3 letters) get their own
-# case-sensitive alternation; the 4-5 letter ones are already matched and
-# only needed the stoplist override below
+# The symbols WORD_BARE cannot reach on its own (1-3 letters) get their
+# own case-sensitive alternation; the 4-5 letter ones are already matched
+# and only need the stoplist override in extract_tickers_from_text().
 _SHORT_ALLOW = sorted((t for t in ALLOW_TICKERS if len(t) < 4), key=len,
                       reverse=True)
 WORD_ALLOW_SHORT = (re.compile(r"\b(" + "|".join(_SHORT_ALLOW) + r")\b")
                     if _SHORT_ALLOW else None)
 
-# Bare-word-only: common Reddit / finance prose that is also a valid 4–5 letter symbol.
-# Cashtags for these symbols still count. Extend as you see false positives in your slice.
+# Bare-word-only stoplist: common Reddit / finance prose that is also a
+# valid 4-5 letter symbol. Cashtags for these symbols still count.
 BARE_PROSE_STOP: frozenset[str] = frozenset(
     {
         "ABOUT",
@@ -311,8 +336,8 @@ BARE_PROSE_STOP: frozenset[str] = frozenset(
         "USED",
         "WAYS",
         "WEEK",
-        # --- words Redditors often type in ALL CAPS that are also real
-        # --- tickers/ETFs; cashtags ($HODL) still count, bare caps don't.
+        # Words Redditors often type in ALL CAPS that are also real
+        # tickers/ETFs; cashtags ($HODL) still count, bare caps do not.
         "AWAY",
         "CASH",
         "EASY",
@@ -341,13 +366,13 @@ BARE_PROSE_STOP: frozenset[str] = frozenset(
 )
 
 CASHTAG = re.compile(r"\$([A-Z]{1,5})\b")
-# Bare caps: 4–5 letters only (avoids YOU, FOR, ARE, ON, … as tickers).
+# Bare caps: 4-5 letters only (avoids YOU, FOR, ARE, ON, ... as tickers).
 WORD_BARE = re.compile(r"\b([A-Z]{4,5})\b")
 
 # Data-driven word-ticker screening (see src/screen_tickers.py): tickers
-# classified 'cashtag_only' there are English words in disguise (EDGE, LOAN,
-# RENT ...). Their bare-caps mentions are ignored; $CASHTAG mentions still
-# count. Regenerate the CSV via notebook 01 or `python -m src.screen_tickers`.
+# classified 'cashtag_only' there are English words in disguise (EDGE,
+# LOAN, RENT ...). Their bare-caps mentions are ignored; $CASHTAG mentions
+# still count. Regenerate the CSV with `python -m src.screen_tickers`.
 CLASSIFICATION_CSV = (
     Path(__file__).resolve().parent.parent
     / "data" / "reference" / "ticker_classification.csv"
@@ -355,8 +380,15 @@ CLASSIFICATION_CSV = (
 
 
 def load_cashtag_only_tickers(path: Path = CLASSIFICATION_CSV) -> frozenset[str]:
-    """Read screen_tickers.py's output. Returns an empty set if the CSV
-    hasn't been generated yet, so everything still works without it."""
+    """Reads the 'cashtag_only' tickers from screen_tickers.py's output.
+
+    Args:
+        path: The classification CSV.
+
+    Returns:
+        The tickers classified 'cashtag_only', or an empty set when the
+        CSV has not been generated yet, so extraction works without it.
+    """
     if not Path(path).is_file():
         return frozenset()
     df = pd.read_csv(path)
@@ -368,7 +400,8 @@ SCREENED_STOP: frozenset[str] = load_cashtag_only_tickers()
 
 
 def _strip_cashtags_for_word_pass(text_upper: str) -> str:
-    """Remove $TICKER spans so bare-word pass does not double-count GME from $GME."""
+    """Removes $TICKER spans so the bare-word pass does not double-count
+    GME from $GME."""
     return CASHTAG.sub(" ", text_upper)
 
 
@@ -378,9 +411,17 @@ def extract_tickers_from_text(
     *,
     cashtags_only: bool,
 ) -> list[str]:
-    """
-    Return tickers in order (all cashtags first, then bare words if enabled).
-    Duplicates in the text are kept so mention counts reflect frequency.
+    """Extracts the tickers mentioned in one piece of text.
+
+    Args:
+        text: The text to scan.
+        universe: Valid symbols; anything outside it is ignored.
+        cashtags_only: Skip the bare-word passes.
+
+    Returns:
+        Tickers in order of appearance, all cashtags first, then 4-5
+        letter bare words, then short allowlisted bare words. Duplicates
+        in the text are kept so mention counts reflect frequency.
     """
     if not text or not isinstance(text, str):
         return []
@@ -398,23 +439,23 @@ def extract_tickers_from_text(
     if cashtags_only:
         return out
 
-    # IMPORTANT: scan the ORIGINAL text, not the uppercased copy. Only words
-    # the poster actually wrote in ALL CAPS ("bought NVDA calls") can be bare
+    # Scan the original text, not the uppercased copy. Only words the
+    # poster actually wrote in ALL CAPS ("bought NVDA calls") can be bare
     # tickers. Uppercasing first would turn every ordinary word ("edge",
-    # "loan", "meme") into a fake all-caps match - that bug once made EDGE
-    # and LOAN look like top-mentioned tickers.
+    # "loan", "meme") into a fake all-caps match and make EDGE and LOAN
+    # look like top-mentioned tickers.
     stripped = _strip_cashtags_for_word_pass(text)
     for m in WORD_BARE.finditer(stripped):
         sym = m.group(1)
         if sym in STOP_TICKERS:
-            continue                      # jargon is never a ticker
+            continue                      # Jargon is never a ticker.
         if sym not in ALLOW_TICKERS and (sym in BARE_PROSE_STOP
                                          or sym in SCREENED_STOP):
-            continue                      # an English word in disguise
+            continue                      # An English word in disguise.
         if sym in universe:
             out.append(sym)
 
-    # the 1-3 letter allowlist (MU, AMD, IBM ...), which WORD_BARE's
+    # The 1-3 letter allowlist (MU, AMD, IBM ...), which WORD_BARE's
     # [A-Z]{4,5} cannot reach. Same case-sensitive text, same universe check.
     if WORD_ALLOW_SHORT is not None:
         for m in WORD_ALLOW_SHORT.finditer(stripped):
@@ -434,7 +475,12 @@ def mentions_for_post(
     *,
     cashtags_only: bool,
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-    """Returns (title_rows, body_rows) as list of (ticker, source)."""
+    """Extracts mentions from a post's title and body separately.
+
+    Returns:
+        A pair (title_rows, body_rows), each a list of (ticker, source)
+        where source is "title" or "body".
+    """
     title_hits = extract_tickers_from_text(title, universe, cashtags_only=cashtags_only)
     body_hits = extract_tickers_from_text(selftext, universe, cashtags_only=cashtags_only)
     t_rows = [(sym, "title") for sym in title_hits]
@@ -443,6 +489,7 @@ def mentions_for_post(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point; see the module docstring for usage."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",

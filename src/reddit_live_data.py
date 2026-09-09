@@ -1,29 +1,31 @@
-"""
-reddit_live_data.py
-===================
-Turn the RAW live-Reddit dumps (written by ingestion/fetch_reddit_live.py)
-into the project's standard 9-column posts shape, so live posts merge into
+"""Normalisation of raw live-Reddit dumps into the standard posts schema.
+
+Turns the raw records written by ingestion/fetch_reddit_live.py into the
+project's standard 9-column posts shape, so live posts merge into
 posts.parquet exactly like the historical Pushshift data.
 
-Each raw line is one post's JSON as the backend returned it, tagged with a
-"_backend" field so we know which shape to expect:
+Each raw record is one post's JSON as the backend returned it, tagged with
+a "_backend" field that says which shape to expect:
 
-  "_backend" == "official"  -> a standard Reddit API `data` object
-      (id, created_utc, author, subreddit, title, selftext,
-       num_comments, score) - identical to the Pushshift shape, so we
-      reuse src.clean_data.normalise().
+``"_backend" == "official"``
+    A standard Reddit API `data` object (id, created_utc, author,
+    subreddit, title, selftext, num_comments, score), identical to the
+    Pushshift shape, so src.clean_data.normalise() is reused.
 
-  "_backend" == "fetchlayer" -> fetchlayer.dev's community-posts shape.
-      Field names are not guaranteed stable, so every field is looked up
-      defensively across the names FetchLayer has been seen to use.
+``"_backend" == "fetchlayer"``
+    FetchLayer's community-posts shape. Field names are not guaranteed
+    stable, so every field is looked up defensively across the names
+    FetchLayer has been seen to use.
 
-Output columns (the one true schema, shared with clean_data / x_data /
-stocktwits_data):
+Output columns (the one schema shared with clean_data / x_data /
+stocktwits_data)::
+
     id, date, author, score, subreddit, title, selftext, num_comments, source
 
-Live Reddit posts keep source='reddit' and their REAL subreddit (e.g.
-'wallstreetbets') and their REAL base36 id - so a live post that later shows
-up in a Pushshift dump dedupes against it automatically (first seen wins).
+Live Reddit posts keep source='reddit', their real subreddit (for example
+'wallstreetbets') and their real base36 id, so a live post that later
+shows up in a Pushshift dump dedupes against it automatically (first seen
+wins). Entry point: ``normalise_reddit_live_records()``.
 """
 
 from __future__ import annotations
@@ -32,13 +34,14 @@ import datetime
 
 import pandas as pd
 
-from src.clean_data import normalise as normalise_official  # official == Pushshift shape
+from src.clean_data import normalise as normalise_official  # Official API == Pushshift shape.
 
 OUTPUT_COLUMNS = ["id", "date", "author", "score", "subreddit",
                   "title", "selftext", "num_comments", "source"]
 
 
 def _first(record: dict, *names, default=""):
+    """Returns the first non-empty value among the named keys."""
     for name in names:
         v = record.get(name)
         if v not in (None, ""):
@@ -47,16 +50,16 @@ def _first(record: dict, *names, default=""):
 
 
 def _date_of(record: dict) -> str:
-    """Best-effort 'YYYY-MM-DD' from whatever timestamp FetchLayer supplies:
-    a unix epoch (int/float/str) OR an ISO/RFC date string."""
+    """Returns a best-effort 'YYYY-MM-DD' from whatever timestamp FetchLayer
+    supplies: a unix epoch (int/float/str) or an ISO/RFC date string."""
     raw = _first(record, "created_utc", "createdUtc", "created", "createdAt",
                  "created_at", "date", default="")
     if raw in (None, ""):
         return ""
-    # unix seconds?
+    # Unix seconds?
     try:
         secs = float(raw)
-        if secs > 1_000_000_000:                 # sane epoch (>= 2001)
+        if secs > 1_000_000_000:                 # Sane epoch (>= 2001).
             return datetime.datetime.utcfromtimestamp(secs).strftime("%Y-%m-%d")
     except (TypeError, ValueError):
         pass
@@ -73,6 +76,7 @@ def _author_of(record: dict) -> str:
 
 
 def _normalise_fetchlayer(record: dict) -> dict:
+    """Maps one FetchLayer record onto the standard schema."""
     title = str(_first(record, "title", "postTitle") or "")
     selftext = str(_first(record, "selftext", "previewText", "text", "body", "content") or "")
     return {
@@ -90,8 +94,18 @@ def _normalise_fetchlayer(record: dict) -> dict:
 
 
 def normalise_reddit_live_records(records: list[dict]) -> pd.DataFrame:
-    """records: raw post dicts (any mix of backends). Returns rows in the
-    standard schema, deduped on id (first seen wins), date-sorted."""
+    """Normalises raw live-Reddit records into the standard posts schema.
+
+    Records without an id, a date or a title cannot be placed in the
+    timeline and are dropped.
+
+    Args:
+        records: Raw post dicts, any mix of backends.
+
+    Returns:
+        DataFrame with OUTPUT_COLUMNS, deduped on id (first seen wins),
+        sorted by date.
+    """
     rows = []
     for rec in records:
         if not isinstance(rec, dict):

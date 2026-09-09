@@ -2,10 +2,10 @@
 ai_poll.py — ask the AI what a retail trader would ask it, every refresh.
 =========================================================================
 
-The desk's design (2026-08-04, verbatim): "we call the AI bot when we
-refresh data on prompts a retail trader would ask ai like 'what should i
-invest in' or 'best stocks after memory' etc and then based on that we
-can triangulate what the AI is recommending these traders."
+On every data refresh, ask a consumer AI model the questions a retail
+trader would ask it ("what should I invest in", "best stocks after
+memory") and record what it recommends, so the advice flowing into the
+crowd can be triangulated over time.
 
 Retail asks the same handful of consumer models the same handful of
 questions — so the model's answers ARE a proxy for the advice flowing

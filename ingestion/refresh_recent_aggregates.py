@@ -1,27 +1,27 @@
-# refresh_recent_aggregates.py
-# ============================
-# The EXTERNAL machine's live fast path: rebuild the LAST N DAYS of the five
-# aggregate files straight from posts.parquet, and splice that fresh tail
-# onto the untouched history.
-#
-#   python ingestion/refresh_recent_aggregates.py
-#   python ingestion/refresh_recent_aggregates.py --days 60
-#   python ingestion/refresh_recent_aggregates.py --dry-run
-#
-# WHY THIS EXISTS (and why it is not append_live_abstracted.py)
-#   The full notebook chain (01-07) rebuilds every aggregate from scratch -
-#   correct but slow (sentiment scoring alone can take 20-40 minutes).
-#   append_live_abstracted.py folds new posts in incrementally with a
-#   seen-ids ledger - right for the internal machine (no raw store), but a
-#   ledger can drift out of sync with full rebuilds where a raw store exists.
-#   This script has neither problem: posts.parquet is the single source of
-#   truth, so recomputing its most recent days and replacing exactly those
-#   days in the aggregates is always correct, however often it runs. It uses
-#   the same aggregation code as everything else, so live numbers and
-#   full-rebuild numbers can never disagree.
-#
-# THE RULE: everything ON or AFTER the cutoff date is recomputed; everything
-#           BEFORE it is left exactly as the last full rebuild wrote it.
+"""Full-mode live fast path: recompute the recent tail of every aggregate.
+
+Rebuilds the last N days of the five aggregate files straight from
+``posts.parquet`` and splices that fresh tail onto the untouched history::
+
+    python ingestion/refresh_recent_aggregates.py
+    python ingestion/refresh_recent_aggregates.py --days 60
+    python ingestion/refresh_recent_aggregates.py --dry-run
+
+A full rebuild (``update_data.py --full``) recomputes every aggregate from
+scratch, which is correct but slow: sentiment scoring alone can take 20-40
+minutes. ``append_live_abstracted.py`` folds new posts in incrementally
+with a seen-ids ledger, which is right for aggregates mode (no raw store),
+but a ledger can drift out of sync with full rebuilds where a raw store
+exists. This script has neither problem: ``posts.parquet`` is the single
+source of truth, so recomputing its most recent days and replacing exactly
+those days in the aggregates is always correct, however often it runs. It
+uses the same aggregation code (``src.abstracted_data.aggregate_posts``) as
+the full rebuild, so live numbers and full-rebuild numbers can never
+disagree.
+
+The rule: everything on or after the cutoff date is recomputed; everything
+before it is left exactly as the last full rebuild wrote it.
+"""
 
 import argparse
 import datetime
@@ -51,9 +51,18 @@ DEFAULT_DAYS = 45
 
 
 def load_recent_posts(cutoff):
-    """Only the columns the aggregator needs, only rows >= cutoff. pyarrow
-    pushes the filter into the file scan, so this reads a tiny fraction of
-    the store."""
+    """Load the posts on or after ``cutoff`` with only the aggregator's columns.
+
+    pyarrow pushes the date filter into the file scan, so this reads a tiny
+    fraction of the store.
+
+    Args:
+        cutoff: ISO date string; rows with ``date >= cutoff`` are returned.
+
+    Returns:
+        DataFrame with columns ``id``, ``date``, ``title``, ``selftext``
+        and ``source``.
+    """
     table = pq.read_table(
         POSTS_PATH,
         columns=["id", "date", "title", "selftext", "source"],
@@ -63,8 +72,18 @@ def load_recent_posts(cutoff):
 
 
 def splice(old, new_tail, cutoff, keys):
-    """Keep every OLD row before the cutoff, replace everything from the
-    cutoff on with the freshly computed tail."""
+    """Replace the tail of an aggregate from ``cutoff`` on with a fresh one.
+
+    Args:
+        old: The aggregate as currently stored.
+        new_tail: Freshly computed rows covering ``cutoff`` onwards.
+        cutoff: ISO date string; ``old`` rows dated before it are kept
+            unchanged, everything from it on comes from ``new_tail``.
+        keys: Column names to sort the result by.
+
+    Returns:
+        The spliced aggregate, sorted by ``keys`` with a fresh index.
+    """
     old = old.copy()
     old["date"] = pd.to_datetime(old["date"])
     head = old[old["date"] < pd.to_datetime(cutoff)]
@@ -76,6 +95,12 @@ def splice(old, new_tail, cutoff, keys):
 
 
 def main():
+    """Recompute and splice the trailing window of every aggregate file.
+
+    Returns:
+        ``0`` on success or when there is nothing to do; ``1`` when
+        ``posts.parquet`` is absent (this script only applies in full mode).
+    """
     p = argparse.ArgumentParser(
         description="Rebuild the last N days of the aggregates from posts.parquet.")
     p.add_argument("--days", type=int, default=DEFAULT_DAYS,
@@ -85,8 +110,8 @@ def main():
     args = p.parse_args()
 
     if not os.path.exists(POSTS_PATH):
-        print("no posts.parquet - this script is for the EXTERNAL machine only.")
-        print("(the internal machine uses ingestion/append_live_abstracted.py)")
+        print("no posts.parquet - this script is for full mode only.")
+        print("(aggregates mode uses ingestion/append_live_abstracted.py)")
         return 1
 
     cutoff = (datetime.date.today()

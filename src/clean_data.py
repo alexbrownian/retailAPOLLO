@@ -1,27 +1,27 @@
-"""
-clean_data.py
-=============
-Turn RAW Reddit data into one tidy "posts" table that the rest of the project
-understands. This is the only step that knows about messy file formats.
+"""Raw Reddit data to the standard posts table.
 
-It can read:
-  - .zst       Pushshift / torrent dumps (compressed, streamed line by line)
-  - .ndjson / .jsonl   one JSON post per line (uncompressed)
-  - .csv       a flat table
-  - .parquet   a flat table
+Turns raw Reddit dumps into one tidy posts table that the rest of the
+project understands. This is the only step that knows about raw file
+formats. It reads:
 
-It always outputs the SAME columns, so everything downstream is identical no
-matter where the data came from:
+- .zst              Pushshift / torrent dumps (compressed, streamed line
+                    by line)
+- .ndjson / .jsonl  one JSON post per line (uncompressed)
+- .csv              a flat table
+- .parquet          a flat table
 
-    id, date, author, score, subreddit, title, selftext, num_comments
+and always outputs the same columns, so everything downstream is
+identical no matter where the data came from::
 
-You control it with three simple filters (all optional):
-  - subreddits : keep only these forums   (empty list = keep all)
-  - start_date : keep posts on/after this date  (e.g. "2021-01-01")
-  - end_date   : keep posts BEFORE this date     (exclusive)
+    id, date, author, score, subreddit, title, selftext, num_comments, source
 
-The .zst reading is STREAMED, meaning we read one line at a time and never load
-the whole (possibly huge) file into memory - so the full Reddit torrent is fine.
+Three optional filters apply: ``subreddits`` (keep only these forums),
+``start_date`` (inclusive) and ``end_date`` (exclusive). The .zst reading
+is streamed one line at a time, so the whole file is never loaded into
+memory and a full Reddit torrent dump is fine.
+
+``normalise()`` maps one raw record to the standard dict and is reused by
+reddit_live_data.py; ``clean()`` is the file-to-file entry point.
 """
 
 import os
@@ -34,9 +34,9 @@ import pandas as pd
 import zstandard
 
 
-# The columns every cleaned file will have, in this order.
-# 'source' says where a row came from: 'reddit' here; X (Twitter) rows get
-# source='x' via src/x_data.py + ingestion/fetch_x_live.py + merge_live.py (add_x_data.py was removed).
+# The columns every cleaned file has, in this order. 'source' says where
+# a row came from: 'reddit' here; X (Twitter) rows get source='x' via
+# src/x_data.py (ingestion/fetch_x_live.py + merge_live.py).
 OUTPUT_COLUMNS = ["id", "date", "author", "score", "subreddit", "title", "selftext", "num_comments", "source"]
 
 
@@ -44,7 +44,8 @@ OUTPUT_COLUMNS = ["id", "date", "author", "score", "subreddit", "title", "selfte
 # Finding and reading raw files
 # ----------------------------------------------------------------------
 def find_input_files(path):
-    """'path' can be a single file OR a folder. Return the list of data files."""
+    """Returns the data files at path, which may be a single file or a
+    folder; folder contents are matched by extension and sorted."""
     if os.path.isfile(path):
         return [path]
     files = []
@@ -54,9 +55,10 @@ def find_input_files(path):
 
 
 def read_json_lines(filepath):
-    """
-    Yield one parsed record (a dict) at a time from a JSON-lines file.
-    Handles .zst by streaming-decompressing it.
+    """Yields one parsed record (a dict) at a time from a JSON-lines file.
+
+    Handles .zst by streaming decompression. Lines that fail to parse are
+    skipped.
     """
     if filepath.endswith(".zst"):
         with open(filepath, "rb") as raw_file:
@@ -86,11 +88,11 @@ def read_json_lines(filepath):
 # Turning one raw record into our standard shape
 # ----------------------------------------------------------------------
 def normalise(record):
-    """
-    Map one raw Reddit record to our standard dict.
+    """Maps one raw Reddit record to the standard dict.
 
-    Submissions have 'title' + 'selftext'. Comments have 'body'. We put a
-    comment's body into the 'selftext' field so the text is never lost.
+    Submissions have 'title' + 'selftext'. Comments have 'body'; a
+    comment's body is put into the 'selftext' field so the text is never
+    lost. A record without a usable created_utc gets an empty date.
     """
     created = record.get("created_utc", 0)
     created = int(created) if str(created).isdigit() else 0
@@ -101,7 +103,7 @@ def normalise(record):
 
     title = record.get("title", "") or ""
     selftext = record.get("selftext", "") or ""
-    body = record.get("body", "") or ""        # comments use 'body'
+    body = record.get("body", "") or ""        # Comments use 'body'.
     if not selftext and body:
         selftext = body
 
@@ -119,40 +121,42 @@ def normalise(record):
 
 
 def keep_this_post(post, wanted_subreddits, start_date, end_date):
-    """Apply the subreddit and date filters. Return True to keep the post."""
+    """Applies the subreddit and date filters; returns True to keep the post."""
     if not post["date"]:
         return False
     if wanted_subreddits and post["subreddit"] not in wanted_subreddits:
         return False
-    if start_date and post["date"] < start_date:     # string dates compare correctly as YYYY-MM-DD
+    if start_date and post["date"] < start_date:     # YYYY-MM-DD strings compare correctly.
         return False
-    if end_date and post["date"] >= end_date:         # end_date is exclusive
+    if end_date and post["date"] >= end_date:         # end_date is exclusive.
         return False
     return True
 
 
 # ----------------------------------------------------------------------
-# The main entry point used by the notebook
+# The file-to-file entry point
 # ----------------------------------------------------------------------
 def clean(input_path, output_path, subreddits=None, start_date=None, end_date=None):
-    """
-    Read raw data from input_path, filter it, and write a tidy posts file.
+    """Reads raw data from input_path, filters it, and writes a posts file.
 
-    input_path  : a file or a folder of raw files
-    output_path : where to save (.parquet recommended, .csv also works)
-    subreddits  : list like ["wallstreetbets", "stocks"]  (None/[] = all)
-    start_date  : "YYYY-MM-DD" inclusive, or None
-    end_date    : "YYYY-MM-DD" exclusive, or None
+    Args:
+        input_path: A file or a folder of raw files.
+        output_path: Where to save; .parquet recommended, .csv also works.
+        subreddits: List like ["wallstreetbets", "stocks"]; None or []
+            keeps all.
+        start_date: "YYYY-MM-DD" inclusive, or None.
+        end_date: "YYYY-MM-DD" exclusive, or None.
 
-    Returns the number of posts written.
+    Returns:
+        The number of posts written.
     """
     wanted = set(s.lower() for s in (subreddits or []))
     files = find_input_files(input_path)
     print("Found", len(files), "raw file(s).")
 
-    # We read records one at a time, but only KEEP the ones that pass the
-    # filters. Because you normally filter by subreddit and/or date, the kept
-    # list stays small even when the raw files are enormous.
+    # Records are read one at a time and only the ones that pass the
+    # filters are kept, so the kept list stays small even when the raw
+    # files are enormous.
     kept_rows = []
     seen_subreddits = set()
 
@@ -160,12 +164,12 @@ def clean(input_path, output_path, subreddits=None, start_date=None, end_date=No
         name = os.path.basename(filepath)
         print("  reading", name, "...")
 
-        # CSV / parquet inputs are already tables - read with pandas.
+        # CSV / parquet inputs are already tables: read with pandas.
         if filepath.endswith(".csv") or filepath.endswith(".parquet"):
             table = pd.read_csv(filepath) if filepath.endswith(".csv") else pd.read_parquet(filepath)
             records = table.to_dict("records")
         else:
-            # JSON-lines / .zst inputs - streamed record by record.
+            # JSON-lines / .zst inputs: streamed record by record.
             records = read_json_lines(filepath)
 
         for record in records:

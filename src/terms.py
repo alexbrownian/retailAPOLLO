@@ -1,25 +1,29 @@
-"""
-terms.py
-========
-Shared vocabulary machinery for EMERGING-TERM detection - the counting side
-of "what is retail suddenly talking about that no theme covers yet?".
+"""Vocabulary counting for emerging-term detection.
 
-Two consumers:
-  * ingestion/build_term_counts.py and the live fold build
-    ABSTRACTED_DATA/daily_term_counts.parquet from post text
-    (date, term, mention_count - plus one __TOTAL__ row per day holding the
-    day's post count, so shares can be computed without the raw store).
-  * helper/find_emerging_terms.py runs the spike test - from raw text on the
-    external machine, or from the counts file on EITHER machine.
+This module is the counting side of "what is retail suddenly talking about
+that no theme covers yet?". It tokenises post text into candidate terms and
+tallies how many posts mention each term per day.
 
-WHY THIS FILE IS SAFE TO SHARE: a table of daily word frequencies contains
-no post text, no authors, no ids. No post can be reconstructed from it -
-the same abstraction class as the theme/ticker counts already committed.
+Producers and consumers:
 
-Terms are single words (3+ chars) and consecutive two-word phrases. Function
-words and finance boilerplate are dropped at BUILD time (they carry no
-signal and bloat the file); everyday-English filtering (wordfreq) happens at
-SCAN time, so tightening that filter never requires a rebuild.
+* ingestion/build_term_counts.py and the live fold build
+  ABSTRACTED_DATA/daily_term_counts.parquet from post text. The file holds
+  (date, term, mention_count) plus one ``__TOTAL__`` row per day carrying
+  the day's post count, so shares can be computed without the raw store.
+* The dashboard's weekly context and tools/ai_keyword_audit.py read the
+  counts file: the former ranks terms whose 7d count spiked against the
+  prior four weeks, the latter surfaces high-frequency terms the theme
+  keyword map does not cover. Both work in either mode.
+
+The counts file is safe to commit: a table of daily word frequencies
+contains no post text, no authors and no ids, so no post can be
+reconstructed from it. It is the same abstraction class as the committed
+theme and ticker counts.
+
+Terms are single words (3+ chars) and consecutive two-word phrases.
+Function words and finance boilerplate are dropped at build time (they
+carry no signal and bloat the file); everyday-English filtering (wordfreq)
+happens at scan time, so tightening that filter never requires a rebuild.
 """
 
 from __future__ import annotations
@@ -28,11 +32,11 @@ import re
 
 import pandas as pd
 
-TOKEN_RE = re.compile(r"[a-z][a-z0-9]{2,}")   # words of 3+ chars, letter-first
+TOKEN_RE = re.compile(r"[a-z][a-z0-9]{2,}")   # Words of 3+ chars, letter-first.
 
-TOTAL_MARKER = "__TOTAL__"    # per-day row carrying the total post count
+TOTAL_MARKER = "__TOTAL__"    # Per-day row carrying the total post count.
 
-# finance boilerplate - present in every period, so never "emerging"
+# Finance boilerplate: present in every period, so never "emerging".
 EXTRA_STOPWORDS = {
     "https", "http", "www", "com", "amp", "quot", "gt", "lt",
     "stock", "stocks", "market", "markets", "share", "shares", "price",
@@ -41,8 +45,8 @@ EXTRA_STOPWORDS = {
     "money", "today", "tomorrow", "week", "year", "think", "thoughts",
 }
 
-# function words - single-word zipf filtering catches these, but word PAIRS
-# like "from the" slip through unless each half is checked
+# Function words. Single-word zipf filtering catches these at scan time,
+# but word pairs like "from the" slip through unless each half is checked.
 FUNCTION_WORDS = {
     "the", "and", "for", "are", "but", "not", "you", "your", "all", "any",
     "can", "had", "has", "have", "him", "her", "his", "its", "our", "out",
@@ -58,9 +62,10 @@ FUNCTION_WORDS = {
     "doesn", "isn", "aren", "wasn", "weren", "hasn", "haven", "hadn",
     "wouldn", "couldn", "shouldn", "won", "don", "didn", "ain", "lot",
 }
-# spam vocabulary - scam/promo posts ("join my whatsapp group for signals")
-# spike hard and would otherwise become auto-themes. Platform names and
-# promo words are never a tradeable theme, so they are dropped outright.
+# Spam vocabulary. Scam and promo posts ("join my whatsapp group for
+# signals") spike hard and would otherwise surface as emerging terms.
+# Platform names and promo words are never a tradeable theme, so they are
+# dropped outright.
 SPAM_WORDS = {
     "whatsapp", "telegram", "discord", "instagram", "tiktok", "youtube",
     "facebook", "snapchat", "linkedin", "twitter", "gmail", "email",
@@ -76,15 +81,22 @@ SPAM_WORDS = {
 
 DROP_ALWAYS = EXTRA_STOPWORDS | FUNCTION_WORDS | SPAM_WORDS
 
-MIN_PER_DAY_WORD = 3    # a word must appear in >= this many posts that day
-MIN_PER_DAY_PAIR = 5    # pairs are noisier and more numerous - higher bar
-RETAIN_DAYS = 365       # rolling window the counts file keeps (the spike
-                        # test needs ~200 days; a year gives headroom)
+MIN_PER_DAY_WORD = 3    # A word must appear in >= this many posts that day.
+MIN_PER_DAY_PAIR = 5    # Pairs are noisier and more numerous: higher bar.
+RETAIN_DAYS = 365       # Rolling window the counts file keeps. The spike
+                        # test needs ~200 days; a year gives headroom.
 
 
 def terms_in_text(text: str):
-    """One post's candidate terms: unique filtered words + unique filtered
-    two-word phrases ('harmonic drive'). Lowercases once."""
+    """Returns one post's candidate terms.
+
+    Args:
+        text: The post's title and body.
+
+    Returns:
+        Set of unique filtered words and unique filtered two-word phrases
+        (for example 'harmonic drive'), lowercased.
+    """
     words = TOKEN_RE.findall(text.lower())
     keep = set()
     for w in words:
@@ -97,12 +109,20 @@ def terms_in_text(text: str):
 
 
 def count_daily_terms(posts_df: pd.DataFrame) -> pd.DataFrame:
-    """DataFrame(date, term, mention_count) for one batch of posts, with a
-    __TOTAL__ row per day (total posts that day, mention or not). Each post
-    counts each term AT MOST once - share of posts, not raw frequency.
-    Per-day minimums (MIN_PER_DAY_*) keep the table small; they are applied
-    per BATCH here, and the additive merge preserves correctness because
-    live batches arrive day-aligned."""
+    """Counts term mentions per day for one batch of posts.
+
+    Each post counts each term at most once, so the figures are shares of
+    posts, not raw frequencies. Per-day minimums (MIN_PER_DAY_*) keep the
+    table small; they are applied per batch here, and the additive merge
+    preserves correctness because live batches arrive day-aligned.
+
+    Args:
+        posts_df: Posts frame with date, title and selftext columns.
+
+    Returns:
+        DataFrame(date, term, mention_count) with one ``__TOTAL__`` row per
+        day holding that day's total post count, mention or not.
+    """
     counts: dict = {}
     day_totals: dict = {}
     titles = posts_df["title"].fillna("").astype(str)
@@ -126,8 +146,18 @@ def count_daily_terms(posts_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def trim_to_retention(df: pd.DataFrame, retain_days: int = RETAIN_DAYS) -> pd.DataFrame:
-    """Keep only the rolling window - the file must stay small enough to
-    commit, and the spike test never looks further back anyway."""
+    """Keeps only the trailing retain_days of rows.
+
+    The file must stay small enough to commit, and the spike test never
+    looks further back.
+
+    Args:
+        df: Term counts frame with a date column.
+        retain_days: Window length measured back from the newest date.
+
+    Returns:
+        The trimmed frame with a fresh RangeIndex.
+    """
     dates = pd.to_datetime(df["date"])
     floor = dates.max() - pd.Timedelta(days=retain_days)
     return df[dates >= floor].reset_index(drop=True)

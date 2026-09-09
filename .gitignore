@@ -57,14 +57,14 @@ logs/
 Thumbs.db
 desktop.ini
 
-# ---- machine-local pipeline ledgers (2026-07-27) -------------------------
+# ---- machine-local pipeline ledgers ---------------------------------------
 # These two files MEASURE THIS MACHINE: how long each stage takes here, and
-# what each subreddit costs when crawled from here.  Committing them would
-# plan the laptop's run with the desktop's numbers - a slower machine would
-# inherit a page allowance it cannot afford inside the desk's ~10-minute
-# ceiling, and quietly overrun on every run.  Each falls back to a measured
-# bootstrap prior in src/config.py and re-measures itself within one run, so
-# a fresh clone loses nothing but one run's worth of precision.
+# what each forum costs when crawled from here.  Committing them would plan
+# one machine's run with another's numbers - a slower machine would inherit
+# a page allowance it cannot afford inside the ~10-minute run ceiling
+# (PIPELINE_BUDGET_S) and quietly overrun on every run.  Each falls back to
+# a bootstrap prior in src/config.py and re-measures itself within one run,
+# so a fresh clone loses nothing but one run's worth of precision.
 # See src/pipeline_budget.py.
 data/reference/pipeline_stage_times.json
 data/reference/reddit_comments_cost.json
@@ -79,6 +79,9 @@ data/reference/reddit_backfill_progress.json
 data/reference/agentic_samples.jsonl
 data/reference/agentic_scan_ledger.json
 data/reference/nb10_sample_texts.jsonl
+# Ledger snapshots are machine-local recovery state and contain copies of
+# the text files above; they never belong in a commit.
+data/reference/_backups/
 
 # ---- .env is NOT tracked (supersedes the earlier decision) ----
 # It was previously committed so that credentials travelled with the
@@ -94,19 +97,12 @@ data/reference/nb10_sample_texts.jsonl
 # it is rotated.
 .env
 
-# ---- New_ICE_data/: vendor delivery under evaluation ----
 # Only the evaluation notebook is tracked. The delivery itself is
 # multi-GB unaggregated raw post text: oversized for git history, and
 # raw text is exactly what the text-free commit rule exists to keep out
 # of the repository. Both case spellings are listed because gitignore
 # matching follows core.ignorecase (true on Windows, false on Linux);
 # a single-case rule would stop protecting the folder on a Linux clone.
-new_ice_data/*
-!new_ice_data/explore_ice_source.py
-!new_ice_data/explore_ice_source.ipynb
-New_ICE_data/*
-!New_ICE_data/explore_ice_source.py
-!New_ICE_data/explore_ice_source.ipynb
 
 # Staging area for files retired from the project (review, then delete).
 _to_delete/
@@ -116,9 +112,16 @@ _to_delete/
 # cannot have it, so a public viewer is never offered a button that fetches,
 # spends API credit, or calls a Bloomberg Terminal. Created by
 # tools/publish_dashboard.py; see LOCAL_CONTROLS in dashboard.py.
-.local_controls
 
 # DASHBOARD_DATA/ is deliberately ABSENT from this file. Like
 # ABSTRACTED_DATA/, it is a committed INPUT: the finished display frames the
 # hosted dashboard reads, staged by tools/publish_dashboard.py, which refuses
 # to publish anything carrying FORBIDDEN_COLS.
+
+# ---- research material (not needed to run the pipeline) -------------------
+research/
+# generated proposals from the keyword auditor (review, then apply)
+data/reference/keyword_suggestions/
+data/reference/subreddit_panel.json
+# per-copy settings overrides (pipeline controls etc.)
+config/settings.local.csv

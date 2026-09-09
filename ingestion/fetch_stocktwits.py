@@ -1,24 +1,26 @@
-# fetch_stocktwits.py
-# ===================
-# Pulls the ~30 latest StockTwits messages for every symbol you track and
-# appends them RAW to data/raw/StockTwits/stocktwits_YYYY-MM-DD.jsonl.zst
-# (one JSON message per line, zstd-compressed - same immutable-raw
-# philosophy as the Reddit dumps). Run it on a schedule (e.g. hourly via
-# Task Scheduler / cron); duplicates across runs are fine, the normaliser
-# dedupes on message id ("first seen wins").
-#
-# NO API KEY NEEDED for these read-only streams. Be polite anyway:
-#   - unauthenticated limit is ~200 requests/hour per IP -> with the
-#     default symbol list (~40) an hourly run uses ~40 requests. Do NOT
-#     run it more than ~4x/hour with a big list.
-#   - a 429 response means STOP for the rest of the hour (the script does).
-#
-# The author's own Bullish/Bearish label is preserved in the raw lines -
-# that is the ground truth for calibrating our VADER sentiment (the
-# calibration itself is notebook 10).
-#
-# Run:  python ingestion/fetch_stocktwits.py
-#       (--symbols GME,NVDA,GLD  to override the default list)
+"""Append the latest StockTwits messages for every tracked symbol to raw.
+
+Pulls the ~30 newest messages per symbol from the public symbol streams
+and appends them raw to
+``data/raw/StockTwits/stocktwits_YYYY-MM-DD.jsonl.zst`` (one JSON message
+per line, zstd-compressed; the same immutable-raw approach as the Reddit
+dumps). Run it on a schedule; duplicates across runs are fine, because the
+normaliser dedupes on message id ("first seen wins").
+
+No API key is needed for these read-only streams, but the script stays
+polite: the unauthenticated limit is about 200 requests per hour per IP,
+so with the default symbol list (~40) an hourly run uses ~40 requests.
+Do not run it more than ~4x per hour with a big list. A 429 response ends
+the run early; the next scheduled run picks up the rest.
+
+The author's own Bullish/Bearish label is preserved in the raw lines; it
+is the ground truth for calibrating the rule-based sentiment score.
+
+Usage::
+
+    python ingestion/fetch_stocktwits.py
+    python ingestion/fetch_stocktwits.py --symbols GME,NVDA,GLD   # override the list
+"""
 
 import argparse
 import datetime
@@ -43,12 +45,13 @@ PAUSE_S = 1.5   # polite gap between requests
 
 
 def default_symbols():
-    """The theme anchor ETFs + a handful of the most retail-heavy names."""
+    """Return the theme anchor ETFs plus a core set of retail-heavy names."""
     core = {"GME", "AMC", "NVDA", "TSLA", "AAPL", "PLTR", "COIN", "MSTR", "SMCI"}
     return sorted(set(THEME_ETFS.values()) | core)
 
 
 def main():
+    """Fetch every symbol's stream and append the messages to today's file."""
     p = argparse.ArgumentParser(description="Append raw StockTwits messages")
     p.add_argument("--symbols", default=None,
                    help="comma-separated override, e.g. GME,NVDA,GLD")

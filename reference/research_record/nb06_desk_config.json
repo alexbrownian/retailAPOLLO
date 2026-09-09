@@ -1,0 +1,62 @@
+{
+ "adopted": {
+  "get_out": "CUT EXPOSURE boom-gated SMOOTHED (production)",
+  "get_in": "INCREASE EXPOSURE phase-aware SMOOTHED (production)"
+ },
+ "table": [
+  {
+   "variant": "CUT EXPOSURE boom-gated raw",
+   "captured": 26,
+   "detectable": 122,
+   "late": "-",
+   "FA": 41,
+   "AP": 0.435,
+   "adjacency": "-"
+  },
+  {
+   "variant": "CUT EXPOSURE boom-gated SMOOTHED (production)",
+   "captured": 24,
+   "detectable": 122,
+   "late": "-",
+   "FA": 39,
+   "AP": 0.449,
+   "adjacency": "-"
+  },
+  {
+   "variant": "INCREASE EXPOSURE baseline raw",
+   "captured": 29,
+   "detectable": 125,
+   "late": 21,
+   "FA": 169,
+   "AP": 0.098,
+   "adjacency": 20
+  },
+  {
+   "variant": "INCREASE EXPOSURE baseline smoothed",
+   "captured": 28,
+   "detectable": 125,
+   "late": 18,
+   "FA": 133,
+   "AP": 0.1,
+   "adjacency": 18
+  },
+  {
+   "variant": "INCREASE EXPOSURE phase-aware raw",
+   "captured": 24,
+   "detectable": 125,
+   "late": 12,
+   "FA": 166,
+   "AP": 0.084,
+   "adjacency": 8
+  },
+  {
+   "variant": "INCREASE EXPOSURE phase-aware SMOOTHED (production)",
+   "captured": 20,
+   "detectable": 125,
+   "late": 10,
+   "FA": 124,
+   "AP": 0.084,
+   "adjacency": 2
+  }
+ ]
+}

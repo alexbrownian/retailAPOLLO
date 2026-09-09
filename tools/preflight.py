@@ -2,35 +2,27 @@
 
     python tools/preflight.py
 
-Run it after editing a config, before a commit, and on any machine that
-has just pulled. It exits 0 when everything a maintainer could plausibly
-break is intact, 1 when something is FAILING, and prints WARNINGs for
-things that are merely owed.
+Run it after editing a config, before a commit, and on any copy that has
+just pulled. It exits 0 when everything a maintainer could plausibly
+break is intact, 1 when something is failing, and prints warnings for
+things that are merely owed (a price pull, a rebuild).
 
-WHY THIS EXISTS
----------------
 Most of what goes wrong in this project does not raise an exception. It
 degrades quietly, and the screen keeps looking fine:
 
 * a theme whose anchor lost its price history is silently drawn on a
-  fallback - `europe_defense` spent a week priced off a US aerospace ETF
-  standing in for a European one;
-* a renamed ticker counts zero forever - nine of them were dead before
-  the 2026-08-05 audit found them;
+  fallback instrument;
+* a renamed ticker counts zero forever;
 * the euphoria universe quietly holds fewer instruments than the config
   defines, because one theme has no priced line anywhere in its chain;
 * a config CSV edit that fails validation only shows up at the next full
   run, which may be days away.
 
-Every check below corresponds to something that actually happened. The
-point is to make the failure LOUD and EARLY rather than clever.
-
-WHAT IT DELIBERATELY DOES NOT DO
---------------------------------
-It never writes, never fetches, never calls the LLM gateway and never
-re-fits anything. It is safe to run at any time, including mid-pipeline.
+Each check in ``CHECKS`` targets one such failure mode and makes it loud
+and early. The script never writes, never fetches, never calls the LLM
+gateway and never re-fits anything, so it is safe to run at any time,
+including mid-pipeline.
 """
-
 from __future__ import annotations
 
 import os
@@ -45,6 +37,7 @@ _results: list[tuple[str, str, str]] = []
 
 
 def _say(level: str, check: str, detail: str = "") -> None:
+    """Record one result and print it."""
     _results.append((level, check, detail))
     mark = {FAIL: "FAIL", WARN: "WARN", OK: "ok  "}[level]
     print(f"  [{mark}] {check}" + (f" - {detail}" if detail else ""))
@@ -52,12 +45,21 @@ def _say(level: str, check: str, detail: str = "") -> None:
 
 # ---------------------------------------------------------------------------
 def check_configs() -> None:
-    """The CSVs load and validate.
+    """Every config CSV has the right columns and consistent references.
 
-    `src/themes.py` raises on a typo'd symbol or an unapproved anchor, so
-    importing it IS the check - that is why the loaders were written to
-    fail loudly rather than to skip bad rows."""
+    Runs the full rule set in ``tools/validate_config.py`` (schema,
+    settings types, forum panel, theme/instrument references, allow/stop
+    overlap, override actions, regex compilation), then reloads
+    ``src.themes`` so a bad symbol surfaces here rather than mid-run.
+    """
     try:
+        from tools.validate_config import validate
+        errors = validate()
+        if errors:
+            _say(FAIL, "config CSVs", f"{len(errors)} error(s): "
+                 + "; ".join(errors[:3])
+                 + (" ..." if len(errors) > 3 else ""))
+            return
         import importlib
         import src.themes as th
         importlib.reload(th)
@@ -69,12 +71,13 @@ def check_configs() -> None:
 
 
 def check_universe_matches_config() -> None:
-    """Does the scored universe hold what the config defines?
+    """Warn when a configured theme cannot be scored for lack of prices.
 
-    The 36-vs-37 case: a theme with no priced line anywhere in its chain
-    is counted in the crowd data and then dropped before scoring. The
-    two numbers disagreeing is the only symptom, and nothing printed it
-    until this check existed."""
+    A theme with no priced line anywhere in its anchor/fallback chain is
+    counted in the crowd data and then dropped before scoring. The
+    universe size disagreeing with the config is the only symptom, so
+    this check names the themes directly.
+    """
     try:
         import pandas as pd
         from src.themes import THEME_ETFS, THEME_ETF_FALLBACKS
@@ -103,8 +106,11 @@ def check_universe_matches_config() -> None:
 
 
 def check_anchor_substitutions() -> None:
-    """Is any theme being DRAWN on something other than the instrument it
-    names? Correct behaviour for an old window, wrong to leave unsaid."""
+    """Warn when a theme is drawn on a fallback rather than its named anchor.
+
+    Substitution is correct behaviour for a window the anchor does not
+    cover, but it should never go unsaid.
+    """
     try:
         import pandas as pd
         from src.themes import THEME_ETFS, THEME_ETF_FALLBACKS
@@ -130,8 +136,11 @@ def check_anchor_substitutions() -> None:
 
 
 def check_mapped_tickers_still_exist() -> None:
-    """A renamed ticker counts zero forever and raises nothing. Nine were
-    dead before the 2026-08-05 audit; this is what stops the tenth."""
+    """Warn about mapped tickers absent from the listed symbol directory.
+
+    A renamed or delisted ticker counts zero forever and raises nothing;
+    this check is what surfaces it.
+    """
     try:
         import csv
         from pathlib import Path
@@ -161,7 +170,7 @@ def check_mapped_tickers_still_exist() -> None:
 
 
 def check_stores() -> None:
-    """The files everything downstream reads."""
+    """Fail when any of the four core aggregate files is missing."""
     from src.config import PROCESSED_DIR
     need = ["daily_ticker_counts.parquet", "daily_theme_counts.parquet",
             "daily_ticker_sentiment.parquet", "daily_theme_sentiment.parquet"]
@@ -174,8 +183,10 @@ def check_stores() -> None:
 
 
 def check_no_dangling_paths() -> None:
-    """Cited files that are not there. See tools/verify_deps.py - and
-    note its own warning about partial clones."""
+    """Warn when ``tools/verify_deps.py`` finds cited files that are absent.
+
+    Note that tool's own caveat about partial clones.
+    """
     r = subprocess.run([sys.executable, "tools/verify_deps.py", "--quiet"],
                        cwd=ROOT, capture_output=True, text=True)
     if r.returncode == 0:
@@ -186,15 +197,16 @@ def check_no_dangling_paths() -> None:
 
 
 def check_frozen_constants() -> None:
-    """The values the walk-forward record was earned at. If one of these
+    """Warn when a frozen detector constant differs from the stored record.
+
+    These are the values the walk-forward record was earned at. If one
     has moved, the stored scorecards describe a different detector than
     the one now running, and every number on the dashboard is quoting a
-    record it no longer belongs to."""
+    record it no longer belongs to. Moving one is a re-validation event:
+    record and constants must move together.
+    """
     try:
         from src import config as C
-        # ground-truth bars updated 2026-08-07 (Class 14b sweep - the
-        # walk-forward record was RE-FROZEN under these values the same
-        # day, so record and constants moved together, as required)
         expect = {"EUPHORIA_HYPE_MULT": 2.0, "EUPHORIA_MIN_HISTORY": 180,
                   "EUPHORIA_ONSET_HYPE_MIN": 1.10,
                   "EUPHORIA_BOOM_MIN_ETF": 0.20,
@@ -218,8 +230,11 @@ def check_frozen_constants() -> None:
 
 
 def check_text_free_boundary() -> None:
-    """Committed aggregates must never contain crowd text. This is the
-    invariant that lets them be committed at all."""
+    """Fail when a committed aggregate carries a text or author column.
+
+    Committed aggregates must never contain crowd text; this is the
+    invariant that lets them be committed at all.
+    """
     try:
         import pandas as pd
         from src.config import PROCESSED_DIR
@@ -249,6 +264,11 @@ CHECKS = [check_configs, check_stores, check_universe_matches_config,
 
 
 def main() -> int:
+    """Run every check and summarise.
+
+    Returns:
+        ``1`` when any check failed, otherwise ``0``.
+    """
     print("PREFLIGHT - is this project still sound?\n")
     for fn in CHECKS:
         try:

@@ -1,12 +1,14 @@
-# test_fetchlayer.py
-# ==================
-# The simplest possible proof that your FetchLayer key pulls Reddit posts.
-# ZERO project dependencies (only `requests`), reads .env by hand (no
-# python-dotenv needed), makes EXACTLY ONE call (1 credit), writes nothing.
-#
-#   python ingestion/test_fetchlayer.py
-#
-# Every failure mode prints a plain-English diagnosis.
+"""Smallest possible check that a FetchLayer key pulls Reddit posts.
+
+Has no project dependencies (only ``requests``), reads ``.env`` by hand,
+makes exactly one call (one credit) and writes nothing::
+
+    python ingestion/test_fetchlayer.py
+
+Every failure mode (missing key, rejected key, no credits, unreachable
+host, changed endpoint) prints a plain-English diagnosis and returns a
+non-zero exit code.
+"""
 
 import json
 import os
@@ -25,6 +27,7 @@ URL = "https://fetchlayer.dev/api/reddit/community-posts"
 
 
 def read_key():
+    """Return the FetchLayer key from ``.env``, or ``None`` with a diagnosis."""
     env_path = os.path.join(ROOT, ".env")
     if not os.path.exists(env_path):
         print("FAIL: no .env file at", env_path)
@@ -41,6 +44,11 @@ def read_key():
 
 
 def main():
+    """Make the one test call and print what came back.
+
+    Returns:
+        ``0`` on success, ``1`` on any failure.
+    """
     key = read_key()
     if not key:
         return 1

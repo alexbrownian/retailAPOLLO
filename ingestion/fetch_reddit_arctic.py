@@ -1,39 +1,46 @@
-# fetch_reddit_arctic.py
-# ======================
-# LIVE Reddit ingestion via the Arctic Shift public API - the DEFAULT
-# Reddit source (FetchLayer stays for X; fetch_reddit_live.py remains as a
-# fallback). Why Arctic:
-#   * COMPLETE coverage: every post in every tracked subreddit, not a
-#     top-engagement sample
-#   * near-real-time: posts are archived within minutes of being written
-#   * free - no key, no credits (be polite: paced requests)
-#   * records are official/Pushshift shape, so the existing normaliser
-#     (src/reddit_live_data.py, "_backend": "official") handles them as-is
-#
-#   python ingestion/fetch_reddit_arctic.py                  # fetch_all calls this
-#   python ingestion/fetch_reddit_arctic.py --lookback-days 14
-#   python ingestion/fetch_reddit_arctic.py --test           # one page, writes nothing
-#   python ingestion/fetch_reddit_arctic.py --backfill 2023-04-01 2023-07-01
-#                                                          # fill a HISTORICAL gap
-#
-# OUTPUT: data/raw/RedditLive/reddit_live_arctic_<timestamp>.jsonl.zst
-#   one line per post, raw JSON + "_backend": "official". The same
-#   merge/fold machinery consumes it (merge_live.py / append_live_abstracted
-#   glob RedditLive/*.jsonl.zst) - dedup by id as always, so overlap with
-#   FetchLayer pulls or previous runs is harmless.
-# PERMANENCE: raw files accumulate forever (nothing is ever re-pulled) and
-#   the fold ledgers guarantee each post enters the pipeline exactly once.
-# SPEED - THE WATERMARK: Arctic Shift archives by CREATION TIME with
-#   complete coverage, so once a subreddit has been fetched through time T,
-#   posts created before T can never appear later - re-fetching them is
-#   pure waste. A per-subreddit watermark (newest created_utc seen, kept in
-#   data/reference/reddit_arctic_watermark.json) lets every run after the
-#   first fetch only what is NEW (minus a 1-day safety overlap for posts
-#   that reach the archive late). A watermark only advances when the sub's
-#   pagination COMPLETED - a run that gave up mid-sub re-covers the window
-#   next time. First run / --lookback-days farther back than the watermark:
-#   behaves exactly as before. Result: a daily run's Reddit pass drops from
-#   many minutes (full week, every sub, every page) to ~1 minute.
+"""Live Reddit ingestion via the Arctic Shift public API.
+
+This is the default Reddit source; FetchLayer stays for X, and
+``fetch_reddit_live.py`` remains as a manual fallback. Arctic Shift gives:
+
+* complete coverage: every post in every tracked subreddit, not a
+  top-engagement sample;
+* near-real-time archiving: posts are available within minutes of being
+  written;
+* no key and no credits (requests are paced to stay polite);
+* records in the official/Pushshift shape, so the existing normaliser
+  (``src/reddit_live_data.py``, ``"_backend": "official"``) handles them
+  as-is.
+
+Usage::
+
+    python ingestion/fetch_reddit_arctic.py                  # fetch_all calls this
+    python ingestion/fetch_reddit_arctic.py --lookback-days 14
+    python ingestion/fetch_reddit_arctic.py --test           # one page, writes nothing
+    python ingestion/fetch_reddit_arctic.py --backfill 2023-04-01 2023-07-01
+                                                           # fill a historical gap
+
+Output: ``data/raw/RedditLive/reddit_live_arctic_<timestamp>.jsonl.zst``,
+one line per post holding the raw JSON plus ``"_backend": "official"``.
+The same merge/fold machinery consumes it (``merge_live.py`` and
+``append_live_abstracted.py`` glob ``RedditLive/*.jsonl.zst``) and dedups
+by id, so overlap with FetchLayer pulls or previous runs is harmless. Raw
+files accumulate forever (nothing is ever re-pulled) and the fold ledgers
+guarantee each post enters the pipeline exactly once.
+
+The watermark: Arctic Shift archives by creation time with complete
+coverage, so once a subreddit has been fetched through time T, posts
+created before T can never appear later and re-fetching them is pure
+waste. A per-subreddit watermark (newest ``created_utc`` seen, kept in
+``data/reference/reddit_arctic_watermark.json``) lets every run after the
+first fetch only what is new, minus a one-day safety overlap for posts
+that reach the archive late. A watermark only advances when the
+subreddit's pagination completed; a run that gave up mid-subreddit
+re-covers the window next time. On the first run, or when
+``--lookback-days`` reaches farther back than the watermark, the full
+lookback window is fetched. A daily run's Reddit pass therefore takes
+about a minute instead of many minutes.
+"""
 
 import argparse
 import datetime
@@ -58,8 +65,7 @@ except Exception:
 OUT_DIR = os.path.join(PROJECT_ROOT, "data", "raw", "RedditLive")
 SEEN_FILE = os.path.join(PROJECT_ROOT, "data", "reference",
                          "reddit_arctic_seen.json")
-SUBS_FILE = os.path.join(PROJECT_ROOT, "ingestion",
-                         "finance_subreddits.txt")
+# Forum panel: config/forums.csv via src.settings.load_forums().
 WATERMARK_FILE = os.path.join(PROJECT_ROOT, "data", "reference",
                               "reddit_arctic_watermark.json")
 OVERLAP_S = 86400          # 1-day overlap behind the watermark (late arrivals)
@@ -69,8 +75,8 @@ PAUSE_S = 1.0
 MAX_SEEN = 50_000     # rolling window of recently-written ids
 
 # ---------------------------------------------------------------------
-# Fast mode (used by --backfill; the daily live path is unchanged).
-# Four request-level optimisations, each lossless:
+# Fast mode (the default for --backfill; the daily live path opts in
+# with --fast). Four request-level optimisations, each lossless:
 #   1. limit="auto": Arctic Shift returns 100-1000 rows per page
 #      depending on server capacity, versus a fixed 100.
 #   2. fields=: only the eight fields the pipeline reads are requested
@@ -102,16 +108,13 @@ SOFT_4XX_BACKOFF = (2, 5, 10)
 
 
 def read_subreddits():
-    subs = []
-    with open(SUBS_FILE, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#"):
-                subs.append(line)
-    return subs
+    """Return the enabled forums from ``config/forums.csv``, in file order."""
+    from src.settings import load_forums
+    return list(load_forums())
 
 
 def load_seen():
+    """Return the rolling list of recently written post ids (may be empty)."""
     if os.path.exists(SEEN_FILE):
         try:
             return list(json.load(open(SEEN_FILE, encoding="utf-8")))
@@ -121,6 +124,7 @@ def load_seen():
 
 
 def save_seen(seen_list):
+    """Atomically write the newest ``MAX_SEEN`` ids of ``seen_list``."""
     os.makedirs(os.path.dirname(SEEN_FILE), exist_ok=True)
     with open(SEEN_FILE + ".tmp", "w", encoding="utf-8") as f:
         json.dump(seen_list[-MAX_SEEN:], f)
@@ -128,6 +132,7 @@ def save_seen(seen_list):
 
 
 def load_watermarks():
+    """Return the per-subreddit watermark dict (subreddit -> epoch seconds)."""
     if os.path.exists(WATERMARK_FILE):
         try:
             return json.load(open(WATERMARK_FILE, encoding="utf-8"))
@@ -137,6 +142,7 @@ def load_watermarks():
 
 
 def save_watermarks(marks):
+    """Atomically write the per-subreddit watermark dict."""
     os.makedirs(os.path.dirname(WATERMARK_FILE), exist_ok=True)
     with open(WATERMARK_FILE + ".tmp", "w", encoding="utf-8") as f:
         json.dump(marks, f)
@@ -144,15 +150,30 @@ def save_watermarks(marks):
 
 
 class Stop(Exception):
-    """The server refused the REQUEST. Retrying cannot help."""
+    """The server refused the request itself; retrying cannot help."""
 
 
 def fetch_page(sub, after, before, retries=4, session=None, fast=False):
-    """One page. Returns rows, or None when the window was not covered.
+    """Fetch one page of posts for a subreddit.
 
-    Raises Stop on a 4xx that means the request itself is wrong - the
-    caller ends this subreddit cleanly instead of spending 200 seconds
-    re-asking a question the server has already rejected.
+    Args:
+        sub: Subreddit name.
+        after: Window start, ``YYYY-MM-DD`` or epoch seconds as a string.
+        before: Window end (exclusive), same formats.
+        retries: Attempts before giving up on transient failures.
+        session: Optional ``requests.Session`` to reuse connections.
+        fast: Use ``limit=auto``, minimal fields and header-driven pacing.
+
+    Returns:
+        The list of post records, which may be empty when the window is
+        genuinely empty; ``None`` when the window was not covered (retries
+        exhausted), so the caller must not advance its watermark.
+
+    Raises:
+        Stop: On a 4xx that means the request itself is wrong, so the
+            caller ends this subreddit cleanly instead of spending the
+            retry ladder re-asking a question the server has already
+            rejected.
     """
     get = (session or requests).get
     params = {"subreddit": sub, "after": after, "before": before,
@@ -195,7 +216,7 @@ def fetch_page(sub, after, before, retries=4, session=None, fast=False):
 
 
 def _pace(resp, fast):
-    """Sleep only when the SERVER says to, not on a fixed timer."""
+    """In fast mode, sleep only when the rate-limit headers say to."""
     if not fast:
         return
     try:
@@ -213,6 +234,11 @@ def _pace(resp, fast):
 
 
 def main():
+    """Fetch every configured subreddit and write one raw file.
+
+    Returns:
+        ``0`` on success, including when nothing new was found.
+    """
     p = argparse.ArgumentParser(description="Live Reddit via Arctic Shift.")
     p.add_argument("--lookback-days", type=int, default=7,
                    help="fetch posts from the last N days (overlap dedups)")
@@ -240,7 +266,7 @@ def main():
                    help="force the old one-page-at-a-time behaviour")
     p.add_argument("--subreddits", default="",
                    help="comma-separated subset to fetch instead of all of "
-                        "finance_subreddits.txt. Coverage measured on the "
+                        "config/forums.csv. Coverage measured on the "
                         "healthy 2026 window: wallstreetbets alone keeps "
                         "24%% of covered name-days, +valueinvesting+stocks "
                         "59%%, +dividends+bogleheads 76%%.")
@@ -259,7 +285,7 @@ def main():
         missing = want - {s.lower() for s in subs}
         subs = [s for s in subs if s.lower() in want]
         if missing:
-            print(f"NOTE: not in finance_subreddits.txt, fetching anyway: "
+            print(f"NOTE: not in config/forums.csv, fetching anyway: "
                   f"{sorted(missing)}")
             subs += sorted(missing)
         if not subs:
@@ -314,6 +340,11 @@ def main():
     before_epoch = _epoch(before)
 
     def do_sub(sub, session):
+        """Paginate one subreddit backwards through its window.
+
+        Returns the number of new posts written. Advances the watermark
+        only on a clean finish outside a backfill.
+        """
         # INCREMENTAL WINDOW: never before the requested lookback, but if a
         # watermark exists, start just behind it - everything older was
         # already fetched (Arctic archives by creation time, complete).
@@ -328,14 +359,12 @@ def main():
         completed = True                      # pagination reached the end?
         cursor = before_epoch
         while True:
-            # THE 422. The cursor walks BACKWARDS (each page's oldest post
-            # becomes the next page's `before`). Once it reaches the start
-            # of the window, `before` <= `after` - an empty, invalid range,
-            # which Arctic answers with 422. The old loop then treated that
-            # as a network fault and retried it four times over 200 seconds
-            # before declaring the subreddit "gave up", which is why chunks
-            # finished partial. It is not an error at all: it is the end of
-            # the window, and the right response is to stop.
+            # The cursor walks BACKWARDS (each page's oldest post becomes
+            # the next page's `before`). Once it reaches the start of the
+            # window, `before` <= `after` is an empty, invalid range that
+            # Arctic answers with 422. That is not a fault but the end of
+            # the window, so the loop stops here instead of sending the
+            # request and spending the retry ladder on it.
             if cursor <= after_epoch:
                 break
             try:
@@ -372,9 +401,9 @@ def main():
                     seen_list.append(pid)
                     writer.write((json.dumps(rec) + "\n").encode("utf-8"))
                     got += 1
-            # NO PROGRESS GUARD. If every row on a page shares the oldest
-            # timestamp, `oldest` never moves and the old loop would ask
-            # for the same page forever. Step one second past it.
+            # No-progress guard: if every row on a page shares the oldest
+            # timestamp, `oldest` never moves and the loop would ask for
+            # the same page forever. Step one second past it.
             nxt = oldest if oldest < cursor else cursor - 1
             if nxt >= cursor:
                 break

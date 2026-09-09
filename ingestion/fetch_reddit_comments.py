@@ -1,49 +1,51 @@
-# fetch_reddit_comments.py
-# ========================
-# COMMENT ingestion from the Arctic Shift public API - the data source for
-# the INFLUENCE TRACKER (per-author calls + the reply graph that maps who
-# responds to whom). Comments carry: author, body, created_utc, link_id
-# (the post they belong to) and parent_id (what they reply to) - the last
-# two are the edges of the social interaction graph.
-#
-#   python ingestion/fetch_reddit_comments.py            # live, derived window
-#   python ingestion/fetch_reddit_comments.py --lookback-days 30
-#   python ingestion/fetch_reddit_comments.py --max-pages 465    # budgeted
-#   python ingestion/fetch_reddit_comments.py --backfill 2021-01-01 2021-06-30
-#   python ingestion/fetch_reddit_comments.py --test                # one page
-#
-# PAGE BUDGET: update_data.py computes how many
-#   API pages a run may spend - the pipeline's ~10-minute ceiling MINUS what this
-#   machine measurably spends on everything else - and passes it here as
-#   --max-pages via fetch_all.py. The allowance is shared out across the
-#   panel in proportion to what each subreddit owes, BEFORE the first
-#   request, so two runs are comparable. Hitting a cap is a DEFERRAL: the
-#   watermark does not advance and the next run resumes on the same ground.
-#   Without --max-pages the crawl is unbudgeted (backfills, catch-ups).
-#   Arithmetic and rejected alternatives: src/pipeline_budget.py.
-#
-# DATA BOUNDARY: the raw comment
-#   files stay LOCAL (gitignored, like all raw text), but the influence
-#   STORE derived from them (calls/scores/edges - text-free, pseudonymous)
-#   is committed and shared. Raw text never crosses git; metadata does.
-#
-# SCOPE: comments run LIVE-FIRST - fetch_all
-#   calls this script on every live pass (watermarked, incremental), and
-#   the recommended one-off backfill is the CURRENT YEAR only. Deep
-#   multi-year comment history was descoped: at the API's polite rate
-#   (1s/page, 100/page) busy subreddits cost hours per half-year, and the
-#   influence tracker's value is who is right NOW.
-#
-# TIME PARAMETERS: after/before are normalised to EPOCH SECONDS before
-#   the first request and stay epoch for every page. (The first version
-#   sent page 1 with ISO dates and then paginated with an epoch cursor -
-#   mixed formats in one request drew HTTP 422s from the API. One format,
-#   chosen once, everywhere.)
-#
-# OUTPUT: data/raw/RedditComments/comments_<range>.jsonl.zst
-#   one raw JSON comment per line. Dedup by comment id via a rolling
-#   seen-file; a watermark per subreddit makes repeat live runs
-#   incremental exactly like the post fetcher.
+"""Reddit comment ingestion from the Arctic Shift public API.
+
+Comments are the data source for the influence tracker (per-author calls
+plus the reply graph that maps who responds to whom). Each comment carries
+``author``, ``body``, ``created_utc``, ``link_id`` (the post it belongs to)
+and ``parent_id`` (what it replies to); the last two are the edges of the
+social interaction graph.
+
+Usage::
+
+    python ingestion/fetch_reddit_comments.py            # live, derived window
+    python ingestion/fetch_reddit_comments.py --lookback-days 30
+    python ingestion/fetch_reddit_comments.py --max-pages 465    # budgeted
+    python ingestion/fetch_reddit_comments.py --backfill 2021-01-01 2021-06-30
+    python ingestion/fetch_reddit_comments.py --test                # one page
+
+Page budget: ``update_data.py`` computes how many API pages a run may
+spend (the pipeline's ~10-minute ceiling minus what this copy measurably
+spends on everything else) and passes it here as ``--max-pages`` via
+``fetch_all.py``. The allowance is shared out across the panel in
+proportion to what each subreddit owes, before the first request, so two
+runs are comparable. Hitting a cap is a deferral: the watermark does not
+advance and the next run resumes on the same ground. Without
+``--max-pages`` the crawl is unbudgeted (backfills, catch-ups). The
+arithmetic lives in ``src/pipeline_budget.py``.
+
+Data boundary: the raw comment files stay local (gitignored, like all raw
+text), but the influence store derived from them (calls, scores, edges;
+text-free and pseudonymous) is committed and shared. Raw text never
+crosses git; metadata does.
+
+Scope: comments run live-first. ``fetch_all`` calls this script on every
+live pass (watermarked, incremental), and the recommended one-off backfill
+is the current year only. At the API's polite rate (1s/page, 100/page)
+busy subreddits cost hours per half-year, and the influence tracker's
+value is who is right now.
+
+Time parameters: ``after``/``before`` are normalised to epoch seconds
+before the first request and stay epoch for every page. Mixing an ISO
+date with an epoch cursor in one request draws HTTP 422 from the API, so
+one format is chosen once and used everywhere.
+
+Output: ``data/raw/RedditComments/comments_<range>.jsonl.zst``, one raw
+JSON comment per line, reduced to the ``KEEP`` fields. Dedup is by comment
+id via a rolling seen-file; a per-subreddit watermark makes repeat live
+runs incremental exactly like the post fetcher. A single-instance lock
+prevents two crawls from interleaving zstd frames into one output file.
+"""
 
 import argparse
 import datetime
@@ -69,10 +71,9 @@ SEEN_FILE = os.path.join(PROJECT_ROOT, "data", "reference",
                          "reddit_comments_seen.json")
 WM_FILE = os.path.join(PROJECT_ROOT, "data", "reference",
                        "reddit_comments_watermark.json")
-SUBS_FILE = os.path.join(PROJECT_ROOT, "ingestion", "finance_subreddits.txt")
+# Forum panel: config/forums.csv via src.settings.load_forums().
 # single-instance guard - two crawls writing one output path interleave
-# their zstd frames and corrupt the file (July 2026: two overlapping
-# backfills destroyed a 35-hour pull that way)
+# their zstd frames and corrupt the file
 LOCK_FILE = os.path.join(PROJECT_ROOT, "data", "reference",
                          "reddit_comments_fetch.lock")
 API = "https://arctic-shift.photon-reddit.com/api/comments/search"
@@ -83,7 +84,7 @@ PAUSE_S = 1.0
 # page of already-seen ids in the middle of a live band (deletions,
 # edits, and the 1-day watermark overlap all produce short all-seen
 # runs); three in a row is the crowd being genuinely exhausted, not a
-# gap. Measured cost of not having it: ~95 wasted pages in one run.
+# gap. Without the stop a run can spend ~95 pages on nothing new.
 DRY_PAGES_STOP = 3
 MAX_SEEN = 200_000
 # the fields the influence tracker needs - dropping the rest keeps the raw
@@ -93,28 +94,25 @@ KEEP = ("id", "author", "body", "created_utc", "subreddit",
 
 
 class Pacer:
-    """Hold the crawl to ONE request per second - and no slower.
+    """Hold the crawl to one request per ``period_s`` seconds, and no slower.
 
-    THE BUG THIS FIXES.  The original loop slept a flat PAUSE_S *after* each
-    round-trip, so the true period was RTT + 1s and the crawl ran roughly
-    1.3-1.4x slower than the politeness contract actually permits.  Measured
-    over 6 requests: 360 ms of pure dead time per request, against 261 ms
-    once the sleep became a remainder.  That is ~28% of the crawl given away
-    for nothing.
-
-    THIS IS NOT A RATE INCREASE.  The request rate is unchanged at
-    COMMENT_RATE_PER_S; only the idle gap between the response arriving and
-    the next request leaving is removed.  Raising the rate itself, or
-    splitting the panel across parallel workers, would break the contract the
-    project accepted when it chose a free public API - see
-    src/pipeline_budget.py for that rejection in full.  Removing dead time is
-    the ONE legitimate speedup available, and this is it."""
+    The sleep is a remainder, not a flat pause after each round-trip: a
+    flat sleep makes the true period RTT + period and gives away roughly
+    a quarter of the crawl as dead time. The request rate itself is
+    unchanged at ``COMMENT_RATE_PER_S``; only the idle gap between the
+    response arriving and the next request leaving is removed. Raising the
+    rate, or splitting the panel across parallel workers, would break the
+    politeness contract of a free public API (``src/pipeline_budget.py``
+    explains the rejection), so removing dead time is the one legitimate
+    speedup.
+    """
 
     def __init__(self, period_s=PAUSE_S):
         self.period = float(period_s)
         self._next = 0.0
 
     def wait(self):
+        """Block until the next request slot, then reserve the one after it."""
         now = time.monotonic()
         if self._next and now < self._next:
             time.sleep(self._next - now)
@@ -122,19 +120,17 @@ class Pacer:
 
 
 def default_lookback_days() -> int:
-    """The live window, derived from the machine's measured run cadence.
+    """Return the live window in days, derived from the measured run cadence.
 
-        ceil(measured cadence) + LATE_ARRIVAL_DAYS
+    The window is ``ceil(measured cadence) + LATE_ARRIVAL_DAYS`` rather
+    than a typed-in constant, so it moves when the cadence moves: a copy
+    whose runs are spaced further apart reaches back further on its own
+    instead of quietly under-covering.
 
-    rather than a typed-in 3 or 7.  The window is a function of the run
-    cadence, so it moves when the cadence moves - a machine that got faster
-    (bigger allowance, longer cadence) reaches back further on its own,
-    instead of quietly under-covering until somebody notices and edits a
-    default.
-
-    Falls back to the old fixed 3d if the budget module cannot be imported,
-    so this file still runs standalone on a machine without the package on
-    its path.  Also read by the dashboard's comment-catch-up estimate."""
+    Falls back to a fixed 3 days if ``src.pipeline_budget`` cannot be
+    imported, so this file still runs standalone without the package on
+    its path. Also read by the dashboard's comment catch-up estimate.
+    """
     try:
         from src import pipeline_budget
         return int(pipeline_budget.live_lookback_days())
@@ -143,16 +139,13 @@ def default_lookback_days() -> int:
 
 
 def read_subreddits():
-    subs = []
-    with open(SUBS_FILE, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#"):
-                subs.append(line)
-    return subs
+    """Return the enabled forums from ``config/forums.csv``, in file order."""
+    from src.settings import load_forums
+    return list(load_forums())
 
 
 def _load(path):
+    """Read a JSON file, returning ``{}`` when absent or unreadable."""
     if os.path.exists(path):
         try:
             return json.load(open(path, encoding="utf-8"))
@@ -162,6 +155,7 @@ def _load(path):
 
 
 def _save(path, obj):
+    """Write ``obj`` as JSON atomically (write beside, then replace)."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path + ".tmp", "w", encoding="utf-8") as f:
         json.dump(obj, f)
@@ -169,9 +163,11 @@ def _save(path, obj):
 
 
 def _free_path(path: str) -> str:
-    """Never clobber an existing raw file. A re-run of the same date range
-    only writes ids the seen-file has not got, so the earlier file is still
-    wanted - the new one lands beside it as ..._2, ..._3."""
+    """Return ``path``, or a ``..._2``/``..._3`` sibling if it already exists.
+
+    A re-run of the same date range only writes ids the seen-file has not
+    got, so the earlier file is still wanted and must never be clobbered.
+    """
     if not os.path.exists(path):
         return path
     stem = path[:-len(".jsonl.zst")]
@@ -182,9 +178,12 @@ def _free_path(path: str) -> str:
 
 
 def _promote(tmp_path: str, out_path: str, tries: int = 5):
-    """Rename tmp -> final, retrying briefly. On Windows an indexer or
-    sync client can hold a just-written file open for a moment; the old
-    code took the first PermissionError as fatal and stranded the data."""
+    """Rename the temporary file to its final name, retrying briefly.
+
+    On Windows an indexer or sync client can hold a just-written file
+    open for a moment, so a ``PermissionError`` is retried with a growing
+    pause before it is treated as fatal.
+    """
     for i in range(tries):
         try:
             os.replace(tmp_path, out_path)
@@ -199,13 +198,14 @@ def _promote(tmp_path: str, out_path: str, tries: int = 5):
 
 
 def _pid_alive(pid: int) -> bool:
-    """Is that process still running?
+    """Return True when the process with ``pid`` is still running.
 
-    NEVER os.kill(pid, 0) on Windows: signal 0 is not a probe there -
-    it raises WinError 87 through a CPython path that surfaces as
-    SystemError, which sails PAST an except OSError and killed the
-    whole fetch the first time a stale lock existed (2026-08-28). On
-    Windows ask the kernel directly instead."""
+    On Windows the kernel is asked directly via ``OpenProcess`` /
+    ``GetExitCodeProcess``: ``os.kill(pid, 0)`` is not a probe there. It
+    raises WinError 87 through a CPython path that surfaces as
+    ``SystemError``, which is not caught by ``except OSError`` and would
+    kill the whole fetch whenever a stale lock exists.
+    """
     if pid <= 0:
         return False
     if os.name == "nt":
@@ -234,8 +234,17 @@ def _pid_alive(pid: int) -> bool:
 
 
 def acquire_lock(label: str):
-    """Take the single-instance lock, or explain who holds it and stop.
-    A lock whose PID is gone is stale (crashed run) and gets taken over."""
+    """Take the single-instance lock, or explain who holds it.
+
+    A lock whose PID is gone is stale (a crashed run) and is taken over.
+
+    Args:
+        label: Human-readable tag for this crawl, recorded in the lock.
+
+    Returns:
+        True when the lock was taken; False when another live crawl
+        holds it.
+    """
     os.makedirs(os.path.dirname(LOCK_FILE), exist_ok=True)
     held = _load(LOCK_FILE)
     if held and _pid_alive(int(held.get("pid", 0))):
@@ -255,6 +264,7 @@ def acquire_lock(label: str):
 
 
 def release_lock():
+    """Remove the single-instance lock file if present."""
     try:
         os.remove(LOCK_FILE)
     except OSError:
@@ -262,12 +272,20 @@ def release_lock():
 
 
 def to_epoch(v) -> int:
-    """One time format everywhere: YYYY-MM-DD (or any ISO date) -> epoch
-    seconds at UTC midnight; a value that is already all digits passes
-    through as-is. Called ONCE on the CLI bounds, so every request the
-    crawl makes - first page and every cursor page after it - uses the
-    same format. (Mixing 'after=2021-01-01' with an epoch 'before' cursor
-    is what earned the HTTP 422s in the first version.)"""
+    """Convert a date to epoch seconds, the one time format the crawl uses.
+
+    Called once on the CLI bounds, so every request the crawl makes (the
+    first page and every cursor page after it) uses the same format;
+    mixing an ISO ``after`` with an epoch ``before`` cursor draws HTTP 422
+    from the API.
+
+    Args:
+        v: ``YYYY-MM-DD`` (or any ISO date/datetime, naive values taken
+            as UTC), or a string of digits that is already epoch seconds.
+
+    Returns:
+        Epoch seconds as an int.
+    """
     s = str(v)
     if s.isdigit():
         return int(s)
@@ -278,12 +296,24 @@ def to_epoch(v) -> int:
 
 
 def fetch_page(sub, after, before, retries=4):
-    """One API page. Retry policy by FAILURE TYPE:
-    - 429 / 5xx / network drop: the server or the connection is having a
-      moment - waiting and retrying is the right move (20s, 40s, 60s...).
-    - other 4xx: OUR request is malformed - retrying the identical bad
-      request four times cannot help, so print the server's explanation
-      and stop immediately."""
+    """Fetch one API page of comments.
+
+    The retry policy depends on the failure type. A 429, a 5xx, a
+    "slow down" 422 or a network drop is transient, so the call waits and
+    retries (20s, 40s, 60s...). Any other 4xx means the request itself is
+    malformed; retrying the identical request cannot help, so the
+    server's explanation is printed and the call stops immediately.
+
+    Args:
+        sub: Subreddit name.
+        after: Window start in epoch seconds.
+        before: Window end in epoch seconds (exclusive).
+        retries: Attempts before giving up on transient failures.
+
+    Returns:
+        The list of comment records (possibly empty), or ``None`` when the
+        page could not be fetched.
+    """
     for attempt in range(retries):
         try:
             r = requests.get(API, params={"subreddit": sub,
@@ -293,14 +323,12 @@ def fetch_page(sub, after, before, retries=4):
                              timeout=(10, 60))
             if r.status_code == 200:
                 return r.json().get("data", [])
-            # A 422 is normally OUR fault (a malformed range) and must not
-            # be retried.  But this API also answers a too-fast crawl with
-            # 422 and the body {"error": "Timeout. Maybe slow down a bit"},
-            # which is a RATE LIMIT wearing a client-error status code.
-            # Observed in production: r/Bitcoin stopped at page 15 with that
-            # exact message and 1,254 comments were left behind for no
-            # reason.  The body is what separates the two cases, so the
-            # body is what decides.
+            # A 422 is normally a malformed range and must not be
+            # retried. But this API also answers a too-fast crawl with 422
+            # and the body {"error": "Timeout. Maybe slow down a bit"},
+            # which is a rate limit wearing a client-error status code.
+            # The body is what separates the two cases, so the body is
+            # what decides.
             _slow = (r.status_code == 422
                      and "slow down" in r.text.lower())
             if r.status_code == 429 or r.status_code >= 500 or _slow:
@@ -313,7 +341,7 @@ def fetch_page(sub, after, before, retries=4):
                 return None
         except requests.RequestException as e:
             print(f"    network problem ({type(e).__name__}) - retrying in "
-                  f"{20*(attempt+1)}s. (wifi/VPN drop? safe to Ctrl-C and "
+                  f"{20*(attempt+1)}s. (network drop? safe to Ctrl-C and "
                   "re-run later: the seen-file dedups everything already "
                   "saved)", flush=True)
         time.sleep(20 * (attempt + 1))
@@ -322,6 +350,13 @@ def fetch_page(sub, after, before, retries=4):
 
 
 def main():
+    """Crawl every configured subreddit and write one raw comment file.
+
+    Returns:
+        ``0`` on success, ``1`` when another crawl holds the lock, and
+        ``130`` when the crawl was interrupted or crashed after saving
+        what it had fetched.
+    """
     p = argparse.ArgumentParser(description="Arctic Shift comment ingestion "
                                             "(influence tracker source)")
     p.add_argument("--lookback-days", type=int, default=None,
@@ -498,26 +533,17 @@ def main():
                 # the front. Once the pages stop yielding anything the
                 # crawl has re-entered ground an earlier run already
                 # covered, and every further page is a full 100 rows of
-                # comments we already hold.
+                # comments already held. Left running, those dead pages
+                # come out of the same page budget that then defers busier
+                # subreddits, and because a capped run keeps its
+                # watermark, the next run starts in the same place and
+                # buys the same dead pages again.
                 #
-                # Nothing stopped it. Measured in production, ~95
-                # of the budgeted pages returned ZERO new comments -
-                # r/personalfinance burned 21, r/Daytrading 14,
-                # r/Bogleheads 10 - and those pages came out of the same
-                # ceiling that then deferred r/wallstreetbets.
-                #
-                # Worse, the run then reported "page budget reached" and
-                # left the watermark where it was, so the NEXT run started
-                # in the same place and re-fetched the same dead pages. A
-                # dry subreddit could never make progress; it just paid
-                # rent every run.
-                #
-                # `completed = True` here is deliberate and is the half
-                # that unsticks it. It is also safe: `sub_after` is
+                # Breaking here leaves `completed` True on purpose, so the
+                # watermark advances. That is safe: `sub_after` is
                 # `max(after, watermark - 1 day)`, so the crawl can never
                 # reach further back than a day before the watermark
-                # anyway. Refusing to advance buys no extra history - it
-                # only guarantees the same dead pages are bought again.
+                # anyway. Refusing to advance buys no extra history.
                 if got == last_got:
                     dry_pages += 1
                     if dry_pages >= DRY_PAGES_STOP:
@@ -537,9 +563,9 @@ def main():
                 if len(rows) < PAGE:
                     break
                 cursor = oldest               # epoch int, same as page 1
-                # NO sleep here: the Pacer above already spends whatever is
-                # left of the second before the NEXT request goes out. The
-                # old flat sleep here was the dead time - see Pacer.
+                # No sleep here: the Pacer above already spends whatever is
+                # left of the second before the NEXT request goes out; a
+                # flat sleep here would be dead time on top of the RTT.
             print(f"  r/{sub:<24} {got:>6} new comments "
                   f"({pages_used} page{'' if pages_used == 1 else 's'})",
                   flush=True)
@@ -573,9 +599,9 @@ def main():
         print("\ninterrupted - keeping the comments fetched so far",
               flush=True)
     except Exception as e:                    # noqa: BLE001 - see below
-        # ANY crash mid-crawl still promotes what was fetched. The old code
-        # let the exception escape before the rename, which left hours of
-        # good data in an orphaned .tmp the influence ingester cannot see.
+        # ANY crash mid-crawl still promotes what was fetched; an exception
+        # escaping before the rename would leave hours of good data in an
+        # orphaned .tmp the influence ingester cannot see.
         interrupted = True
         print(f"\ncrawl failed ({type(e).__name__}: {e}) - keeping the "
               f"comments fetched so far", flush=True)

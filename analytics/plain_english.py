@@ -48,7 +48,7 @@ import pandas as pd
 # THE GLOSSARY
 #
 # Keys are the names as STORED or as the research paper writes them.  Values
-# are what a PM would say.  Keep values lower-case and short enough to fit a
+# are what a reader would say.  Keep values lower-case and short enough to fit a
 # chart axis; the longer explanation belongs in DEFINITIONS below.
 # ---------------------------------------------------------------------------
 PLAIN: dict[str, str] = {
@@ -308,8 +308,8 @@ def glossary_md(keys: list[str] | None = None) -> str:
 # `Tricky-Doughnut-6429` (nut), `buffetite` and `Stitch426` (tit),
 # `BlownCamaro` (blow).  Masking an innocent handle is not a harmless error:
 # the whole point of keeping the un-offending part of a handle visible is that
-# a PM can tell two authors apart, and a wrongly-mangled name breaks that
-# while also looking careless in front of the desk.
+# a reader can tell two authors apart, and a wrongly-mangled name breaks
+# that while also looking careless.
 #
 # The split that fixes it follows from WHERE each word can legitimately occur:
 #
@@ -377,11 +377,11 @@ def glossary_md(keys: list[str] | None = None) -> str:
 # These lists are a CONVENTION (Class 3), not a learned or derived parameter.
 # There is no ground truth for "offensive" to fit against, so no amount of
 # bootstrapping would make them evidence-backed.  What IS evidence is the
-# measured behaviour, recorded in `docs/RESEARCH_RECORD.md`: how many of
+# measured behaviour, recorded in `reference/KEY_PARAMETERS.md`: how many of
 # the 12,528 real handles are masked, which stem fires each one, and the
 # residual errors named individually.  Under-masking is the deliberate
 # direction of the error: a missed handle is one embarrassing name on a board
-# the desk already knows is scraped from Reddit, while over-masking corrupts
+# every reader already knows is scraped from Reddit, while over-masking corrupts
 # identity for every reader of the leaderboard.
 # ---------------------------------------------------------------------------
 

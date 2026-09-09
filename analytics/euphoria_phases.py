@@ -1,45 +1,84 @@
-"""
-euphoria_phases.py
-==================
-Ground truth + feature bank for the euphoria PHASES study (July 2026):
-detect not just the END of retail euphoria (the existing top detector in
-analytics/euphoria.py) but also its START - the onset of a GME-scale
-rally - from the crowd alone.
+"""Euphoria phases: episode ground truth, onset features, tournament, and the GET IN / GET OUT pair.
 
-WHAT THIS MODULE OWNS
----------------------
-1. EPISODES - the price-defined ground truth. An episode is the full
-   boom-bust arc trough -> peak -> bust, built from the SAME peak
+This module extends the top detector in analytics/euphoria.py (which calls
+the END of retail euphoria) with the machinery to also call its START, and
+with the deployed two-sided signal the dashboard shows. It owns:
+
+1. EPISODES - the price-defined ground truth. An episode is one full
+   boom-bust arc (trough -> peak -> bust) built from the same peak
    definition the top detector is scored on (G1-G3 in euphoria.py), so
-   the two detectors share one notion of "a genuine euphoria event".
-2. The ONSET FEATURE BANK - six trailing, crowd-only candidate features
-   aimed at the LEFT side of an episode (the crowd arriving), evaluated
-   in notebook 02 with the full feature-importance battery.
+   both detectors share one notion of "a genuine euphoria event".
+   `find_episodes` / `episode_catalog`.
+2. The ONSET FEATURE BANK - trailing, crowd-only features aimed at the
+   left side of an episode (the crowd arriving). `compute_onset_features`,
+   `ONSET_FEATURES` (candidates), `ONSET_BANK` (the locked production
+   list).
 3. The LABELLED DAY FRAME - one row per (instrument, candidate day) with
-   features + onset/top labels, shared by notebooks 02 and 03 and by the
-   production detector, so research and dashboard can never drift apart.
+   every feature and the onset/late/top labels, shared by the research
+   tooling and the production detector so the two cannot drift.
+   `label_days`, `build_day_frame`.
+4. TOURNAMENT MACHINERY - the walk-forward model comparison every
+   detector in this project is judged by: `walk_forward_scores`,
+   `choose_threshold`, `run_tournament_entry`, the alert judges
+   (`classify_onset_alerts`, `classify_top_alerts`) and the alert
+   triggers (`alerts_from_scores`, `alerts_from_scores_shaped`).
+5. PRODUCTION - `rebuild_phase_files`, the pipeline stage that scores
+   today's data and writes every phase file the dashboard reads.
+6. The GET IN / GET OUT pair - the deployed signal family (rule-based
+   fallback in `desk_end_fit` / `desk_onset_fit` / `desk_candidacy`; the
+   learned families live in analytics/ml_detector.py).
+7. EPISODE COHERENCE - `episode_coherent_alerts`, the display-facing rule
+   that keeps a START from landing on top of an END.
 
-PROJECT DECISIONS (July 2026, recorded before any result was computed)
--------------------------------------------------------------------
+Inputs (all under PROCESSED_DIR unless stated):
+    prices.parquet (PRICES_PATH)             daily closes per symbol
+    theme/ticker counts and sentiment stores  via analytics.loaders
+    euphoria_onset_report.json               frozen onset threshold
+    euphoria_desk_report.json                frozen GET IN / GET OUT
+                                             cuts, re-arm levels, model
+                                             family, tournament table
+
+Outputs written by `rebuild_phase_files`:
+    episodes.parquet                  the episode catalog
+    euphoria_onset.parquet            crowd-only onset score + alerts
+    euphoria_desk.parquet             GET IN / GET OUT scores, alerts,
+                                      inflection marker, price-blind and
+                                      retail-flow columns
+    euphoria_desk_components.parquet  per-day feature readings for hover
+    desk_model_insight.json           logit weights + GBM permutation
+                                      importance of the live fit
+    readiness_alerts.json             names within 90% of a strict cut
+    euphoria_onset_report.json / euphoria_desk_report.json
+                                      rewritten on research passes only
+
+Scoring conventions (fixed before any result was computed):
+
 * ONSET HIT WINDOW: an onset alert is a HIT when it lands inside
-  [trough, min(trough + 45d, peak)]. The trough is the 120d low the boom
-  is measured from (G2), so "the start" is anchored to the same low the
-  peak definition already uses - no new fitted quantity. The window is
-  CAPPED AT THE PEAK: for fast rallies an uncapped +45d would let an
-  alert fired AFTER the top count as "caught the start".
+  [trough, min(trough + ONSET_WINDOW_DAYS, peak)]. The trough is the 120d
+  low the boom is measured from (G2), so "the start" is anchored to the
+  same low the peak definition already uses - no new fitted quantity. The
+  window is capped at the peak because, for fast rallies, an uncapped
+  +45d would let an alert fired AFTER the top count as "caught the start".
 * LATE is not FALSE: an onset alert inside (window end, peak] fired
-  during the rally but after its start. It is reported as LATE -
-  separately from hits AND from false alarms - because calling it a hit
-  inflates the onset claim and calling it false punishes an alert that
-  was inside a genuine episode. Only alerts outside the whole episode
-  count as false alarms.
-* CROWD-ONLY PREDICTION (unchanged hard rule): price never enters any
-  feature or alert below - price appears ONLY here, in the ground-truth
-  episode definition and the scoring.
+  during the rally but after its start. It is reported as LATE,
+  separately from hits and from false alarms: calling it a hit inflates
+  the onset claim, calling it false punishes an alert inside a genuine
+  episode. Only alerts outside the whole episode are false alarms.
+* CROWD-ONLY PREDICTION for the onset detector: price never enters any
+  onset feature or alert - it appears only in the episode definition and
+  the scoring. The GET IN / GET OUT pair is a separately labelled family
+  that is allowed two price features (see section 6 and ml_detector.py).
+* WALK-FORWARD BY YEAR: every threshold and every learned model is chosen
+  on full years strictly before the year it is scored on. Thresholds are
+  therefore stable within a year by construction, and a live run scoring
+  at a frozen threshold is the out-of-sample use the evaluation licenses.
 
 All feature rules are trailing (day t uses only data <= t) and are
-percentile ranks against the SAME instrument's own trailing history, for
-the same reasons as E1-E5 (fat tails -> ranks, coverage shifts -> shares).
+percentile ranks against the same instrument's own trailing history, for
+the same reasons as E1-E5 in euphoria.py: the underlying series are
+fat-tailed (ranks do not over-react where z-scores would) and coverage
+shifts over time (shares and own-history ranks are immune, raw counts are
+not).
 """
 
 from __future__ import annotations
@@ -50,6 +89,7 @@ import numpy as np
 import pandas as pd
 
 from src.config import (EUPHORIA_CRASH_MIN_ETF, EUPHORIA_CRASH_MIN_SINGLE,
+                        EUPHORIA_BOOM_LOOKBACK_D, EUPHORIA_CRASH_WINDOW_D,
                         EUPHORIA_MIN_HISTORY,
                         EUPHORIA_FA_BUDGET_PER_IY,
                         EUPHORIA_INFLECTION_ENABLED, EUPHORIA_INFLECTION_CUT_Q,
@@ -76,8 +116,11 @@ TOP_LEAD_DAYS = 30
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class Episode:
-    """One complete boom-bust arc for one instrument. Frozen: ground
-    truth is evidence, never something downstream code may edit."""
+    """One complete boom-bust arc for one instrument.
+
+    Frozen: ground truth is evidence, never something downstream code may
+    edit.
+    """
     name: str                      # theme name or ticker
     symbol: str                    # priced symbol behind it
     kind: str                      # "theme" | "single"
@@ -94,13 +137,27 @@ class Episode:
 def find_episodes(px: pd.Series, name: str, symbol: str,
                   kind: str, boom_min: float | None = None,
                   crash_min: float | None = None) -> list[Episode]:
-    """Extend each confirmed peak (the existing G1-G3 definition) into a
-    full episode by walking BACKWARD to its trough and FORWARD to its
-    bust. Nothing here is new ground truth - the trough is exactly the
-    'min close over the preceding 120d' that G2 already measures the
-    boom against, and the bust date is the first day G3's drawdown
-    condition is met. boom_min/crash_min: sweep overrides, config
-    defaults when None (see ground_truth_peaks)."""
+    """Extend each confirmed peak (G1-G3) into a full episode.
+
+    Walks BACKWARD from the peak to its trough and FORWARD to its bust.
+    Nothing here is new ground truth: the trough is exactly the "min
+    close over the preceding EUPHORIA_BOOM_LOOKBACK_D days" that G2
+    already measures the boom against, and the bust date is the first
+    day G3's drawdown condition is met.
+
+    Args:
+        px: Daily close series indexed by date (NaNs are dropped).
+        name: Theme name or ticker.
+        symbol: The priced symbol behind the instrument.
+        kind: "theme" or "single".
+        boom_min: Sweep override for the G2 boom bar; the config default
+            for `kind` when None (see ground_truth_peaks).
+        crash_min: Sweep override for the G3 crash bar; the config
+            default for `kind` when None.
+
+    Returns:
+        A list of Episode records, one per confirmed peak, in date order.
+    """
     if crash_min is None:
         crash_min = (EUPHORIA_CRASH_MIN_SINGLE if kind == "single"
                      else EUPHORIA_CRASH_MIN_ETF)
@@ -108,10 +165,10 @@ def find_episodes(px: pd.Series, name: str, symbol: str,
     episodes = []
     for peak in ground_truth_peaks(px, kind, boom_min=boom_min,
                                    crash_min=crash_min):
-        prior = px.loc[peak - pd.Timedelta(days=120):peak]
+        prior = px.loc[peak - pd.Timedelta(days=EUPHORIA_BOOM_LOOKBACK_D):peak]
         trough = prior.idxmin()
         peak_close = px.loc[peak]
-        after = px.loc[peak:peak + pd.Timedelta(days=90)]
+        after = px.loc[peak:peak + pd.Timedelta(days=EUPHORIA_CRASH_WINDOW_D)]
         drawdown = after / peak_close - 1.0
         busted = drawdown[drawdown <= -crash_min]
         episodes.append(Episode(
@@ -129,15 +186,30 @@ def find_episodes(px: pd.Series, name: str, symbol: str,
 
 def episode_catalog(series: list, pxmap: dict,
                     gt_override: dict | None = None) -> pd.DataFrame:
-    """Every episode for every instrument, as one flat table, with the
-    two detectability flags the report always shows side by side:
+    """Every episode for every instrument, as one flat table.
+
+    Two detectability flags are always reported side by side:
 
     onset_detectable : the coverage gate (A0) held on >= 1 day of the
-                       onset window - a start no crowd was measurable
-                       for stays in the "all" denominator but cannot
-                       honestly score a crowd detector;
-    top_detectable   : same flag over [peak-30d, peak] (the existing
-                       definition in euphoria.peak_maps)."""
+                       onset window. A start no crowd was measurable for
+                       stays in the "all" denominator but cannot honestly
+                       score a crowd detector.
+    top_detectable   : the same flag over [peak-30d, peak] (the
+                       definition in euphoria.peak_maps).
+
+    Args:
+        series: EuphoriaSeries objects, one per instrument.
+        pxmap: symbol -> daily close series.
+        gt_override: Optional ground-truth overrides keyed
+            "boom_<kind>" / "crash_<kind>" (used by the ground-truth
+            sweep); config defaults when absent.
+
+    Returns:
+        A DataFrame with one row per episode (columns name, symbol, kind,
+        trough, peak, bust_date, boom_pct, bust_pct, run_days, onset_lo,
+        onset_hi, year, onset_detectable, top_detectable), sorted by
+        peak then name.
+    """
     gt = gt_override or {}
     rows = []
     for es in series:
@@ -185,22 +257,26 @@ def episode_catalog(series: list, pxmap: dict,
 ONSET_FEATURES = ["attention_accel", "hype_ratio", "bull_inflection",
                   "influx_speed", "attention_convexity", "source_breadth"]
 
-# The LOCKED production bank (notebook 02's verdict): source_breadth is
-# EXCLUDED - its apparent skill was a coverage-regime artifact (X and
-# StockTwits exist in the archive only from 2026, so "breadth" mostly
-# encoded "which year is it"). Notebooks 03/04 and the live detector all
-# import THIS list - research and production cannot drift.
+# The LOCKED production bank (feature battery:
+# reference/research_record/nb02_feature_stats.json): source_breadth is
+# EXCLUDED because its apparent skill was a coverage-regime artifact - X
+# and StockTwits exist in the archive only from 2026, so "breadth" mostly
+# encoded "which year is it". The research tooling and the live detector
+# all import THIS list, so research and production cannot drift.
 ONSET_BANK = ["attention_accel", "hype_ratio", "bull_inflection",
               "influx_speed", "attention_convexity"]
 
-# The incumbent bank, for side-by-side evaluation in the notebooks.
+# The top detector's bank (the rule-based baseline), for side-by-side
+# evaluation.
 TOP_FEATURES = ["e1", "e2", "e3", "e5", "fade"]
 
 
 def _source_breadth(name: str, all_days: pd.DatetimeIndex) -> pd.Series | None:
-    """O6: count of distinct sources mentioning the name in the trailing
-    7d. Only tickers have a by-source aggregate; for themes this returns
-    None and the feature is simply absent (the frame builder drops it)."""
+    """O6: count of distinct sources mentioning the name in the trailing 7d.
+
+    Only tickers have a by-source aggregate; for themes this returns None
+    and the feature is simply absent (the frame builder drops it).
+    """
     by_src = load(TICKER_COUNTS_BY_SOURCE)
     if by_src is None or "source" not in by_src.columns:
         return None
@@ -218,9 +294,25 @@ def compute_onset_features(name: str, counts_long: pd.DataFrame,
                            with_breadth: bool = True,
                            by_source: pd.DataFrame | None = None
                            ) -> pd.DataFrame:
-    """The onset feature bank for one instrument - crowd aggregates ONLY
-    (no price argument exists, by design; enforced by a unit test).
-    Returns a daily DataFrame with one column per available feature."""
+    """The onset feature bank for one instrument, from crowd aggregates only.
+
+    No price argument exists, by design; a unit test enforces this.
+
+    Args:
+        name: Theme name or ticker.
+        counts_long: Long-form mention counts (date, entity, mention_count).
+        sent_long: Long-form scored sentiment (date, entity, n_posts,
+            net_bullish).
+        entity_col: "theme" or "ticker" - the entity column in both frames.
+        with_breadth: Also compute source_breadth (tickers only).
+        by_source: Optional per-source ticker counts for the stratified
+            mention share.
+
+    Returns:
+        A daily DataFrame with one column per available feature, plus
+        `hype_raw` (the un-ranked hype ratio used by the onset
+        prerequisite gate; not a bank feature).
+    """
     all_days = pd.date_range(counts_long["date"].min(),
                              counts_long["date"].max(), freq="D")
     share, m7 = _mention_share(counts_long, entity_col, name, all_days,
@@ -239,12 +331,9 @@ def compute_onset_features(name: str, counts_long: pd.DataFrame,
     # O3: the mood turning up - 14d change of the 14d net-bullish share
     one = sent_long[sent_long[entity_col] == name]
     n = one.groupby("date")["n_posts"].sum().reindex(all_days).fillna(0.0)
-    # Vectorised: previously a `groupby("date").apply(lambda ...)`
-    # which, on the 306k-row sentiment store, cost 482 ms PER INSTRUMENT
-    # against 2 ms for the line below - the same arithmetic, done once per
-    # group in Python instead of once in C. Across 59 instruments and two
-    # callers that was ~84 s of pure interpreter overhead in every full
-    # analytics run. Verified `.equals()` identical before the swap.
+    # Vectorised weighted sum: a `groupby("date").apply(lambda ...)` does
+    # the same arithmetic once per group in Python (~500 ms per instrument
+    # on a 300k-row sentiment store) instead of once in C (~2 ms).
     nb = ((one["n_posts"] * one["net_bullish"]).groupby(one["date"]).sum()
           .reindex(all_days).fillna(0.0))
     share14 = (nb.rolling(14, min_periods=7).sum()
@@ -274,16 +363,25 @@ def compute_onset_features(name: str, counts_long: pd.DataFrame,
 
 
 # ---------------------------------------------------------------------------
-# 3. THE LABELLED DAY FRAME - the one table notebooks 02/03 both stand on
+# 3. THE LABELLED DAY FRAME - the one table research and production share
 # ---------------------------------------------------------------------------
 def label_days(index: pd.DatetimeIndex, episodes: pd.DataFrame,
                name: str) -> pd.DataFrame:
-    """Three {0,1} labels for every day of one instrument's series:
+    """Three {0,1} labels for every day of one instrument's series.
 
     y_onset : day inside an episode's onset window [trough, capped end]
     y_late  : day inside (onset end, peak] - in the rally, past its start
-    y_top   : day inside [peak - TOP_LEAD_DAYS, peak + 1d] - the existing
-              aim window of the top detector
+    y_top   : day inside [peak - TOP_LEAD_DAYS, peak + 1d] - the aim
+              window of the top detector
+
+    Args:
+        index: The instrument's daily date index.
+        episodes: The episode catalog (episode_catalog output).
+        name: The instrument to label.
+
+    Returns:
+        A DataFrame indexed like `index` with columns y_onset, y_late,
+        y_top.
     """
     eps = episodes[episodes["name"] == name]
     y_onset = pd.Series(0, index=index)
@@ -303,16 +401,30 @@ def build_day_frame(series: list, pxmap: dict,
                     episodes: pd.DataFrame,
                     counts: dict, sents: dict,
                     clip_judgeable: bool = True) -> pd.DataFrame:
-    """One row per (instrument, candidate day): every onset feature, every
-    incumbent feature, and the three labels. Candidate days are the days
-    the detector is even allowed to speak on - coverage gate satisfied
-    AND inside the judgeable price window (an unjudgeable label is
-    missing data, not truth). counts/sents map entity_col -> long frame,
-    e.g. {"theme": theme_counts, "ticker": tick_counts}.
+    """One row per (instrument, candidate day) with features and labels.
 
-    clip_judgeable=False keeps the most recent ~45 days (whose labels
-    cannot be judged yet - alerts there are PENDING, not false): research
-    must clip them, but the LIVE dashboard must score them."""
+    Each row carries every onset feature, every top-detector feature, the
+    un-gated sentiment ingredients, and the three labels. Candidate days
+    are the days the detector is allowed to speak on: coverage gate
+    satisfied AND inside the judgeable price window (an unjudgeable label
+    is missing data, not truth).
+
+    Args:
+        series: EuphoriaSeries objects, one per instrument.
+        pxmap: symbol -> daily close series.
+        episodes: The episode catalog.
+        counts: entity_col -> long-form counts frame, e.g.
+            {"theme": theme_counts, "ticker": tick_counts}.
+        sents: entity_col -> long-form sentiment frame, same keys.
+        clip_judgeable: When False, keep the most recent ~45 days, whose
+            labels cannot be judged yet. Alerts there are PENDING, not
+            false: research must clip them, the live dashboard must
+            score them.
+
+    Returns:
+        A DataFrame with columns date, name, kind, year, hype_ok, every
+        feature, and the labels; empty if no instrument yields rows.
+    """
     by_src = load(TICKER_COUNTS_BY_SOURCE)
     if by_src is not None:
         by_src = by_src.assign(date=pd.to_datetime(by_src["date"]))
@@ -356,19 +468,31 @@ def build_day_frame(series: list, pxmap: dict,
 
 
 # ---------------------------------------------------------------------------
-# 4. TOURNAMENT MACHINERY - walk-forward model comparison (notebook 03),
-#    written here so the production detector runs the WINNING code path,
-#    not a re-implementation of it.
+# 4. TOURNAMENT MACHINERY - the walk-forward model comparison, written
+#    here so the production detector runs the WINNING code path, not a
+#    re-implementation of it.
 # ---------------------------------------------------------------------------
 from src.config import EUPHORIA_COOLDOWN_DAYS  # noqa: E402  (single source)
 
 
 def alerts_from_scores(dates: list, scores: list, threshold: float,
                        cooldown: int = EUPHORIA_COOLDOWN_DAYS) -> list:
-    """Scores -> sparse alert dates: fire on score >= threshold, then
-    apply the standard cooldown (same rule as the top detector's A4).
-    Only the threshold crossings are scanned (the cooldown pass is
-    inherently sequential, but crossings are rare by construction)."""
+    """Scores -> sparse alert dates.
+
+    Fires on score >= threshold, then applies the standard cooldown (the
+    same rule as the top detector's A4). Only the threshold crossings are
+    scanned: the cooldown pass is inherently sequential, but crossings
+    are rare by construction.
+
+    Args:
+        dates: Dates aligned with `scores`, in chronological order.
+        scores: Score per date.
+        threshold: Fire when score >= threshold.
+        cooldown: Minimum days between two alerts for one name.
+
+    Returns:
+        The alert dates, in order.
+    """
     s = np.asarray(scores, dtype=float)
     alerts, last = [], None
     for i in np.flatnonzero(s >= threshold):
@@ -382,22 +506,35 @@ def alerts_from_scores(dates: list, scores: list, threshold: float,
 def alerts_from_scores_shaped(dates: list, scores: list, gate,
                               threshold: float, rearm: float,
                               spacing: int) -> list:
-    """The SHAPED trigger (shaped trigger; evidence
-    docs/research/alert_shape_sweep.json - "one clear call per boom"):
+    """The SHAPED trigger: one clear call per boom.
 
-    * fire only on an UPWARD CROSSING of the cut, and only on days the
+    Evidence: reference/research_record/alert_shape_sweep.json.
+
+    * Fire only on an UPWARD CROSSING of the cut, and only on days the
       PHASE GATE allows (GET OUT: the name has already boomed by the
-      ground truth's own 120d bar; GET IN: it has not);
-    * after a fire, the score must drop below the RE-ARM level before
-      it may fire again (GET OUT re-arms at the cut; GET IN re-arms at
-      the train-median score - the crowd must fully cool);
-    * one call per name per `spacing` days (63 - one per quarter).
+      ground truth's own 120d bar; GET IN: it has not).
+    * After a fire, the score must drop below the RE-ARM level before it
+      may fire again (GET OUT re-arms at the cut; GET IN re-arms at the
+      train-median score - the crowd must fully cool).
+    * One call per name per `spacing` days (63 - one per quarter).
 
-    Walk-forward, this took GET OUT from 305 calls / 1.6-per-boom to
-    130 calls / 1.2-per-boom at precision 0.36 -> 0.53, and made
-    IN-vs-OUT adjacency structurally impossible outside the bar-crossing
-    moment (the display layer then drops the few INs that remain within
-    21d of an OUT)."""
+    Walk-forward, this took GET OUT from 305 calls / 1.6 per boom to 130
+    calls / 1.2 per boom at precision 0.36 -> 0.53, and made IN-vs-OUT
+    adjacency structurally impossible outside the bar-crossing moment
+    (the display layer then drops the few INs that remain within 21d of
+    an OUT).
+
+    Args:
+        dates: Dates aligned with `scores`, in chronological order.
+        scores: Score per date.
+        gate: Boolean per date; a fire is allowed only where True.
+        threshold: The cut.
+        rearm: The score must fall below this before the next fire.
+        spacing: Minimum days between two fires for one name.
+
+    Returns:
+        The alert dates, in order.
+    """
     s = np.asarray(scores, dtype=float)
     g = np.asarray(gate, dtype=bool)
     alerts, last, armed = [], None, True
@@ -414,8 +551,10 @@ def alerts_from_scores_shaped(dates: list, scores: list, gate,
 
 
 def boomed120_frame(series, pxmap) -> pd.DataFrame:
-    """name/date/boomed120 (+ boomed120_stable): run-up vs the trailing
-    120d low >= the G2 boom bar (20% themes / 40% singles) - the
+    """The 120d boom phase gate, raw and display-stabilised.
+
+    Returns name/date/boomed120 (+ boomed120_stable): run-up vs the
+    trailing 120d low >= the G2 boom bar (20% themes / 40% singles) - the
     EPISODE DEFINITION's own boom test, reused as the alert phase gate
     (no new constant). A top may only be called after a boom as the
     ground truth defines booms; a start only before the boom has
@@ -424,35 +563,39 @@ def boomed120_frame(series, pxmap) -> pd.DataFrame:
     boomed120 is the MODEL's gate and never changes: every frozen
     threshold was calibrated against it.
 
-    boomed120_stable is a DISPLAY-ONLY twin (added 2026-09-01, defect
-    "why does it go from cut exposure one day to increase the next").
-    The raw gate is an instantaneous test against a hard bar, so a name
-    parked near it flips sides on ordinary noise - measured over the
-    last 12 months, 96% of side flips happened within 5pp of the bar
-    and URA alone flipped 25 times (median run 3 days: 19.9% -> 23.8%
-    -> 15.5% -> 20.5%). Two standard cures, applied in order:
+    boomed120_stable is a DISPLAY-ONLY twin. The raw gate is an
+    instantaneous test against a hard bar, so a name parked near it
+    flips sides on ordinary noise: measured over 12 months of the live
+    store, 96% of side flips happened within 5pp of the bar and one name
+    (URA) flipped 25 times with a median run of 3 days. Two standard
+    cures, applied in order:
 
-      * HYSTERESIS (Schmitt trigger): enter the run-up state at the
-        bar, leave it only once the run-up decays to bar - 5pp. A name
-        must genuinely give back a fifth of the move to be treated as
+      * HYSTERESIS (Schmitt trigger): enter the run-up state at the bar,
+        leave it only once the run-up decays to bar - 5pp. A name must
+        genuinely give back part of the move to be treated as
         no-longer-run-up, instead of jittering on a rounding error.
       * DEBOUNCE, ASYMMETRIC: leaving the run-up state is accepted only
-        after 3 consecutive days, which removes the residue. ENTERING
-        is immediate and deliberately un-debounced - a real breakout
-        must register at once, and delaying it put 14 of the store's
-        124 CUT calls on a day the display still called teal, which is
-        precisely the "red marker on a teal band" contradiction this
-        project has already fixed once. Asymmetric costs nothing: 89
-        flips a year against 88 for the symmetric version.
+        after 3 consecutive days, which removes the residue. ENTERING is
+        immediate and deliberately un-debounced: a real breakout must
+        register at once, and delaying it put 14 of the store's 124 GET
+        OUT calls on a day the display still showed as pre-boom (a red
+        marker on a teal band). The asymmetry costs nothing: 89 flips a
+        year against 88 for the symmetric version.
 
     Measured on the live store: flips 201 -> 89 a year (-56%), median
     time on a side 8 -> ~48 days, and runs shorter than 3 days go from
-    19% of all runs to ZERO. Critically it is SIGNAL-NEUTRAL: replayed
-    against every CUT EXPOSURE call in the store, all 124 survive on a
-    displayed-red day and no new day becomes gate-eligible - fires
-    happen deep inside a run-up, never at the knife edge - so nothing
-    about the model's calls changes, only which side the desk is shown
-    watching.
+    19% of all runs to zero. It is SIGNAL-NEUTRAL: replayed against every
+    GET OUT call in the store, all 124 survive on a displayed-boomed day
+    and no new day becomes gate-eligible (fires happen deep inside a
+    run-up, never at the knife edge), so nothing about the model's calls
+    changes - only which side of the bar is displayed.
+
+    Args:
+        series: EuphoriaSeries objects, one per instrument.
+        pxmap: symbol -> daily close series.
+
+    Returns:
+        A DataFrame with columns name, date, boomed120, boomed120_stable.
     """
     from src.config import (EUPHORIA_BOOM_MIN_ETF,
                             EUPHORIA_BOOM_MIN_SINGLE)
@@ -497,18 +640,18 @@ def boomed120_frame(series, pxmap) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# INFLECTION — the reversal context marker
+# INFLECTION - the reversal context marker
 # ---------------------------------------------------------------------------
-# Prototyped in notebook 08, trigger swept in
-# docs/research/inflection_trigger_sweep.json, constants and the reason it is a
-# CONTEXT MARKER rather than a call are in src/config.py.
+# Trigger swept in reference/research_record/inflection_trigger_sweep.json;
+# the constants, and the reason it is a CONTEXT MARKER rather than a call,
+# are in src/config.py.
 #
 # The four features below were the only price-free additions that
-# improved anything in notebook 08. They are used by the INFLECTION head ONLY.
-# GET IN and GET OUT keep the shipped bank untouched: changing their
-# inputs is a separate adoption that needs its own research re-freeze,
-# and bundling it into this change would make the inflection head impossible
-# to evaluate against the record it is joining.
+# improved the inflection head (reference/research_record/nb08_inflection.json).
+# They are used by the INFLECTION head ONLY. GET IN and GET OUT keep the
+# shipped bank untouched: changing their inputs is a separate adoption
+# that needs its own research re-freeze, and bundling it here would make
+# the inflection head impossible to evaluate against the record it joins.
 INFLECTION_EXTRA_FEATURES = ["att_vol_21", "bull_dispersion", "att_x_mood",
                        "breadth_chg"]
 
@@ -521,6 +664,14 @@ def inflection_features(df: pd.DataFrame) -> pd.DataFrame:
     att_x_mood      the interaction; loud-and-bullish differs from
                     loud-and-bearish and two additive terms cannot say so
     breadth_chg     change in how many sources carry the name
+
+    Args:
+        df: A day frame with name, date, hype_raw, bull_level, e1 and
+            optionally source_breadth.
+
+    Returns:
+        A copy of `df` (original row order) with the four columns added,
+        NaNs filled with 0.
     """
     d = df.sort_values(["name", "date"]).copy()
     g = d.groupby("name", sort=False)
@@ -540,20 +691,31 @@ def inflection_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def inflection_label_frame(series: list, pxmap: dict) -> pd.DataFrame:
-    """name/date/y_inflection — is a real reversal about to land?
+    """name/date/y_inflection - is a real reversal about to land?
 
     A day is an EXTREMUM when its close is the max (or min) of the
-    +/- TURN_WIN_D window AND the excess move away from it over the next
-    TURN_HORIZON_D is at least TURN_MIN_MOVE. The second test is what
-    separates a reversal from a flat drift that happens to contain a
-    local maximum - without it the label is noise.
+    +/- EUPHORIA_INFLECTION_WIN_D window AND the excess move away from it
+    over the next EUPHORIA_INFLECTION_HORIZON_D days is at least
+    EUPHORIA_INFLECTION_MIN_MOVE. The second test is what separates a
+    reversal from a flat drift that happens to contain a local maximum -
+    without it the label is noise.
 
     Excess, not raw: a raw forward move is contaminated by whatever the
-    whole market did that month, the same control the desk adopted after
-    the max-performance work in August.
+    whole market did that month. The excess is the name's forward return
+    minus the cross-sectional median of the tracked universe on the same
+    day - the same date-matched control used by the max-performance
+    evaluation (reference/research_record/max_performance.json).
 
-    y_inflection(t) = 1 when such a day falls in (t, t + TURN_LOOKAHEAD_D],
-    so a signal on day t is allowed to be early rather than exact.
+    y_inflection(t) = 1 when such a day falls in
+    (t, t + EUPHORIA_INFLECTION_LOOKAHEAD_D], so a signal on day t is
+    allowed to be early rather than exact.
+
+    Args:
+        series: EuphoriaSeries objects, one per instrument.
+        pxmap: symbol -> daily close series.
+
+    Returns:
+        A DataFrame with columns name, date, y_inflection (int 0/1).
     """
     from src.config import (EUPHORIA_INFLECTION_WIN_D, EUPHORIA_INFLECTION_MIN_MOVE,
                             EUPHORIA_INFLECTION_LOOKAHEAD_D,
@@ -586,21 +748,27 @@ def inflection_label_frame(series: list, pxmap: dict) -> pd.DataFrame:
 
 
 def inflection_alerts(dates, scores, threshold, rearm, spacing):
-    """Upward crossings of `threshold`, re-armed below `rearm`, at most
-    one per `spacing` days. NO PHASE GATE, deliberately: a reversal is
+    """Inflection alert dates: shaped trigger with no phase gate.
+
+    Upward crossings of `threshold`, re-armed below `rearm`, at most one
+    per `spacing` days. NO PHASE GATE, deliberately: a reversal is
     exactly as interesting at the bottom of a bust as at the top of a
     boom, so the gates that gave GET IN and GET OUT their shape would
-    throw away half of what this head exists to see."""
+    throw away half of what this head exists to see.
+    """
     gate = [True] * len(dates)
     return alerts_from_scores_shaped(list(dates), list(scores), gate,
                                      threshold, rearm, spacing)
 
 
 def _day_ints(x) -> np.ndarray:
-    """Timestamps -> integer day numbers. Every judging comparison below
-    runs in int64 day-space: the cooldown/tally sweep is called thousands
-    of times per tournament, and Timestamp arithmetic in a Python loop is
-    ~50x slower than integer arithmetic."""
+    """Timestamps -> integer day numbers.
+
+    Every judging comparison below runs in int64 day-space: the
+    cooldown/tally sweep is called thousands of times per tournament, and
+    Timestamp arithmetic in a Python loop is ~50x slower than integer
+    arithmetic.
+    """
     return (pd.DatetimeIndex(x).values.astype("datetime64[D]")
             .astype(np.int64))
 
@@ -614,14 +782,23 @@ def _eps_arrays(eps: pd.DataFrame) -> dict:
 
 
 def classify_onset_alerts(alert_days: np.ndarray, ea: dict) -> dict:
-    """Judge one instrument's onset alerts (int days) against its
-    episodes (int-day arrays from _eps_arrays).
+    """Judge one instrument's onset alerts against its episodes.
 
     HIT  : alert inside [onset_lo, onset_hi] (each episode captured once);
     LATE : alert inside (onset_hi, peak] - in the rally, past its start;
     FA   : everything else.
     Leads are recorded both ways: days after the trough, days before the
-    peak."""
+    peak.
+
+    Args:
+        alert_days: Alert dates as int day numbers (see _day_ints).
+        ea: The instrument's episodes as int-day arrays (_eps_arrays).
+
+    Returns:
+        A dict with keys captured (set of peak day ints), late (list),
+        fa (list) and leads (list of dicts with peak, after_trough,
+        before_peak).
+    """
     captured, late, fa, leads = set(), [], [], []
     for a in alert_days:
         hit = np.flatnonzero((ea["lo"] <= a) & (a <= ea["hi"]))
@@ -642,9 +819,19 @@ def classify_onset_alerts(alert_days: np.ndarray, ea: dict) -> dict:
 
 
 def classify_top_alerts(alert_days: np.ndarray, ea: dict) -> dict:
-    """Judge one instrument's top alerts - the existing aim, unchanged:
+    """Judge one instrument's top alerts against its episodes.
+
     HIT = alert inside [peak-30d, peak+1d]; FA = no episode peak within
-    [alert, alert+45d]. (Structurally parallel to the onset judge.)"""
+    [alert, alert+45d]. Structurally parallel to classify_onset_alerts
+    (the `late` list is always empty for tops).
+
+    Args:
+        alert_days: Alert dates as int day numbers.
+        ea: The instrument's episodes as int-day arrays.
+
+    Returns:
+        A dict with keys captured, late, fa, leads.
+    """
     captured, fa, leads = set(), [], []
     for a in alert_days:
         hit = np.flatnonzero((ea["peak"] - TOP_LEAD_DAYS <= a)
@@ -665,12 +852,24 @@ def walk_forward_scores(frame: pd.DataFrame, feats: list, label: str,
                         fit_score) -> pd.DataFrame:
     """The walk-forward spine shared by every model in the tournament.
 
-    For each test year y (needing >= 3 positive days in the years before,
-    the existing ml_walk_forward convention): fit on years < y, score both
-    the train years (threshold selection evidence) and year y (the test).
-    fit_score(train_df, apply_df, feats) -> score array on apply_df; a
-    rule-based model simply ignores train_df. Returns the frame plus
-    'score' and 'test_year' columns, test rows only, all years stacked."""
+    For each test year y with >= 3 positive days in the years before it
+    (the euphoria.ml_walk_forward convention): fit on years < y and score
+    year y. Fitting by calendar year, rather than by a rolling window,
+    keeps every threshold stable within a year and makes "scored
+    out-of-sample" mean the same thing for every model.
+
+    Args:
+        frame: The labelled day frame (needs `year` and `label`).
+        feats: Feature columns handed to `fit_score`.
+        label: The label column.
+        fit_score: Callable (train_df, apply_df, feats) -> score array
+            aligned with apply_df. A rule-based model ignores train_df.
+
+    Returns:
+        The test rows of every scoreable year stacked, with `score`,
+        `train_score` (NaN) and `test_year` columns added; an empty frame
+        with those columns when no year is scoreable.
+    """
     out = []
     years = sorted(frame.year.unique())
     for y in years:
@@ -733,12 +932,25 @@ def _tally(groups: dict, episodes: pd.DataFrame, threshold: float,
 def choose_threshold(train_scored: pd.DataFrame, episodes: pd.DataFrame,
                      mode: str, fa_budget_per_iy: float,
                      n_instruments: int) -> float:
-    """The PRE-STATED criterion, applied on TRAINING years only:
-    among percentile thresholds of the train scores, keep those whose
-    train FA rate is within the budget; of those, maximise captured;
-    tie -> the more conservative (higher) threshold. If nothing fits the
-    budget, the most conservative threshold wins (do-no-harm default -
-    the same convention as euphoria.walk_forward)."""
+    """The FA-budget threshold rule, applied on TRAINING years only.
+
+    Among percentile thresholds of the train scores, keep those whose
+    train false-alarm rate is within the budget; of those, maximise
+    captured episodes; tie -> the more conservative (higher) threshold.
+    If nothing fits the budget, the most conservative threshold wins
+    (the do-no-harm default, the same convention as
+    euphoria.walk_forward).
+
+    Args:
+        train_scored: Train rows with `score`, `year`, `name`, `date`.
+        episodes: The episode catalog.
+        mode: "onset" or "top" - which judge to apply.
+        fa_budget_per_iy: Allowed false alarms per instrument-year.
+        n_instruments: Instruments in the frame (for the per-iy rate).
+
+    Returns:
+        The chosen threshold as a float.
+    """
     years = sorted(train_scored.year.unique())
     n_iy = max(n_instruments * len(years), 1)
     in_years = lambda eps: eps.year.isin(years)  # noqa: E731
@@ -760,17 +972,34 @@ def run_tournament_entry(frame: pd.DataFrame, episodes: pd.DataFrame,
                          feats: list, label: str, mode: str,
                          fit_score, fa_budget_per_iy: float,
                          chooser=None) -> dict:
-    """One model through the whole discipline: walk-forward scores, a
-    threshold chosen per test year on its train years only, alerts,
-    pooled scorecard + threshold-independent AP/AUROC on the stacked
-    test scores - which keeps score QUALITY (AP/AUROC, threshold-free)
-    separate from the OPERATING POINT chosen on it.
+    """Run one model through the whole walk-forward discipline.
 
-    chooser: the threshold-selection rule, called as
-    chooser(train_scored, episodes, mode, fa_budget_per_iy,
-    n_instruments). None = the incumbent FA-budget rule
-    (choose_threshold); the ML tournament passes its budget-free F1
-    chooser (analytics.ml_detector.choose_threshold_f1)."""
+    Walk-forward scores, a threshold chosen per test year on its train
+    years only, alerts, a pooled operational scorecard, and
+    threshold-independent AP/AUROC on the stacked test scores. Reporting
+    both keeps score QUALITY (AP/AUROC, threshold-free) separate from the
+    OPERATING POINT chosen on it.
+
+    Args:
+        frame: The labelled candidate-day frame.
+        episodes: The episode catalog.
+        feats: Feature columns handed to `fit_score`.
+        label: "y_onset" or "y_top".
+        mode: "onset" or "top" - which judge to apply.
+        fit_score: Callable (train_df, apply_df, feats) -> score array.
+        fa_budget_per_iy: Passed through to the chooser.
+        chooser: The threshold-selection rule, called as
+            chooser(train_scored, episodes, mode, fa_budget_per_iy,
+            n_instruments). None selects the FA-budget rule
+            (choose_threshold); the ML tournament passes its budget-free
+            F1 chooser (analytics.ml_detector.choose_threshold_f1).
+
+    Returns:
+        A dict with test_years, thresholds (per test year), captured,
+        detectable, capture_rate, late, false_alarms, fa_per_iy, leads,
+        auroc, ap, ap_baseline (the positive rate of the test rows) and
+        alerts_by_name; or {"error": ...} when no year is scoreable.
+    """
     from sklearn.metrics import roc_auc_score, average_precision_score
 
     if chooser is None:
@@ -843,19 +1072,24 @@ def run_tournament_entry(frame: pd.DataFrame, episodes: pd.DataFrame,
 
 
 # ---------------------------------------------------------------------------
-# 5. PRODUCTION - the live onset detector (the NB03 tournament winner:
-#    the RULES model - un-weighted mean of ONSET_BANK - which beat every
-#    learner under the pre-stated criterion). Called from run_analytics on
-#    every rebuild, exactly like the top detector.
+# 5. PRODUCTION - the live crowd-only onset detector. The tournament winner
+#    (reference/research_record/nb03_tournament.json) is the RULES model -
+#    the un-weighted mean of ONSET_BANK - which beat every learner under
+#    the pre-stated criterion. Called from run_analytics on every rebuild,
+#    exactly like the top detector.
 # ---------------------------------------------------------------------------
 def onset_score(df: pd.DataFrame) -> pd.Series:
-    """The winning onset score: the un-weighted mean of the locked bank
-    (the euphoria-LEVEL construction applied to the onset features).
-    Takes NO price argument, by design - enforced by a unit test."""
+    """The onset score: the un-weighted mean of the locked bank.
+
+    This is the euphoria-LEVEL construction applied to the onset
+    features. Takes NO price argument, by design; a unit test enforces
+    this.
+    """
     return df[ONSET_BANK].mean(axis=1)
 
 
 def _stored_onset_report() -> dict | None:
+    """The frozen onset record (euphoria_onset_report.json), or None."""
     import json as _json
     import os as _os
     from src.config import PROCESSED_DIR
@@ -869,15 +1103,24 @@ def _stored_onset_report() -> dict | None:
 
 
 def onset_needs_research(stored: dict | None, data_max_year: int) -> bool:
-    """Mirror of euphoria.needs_research, and it moved on the same date
-    for the same reasons: a data pull derives a threshold for itself in
-    EXACTLY ONE case - there is no usable frozen record to read. A
-    record that exists but stops at an earlier year is not a reason to
-    re-fit inside a refresh job; it is a reason to print a notice (see
-    `onset_record_lags_data`) and let the desk spend a `--research` run
-    when it chooses. Full argument in analytics/euphoria.py's
-    `needs_research`; recorded in DECISIONS.xlsx ("2. Pipeline &
-    Cadence")."""
+    """Must a data pull derive the onset threshold for itself?
+
+    Mirror of euphoria.needs_research: a data pull derives a threshold in
+    EXACTLY ONE case - there is no usable frozen record to read. A record
+    that exists but stops at an earlier year is not a reason to re-fit
+    inside a refresh job; it is a reason to print a notice (see
+    `onset_record_lags_data`) and leave the refit to an explicit
+    `--research` run. The full argument is in `needs_research` in
+    analytics/euphoria.py.
+
+    Args:
+        stored: The parsed euphoria_onset_report.json, or None.
+        data_max_year: Newest year in the data (accepted for signature
+            symmetry with `onset_record_lags_data`; unused).
+
+    Returns:
+        True when no usable frozen record exists.
+    """
     if not stored or "live_threshold" not in stored:
         return True
     return not (stored.get("walk_forward", {}).get("test_years") or [])
@@ -896,24 +1139,39 @@ def onset_record_lags_data(stored: dict | None, data_max_year: int):
 
 def rebuild_phase_files(verbose: bool = True,
                         research: bool | None = None) -> dict:
-    """Rebuild what the dashboard's start/end panes read.
+    """Rebuild every phase file the dashboard's start/end panes read.
 
     LIVE mode (the pipeline default whenever a frozen record exists at
-    all): build today's features, score at the FROZEN live threshold,
-    refresh episodes.parquet + euphoria_onset.parquet. Seconds beyond
-    the unavoidable feature build; the stored walk-forward scorecard is
-    left untouched (it is a research artifact with an as-of range, not a
-    daily statistic). A record that lags the data prints one notice and
+    all): build today's features, score at the FROZEN thresholds, and
+    refresh episodes.parquet, euphoria_onset.parquet, euphoria_desk.parquet
+    and the sidecars listed in the module docstring. Seconds beyond the
+    unavoidable feature build; the stored walk-forward scorecards are
+    left untouched (they are research artifacts with an as-of range, not
+    daily statistics). A record that lags the data prints one notice and
     is still used - see `onset_needs_research` for why that is the
     methodologically correct default, not a shortcut.
 
-    RESEARCH mode (research=True, or the one-off bootstrap when
-    onset_needs_research finds no record): additionally re-runs the
-    winner's full
-    walk-forward scorecard and re-selects the live threshold - on FULL
-    years strictly before the current data year (the incumbent's
-    convention, so the threshold is stable within a year by
-    construction) - and rewrites euphoria_onset_report.json."""
+    RESEARCH mode (research=True, or the one-off bootstrap when no record
+    exists): additionally re-runs the full walk-forward scorecard for the
+    crowd-only onset detector and the GET IN / GET OUT model tournament,
+    re-selects every live threshold on FULL years strictly before the
+    current data year (the same convention as the top detector, so a
+    threshold is stable within a year by construction), and rewrites
+    euphoria_onset_report.json and euphoria_desk_report.json.
+
+    Args:
+        verbose: Print progress and the notices described above.
+        research: True forces a research pass, False forces live mode,
+            None (default) chooses live mode unless no frozen record
+            exists.
+
+    Returns:
+        The onset record dict (the content of euphoria_onset_report.json).
+
+    Raises:
+        RuntimeError: When DESK_MODEL_FAMILY is pinned and that family
+            errored during its fit, so it did not survive selection.
+    """
     import json as _json
     import os as _os
 
@@ -960,11 +1218,11 @@ def rebuild_phase_files(verbose: bool = True,
         frame = build_day_frame(series, pxmap, episodes, counts, sents)
         onset_frame = frame[frame.hype_raw >= 1].copy()
 
-        # THE FA BUDGET IS A CONSTANT, not a reading off the last run.
-        # It used to be loaded from euphoria_report.json here, which
-        # raced with the euphoria stage rewriting that file in parallel
-        # and made the adoption bar depend on stage finishing order.
-        # See the block beside EUPHORIA_FA_BUDGET_PER_IY in src/config.py.
+        # THE FA BUDGET IS A CONSTANT, not a reading off the last run:
+        # loading it from euphoria_report.json here would race with the
+        # euphoria stage rewriting that file in parallel and make the
+        # adoption bar depend on stage finishing order. See the block
+        # beside EUPHORIA_FA_BUDGET_PER_IY in src/config.py.
         fa_budget = EUPHORIA_FA_BUDGET_PER_IY
 
         def _rules(train, apply, feats):
@@ -1038,10 +1296,10 @@ def rebuild_phase_files(verbose: bool = True,
         print(f"  saved episodes.parquet ({len(episodes)}), "
               f"euphoria_onset.parquet ({len(out):,})")
 
-    # ---- THE DESK CONFIGURATION (GET IN / GET OUT - section 6) ----------
+    # ---- THE GET IN / GET OUT PAIR (section 6) --------------------------
     # The dashboard's headline signals. Research passes re-run the full
-    # walk-forward for both desk detectors and refreeze their thresholds;
-    # live passes score today's data at the frozen thresholds in seconds.
+    # walk-forward for both heads and refreeze their thresholds; live
+    # passes score today's data at the frozen thresholds in seconds.
     boom = boom_state_frame(series, pxmap)
     fpx_live = frame_live.merge(boom, on=["name", "date"], how="left")
     # astype(bool) after the fill: the merge leaves an object column
@@ -1064,14 +1322,14 @@ def rebuild_phase_files(verbose: bool = True,
 
     fa_budget = EUPHORIA_FA_BUDGET_PER_IY      # frozen - see src/config.py
 
-    # The desk model is selected, not assumed. A research
-    # pass runs the full model tournament (analytics/ml_detector.py:
-    # incumbent rules + logistic + monotone GBM + MLP + ensemble, all
-    # walk-forward) and freezes the winner under the pre-stated
-    # criterion (one family for both heads, combined AP lift). Live
-    # passes re-fit the frozen family deterministically on full years
-    # strictly before the data year (same convention as every frozen
-    # threshold here) and score today at the frozen probability cut.
+    # The deployed model family is selected, not assumed. A research pass
+    # runs the full model tournament (analytics/ml_detector.py: the
+    # rule-based baseline + logistic + monotone GBM + MLP + ensemble, all
+    # walk-forward) and freezes the winner under the pre-stated criterion
+    # (one family for both heads, combined AP lift). Live passes re-fit
+    # the frozen family deterministically on full years strictly before
+    # the data year (same convention as every frozen threshold here) and
+    # score today at the frozen probability cut.
     from analytics import ml_detector as mld    # local: avoids cycle
 
     frame_j = None
@@ -1192,7 +1450,7 @@ def rebuild_phase_files(verbose: bool = True,
                               "either direction",
                 "standard": "F1 cut",
                 "strict": "F0.5 cut (precision weighted 2x)",
-                "evidence": "docs/research/alert_shape_sweep.json",
+                "evidence": "reference/research_record/alert_shape_sweep.json",
                 "decided": "2026-08-09",
             },
             "tournament": _tbl,
@@ -1202,7 +1460,7 @@ def rebuild_phase_files(verbose: bool = True,
             "operating_point_rule": ("probability cut maximising "
                                      "episode-level F1 on train years"
                                      if model_name != "rules" else
-                                     "incumbent FA-budget rule"),
+                                     "baseline FA-budget rule"),
             "fa_budget_per_iy": fa_budget,
             "smooth_days": ROLL,
             "bank_get_out": (mld.DESK_ML_BANK if model_name != "rules"
@@ -1255,7 +1513,7 @@ def rebuild_phase_files(verbose: bool = True,
                               "either direction",
                 "standard": "F1 cut",
                 "strict": "F0.5 cut (precision weighted 2x)",
-                "evidence": "docs/research/alert_shape_sweep.json",
+                "evidence": "reference/research_record/alert_shape_sweep.json",
                 "decided": "2026-08-09",
             }
             with open(desk_path, "w") as f:
@@ -1327,21 +1585,20 @@ def rebuild_phase_files(verbose: bool = True,
                           "days yet")
         else:
             inflection_scored, _ttrain_sc = None, None
-        # The experimental price-blind pair (crowd-only by design: "only
-        # only the post factors to predict the price"). A SECOND GET IN
-        # / GET OUT scoring with price removed from BOTH places it
-        # enters the desk pair: the two price features are dropped from
-        # the bank, and the 120d boom phase gate is dropped from the
-        # trigger (see the alert block below). The bank is the nine
-        # crowd features plus the four price-free inflection extras -
-        # notebook 08 §8 measured that addition worth +0.02 AP on GET
-        # IN with nothing given up. LOGIT, not the ens the desk pair
-        # uses: the desk's own selection rule (combined AP lift, ties
-        # -> AUROC) picks it on the price-blind bank (nb08 §8; frozen
-        # in docs/research/nb08_price_blind.json). Everything else -
-        # train years, F1/F0.5 cuts, re-arm, spacing, coherence sweep -
-        # is the desk pair's machinery unchanged, so the two modes
-        # differ ONLY in what the model is allowed to see.
+        # The experimental price-blind pair: crowd-only by design. A
+        # SECOND GET IN / GET OUT scoring with price removed from BOTH
+        # places it enters the primary pair: the two price features are
+        # dropped from the bank, and the 120d boom phase gate is dropped
+        # from the trigger (see the alert block below). The bank is the
+        # nine crowd features plus the four price-free inflection extras
+        # - that addition measured +0.02 AP on GET IN with nothing given
+        # up. LOGIT, not the ensemble the primary pair uses: the same
+        # selection rule (combined AP lift, ties -> AUROC) picks logit on
+        # the price-blind bank (frozen in
+        # reference/research_record/nb08_price_blind.json). Everything
+        # else - train years, F1/F0.5 cuts, re-arm, spacing, coherence
+        # sweep - is the primary pair's machinery unchanged, so the two
+        # modes differ ONLY in what the model is allowed to see.
         if EUPHORIA_XP_ENABLED:
             _xp_bank = list(mld.ML_BANK) + INFLECTION_EXTRA_FEATURES
             xp_cand_j = inflection_features(
@@ -1360,8 +1617,7 @@ def rebuild_phase_files(verbose: bool = True,
             xp_in_scored = xp_out_scored = xp_train = None
         # the explainability sidecar the dashboard's "what drives the
         # calls" expander reads: logit weights + GBM permutation
-        # importance for the live fit (one computation, every surface -
-        # notebook 03 §SS2 shows the same two reads)
+        # importance for the live fit (one computation, every surface)
         try:
             insight = mld.model_insight(cand_j)
             insight["model"] = model_name
@@ -1376,7 +1632,7 @@ def rebuild_phase_files(verbose: bool = True,
                 print(f"  (model insight skipped: {_e})")
 
     # The shaped trigger (evidence
-    # docs/research/alert_shape_sweep.json): phase gates from the
+    # reference/research_record/alert_shape_sweep.json): phase gates from the
     # ground truth's own 120d boom bar, re-arm levels, 63d spacing.
     from src.config import EUPHORIA_ALERT_SPACING_D
     _b120 = boomed120_frame(series, pxmap)
@@ -1405,19 +1661,19 @@ def rebuild_phase_files(verbose: bool = True,
     out_alerts_s = (_alert_dates(end_scored, thr_out_strict, None, True)
                     if thr_out_strict is not None else {})
 
-    # Ungated GET IN (production; evidence notebook 08
-    # §10.4, docs/research/nb08_single_dial.json). The 120d phase gate
-    # was measured throwing away roughly three quarters of the GET IN
-    # calls the model earns (captured episodes 28 -> 116 ungated, at
+    # Ungated GET IN (production; evidence
+    # reference/research_record/nb08_single_dial.json). The 120d phase
+    # gate was measured throwing away roughly three quarters of the GET
+    # IN calls the model earns (captured episodes 28 -> 116 ungated, at
     # under double the false alarms): episodes chain, so a re-onset
     # routinely arrives while the name is still past the boom bar and
-    # the IN side is dark. These columns are the SAME scores at the
-    # SAME frozen cuts with the SAME shaped trigger - only the phase
-    # gate is dropped. The dashboard shows them by DEFAULT; its
-    # "stricter threshold (price gate)" checkbox switches back to the
-    # gated columns above. GET OUT keeps its gate everywhere: removing
-    # it doubles false alarms for a handful of captures (§10.4), so no
-    # ungated OUT variant exists on purpose.
+    # the IN side is dark. These columns are the SAME scores at the SAME
+    # frozen cuts with the SAME shaped trigger - only the phase gate is
+    # dropped. The dashboard shows them by DEFAULT; its "stricter
+    # threshold (price gate)" checkbox switches back to the gated columns
+    # above. GET OUT keeps its gate everywhere: removing it doubles false
+    # alarms for a handful of captures, so no ungated OUT variant exists
+    # on purpose.
     def _alert_dates_nogate(scored, thr, rearm):
         by = {}
         for name, g in scored.sort_values("date").groupby("name"):
@@ -1453,16 +1709,15 @@ def rebuild_phase_files(verbose: bool = True,
                          ("_nogate_strict", in_alerts_ng_s)):
         ds[f"get_in{_suffix}"] = [d in _ia.get(n, ())
                                   for n, d in zip(ds["name"], ds["date"])]
-    # PM-trust coherence (invariant: a name can never show GET
-    # IN and a GET OUT so close together"): a START is never shown on
-    # an end-stage day, and never within one cooldown of an END call IN
-    # EITHER DIRECTION. GET OUT is never suppressed - it is the risk
-    # signal. The phase gates make same-day contradiction structurally
-    # impossible; this rule sweeps the boundary cases. Applied to every
-    # GET IN variant, including the ungated pair - coherence is a
-    # display promise, not a gate, so dropping the gate does not lift
-    # it (the ungated IN is judged against the GATED OUT, the only OUT
-    # that exists).
+    # Display coherence (invariant: a name never shows a GET IN and a GET
+    # OUT close together): a START is never shown on an end-stage day,
+    # and never within one cooldown of an END call IN EITHER DIRECTION.
+    # GET OUT is never suppressed - it is the risk signal. The phase
+    # gates make same-day contradiction structurally impossible; this
+    # rule sweeps the boundary cases. Applied to every GET IN variant,
+    # including the ungated pair - coherence is a display promise, not a
+    # gate, so dropping the gate does not lift it (the ungated IN is
+    # judged against the GATED OUT, the only OUT that exists).
     for _suffix, _go_suffix in (("", ""), ("_strict", "_strict"),
                                 ("_nogate", ""),
                                 ("_nogate_strict", "_strict")):
@@ -1479,19 +1734,20 @@ def rebuild_phase_files(verbose: bool = True,
                     ds.loc[(ds["name"] == _n) & (ds["date"] == d),
                            _gi] = False
     # INFLECTION COLUMNS. Threshold and re-arm are score values frozen from
-    # the TRAIN years' own distribution, exactly like the two desk cuts -
-    # a percentile taken on the live scores would move every run and the
-    # marker could not be compared week to week.
+    # the TRAIN years' own distribution, exactly like the GET IN / GET OUT
+    # cuts - a percentile taken on the live scores would move every run
+    # and the marker could not be compared week to week.
     ds["inflection_score"] = np.nan
     ds["inflection"] = False
     if inflection_scored is not None and _ttrain_sc is not None:
-        # SAME CONTRACT AS THE TWO DESK CUTS: the threshold is FROZEN on
-        # disk and only re-derived when research is typed. Recomputing it
-        # every live run would leave nothing on disk describing how
-        # today's marker differs from yesterday's, and a threshold nobody
-        # can reconstruct cannot be defended - the reasoning is written
-        # out beside `needs_research`. The bootstrap (no record yet) is
-        # the one exception, exactly as for GET IN and GET OUT.
+        # SAME CONTRACT AS THE GET IN / GET OUT CUTS: the threshold is
+        # FROZEN on disk and only re-derived on a research pass.
+        # Recomputing it every live run would leave nothing on disk
+        # describing how today's marker differs from yesterday's, and a
+        # threshold nobody can reconstruct cannot be defended - the
+        # reasoning is written out beside `needs_research`. The
+        # bootstrap (no record yet) is the one exception, exactly as for
+        # GET IN and GET OUT.
         _frozen_turn = (desk_stored or {}).get("inflection") or {}
         if research or "threshold" not in _frozen_turn:
             _thr_t = float(_ttrain_sc["tscore"].quantile(
@@ -1519,10 +1775,9 @@ def rebuild_phase_files(verbose: bool = True,
         ds["inflection"] = [d in _tmap.get(n, ())
                       for n, d in zip(ds["name"], ds["date"])]
         if isinstance(desk_stored, dict) and _infl_src != "frozen":
-            # Renamed TURN -> INFLECTION. A record written
-            # before the rename carries a "turn" block; drop it rather
-            # than leave two thresholds in one file, where the next
-            # reader has to guess which is live.
+            # A record written under this head's earlier name carries a
+            # "turn" block; drop it rather than leave two thresholds in
+            # one file, where the next reader has to guess which is live.
             desk_stored.pop("turn", None)
             desk_stored["inflection"] = {
                 "threshold": _thr_t, "rearm": _rearm_t,
@@ -1530,15 +1785,15 @@ def rebuild_phase_files(verbose: bool = True,
                 "rearm_q": EUPHORIA_INFLECTION_REARM_Q,
                 "spacing_d": EUPHORIA_INFLECTION_SPACING_D,
                 "bank": _tbank,
-                "evidence": "docs/research/inflection_trigger_sweep.json",
+                "evidence": "reference/research_record/inflection_trigger_sweep.json",
                 "role": ("CONTEXT MARKER - never a call, never in the "
                          "watchlist, never gates GET IN or GET OUT"),
                 "derived": _infl_src}
             with open(desk_path, "w") as _f:
                 _json.dump(desk_stored, _f, indent=1, default=str)
-    # EXPERIMENTAL PRICE-BLIND COLUMNS (see docs/DECISIONS.md). Same frozen-
-    # threshold contract as the desk cuts and the inflection head: the
-    # cuts live in the desk record, are re-derived only on research (or
+    # EXPERIMENTAL PRICE-BLIND COLUMNS. Same frozen-threshold contract as
+    # the GET IN / GET OUT cuts and the inflection head: the cuts live in
+    # euphoria_desk_report.json, are re-derived only on research (or
     # once, on bootstrap), and every live run scores at them. The
     # trigger is the shaped trigger WITHOUT the phase gate - no price
     # anywhere between a post and a call. The end-stage suppression and
@@ -1557,7 +1812,7 @@ def rebuild_phase_files(verbose: bool = True,
                        "derived": "research" if research else "bootstrap",
                        "trigger": "shaped crossing WITHOUT phase gates "
                                   "(re-arm + 63d spacing only)",
-                       "evidence": "docs/research/nb08_price_blind.json",
+                       "evidence": "reference/research_record/nb08_price_blind.json",
                        "role": ("EXPERIMENTAL dashboard mode - crowd "
                                 "features only, no price features, no "
                                 "price gate. Never the default.")}
@@ -1618,7 +1873,7 @@ def rebuild_phase_files(verbose: bool = True,
                       .rename(columns={"dscore": "out_score_xp_new"}),
                       on=["name", "date"], how="left")
         ds["out_score_xp"] = ds.pop("out_score_xp_new")
-        # the same PM-trust sweep as the desk pair (both crowd-only
+        # the same coherence sweep as the primary pair (both crowd-only
         # rules, so nothing here re-admits price)
         for _sfx in ("_xp", "_xp_strict"):
             _gi, _go = f"get_in{_sfx}", f"get_out{_sfx}"
@@ -1639,18 +1894,18 @@ def rebuild_phase_files(verbose: bool = True,
                   f"{int(ds['get_out_xp_strict'].sum())} strict)")
     ds = ds.merge(_b120, on=["name", "date"], how="left")
     ds["boomed120"] = ds["boomed120"].eq(True)
-    # the display twin travels with it; absent on pre-2026-09 bundles,
-    # where the dashboard falls back to the raw gate
+    # the display twin travels with it; absent on older bundles, where
+    # the dashboard falls back to the raw gate
     if "boomed120_stable" in ds.columns:
         ds["boomed120_stable"] = ds["boomed120_stable"].eq(True)
     ds["symbol"] = ds["name"].map(sym_by)
-    # Retail-flow dial (production; notebook 08 §9,
-    # record docs/research/nb08_retail_flow.json). Failure-isolated: the
-    # desk store must never be lost to a dial bug, so a dial error
-    # degrades to missing columns and one printed line, never a crash.
-    # Adds roughly 2-4 minutes to a phases run - it refits the §9
-    # walk-forward (deterministic, random_state=0) rather than caching
-    # a model, the same recompute-from-stores policy every other
+    # Retail-flow dial (production; record
+    # reference/research_record/nb08_retail_flow.json). Failure-isolated:
+    # euphoria_desk.parquet must never be lost to a dial bug, so a dial
+    # error degrades to missing columns and one printed line, never a
+    # crash. Adds roughly 2-4 minutes to a phases run - it refits the
+    # dial's walk-forward (deterministic, random_state=0) rather than
+    # caching a model, the same recompute-from-stores policy every other
     # derived column follows.
     try:
         from analytics.retail_flow import attach_retail_flow
@@ -1662,13 +1917,12 @@ def rebuild_phase_files(verbose: bool = True,
     except Exception as _rf_e:                            # noqa: BLE001
         if verbose:
             print(f"  (retail-flow dial skipped: {_rf_e})")
-    # PER-DAY MODEL COMPONENTS (approved 2026-08-31: "stacked bar,
-    # factor + factor + factor vs the threshold"). The 11 desk-bank
-    # readings per scored day, so the dashboard hover can draw each
-    # day's reading-x-weight stack. Raw feature values only - the
-    # frozen weights live in desk_model_insight.json; no text, no ids,
-    # so the file is publishable. Failure-isolated like the dial: a
-    # components bug must never cost the desk store.
+    # PER-DAY MODEL COMPONENTS: the DESK_ML_BANK readings per scored day,
+    # so the dashboard hover can draw each day's reading-x-weight stack
+    # (factor + factor + factor vs the threshold). Raw feature values
+    # only - the frozen weights live in desk_model_insight.json; no
+    # text, no ids, so the file is publishable. Failure-isolated like
+    # the dial: a components bug must never cost euphoria_desk.parquet.
     try:
         _lc_cmp = live_cand
         _cmp_cols = [c for c in mld.DESK_ML_BANK
@@ -1696,21 +1950,18 @@ def rebuild_phase_files(verbose: bool = True,
               f"{int(ds['get_out'].sum())} GET OUT alerts all-time, "
               f"{int(ds['inflection'].sum())} inflection markers, "
               f"model {model_name})")
-    # Readiness alerts ("a scheduled check that
-    # pings you when any name crosses ±90% signed readiness"). Computed
-    # here so the alert file always matches the store it was cut from;
-    # the dashboard banners it, and the pipeline run prints it - the two
-    # places the desk actually looks. Signed readiness = the §10.5
-    # display convention: the phase-routed side's score over its frozen
-    # strict cut, negative for GET OUT.
+    # Readiness alerts: every name whose signed readiness crosses +/-90%.
+    # Computed here so the alert file always matches the store it was
+    # cut from; the dashboard banners it and the pipeline run prints it.
+    # Signed readiness is the dashboard's display convention: the
+    # phase-routed side's score over its frozen strict cut, negative for
+    # GET OUT.
     try:
         _al_rows = []
         if thr_in_strict and thr_out_strict:
-            # Themes only (alerts are restricted to
-            # only for themes please, not single name tickers"). The
-            # bands and the radar still show every name; the ALERT - the
-            # thing that interrupts - is reserved for the tradeable
-            # theme ETFs.
+            # Themes only. The bands and the radar still show every
+            # name; the ALERT - the thing that interrupts - is reserved
+            # for the tradeable theme ETFs, not single-name tickers.
             _dsr = ds[ds["kind"] == "theme"].dropna(
                 subset=["in_score", "out_score"])
             _fresh_bar = ds["date"].max() - pd.Timedelta(days=60)
@@ -1754,39 +2005,37 @@ def rebuild_phase_files(verbose: bool = True,
 
 
 # ---------------------------------------------------------------------------
-# 6. THE DESK CONFIGURATION (recorded decision; see docs/DECISIONS.md) - the GET IN /
-#    GET OUT signal family the dashboard actually shows.
+# 6. THE GET IN / GET OUT PAIR - the signal family the dashboard shows.
+#    This is the rule-based configuration of the pair; it is the
+#    tournament baseline and the fallback when no learned family is
+#    adopted (model "rules" in euphoria_desk_report.json).
 #
-#    The desk lifted the crowd-only restriction for a SECOND, clearly
-#    labelled signal family ("we should be using both price and the
-#    social media to predict - I want a better hit rate"). The crowd-only
-#    detectors above are unchanged - their claim ("the crowd alone called
-#    it") is different, not worse - and they remain the research
-#    baseline every notebook still scores.
+#    This family is allowed price. It is a SECOND, clearly labelled signal
+#    family: the crowd-only detectors above are unchanged - their claim
+#    ("the crowd alone called it") is different, not worse - and they
+#    remain the research baseline.
 #
-#    GET OUT (euphoria ending) = the incumbent rules score with two
-#    measured upgrades (NB03 commissioned test + NB06):
-#      * candidacy requires an ACTUAL PRICE BOOM - G2's own thresholds
-#        (>=25% ETF / >=50% single above the trailing 54d low, past
-#        prices only; no new constant). Walk-forward: capture 16 -> 26
-#        of 122, AP 0.286 -> 0.435, capture-gain CI [+3.5pp, +13pp].
-#      * the trigger runs on the 7d-SMOOTHED score (ROLL - the house
-#        one-week window; NB06 blip study): AP 0.435 -> 0.449, FA
-#        41 -> 39, at a recorded cost of 2 captures (26 -> 24). One loud
-#        afternoon can no longer fire a one-day episode.
+#    GET OUT (euphoria ending) = the top-detector rules score with two
+#    measured upgrades (reference/research_record/nb06_desk_config.json):
+#      * candidacy requires an ACTUAL PRICE BOOM - G2's own size
+#        thresholds above the trailing EUPHORIA_BOOM_WINDOW_D low, past
+#        prices only; no new constant. Walk-forward: capture 16 -> 26 of
+#        122, AP 0.286 -> 0.435, capture-gain CI [+3.5pp, +13pp].
+#      * the trigger runs on the ROLL-day (7d) SMOOTHED score: AP 0.435
+#        -> 0.449, FA 41 -> 39, at a recorded cost of 2 captures (26 ->
+#        24). One loud afternoon can no longer fire a one-day episode.
 #
-#    GET IN (euphoria starting) = the tournament-winning onset rules
-#    with PHASE-AWARE candidacy + the same 7d smoothing: a day that
-#    already satisfies every END gate (A1 crowd swollen AND A2 attention
-#    >= its 90th pct AND A3's persistence e2 > 0 - the detector's OWN
-#    existing gates, no new constant) is END-STAGE, and declaring a
-#    START there is definitionally incoherent. Measured (NB06):
-#    START-within-21d-of-END adjacency 20 -> 2, LATE starts 21 -> 10,
-#    FA 169 -> 124, at a recorded cost of captures 29 -> 20 of 125.
-#    PROJECT DECISION: the desk stated three times that a START landing on
-#    top of an END is the error that destroys PM trust; the adjacency
-#    priority overrules the raw-capture utility rule, and the cost is
-#    recorded here and in NB06, not hidden.
+#    GET IN (euphoria starting) = the tournament-winning onset rules with
+#    PHASE-AWARE candidacy + the same 7d smoothing: a day that already
+#    satisfies every END gate (A1 crowd swollen AND A2 attention >= its
+#    90th pct AND A3's persistence e2 > 0 - the detector's own existing
+#    gates, no new constant) is END-STAGE, and declaring a START there is
+#    definitionally incoherent. Measured (same record):
+#    START-within-21d-of-END adjacency 20 -> 2, LATE starts 21 -> 10, FA
+#    169 -> 124, at a recorded cost of captures 29 -> 20 of 125. A START
+#    landing on top of an END is the error that destroys user trust in
+#    the signal, so the adjacency priority overrules the raw-capture
+#    utility rule; the cost is recorded, not hidden.
 # ---------------------------------------------------------------------------
 from src.config import (ROLL, EUPHORIA_ATT_GATE,  # noqa: E402
                         EUPHORIA_BOOM_MIN_ETF, EUPHORIA_BOOM_MIN_SINGLE,
@@ -1795,22 +2044,31 @@ from src.config import (ROLL, EUPHORIA_ATT_GATE,  # noqa: E402
 
 
 def boom_state_frame(series: list, pxmap: dict) -> pd.DataFrame:
-    """name/date/boom_state: is the price >= its G2 boom threshold above
-    its own trailing EUPHORIA_BOOM_WINDOW_D low? Trailing only (day t uses
-    closes <= t); the SIZE thresholds are the ground-truth constants,
-    reused, so the gate introduces no new size number.
+    """The prediction-time boom gate for GET OUT candidacy.
 
-    THE WINDOW IS NOT THE GROUND TRUTH'S WINDOW (recorded decision; see docs/DECISIONS.md).
-    `find_episodes` above walks back 120 days because that is the yardstick
-    an episode is DEFINED by; this gate walks back
-    EUPHORIA_BOOM_WINDOW_D (54) because that is a prediction-time choice
-    and 120 was letting crash-rebounds through - `semiconductors` fired
-    GET OUT twice in early 2023 while 20-25% below its own Dec-2021 peak,
-    on a bounce off the Oct-2022 bottom. The window was swept on the NB07
-    section A3b frontier; the table, the selection rule and the recorded
-    cost (the walk-forward loses its 2020 test year) are in src/config.py
-    beside the constant. Deliberately two windows, deliberately not
-    shared."""
+    Returns name/date/boom_state: is the price >= its G2 boom threshold
+    above its own trailing EUPHORIA_BOOM_WINDOW_D low? Trailing only (day
+    t uses closes <= t); the SIZE thresholds are the ground-truth
+    constants, reused, so the gate introduces no new size number.
+
+    THE WINDOW IS NOT THE GROUND TRUTH'S WINDOW. `find_episodes` walks
+    back EUPHORIA_BOOM_LOOKBACK_D (120) days because that is the
+    yardstick an episode is DEFINED by; this gate walks back
+    EUPHORIA_BOOM_WINDOW_D (54) because that is a prediction-time choice,
+    and 120 let crash-rebounds through: a name 20-25% below its own
+    prior peak, bouncing off a bear-market bottom, could still clear a
+    120d bar and fire GET OUT. The window was swept; the table, the
+    selection rule and the recorded cost (the walk-forward loses its
+    earliest test year) are in src/config.py beside the constant.
+    Deliberately two windows, deliberately not shared.
+
+    Args:
+        series: EuphoriaSeries objects, one per instrument.
+        pxmap: symbol -> daily close series.
+
+    Returns:
+        A DataFrame with columns name, date, boom_state (bool).
+    """
     rows = []
     for es in series:
         px = pxmap[es.symbol].dropna().asfreq("D").ffill()
@@ -1825,35 +2083,46 @@ def boom_state_frame(series: list, pxmap: dict) -> pd.DataFrame:
 
 
 def end_stage_mask(df: pd.DataFrame) -> pd.Series:
-    """END-STAGE = the day already satisfies every END gate (A1 + A2 +
-    A3-persistence). Built ONLY from the detector's own frozen gate
-    constants - no new threshold enters the system."""
+    """END-STAGE mask: the day already satisfies every END gate.
+
+    A1 (hype_ok) + A2 (e1 >= EUPHORIA_ATT_GATE) + A3 persistence
+    (e2 > 0). Built ONLY from the detector's own frozen gate constants -
+    no new threshold enters the system.
+    """
     return ((df["e1"] >= EUPHORIA_ATT_GATE) & (df["e2"] > 0)
             & df["hype_ok"].astype(bool))
 
 
 def _smooth_by_name(scores: pd.Series, names: pd.Series,
                     dates: pd.Series | None = None) -> pd.Series:
-    """The desk trigger smoothing: a trailing ROLL-day (7d - the house
-    one-week window, same as A1's mention-share window) mean over each
-    instrument's own candidate days. Trailing => no look-ahead.
+    """Trigger smoothing for the GET IN / GET OUT pair.
 
-    CALENDAR-AWARE, and this is a defect fix, not a
-    tuning choice.  The old code rolled over each name's candidate-ROW
-    sequence (`rolling(ROLL)` = last 7 rows), so a multi-year candidacy
-    gap was silently bridged: the 2026-07-06 `biotech_pharma` GET OUT
-    fired at 0.658 (106% of trigger) whose 7-row window contained SIX
-    candidate days from May/Dec 2020 and one gate-zeroed day from 2026 -
-    the flag fired on evidence from a mania five and a half years
-    earlier (traced row-by-row from the stores; the desk caught it from
-    the hover: "why does this activate get out?").  With `dates`, the
-    window is the last ROLL CALENDAR days, closed on the right, so
-    evidence older than one week can never reach a trigger.  On a dense
-    daily candidate run the two windows contain identical rows, so
-    ordinary in-episode behaviour is unchanged; only gap-bridging dies.
-    Thresholds were re-frozen through the standard walk-forward after
-    this change (see euphoria_desk_report.json / notebook 04 SS1.1).
-    Without `dates` the row-based behaviour is kept (unit contract)."""
+    A trailing ROLL-day (7d - the house one-week window, the same as A1's
+    mention-share window) mean over each instrument's own candidate
+    days. Trailing => no look-ahead.
+
+    CALENDAR-AWARE when `dates` is given, and the distinction matters.
+    Rolling over each name's candidate-ROW sequence (`rolling(ROLL)` =
+    the last 7 rows) silently bridges a multi-year candidacy gap: a
+    7-row window can contain six candidate days from an episode years
+    earlier plus one gate-zeroed day from today, so a call fires on
+    evidence from a mania long past. With `dates`, the window is the
+    last ROLL CALENDAR days, closed on the right, so evidence older than
+    one week can never reach a trigger. On a dense daily candidate run
+    the two windows contain identical rows, so ordinary in-episode
+    behaviour is unchanged; only gap-bridging is removed. Thresholds
+    were re-frozen through the standard walk-forward on this basis (see
+    euphoria_desk_report.json).
+
+    Args:
+        scores: The per-row scores.
+        names: Instrument name per row (aligned with `scores`).
+        dates: Date per row. When None, the row-based window is used
+            (the unit contract for callers without dates).
+
+    Returns:
+        The smoothed scores, indexed like `scores`.
+    """
     if dates is None:
         return scores.groupby(names.values).transform(
             lambda g: g.rolling(ROLL, min_periods=1).mean())
@@ -1871,10 +2140,13 @@ def _smooth_by_name(scores: pd.Series, names: pd.Series,
 
 
 def desk_end_fit(train, apply, feats):
-    """The GET OUT score (rules family - fitting is a no-op): mean of
-    the incumbent bank, zeroed where the A2/A3 gates fail (gates in
-    score space, so one threshold governs), then 7-calendar-day
-    smoothed."""
+    """The rule-based GET OUT score (fitting is a no-op).
+
+    Mean of the top-detector bank (`feats`, normally TOP_FEATURES),
+    zeroed where the A2/A3 gates fail (gates applied in score space, so
+    one threshold governs), then 7-calendar-day smoothed. Matches the
+    fit_score(train, apply, feats) protocol; `train` is ignored.
+    """
     sc = apply[feats].mean(axis=1)
     sc = sc.where((apply["e1"] >= EUPHORIA_ATT_GATE) & (apply["e2"] > 0),
                   0.0)
@@ -1882,24 +2154,34 @@ def desk_end_fit(train, apply, feats):
 
 
 def desk_onset_fit(train, apply, feats):
-    """The GET IN score: the tournament-winning onset rules (mean of the
-    locked bank), 7-calendar-day smoothed. Phase-awareness lives in
-    CANDIDACY (the frame passed in), not in the score."""
+    """The rule-based GET IN score (fitting is a no-op).
+
+    The tournament-winning onset rules (mean of the locked bank),
+    7-calendar-day smoothed. Phase-awareness lives in CANDIDACY (the
+    frame passed in), not in the score. `train` is ignored.
+    """
     return _smooth_by_name(apply[feats].mean(axis=1),
                            apply["name"], apply["date"]).values
 
 
 def desk_candidacy(frame_px: pd.DataFrame) -> tuple:
-    """The two desk candidate frames from a day frame already merged
-    with boom_state. Returns (end_frame, onset_frame).
+    """The two rule-based candidate frames for the GET IN / GET OUT pair.
 
-    THE ONSET FLOOR IS EUPHORIA_ONSET_HYPE_MIN (1.10), NOT 1.0, since
-    at 1.0 this rule breached its own false-alarm budget
-    (0.255 vs 0.23) from the day it shipped. The sweep, the cost (one
-    capture) and what it buys (budget compliance, late starts 6 -> 2) are
-    in src/config.py beside the constant. The CROWD-ONLY onset store above
-    still uses 1.0 on purpose: different detector, different record, not
-    swept here."""
+    THE ONSET FLOOR IS EUPHORIA_ONSET_HYPE_MIN (1.10), NOT 1.0: at 1.0
+    this rule breached its own false-alarm budget (0.255 vs 0.23). The
+    sweep, the cost (one capture) and what it buys (budget compliance,
+    late starts 6 -> 2) are in src/config.py beside the constant. The
+    CROWD-ONLY onset store still uses 1.0 on purpose: different detector,
+    different record, not swept here.
+
+    Args:
+        frame_px: A day frame already merged with boom_state.
+
+    Returns:
+        (end_frame, onset_frame): GET OUT candidates are hype_ok AND
+        boom_state days; GET IN candidates are days with hype_raw >=
+        EUPHORIA_ONSET_HYPE_MIN that are not end-stage.
+    """
     end_f = frame_px[frame_px["hype_ok"].astype(bool)
                      & frame_px["boom_state"].astype(bool)].copy()
     onset_f = frame_px[(frame_px["hype_raw"] >= EUPHORIA_ONSET_HYPE_MIN)
@@ -1908,9 +2190,11 @@ def desk_candidacy(frame_px: pd.DataFrame) -> tuple:
 
 
 def _desk_test_years(stored: dict | None) -> list:
-    """Every walk-forward test year the stored desk record covers, across
-    both rules. Shared by the bootstrap test and the staleness notice so
-    the two can never disagree about what the record contains."""
+    """Every walk-forward test year the stored GET IN / GET OUT record covers.
+
+    Shared by the bootstrap test and the staleness notice so the two can
+    never disagree about what the record contains.
+    """
     if not stored or "get_in" not in stored or "get_out" not in stored:
         return []
     years = []
@@ -1920,16 +2204,18 @@ def _desk_test_years(stored: dict | None) -> list:
 
 
 def desk_needs_research(stored: dict | None, data_max_year: int) -> bool:
-    """Same convention as onset_needs_research, changed on the same date
-    for the same reasons: research only to BOOTSTRAP a
-    machine with no usable frozen record. A record that lags the data is
-    a notice, not a refit - see `desk_record_lags_data`."""
+    """Must a data pull derive the GET IN / GET OUT thresholds itself?
+
+    Same convention as onset_needs_research: research only to BOOTSTRAP
+    a copy with no usable frozen record. A record that lags the data is
+    a notice, not a refit - see `desk_record_lags_data`.
+    """
     return not _desk_test_years(stored)
 
 
 def desk_record_lags_data(stored: dict | None, data_max_year: int):
-    """Newest desk walk-forward test year when it lags the data, else
-    None."""
+    """Newest GET IN / GET OUT walk-forward test year when it lags the
+    data, else None."""
     years = _desk_test_years(stored)
     if not years:
         return None
@@ -1938,15 +2224,17 @@ def desk_record_lags_data(stored: dict | None, data_max_year: int):
 
 
 # ---------------------------------------------------------------------------
-# 7. EPISODE COHERENCE - the desk-facing state machine
+# 7. EPISODE COHERENCE - the display-facing state machine
 # ---------------------------------------------------------------------------
 def episode_coherent_alerts(onset_dates, top_dates,
                             cooldown: int = EUPHORIA_COOLDOWN_DAYS):
-    """The desk-facing state machine, ASYMMETRIC by evidence
-    : a new START within `cooldown` days AFTER an END is a
-    contradictory flip and is SUPPRESSED (you cannot start euphoria the
-    desk was just told is ending); a fast START -> END is a REAL,
-    violent mania and the ENDING (risk) signal is NEVER suppressed.
+    """Suppress START calls that contradict a recent END call.
+
+    The rule is ASYMMETRIC by evidence: a new START within `cooldown`
+    days AFTER an END is a contradictory flip and is SUPPRESSED (a
+    euphoria that was just declared ending cannot be starting); a fast
+    START -> END is a REAL, violent mania and the ENDING (risk) signal
+    is NEVER suppressed.
 
     The asymmetry was measured, not assumed: the symmetric rule cost the
     top detector half its walk-forward captures (17 -> 9) for only 8
@@ -1956,7 +2244,14 @@ def episode_coherent_alerts(onset_dates, top_dates,
     one-episode timescale; no new constant. Same-day tie: the END wins
     and the same-day START is suppressed.
 
-    Returns (kept_onset_dates, kept_top_dates), chronological."""
+    Args:
+        onset_dates: Candidate START dates.
+        top_dates: END dates (never filtered).
+        cooldown: Days after an END during which a START is suppressed.
+
+    Returns:
+        (kept_onset_dates, kept_top_dates), both chronological.
+    """
     tops = sorted(pd.Timestamp(d) for d in top_dates)
     kept_onset = []
     for d in sorted(pd.Timestamp(x) for x in onset_dates):

@@ -1,37 +1,41 @@
-# append_live_abstracted.py
-# =========================
-# Fold NEW live posts into ABSTRACTED_DATA (the committable aggregates)
-# WITHOUT keeping any raw text. This is the live-ingestion path for the
-# INTERNAL machine, which does not hold posts.parquet.
-#
-#   python ingestion/append_live_abstracted.py             fold new posts in
-#   python ingestion/append_live_abstracted.py --dry-run   show what WOULD fold in
-#
-# HOW IT DIFFERS FROM merge_live.py
-#   merge_live.py appends raw live posts into posts.parquet (the EXTERNAL
-#   machine's raw store). This script skips the raw store entirely: it
-#   aggregates the new posts into daily counts + daily sentiment and merges
-#   those rows into ABSTRACTED_DATA. Same fetchers, same normalisers, same
-#   aggregation code - a different, text-free destination.
-#
-# THE FLOW
-#   1. read live raw (RedditLive / StockTwits / X live) -> 9-column candidates
-#      using the project normalisers (identical to merge_live.py)
-#   2. keep only candidates that are
-#        (a) dated >= LIVE_START - separates them from the committed HISTORICAL
-#            block, so the two never overlap
-#        (b) NOT already in the local seen-ids ledger ("first seen wins"
-#            across re-runs, so running twice folds nothing the second time)
-#   3. aggregate the survivors and merge the deltas into ABSTRACTED_DATA
-#      (counts add; sentiment recombines weighted by n_posts)
-#   4. record the new ids in the ledger, then hydrate ABSTRACTED_DATA ->
-#      data/processed so the unchanged notebooks 08/09/10 see the update
-#
-# THE LEDGER + LIVE_START (data/reference/abstracted_live_meta.json)
-#   Kept local and gitignored - post ids are mildly identifying, so they are
-#   the one thing never committed. On a fresh machine the ledger starts empty
-#   and LIVE_START freezes to (newest committed date) + 1 day, so live only
-#   ever adds genuinely new days on top of the committed history.
+"""Fold new live posts into ``ABSTRACTED_DATA`` without keeping raw text.
+
+This is the live-ingestion path for aggregates mode, where the copy holds
+no ``posts.parquet``::
+
+    python ingestion/append_live_abstracted.py             fold new posts in
+    python ingestion/append_live_abstracted.py --dry-run   show what would fold in
+
+``merge_live.py`` appends raw live posts into ``posts.parquet`` (the
+full-mode raw store). This script skips the raw store entirely: it
+aggregates the new posts into daily counts and daily sentiment and merges
+those rows into ``ABSTRACTED_DATA``. Same fetchers, same normalisers, same
+aggregation code; a different, text-free destination.
+
+The flow:
+
+1. read the live raw files (RedditLive / StockTwits / X live) into
+   candidate rows using the project normalisers, exactly as
+   ``merge_live.py`` does;
+2. keep only candidates that are (a) dated on or after ``LIVE_START``,
+   which separates them from the committed historical block so the two
+   never overlap, and (b) not already in the local seen-ids ledger
+   ("first seen wins" across re-runs, so running twice folds nothing the
+   second time);
+3. aggregate the survivors with ``src.abstracted_data.aggregate_posts``
+   and merge the deltas into ``ABSTRACTED_DATA`` (counts add; sentiment
+   recombines weighted by ``n_posts``);
+4. record the new ids in the ledger, then hydrate ``ABSTRACTED_DATA`` into
+   ``data/processed`` so the analytics stage sees the update.
+
+The ledger and ``LIVE_START`` live in
+``data/reference/abstracted_live_meta.json`` (plus the seen-id parquet
+beside it). They are kept local and gitignored: post ids are mildly
+identifying, so they are the one thing never committed. On a fresh copy
+the ledger starts empty and ``LIVE_START`` freezes to (newest committed
+date) + 1 day, so live ingestion only ever adds genuinely new days on top
+of the committed history.
+"""
 
 import argparse
 import datetime
@@ -54,6 +58,7 @@ except Exception:
     pass
 
 import zstandard                                              # noqa: E402
+from src.config import REFERENCE_DIR                          # noqa: E402
 from src import abstracted_data                               # noqa: E402
 from src.clean_data import read_json_lines                    # noqa: E402
 from src.reddit_live_data import normalise_reddit_live_records  # noqa: E402
@@ -65,8 +70,9 @@ META_PATH = os.path.join(PROJECT_ROOT, "data", "reference",
                          "abstracted_live_meta.json")
 LEGACY_META = os.path.join(PROJECT_ROOT, "data", "reference",
                            "gic_live_meta.json")   # pre-rename ledger location
-MAX_SEEN = 300_000            # LEGACY cap - see SEEN_PATH below. Kept only
-                              # so an old ledger can still be read.
+MAX_SEEN = 300_000            # legacy cap on the JSON seen_ids array; the
+                              # parquet set (SEEN_PATH) is uncapped. Kept
+                              # only so an old ledger can still be read.
 
 # ---------------------------------------------------------------------
 # Dedup set. src/abstracted_data.merge_counts is additive: the same
@@ -82,7 +88,8 @@ MAX_SEEN = 300_000            # LEGACY cap - see SEEN_PATH below. Kept only
 SEEN_PATH = os.path.join(PROJECT_ROOT, "data", "reference",
                          "abstracted_seen_ids.parquet")
 # Rolling copies of the whole reference dir, taken only after a run that
-# actually changed something. Cheap insurance against (1).
+# actually changed something. Cheap insurance against a lost or
+# truncated id set.
 BACKUP_DIR = os.path.join(PROJECT_ROOT, "data", "reference", "_backups")
 BACKUP_KEEP = 7
 
@@ -93,11 +100,10 @@ BACKUP_KEEP = 7
 # file whose newest post predates LIVE_START cannot contribute a single
 # row, because the LIVE_START filter removes all of it by construction.
 # Each file's max date is recorded once and the file is skipped until it
-# changes on disk (size or mtime) or LIVE_START itself moves.
-#
-# Skipping on previously-seen ids is deliberately avoided: seen_ids is
-# capped at MAX_SEEN, so an old id can be evicted, and skipping on that
-# basis could drop rows that should be folded.
+# changes on disk (size or mtime) or LIVE_START itself moves. The skip
+# is keyed on dates, never on previously-seen ids: a file that predates
+# the window is provably empty of new rows, whereas a partially-seen
+# file may still hold rows that should be folded.
 FILE_LEDGER_KEY = "files_scanned"
 
 # The columns aggregate_posts needs from a post.
@@ -106,12 +112,19 @@ NEEDED = ["id", "date", "title", "selftext", "source"]
 
 # ---------------- collect candidate posts from the raw live files ----------
 def _stat_key(path):
+    """Return ``"<size>:<mtime>"`` for a file, the ledger's change key."""
     st = os.stat(path)
     return f"{st.st_size}:{int(st.st_mtime)}"
 
 
 def _can_skip(path, ledger, live_start):
-    """True when this file provably cannot contribute a single row."""
+    """Return True when this file provably cannot contribute a single row.
+
+    Args:
+        path: Raw file path.
+        ledger: The per-file scan ledger (mutated by ``_note_file``).
+        live_start: The frozen ``LIVE_START`` date string.
+    """
     rec = ledger.get(os.path.basename(path))
     if not rec or rec.get("stat") != _stat_key(path):
         return False                       # new or changed on disk
@@ -121,12 +134,25 @@ def _can_skip(path, ledger, live_start):
 
 
 def _note_file(path, ledger, live_start, max_date):
+    """Record a file's change key, window and newest post date in the ledger."""
     ledger[os.path.basename(path)] = {"stat": _stat_key(path),
                                       "live_start": live_start,
                                       "max_date": max_date}
 
 
 def collect_reddit_live(ledger=None, live_start=None):
+    """Normalise the ``RedditLive/*.jsonl.zst`` files that may hold new rows.
+
+    Args:
+        ledger: The per-file scan ledger; updated in place with each file
+            read. ``None`` disables the ledger.
+        live_start: The frozen ``LIVE_START`` date string. When given,
+            files whose newest post predates it are skipped without being
+            read.
+
+    Returns:
+        DataFrame of normalised posts; empty when nothing was read.
+    """
     files = sorted(glob.glob(os.path.join(RAW_ROOT, "RedditLive", "*.jsonl.zst")))
     ledger = {} if ledger is None else ledger
     frames, skipped, read_n = [], 0, 0
@@ -159,6 +185,11 @@ def collect_reddit_live(ledger=None, live_start=None):
 
 
 def collect_stocktwits():
+    """Normalise every ``StockTwits/*.jsonl.zst`` raw file.
+
+    Returns:
+        DataFrame of normalised messages; empty when there are none.
+    """
     files = sorted(glob.glob(os.path.join(RAW_ROOT, "StockTwits", "*.jsonl.zst")))
     messages = []
     for path in files:
@@ -171,6 +202,11 @@ def collect_stocktwits():
 
 
 def collect_x_live():
+    """Normalise ``X Data/x_api_live.csv.zst``.
+
+    Returns:
+        DataFrame of normalised tweets; empty when the file is absent.
+    """
     path = os.path.join(RAW_ROOT, "X Data", "x_api_live.csv.zst")
     if not os.path.exists(path):
         return pd.DataFrame(columns=NEEDED)
@@ -182,6 +218,19 @@ def collect_x_live():
 
 
 def collect_candidates(ledger=None, live_start=None):
+    """Gather candidate posts from all three live sources.
+
+    Duplicate ids are dropped (first kept) and the frame is reduced to the
+    ``NEEDED`` columns with ``date`` as a plain ``YYYY-MM-DD`` string.
+
+    Args:
+        ledger: Per-file scan ledger passed to ``collect_reddit_live``.
+        live_start: ``LIVE_START`` passed to ``collect_reddit_live``.
+
+    Returns:
+        DataFrame with exactly the ``NEEDED`` columns; empty when no
+        source produced rows.
+    """
     parts = [collect_reddit_live(ledger, live_start), collect_stocktwits(),
              collect_x_live()]
     parts = [p for p in parts if len(p)]
@@ -198,6 +247,12 @@ def collect_candidates(ledger=None, live_start=None):
 
 # ---------------- ledger + LIVE_START -------------------------------------
 def load_meta():
+    """Load the JSON ledger, migrating the pre-rename file if present.
+
+    Returns:
+        The ledger dict, or an empty dict when none exists or it is
+        unreadable.
+    """
     # migrate the pre-rename ledger transparently, so dedup history survives
     if not os.path.exists(META_PATH) and os.path.exists(LEGACY_META):
         try:
@@ -215,10 +270,16 @@ def load_meta():
 
 
 def save_meta(meta):
-    """Persist live_start + the file-scan ledger. seen_ids is NO LONGER
-    written here - it lives in SEEN_PATH, uncapped. Any legacy array
-    already in the file is left exactly as it is: harmless, and a
-    fallback if the parquet is ever lost."""
+    """Persist ``live_start`` and the file-scan ledger atomically.
+
+    The seen-id set is not written here; it lives in ``SEEN_PATH``,
+    uncapped. Any legacy ``seen_ids`` array already in the file is left
+    exactly as it is: harmless, and a fallback if the parquet is ever
+    lost.
+
+    Args:
+        meta: The ledger dict to write.
+    """
     os.makedirs(os.path.dirname(META_PATH), exist_ok=True)
     tmp = META_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -227,8 +288,18 @@ def save_meta(meta):
 
 
 def load_seen(meta):
-    """The durable dedup set. Reads the parquet; falls back to (and
-    migrates from) the legacy JSON array the first time."""
+    """Load the durable dedup set.
+
+    Reads the parquet at ``SEEN_PATH``; falls back to (and migrates from)
+    the legacy JSON array in ``meta`` the first time. Ids present only in
+    the legacy array are always added, so the set never shrinks.
+
+    Args:
+        meta: The JSON ledger dict (may hold a legacy ``seen_ids`` array).
+
+    Returns:
+        Set of post id strings.
+    """
     if os.path.exists(SEEN_PATH):
         try:
             got = set(pd.read_parquet(SEEN_PATH)["id"].astype(str))
@@ -250,8 +321,14 @@ def load_seen(meta):
 
 
 def save_seen(ids):
-    """Atomic: write beside, then replace. A crash mid-write leaves the
-    previous set intact rather than a truncated one."""
+    """Write the dedup set atomically.
+
+    Writes beside the target and then replaces it, so a crash mid-write
+    leaves the previous set intact rather than a truncated one.
+
+    Args:
+        ids: Iterable of post id strings.
+    """
     os.makedirs(os.path.dirname(SEEN_PATH), exist_ok=True)
     tmp = SEEN_PATH + ".tmp"
     pd.DataFrame({"id": sorted(ids)}).to_parquet(tmp, index=False)
@@ -259,11 +336,13 @@ def save_seen(ids):
 
 
 def backup_reference():
-    """Snapshot data/reference after a run that changed something.
+    """Snapshot ``data/reference`` after a run that changed something.
 
-    The ledgers are small (a few MB) and losing one is unrecoverable, so
-    a handful of dated copies is the cheapest possible insurance. Keeps
-    BACKUP_KEEP and deletes the rest; never recurses into itself."""
+    The ledgers are small (a few MB) and losing one is unrecoverable, so a
+    handful of dated copies is the cheapest possible insurance. Keeps
+    ``BACKUP_KEEP`` snapshots and deletes the rest; never recurses into
+    itself. A backup failure is reported but never stops a good run.
+    """
     import shutil
     try:
         src_dir = os.path.dirname(META_PATH)
@@ -293,7 +372,7 @@ def backup_reference():
 
 
 def newest_committed_date():
-    """Newest date already in ABSTRACTED_DATA, or None if empty."""
+    """Return the newest date already in ``ABSTRACTED_DATA``, or ``None``."""
     path = os.path.join(abstracted_data.ABSTRACTED_DIR, abstracted_data.TICKER_COUNTS)
     if not os.path.exists(path):
         return None
@@ -304,8 +383,20 @@ def newest_committed_date():
 
 
 def resolve_live_start(meta):
-    """Frozen once: the first day live ingestion owns. Posts before it belong
-    to the committed historical block and must never be re-folded here."""
+    """Return ``LIVE_START``, freezing it into ``meta`` on first use.
+
+    ``LIVE_START`` is the first day live ingestion owns. Posts before it
+    belong to the committed historical block and must never be re-folded
+    here. On first use it is set to the newest committed day plus one
+    (or ``1970-01-01`` for an empty store) and never moves again.
+
+    Args:
+        meta: The JSON ledger dict; ``meta["live_start"]`` is set when
+            absent.
+
+    Returns:
+        The ``YYYY-MM-DD`` date string.
+    """
     live_start = meta.get("live_start")
     if live_start:
         return live_start
@@ -322,6 +413,11 @@ def resolve_live_start(meta):
 
 # ---------------- main -----------------------------------------------------
 def main():
+    """Gather, filter, aggregate and merge the new live posts.
+
+    Returns:
+        ``0`` on success or when there is nothing to fold.
+    """
     p = argparse.ArgumentParser(
         description="Fold new live posts into ABSTRACTED_DATA (text-free aggregates).")
     p.add_argument("--dry-run", action="store_true",
@@ -333,8 +429,7 @@ def main():
     # ---- 1. gather + 2. filter
     #
     # The ledger and LIVE_START are resolved BEFORE reading anything, so
-    # collect_* can skip files that cannot possibly contribute. This used
-    # to happen after the read, which is why the read was unconditional.
+    # collect_* can skip files that cannot possibly contribute.
     meta = load_meta()
     live_start = resolve_live_start(meta)
     file_ledger = meta.get(FILE_LEDGER_KEY, {})
@@ -371,6 +466,24 @@ def main():
             save_meta(meta)
         return 0
 
+    # ---- bot screen: automated / duplicated posts never reach an
+    #      aggregate. The raw files are untouched; the ids are still
+    #      recorded as seen so the same rows are not re-judged next run.
+    from ingestion.bot_screen import apply_screen, format_report, write_report
+    _screened, _rep = apply_screen(fresh)
+    print("[filter] " + format_report(_rep))
+    write_report(_rep, os.path.join(REFERENCE_DIR, "bot_screen_last.json"))
+    _excluded_ids = (set(fresh["id"].astype(str)) - set(_screened["id"].astype(str))
+                     if _rep["rows_excluded"] else set())
+    fresh = _screened
+    if fresh.empty:
+        print("every new post was excluded by the bot screen - nothing to fold.")
+        if not args.dry_run:
+            seen |= _excluded_ids
+            save_seen(seen)
+            save_meta(meta)
+        return 0
+
     if args.dry_run:
         print("\n--dry-run: nothing written. The above is what WOULD be folded in.")
         return 0
@@ -381,13 +494,13 @@ def main():
     print("--- merging into ABSTRACTED_DATA ---")
     abstracted_data.merge_into_abstracted(new_aggs)
 
-    # ---- 4. record the new ids, then hydrate for the local notebooks
+    # ---- 4. record the new ids, then hydrate data/processed
     #
     # ORDER MATTERS. The aggregates were merged above; if the process
     # dies before the ids are written, the next run would fold those
     # posts AGAIN. So the dedup set is saved immediately after the
     # merge, before anything slower (hydrate) can fail.
-    seen |= set(fresh["id"].astype(str))
+    seen |= set(fresh["id"].astype(str)) | _excluded_ids
     save_seen(seen)
     save_meta(meta)
     print(f"[ledger] +{len(fresh):,} ids (dedup set now holds "

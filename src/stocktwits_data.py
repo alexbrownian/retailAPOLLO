@@ -1,37 +1,40 @@
-"""
-stocktwits_data.py
-==================
-StockTwits as a THIRD social source (adopted from the fintwit-bot project,
-reworked for our pipeline). Two reasons it earns a place:
+"""Normalisation of StockTwits messages into the standard posts schema.
 
-1. It is the only mainstream finance-social platform whose users LABEL
-   THEIR OWN POSTS bullish or bearish. That gives us ground truth to
-   CALIBRATE our VADER+WSB sentiment against (how often does our lexicon
-   agree with the author's own label?) - no other source offers that.
-2. The public JSON API needs NO key for read-only symbol streams.
+StockTwits is the third social source. Two properties earn it a place:
 
-API surface used (the rate limits and the 429 rule are documented at the
-top of ingestion/fetch_stocktwits.py, this module's only caller):
+1. It is the only mainstream finance-social platform whose users label
+   their own posts bullish or bearish, which gives ground truth to
+   calibrate the lexicon sentiment against (how often does the lexicon
+   agree with the author's own label?).
+2. The public JSON API needs no key for read-only symbol streams.
+
+API surface used (rate limits and the 429 rule are documented at the top
+of ingestion/fetch_stocktwits.py, this module's only caller)::
+
     https://api.stocktwits.com/api/2/streams/symbol/{SYM}.json
         -> ~30 most recent messages for one ticker, JSON
-Message shape (the fields we keep):
+
+Message fields kept::
+
     id, body, created_at ('2024-01-05T14:31:22Z'),
     user.username, entities.sentiment.basic ('Bullish'/'Bearish'/None)
 
-Normalisation to the standard 9-column schema:
+Normalisation to the standard 9-column schema::
+
     id           <- 'st_' + message id  (own prefix, no collisions)
     date         <- created_at day
     author       <- user.username
-    score        <- 0 (likes exist but are sparse; not a counting signal anyway)
+    score        <- 0 (likes exist but are sparse; not a counting signal)
     subreddit    <- 'stocktwits'  (its own pseudo-subreddit, like x_twitter)
     title        <- body (the message text)
     selftext     <- ''
     num_comments <- 0
     source       <- 'stocktwits'
 
-The author's own Bullish/Bearish label does NOT fit the 9-column schema -
-it is kept ONLY in the raw .jsonl.zst files that fetch_stocktwits.py
-writes. The calibration notebook reads the raw files directly.
+The author's own Bullish/Bearish label does not fit the 9-column schema;
+it is kept only in the raw .jsonl.zst files that fetch_stocktwits.py
+writes, which the calibration tooling reads directly. Entry point:
+``normalise_stocktwits()``.
 """
 
 from __future__ import annotations
@@ -43,8 +46,17 @@ OUTPUT_COLUMNS = ["id", "date", "author", "score", "subreddit",
 
 
 def normalise_stocktwits(messages: list[dict]) -> pd.DataFrame:
-    """messages: list of raw message dicts from the symbol-stream API.
-    Returns rows in the standard schema, deduped on id (first seen wins)."""
+    """Normalises raw symbol-stream messages into the standard posts schema.
+
+    Messages without an id, a body or a parseable created_at are dropped.
+
+    Args:
+        messages: Raw message dicts from the symbol-stream API.
+
+    Returns:
+        DataFrame with OUTPUT_COLUMNS, deduped on id (first seen wins),
+        sorted by date.
+    """
     rows = []
     for m in messages:
         msg_id = m.get("id")

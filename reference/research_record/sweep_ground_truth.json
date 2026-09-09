@@ -1,0 +1,181 @@
+{
+  "universe": 59,
+  "rows": [
+    {
+      "setting": "tighter  (1.4x)",
+      "boom_etf": 0.35,
+      "crash_etf": 0.21,
+      "boom_single": 0.7,
+      "crash_single": 0.42,
+      "peaks": 102,
+      "detectable": 45,
+      "captured": 10,
+      "rate_of_detectable": 0.222,
+      "false_alarms": 124,
+      "fa_per_iy": 0.23,
+      "median_lead_d": 7.0,
+      "instruments_with_any_episode": 26,
+      "anchors_kept": 2,
+      "anchors": {
+        "memory": false,
+        "gold_metals": false,
+        "GME": true,
+        "semiconductors": true
+      }
+    },
+    {
+      "setting": "tighter  (1.2x)",
+      "boom_etf": 0.3,
+      "crash_etf": 0.18,
+      "boom_single": 0.6,
+      "crash_single": 0.36,
+      "peaks": 176,
+      "detectable": 72,
+      "captured": 14,
+      "rate_of_detectable": 0.194,
+      "false_alarms": 115,
+      "fa_per_iy": 0.22,
+      "median_lead_d": 8.0,
+      "instruments_with_any_episode": 36,
+      "anchors_kept": 4,
+      "anchors": {
+        "memory": true,
+        "gold_metals": true,
+        "GME": true,
+        "semiconductors": true
+      }
+    },
+    {
+      "setting": "previous (1.0x)",
+      "boom_etf": 0.25,
+      "crash_etf": 0.15,
+      "boom_single": 0.5,
+      "crash_single": 0.3,
+      "peaks": 282,
+      "detectable": 115,
+      "captured": 18,
+      "rate_of_detectable": 0.157,
+      "false_alarms": 109,
+      "fa_per_iy": 0.21,
+      "median_lead_d": 8.0,
+      "instruments_with_any_episode": 43,
+      "anchors_kept": 4,
+      "anchors": {
+        "memory": true,
+        "gold_metals": true,
+        "GME": true,
+        "semiconductors": true
+      }
+    },
+    {
+      "setting": "looser   (0.8x)",
+      "boom_etf": 0.2,
+      "crash_etf": 0.12,
+      "boom_single": 0.4,
+      "crash_single": 0.24,
+      "peaks": 490,
+      "detectable": 214,
+      "captured": 25,
+      "rate_of_detectable": 0.117,
+      "false_alarms": 102,
+      "fa_per_iy": 0.19,
+      "median_lead_d": 8.0,
+      "instruments_with_any_episode": 52,
+      "anchors_kept": 4,
+      "anchors": {
+        "memory": true,
+        "gold_metals": true,
+        "GME": true,
+        "semiconductors": true
+      }
+    },
+    {
+      "setting": "looser   (0.6x)",
+      "boom_etf": 0.15,
+      "crash_etf": 0.09,
+      "boom_single": 0.3,
+      "crash_single": 0.18,
+      "peaks": 858,
+      "detectable": 368,
+      "captured": 35,
+      "rate_of_detectable": 0.095,
+      "false_alarms": 89,
+      "fa_per_iy": 0.17,
+      "median_lead_d": 10.0,
+      "instruments_with_any_episode": 58,
+      "anchors_kept": 4,
+      "anchors": {
+        "memory": true,
+        "gold_metals": true,
+        "GME": true,
+        "semiconductors": true
+      }
+    },
+    {
+      "setting": "looser   (0.5x)",
+      "boom_etf": 0.125,
+      "crash_etf": 0.075,
+      "boom_single": 0.25,
+      "crash_single": 0.15,
+      "peaks": 1167,
+      "detectable": 501,
+      "captured": 43,
+      "rate_of_detectable": 0.086,
+      "false_alarms": 76,
+      "fa_per_iy": 0.14,
+      "median_lead_d": 10.0,
+      "instruments_with_any_episode": 58,
+      "anchors_kept": 4,
+      "anchors": {
+        "memory": true,
+        "gold_metals": true,
+        "GME": true,
+        "semiconductors": true
+      }
+    },
+    {
+      "setting": "crash-only looser",
+      "boom_etf": 0.25,
+      "crash_etf": 0.1,
+      "boom_single": 0.5,
+      "crash_single": 0.2,
+      "peaks": 450,
+      "detectable": 193,
+      "captured": 25,
+      "rate_of_detectable": 0.13,
+      "false_alarms": 101,
+      "fa_per_iy": 0.19,
+      "median_lead_d": 8.0,
+      "instruments_with_any_episode": 52,
+      "anchors_kept": 4,
+      "anchors": {
+        "memory": true,
+        "gold_metals": true,
+        "GME": true,
+        "semiconductors": true
+      }
+    },
+    {
+      "setting": "boom-only looser",
+      "boom_etf": 0.15,
+      "crash_etf": 0.15,
+      "boom_single": 0.3,
+      "crash_single": 0.3,
+      "peaks": 460,
+      "detectable": 196,
+      "captured": 19,
+      "rate_of_detectable": 0.097,
+      "false_alarms": 108,
+      "fa_per_iy": 0.2,
+      "median_lead_d": 8.0,
+      "instruments_with_any_episode": 54,
+      "anchors_kept": 4,
+      "anchors": {
+        "memory": true,
+        "gold_metals": true,
+        "GME": true,
+        "semiconductors": true
+      }
+    }
+  ]
+}

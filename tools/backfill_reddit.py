@@ -1,8 +1,7 @@
-"""
-backfill_reddit.py — RESUMABLE Reddit history backfill
-======================================================
-recorded decision: Fills the 2023-04 -> 2026-01 data drought
-without needing an uninterrupted 8-hour connection.
+"""Resumable Reddit history backfill in chunks.
+
+Fills a multi-month gap in the raw Reddit store without needing an
+uninterrupted multi-hour connection::
 
     python tools/backfill_reddit.py                      # full gap, monthly chunks
     python tools/backfill_reddit.py --start 2024-01-01 --end 2024-07-01
@@ -10,41 +9,42 @@ without needing an uninterrupted 8-hour connection.
     python tools/backfill_reddit.py --status             # what is left to do
     python tools/backfill_reddit.py --redo 2024-03-01    # re-run one chunk
 
-WHY THIS EXISTS
-    ingestion/fetch_reddit_arctic.py --backfill START END does the actual
-    pulling, but it is ONE long process that writes to a .tmp file and
-    only renames it to the real .jsonl.zst at the very end. Kill it,
-    close the laptop, or lose the network for more than ~3 minutes and
-    the whole run is discarded - a backfill deliberately does not move
-    the watermark, so there is nothing to resume from.
+``ingestion/fetch_reddit_arctic.py --backfill START END`` does the actual
+pulling, but it is one long process that writes to a ``.tmp`` file and
+only renames it to the real ``.jsonl.zst`` at the very end. Kill it, or
+lose the network for more than a few minutes, and the whole run is
+discarded; a backfill deliberately does not move the watermark, so there
+is nothing to resume from.
 
-    This wrapper cuts the window into chunks and runs the fetcher once
-    per chunk as its own process. Each chunk that finishes writes its
-    own raw file and is recorded in the ledger below, so an interrupted
-    run picks up at the first unfinished chunk. Dedup is by post id all
-    the way down the pipeline, so re-running a chunk is always safe.
+This wrapper cuts the window into chunks and runs the fetcher once per
+chunk as its own process. Each chunk that finishes writes its own raw
+file and is recorded in the ledger, so an interrupted run picks up at the
+first unfinished chunk. Dedup is by post id all the way down the
+pipeline, so re-running a chunk is always safe.
 
-LEDGER: data/reference/reddit_backfill_progress.json
+Ledger: ``data/reference/reddit_backfill_progress.json``::
+
     {"chunks": {"2024-03-01_2024-04-01": {"posts": 41230, "done_utc": ...}}}
 
-AFTER IT FINISHES - AND THE RIGHT COMMAND DEPENDS ON THE MACHINE:
+After it finishes, the right follow-up depends on the mode of this copy.
 
-  INTERNAL machine (no data/processed/posts.parquet - the desk laptop):
-      python tools/fold_historical.py --arctic
-      python -m analytics.run_analytics --what phases --research
+Aggregates mode (no ``data/processed/posts.parquet``)::
 
-  EXTERNAL machine (posts.parquet present):
-      python update_data.py --skip-fetch
-      python -m analytics.run_analytics --what phases --research
+    python tools/fold_historical.py --arctic
+    python -m analytics.run_analytics --what phases --research
 
-  Do not run `update_data.py --skip-fetch` on the internal machine after
-  a backfill: ingestion/append_live_abstracted.py keeps only posts dated
-  on or after LIVE_START by design, so every backfilled post is read and
-  then dropped. tools/fold_historical.py is the correct path for
-  historical posts on that machine (see docs/RESEARCH_RECORD.md).
+Full mode (``posts.parquet`` present)::
 
-  print_next_steps() below picks the right pair automatically, so the
-  message printed at the end of a run is always the one for THIS machine.
+    python update_data.py --skip-fetch
+    python -m analytics.run_analytics --what phases --research
+
+Do not run ``update_data.py --skip-fetch`` in aggregates mode after a
+backfill: ``ingestion/append_live_abstracted.py`` keeps only posts dated
+on or after ``LIVE_START`` by design, so every backfilled post is read
+and then dropped. ``tools/fold_historical.py`` is the correct path for
+historical posts in that mode. ``print_next_steps`` picks the right pair
+automatically, so the message printed at the end of a run is always the
+one for this copy.
 """
 from __future__ import annotations
 
@@ -63,13 +63,14 @@ FETCHER = os.path.join(PROJECT_ROOT, "ingestion", "fetch_reddit_arctic.py")
 LEDGER = os.path.join(PROJECT_ROOT, "data", "reference",
                       "reddit_backfill_progress.json")
 
-# The drought: ticker-mention rows collapse ~90% from 2023Q2 and only
-# recover in 2026Q1 (see docs/RESEARCH_RECORD.md).
+# The default window covers the span where ticker-mention rows collapse
+# ~90% and only recover at its end.
 DEFAULT_START = "2023-04-01"
 DEFAULT_END = "2026-01-01"
 
 
 def load_ledger() -> dict:
+    """Return the progress ledger, or an empty one when absent or unreadable."""
     if os.path.exists(LEDGER):
         try:
             return json.load(open(LEDGER, encoding="utf-8"))
@@ -79,6 +80,7 @@ def load_ledger() -> dict:
 
 
 def save_ledger(led: dict) -> None:
+    """Write the progress ledger atomically."""
     os.makedirs(os.path.dirname(LEDGER), exist_ok=True)
     with open(LEDGER + ".tmp", "w", encoding="utf-8") as f:
         json.dump(led, f, indent=1)
@@ -86,7 +88,19 @@ def save_ledger(led: dict) -> None:
 
 
 def make_chunks(start: str, end: str, chunk_days: int):
-    """Calendar months when chunk_days<=0, else fixed-width windows."""
+    """Split ``[start, end)`` into fetch windows.
+
+    Args:
+        start: ISO start date.
+        end: ISO end date (exclusive).
+        chunk_days: Window width in days; ``<= 0`` means calendar months.
+
+    Returns:
+        List of ``(start, end)`` ISO date pairs.
+
+    Raises:
+        SystemExit: When ``end`` is not after ``start``.
+    """
     d0 = datetime.date.fromisoformat(start)
     d1 = datetime.date.fromisoformat(end)
     if d1 <= d0:
@@ -110,20 +124,31 @@ SUBS_TAG = "all"
 
 
 def key_of(a: str, b: str) -> str:
-    """Builds the ledger key from the window plus the subreddit set.
+    """Build the ledger key from the window plus the subreddit set.
 
     A chunk is only complete for the subreddits it actually fetched, so
     the set belongs in the key: with a date-only key, re-running a
     finished window with additional subreddits would be skipped as
     already done and silently fetch nothing. Re-running the same set
     still skips; dedup is by post id, so any overlap is harmless.
+
+    Args:
+        a: Window start (ISO date).
+        b: Window end (ISO date).
+
+    Returns:
+        ``"<a>_<b>"`` for the full panel, else ``"<a>_<b>#<subs tag>"``.
     """
     return f"{a}_{b}" if SUBS_TAG == "all" else f"{a}_{b}#{SUBS_TAG}"
 
 
 def subs_tag(spec: str) -> str:
-    """Stable tag for a subreddit set: sorted, so the order typed on the
-    command line cannot create a second, spurious ledger entry."""
+    """Return a stable tag for a comma-separated subreddit set.
+
+    The names are lower-cased and sorted, so the order typed on the
+    command line cannot create a second, spurious ledger entry. An empty
+    spec yields ``"all"``.
+    """
     if not spec.strip():
         return "all"
     subs = sorted({x.strip().lower() for x in spec.split(",") if x.strip()})
@@ -135,19 +160,25 @@ FETCH_OPTS: list = []
 
 
 def run_chunk(a: str, b: str) -> tuple[bool, int]:
-    """Run the fetcher for one window. Returns (ok, posts_written).
+    """Run the fetcher for one window as a subprocess.
 
-    `-u` IS LOAD-BEARING, not a style choice. The fetcher's progress
-    lines use a bare print(), and Python BLOCK-buffers stdout whenever
-    it is a pipe rather than a terminal - about 8 KB. One chunk emits
-    roughly 700 bytes (seventeen short subreddit lines), so the buffer
-    never fills and NOTHING appeared until the child exited ~26 minutes
-    later. Run straight from a terminal the same fetcher prints live,
-    which is why this only showed up under the wrapper and looked
-    exactly like a hang at "[1/30]".
+    The child is started with ``-u`` and that flag is load-bearing: the
+    fetcher's progress lines use a bare ``print()``, and Python
+    block-buffers stdout (about 8 KB) whenever it is a pipe rather than
+    a terminal. One chunk emits only a few hundred bytes, so without
+    ``-u`` nothing would appear until the child exits many minutes later,
+    which looks exactly like a hang. ``bufsize=1`` on the ``Popen`` is
+    line buffering on the parent's read side and says nothing about how
+    the child writes.
 
-    `bufsize=1` below does NOT fix it: that is line buffering on the
-    PARENT's read side and says nothing about how the child writes.
+    Args:
+        a: Window start (ISO date).
+        b: Window end (ISO date).
+
+    Returns:
+        Tuple ``(ok, posts_written)``. ``ok`` is False when the child
+        failed or any subreddit gave up mid-window, in which case the
+        chunk must be re-run.
     """
     cmd = [sys.executable, "-u", FETCHER, "--backfill", a, b]
     if FETCH_OPTS:
@@ -200,26 +231,37 @@ def run_chunk(a: str, b: str) -> tuple[bool, int]:
 
 
 def print_next_steps(header: str) -> None:
-    """The correct follow-up for THIS machine, decided by the same test
-    update_data.py uses: does posts.parquet exist?"""
+    """Print the correct follow-up commands for this copy's mode.
+
+    Decided by the same test ``update_data.py`` uses: whether
+    ``posts.parquet`` exists.
+
+    Args:
+        header: Line printed before the commands.
+    """
     posts = os.path.join(PROJECT_ROOT, "data", "processed", "posts.parquet")
     internal = not os.path.exists(posts)
     print(header)
     if internal:
         print("  python tools/fold_historical.py --arctic")
         print("  python -m analytics.run_analytics --what phases --research")
-        print("\n  (INTERNAL machine - no posts.parquet. fold_historical is")
+        print("\n  (aggregates mode - no posts.parquet. fold_historical is")
         print("   the door for historical posts. `update_data.py --skip-fetch`")
         print("   would drop every one of them: append_live_abstracted keeps")
-        print("   only dates >= LIVE_START. See docs/RESEARCH_RECORD.md.)")
+        print("   only dates >= LIVE_START. See reference/KEY_PARAMETERS.md.)")
     else:
         print("  python update_data.py --skip-fetch")
         print("  python -m analytics.run_analytics --what phases --research")
-        print("\n  (EXTERNAL machine - posts.parquet present, so the ordinary")
+        print("\n  (full mode - posts.parquet present, so the ordinary")
         print("   rebuild path sees the backfilled posts.)")
 
 
 def main() -> int:
+    """Run the pending chunks, or one of the status/redo/estimate modes.
+
+    Returns:
+        ``0`` on success; ``1`` when a chunk or the probe failed.
+    """
     p = argparse.ArgumentParser(description="Resumable Reddit backfill.")
     p.add_argument("--start", default=DEFAULT_START)
     p.add_argument("--end", default=DEFAULT_END)

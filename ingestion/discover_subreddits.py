@@ -1,53 +1,54 @@
-"""
-discover_subreddits.py
-======================
-THE DYNAMIC PANEL - monthly, crowd-referral subreddit discovery
-(every knob lives in src/config.py with its
-derivation).
+"""Dynamic panel: monthly crowd-referral subreddit discovery.
 
-THE IDEA
-    When retail migrates (WSB -> Superstonk, 2021), the migration is
-    visible in the text of the subs already tracked BEFORE it is visible
-    anywhere else: people write "r/<newplace>". So the panel expands
-    where the crowd itself points - the same philosophy as the
-    data-chosen single-name universe ("today's NVDA is tomorrow's
-    something else").
+Every knob lives in ``src/config.py`` with its derivation.
 
-THE RULES (all documented in config.py, none invented here)
-    qualify   >= PANEL_MIN_REFERRERS (=100, the A0 measurability floor,
-              reused) UNIQUE panel authors referring to r/<name> within
-              PANEL_REFERRAL_WINDOW (=28d, the project's measurement
-              window)
-    screen    the candidate must TALK LIKE the panel: one sampled page
-              (100) of its newest comments must show a ticker-mention
-              rate >= PANEL_SCREEN_FRACTION (0.5) x the tracked panel's
-              own average rate, both measured identically in this run.
-              Popularity without tickers (r/pics) never passes.
-    cap       PANEL_ADD_CAP (=1) auto-add per review, EXPLORATION tier;
-              the founding subs are the frozen CORE tier. One denominator
-              step per month is what the 365d percentile normalisation
-              absorbs gracefully.
-    audit     every review writes docs/panel_review_latest.md and every
-              ADD is logged in ingestion/subreddit_panel.json (tier,
-              date, referral count, measured rates) - the manifest is
-              what lets any analysis be re-cut excluding young additions.
+When retail migrates between communities, the migration is visible in the
+text of the subreddits already tracked before it is visible anywhere
+else: people write ``r/<newplace>``. So the panel expands where the crowd
+itself points, the same approach as the data-chosen single-name universe.
 
-LOCAL-ONLY BY-SUBREDDIT AGGREGATE
-    data/processed/daily_ticker_counts_by_subreddit.parquet is extended
-    incrementally from the raw live post files scanned here. It stays
-    LOCAL (gitignored): the committed contract explicitly bans subreddit
-    columns (FORBIDDEN_COLS). It exists so panel-step artifacts are
-    measurable on this machine, not hidden.
+The rules (all documented in ``config.py``):
 
-USAGE
-    python ingestion/discover_subreddits.py             # full review now
-    python ingestion/discover_subreddits.py --if-due    # only if >= 30d
+qualify
+    At least ``PANEL_MIN_REFERRERS`` unique panel authors refer to
+    ``r/<name>`` within ``PANEL_REFERRAL_WINDOW`` days.
+screen
+    The candidate must talk like the panel: one sampled page (100) of its
+    newest comments must show a ticker-mention rate of at least
+    ``PANEL_SCREEN_FRACTION`` times the tracked panel's own average rate,
+    both measured identically in this run. Popularity without tickers
+    never passes.
+cap
+    ``PANEL_ADD_CAP`` auto-adds per review, in the exploration tier; the
+    founding subreddits are the frozen core tier. One denominator step
+    per month is what the 365-day percentile normalisation absorbs
+    gracefully.
+audit
+    Every review writes ``data/reference/panel_review_latest.md`` and every add is
+    logged in ``data/reference/subreddit_panel.json`` (tier, date,
+    referral count, measured rates). The manifest is what lets any
+    analysis be re-cut excluding young additions.
+
+The panel itself is ``config/forums.csv``, read through
+``src.settings.load_forums``; an auto-add appends a row to it.
+
+``data/processed/daily_ticker_counts_by_subreddit.parquet`` is a
+local-only aggregate, extended incrementally from the raw live post files
+scanned here. It stays local (gitignored) because the committed contract
+bans subreddit columns (``FORBIDDEN_COLS``). It exists so panel-step
+artifacts are measurable on this copy.
+
+Usage::
+
+    python ingestion/discover_subreddits.py                 # full review now
+    python ingestion/discover_subreddits.py --if-due        # only if the cadence has elapsed
     python ingestion/discover_subreddits.py --report-only   # never adds
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime
 import glob
 import json
@@ -67,14 +68,16 @@ from src.config import (PANEL_REVIEW_DAYS, PANEL_REFERRAL_WINDOW,   # noqa: E402
                         PANEL_ADD_CAP, REFERENCE_DIR, PROCESSED_DIR,
                         RAW_DIR)
 
-SUBS_FILE = os.path.join(THIS_DIR, "finance_subreddits.txt")
-MANIFEST = os.path.join(THIS_DIR, "subreddit_panel.json")
+# The panel itself is config/forums.csv (read through src.settings). The
+# manifest below is the detailed audit trail of automatic additions.
+MANIFEST = os.path.join(PROJECT_ROOT, "data", "reference",
+                        "subreddit_panel.json")
 WM_FILE = os.path.join(REFERENCE_DIR, "panel_review_watermark.json")
 SCAN_LEDGER = os.path.join(REFERENCE_DIR, "panel_scan_ledger.json")
 REFERRALS = os.path.join(REFERENCE_DIR, "subreddit_referrals.parquet")
 BY_SUB_COUNTS = os.path.join(PROCESSED_DIR,
                              "daily_ticker_counts_by_subreddit.parquet")
-REPORT = os.path.join(PROJECT_ROOT, "docs", "panel_review_latest.md")
+REPORT = os.path.join(REFERENCE_DIR, "panel_review_latest.md")
 API_COMMENTS = "https://arctic-shift.photon-reddit.com/api/comments/search"
 
 # r/Name referrals in free text. 3-21 chars is Reddit's own name rule;
@@ -90,6 +93,7 @@ NEVER = {"all", "popular", "askreddit", "announcements"}
 # small IO helpers (same conventions as the fetchers)
 # ---------------------------------------------------------------------------
 def _load_json(path, default):
+    """Read a JSON file, returning ``default`` when absent or unreadable."""
     if os.path.exists(path):
         try:
             return json.load(open(path, encoding="utf-8"))
@@ -99,6 +103,7 @@ def _load_json(path, default):
 
 
 def _save_json(path, obj):
+    """Write ``obj`` as JSON atomically (write beside, then replace)."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path + ".tmp", "w", encoding="utf-8") as f:
         json.dump(obj, f, indent=1)
@@ -106,18 +111,25 @@ def _save_json(path, obj):
 
 
 def read_panel() -> list:
-    subs = []
-    with open(SUBS_FILE, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#"):
-                subs.append(line.lower())
-    return subs
+    """Return the enabled forums from ``config/forums.csv``, lower-cased.
+
+    The settings cache is reloaded first so an add made earlier in this
+    process is seen.
+    """
+    from src.settings import load_forums, reload
+    reload()                         # an add in this process must be seen
+    return [s.lower() for s in load_forums()]
 
 
 def load_manifest() -> dict:
-    """The audit trail. Self-creates on first run: every sub already in
-    the list becomes CORE tier (the frozen founders)."""
+    """Load the panel manifest (the audit trail of additions).
+
+    Self-creates on first run: every subreddit already in the panel
+    becomes core tier (the frozen founders).
+
+    Returns:
+        Dict mapping subreddit to its manifest record.
+    """
     man = _load_json(MANIFEST, {})
     changed = False
     for sub in read_panel():
@@ -134,8 +146,12 @@ def load_manifest() -> dict:
 # 1. scan new raw files: referrals + local by-subreddit ticker counts
 # ---------------------------------------------------------------------------
 def _iter_raw(paths):
-    """Yield (created_utc, author, subreddit, text) from raw post/comment
-    jsonl.zst files (completed files only - .tmp are in-flight)."""
+    """Yield ``(created_utc, author, subreddit, text, record)`` per raw line.
+
+    Reads raw post/comment ``jsonl.zst`` files (completed files only;
+    ``.tmp`` files are in-flight). Unreadable files and malformed lines
+    are skipped.
+    """
     import zstandard
     for path in paths:
         try:
@@ -166,10 +182,12 @@ def _iter_raw(paths):
 
 
 def _ledger_key(path: str) -> str:
-    """Ledger key for a raw file: its path relative to RAW_DIR, with
-    forward slashes on every OS. A relative key survives a repo folder
-    rename or move; an absolute key does not, and would make every file
-    look unseen after the checkout is relocated (see docs/DECISIONS.md).
+    """Return the ledger key for a raw file.
+
+    The key is the path relative to ``RAW_DIR`` with forward slashes on
+    every OS. A relative key survives a repo folder rename or move; an
+    absolute key would make every file look unseen after the checkout is
+    relocated.
     """
     return os.path.relpath(path, RAW_DIR).replace(os.sep, "/")
 
@@ -192,10 +210,18 @@ def _migrate_ledger(ledger: dict) -> dict:
 
 
 def scan_new_raw(verbose=True) -> int:
-    """Incrementally scan raw live files (posts + comments) that the
-    ledger has not seen: extract r/<name> referrals into the local
-    referral store, and extend the LOCAL by-subreddit ticker counts from
-    post files. Returns the number of newly scanned files."""
+    """Incrementally scan raw live files the ledger has not seen.
+
+    Extracts ``r/<name>`` referrals (from panel subreddits only) into the
+    local referral store, and extends the local by-subreddit ticker counts
+    from post files. A file is rescanned when its size changes.
+
+    Args:
+        verbose: Print a one-line summary.
+
+    Returns:
+        The number of newly scanned files.
+    """
     ledger = _migrate_ledger(_load_json(SCAN_LEDGER, {}))
     candidates_files = sorted(
         glob.glob(os.path.join(RAW_DIR, "RedditLive", "*.jsonl.zst"))
@@ -247,9 +273,14 @@ def scan_new_raw(verbose=True) -> int:
 
 
 def _extend_by_sub_counts(posts: pd.DataFrame):
-    """LOCAL-ONLY aggregate (see module docstring): daily ticker mention
-    counts per subreddit, extended incrementally, first-seen-wins on
-    (date, subreddit) - re-scanning a grown file replaces those days."""
+    """Extend the local-only daily ticker counts per subreddit.
+
+    Rows for a ``(date, subreddit)`` pair present in ``posts`` replace the
+    stored ones, so re-scanning a grown file replaces those days.
+
+    Args:
+        posts: Frame with ``date``, ``subreddit`` and ``text`` columns.
+    """
     from src.abstracted_data import load_universe
     from src.extract_tickers import extract_tickers_from_text
     universe = load_universe()
@@ -278,9 +309,20 @@ def _extend_by_sub_counts(posts: pd.DataFrame):
 # 2. the finance screen (one polite API page per measured community)
 # ---------------------------------------------------------------------------
 def ticker_rate(sub: str, universe, sampler=None) -> float | None:
-    """Fraction of one page (100) of the community's newest comments that
-    mention >= 1 extractable ticker. None = sample unavailable (offline /
-    API refusal) - an unmeasurable candidate is NEVER auto-added."""
+    """Measure how often a community's newest comments mention a ticker.
+
+    Args:
+        sub: Subreddit name.
+        universe: The ticker universe from ``load_universe``.
+        sampler: Callable returning a list of comment bodies for a
+            subreddit; defaults to one Arctic Shift page of 100.
+
+    Returns:
+        Fraction of sampled comments that mention at least one
+        extractable ticker, or ``None`` when the sample is unavailable
+        (offline or API refusal). An unmeasurable candidate is never
+        auto-added.
+    """
     from src.extract_tickers import extract_tickers_from_text
     if sampler is None:
         import requests
@@ -313,8 +355,19 @@ def ticker_rate(sub: str, universe, sampler=None) -> float | None:
 # ---------------------------------------------------------------------------
 def qualify(referrals: pd.DataFrame, panel: list,
             asof: datetime.date) -> pd.DataFrame:
-    """Candidates ranked by UNIQUE referring authors within the window.
-    Pure function of the referral store - unit-tested."""
+    """Rank candidates by unique referring authors within the window.
+
+    A pure function of the referral store.
+
+    Args:
+        referrals: Frame with ``date``, ``candidate`` and ``author``.
+        panel: Current panel (lower-cased); its members are excluded.
+        asof: End of the ``PANEL_REFERRAL_WINDOW`` window.
+
+    Returns:
+        Frame with ``candidate`` and ``referrers`` columns, sorted by
+        ``referrers`` descending.
+    """
     if referrals.empty:
         return pd.DataFrame(columns=["candidate", "referrers"])
     lo = (asof - datetime.timedelta(days=PANEL_REFERRAL_WINDOW)).isoformat()
@@ -329,8 +382,19 @@ def qualify(referrals: pd.DataFrame, panel: list,
 
 def run_review(report_only: bool = False, sampler=None,
                verbose: bool = True) -> dict:
-    """The monthly review: scan -> qualify -> screen -> (maybe) add ->
-    report. Returns a dict summary (also written to docs/)."""
+    """Run the monthly review: scan, qualify, screen, add, report.
+
+    Args:
+        report_only: Rank, screen and write the report but never add.
+        sampler: Passed to ``ticker_rate``; tests inject one to avoid
+            network calls.
+        verbose: Print progress lines.
+
+    Returns:
+        Summary dict with ``date``, ``panel_size``, ``candidates_seen``,
+        ``qualified``, ``added`` and ``screen``; the report is also
+        written to ``data/reference/panel_review_latest.md``.
+    """
     from src.abstracted_data import load_universe
 
     scan_new_raw(verbose=verbose)
@@ -390,8 +454,14 @@ def run_review(report_only: bool = False, sampler=None,
 
 def _add_to_panel(sub: str, referrers: int, rate: float,
                   panel_avg: float, man: dict):
-    with open(SUBS_FILE, "a", encoding="utf-8") as f:
-        f.write(f"{sub}\n")
+    """Append an exploration-tier row to ``forums.csv`` and log it in the manifest."""
+    from src.settings import FORUMS_FILE
+    with open(FORUMS_FILE, "a", newline="", encoding="utf-8") as f:
+        csv.writer(f).writerow([
+            sub, "reddit", "exploration", "yes",
+            datetime.date.today().isoformat(),
+            f"auto-added: {referrers} referrers/28d, ticker rate "
+            f"{rate:.0%} vs panel {panel_avg:.0%}"])
     man[sub] = {"tier": "exploration",
                 "added": datetime.date.today().isoformat(),
                 "source": "crowd-referral auto-add",
@@ -406,6 +476,7 @@ def _add_to_panel(sub: str, referrers: int, rate: float,
 
 
 def _write_report(summary: dict, ranked: pd.DataFrame):
+    """Write the Markdown review report for the top-ranked candidates."""
     os.makedirs(os.path.dirname(REPORT), exist_ok=True)
     lines = [
         f"# Panel review — {summary['date']}",
@@ -429,12 +500,13 @@ def _write_report(summary: dict, ranked: pd.DataFrame):
               f"{screen.get('panel_avg_rate')}_ — a candidate auto-adds "
               f"only at ≥ {PANEL_SCREEN_FRACTION:.0%} of it (and only "
               f"{PANEL_ADD_CAP}/review). Manifest: "
-              "`ingestion/subreddit_panel.json`."]
+              "`data/reference/subreddit_panel.json`."]
     with open(REPORT, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 
 
 def main() -> int:
+    """Run the review, or only the incremental scan when it is not due."""
     p = argparse.ArgumentParser(description="Dynamic subreddit panel: "
                                             "monthly crowd-referral review")
     p.add_argument("--if-due", action="store_true",

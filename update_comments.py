@@ -1,32 +1,31 @@
-"""
-update_comments.py
-==================
-The dedicated Reddit-comments + influence-board runner (recorded decision,
-2026-07-24: comments left the daily pipeline - they are the slow fetch -
-and live here instead).
+"""Unbudgeted runner for Reddit comments plus the influence-board update.
+
+Comments are the slow fetch: the daily pipeline crawls them under a page
+budget, and this script is the catch-up path that crawls until the data
+runs out::
 
     python update_comments.py                      # incremental (watermark)
     python update_comments.py --lookback-days 30   # wider first window
     python update_comments.py --backfill 2026-01-01 2026-07-01
     python update_comments.py --estimate           # print the estimate, exit
 
-WHAT ONE RUN DOES
-    1. prints an upfront TIME ESTIMATE (from the per-subreddit watermarks
-       - the honest driver of runtime is how much catching-up is owed);
-    2. runs ingestion/fetch_reddit_comments.py (watermarked, resumable -
-       Ctrl-C is always safe, the seen-file dedups on the next run);
-    3. runs analytics.influence.update(): parse the new raw files, extend
-       the committed text-free store, re-judge matured calls, rescore the
-       board.
+One run:
 
-WHY THE ESTIMATE IS WHAT IT IS
-    The Arctic Shift API is crawled politely: 100 comments/page, 1s
-    pause, subreddits in sequence. Comments run 10-50x post volume, so
-    a FIRST run (no watermark) over the default 3-day window costs
-    roughly 10-25 minutes across the panel; a daily incremental run owes
-    only the hours since the last watermark and typically lands in the
-    1-4 minute range. Backfills are days-per-half-year territory for the
-    busy subs - which is exactly why the desk scoped comments live-first.
+1. prints an upfront time estimate from the per-subreddit watermarks
+   (the driver of runtime is how much catching-up is owed);
+2. runs ``ingestion/fetch_reddit_comments.py`` (watermarked, resumable;
+   Ctrl-C is always safe, the seen-file dedups on the next run);
+3. runs ``analytics.influence.update()``: parse the new raw files,
+   extend the committed text-free store, re-judge matured calls, rescore
+   the board.
+
+The Arctic Shift API is crawled politely: 100 comments per page, a 1s
+pause, subreddits in sequence. Comments run 10-50x post volume, so a
+first run (no watermark) over the default 3-day window costs roughly
+10-25 minutes across the panel; a daily incremental run owes only the
+hours since the last watermark and typically lands in the 1-4 minute
+range. Backfills of busy subreddits take days per half-year, which is
+why comments are scoped live-first.
 """
 
 from __future__ import annotations
@@ -43,28 +42,38 @@ sys.path.insert(0, ROOT)
 
 WM_FILE = os.path.join(ROOT, "data", "reference",
                        "reddit_comments_watermark.json")
-SUBS_FILE = os.path.join(ROOT, "ingestion", "finance_subreddits.txt")
+# Forum panel: config/forums.csv via src.settings.load_forums().
 
 
 def _n_subs() -> int:
+    """Return the number of enabled forums, or 17 if the config is unreadable."""
     try:
-        with open(SUBS_FILE, encoding="utf-8") as f:
-            return sum(1 for line in f
-                       if line.strip() and not line.startswith("#"))
-    except OSError:
+        from src.settings import load_forums
+        return len(load_forums())
+    except Exception:                                    # noqa: BLE001
         return 17
 
 
 def estimate(lookback_days: int, backfill: list | None) -> str:
-    """A human-honest runtime estimate. Drivers: number of subreddits,
-    watermark age (how much catching-up is owed), and the API's polite
-    pace (100/page, 1s/pause). Deliberately given as a RANGE - comment
-    volume per sub varies 100x between a quiet Tuesday and a mania."""
+    """Build a runtime estimate for the coming crawl.
+
+    The drivers are the number of subreddits, the watermark age (how much
+    catching-up is owed) and the API's polite pace (100 per page, 1s
+    pause). The estimate is deliberately a range: comment volume per
+    subreddit varies 100x between a quiet day and a mania.
+
+    Args:
+        lookback_days: Live window used when no watermark exists.
+        backfill: ``[START, END]`` for a historical run, else ``None``.
+
+    Returns:
+        One human-readable sentence.
+    """
     n = _n_subs()
     if backfill:
         return (f"BACKFILL {backfill[0]} -> {backfill[1]} across {n} "
                 "subreddits: expect HOURS for busy subs (1s/page at 100/"
-                "page; the desk's scope is the current year at most). "
+                "page; the live scope is the current year at most). "
                 "Safe to Ctrl-C and resume any time.")
     marks = {}
     if os.path.exists(WM_FILE):
@@ -89,6 +98,11 @@ def estimate(lookback_days: int, backfill: list | None) -> str:
 
 
 def main() -> int:
+    """Print the estimate, run the fetch, then update the influence board.
+
+    Returns:
+        The fetcher's exit code.
+    """
     p = argparse.ArgumentParser(
         description="Fetch Reddit comments + update the influence board "
                     "(the slow, optional half of ingestion)")

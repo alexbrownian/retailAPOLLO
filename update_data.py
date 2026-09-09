@@ -1,80 +1,74 @@
 #!/usr/bin/env python
-"""
-update_data.py - the single pipeline entry point. Set the window, run it.
+"""Pipeline entry point: refresh data, rescore, publish.
 
-    python update_data.py
+    python update_data.py            # live refresh (the daily job)
+    python update_data.py --full     # rebuild every aggregate from raw text
+    python update_data.py --ai       # refresh only the AI-generated panels
 
-TWO MODES, ONE KNOB (the window in src/config.py, overridable per run):
+Modes
+-----
+The script detects which of two modes applies from what is on disk, and
+``--mode`` overrides the detection:
 
-  LIVE MODE      END_DATE = ""   (the day-to-day default)
-      Fast path. Fetch the lookback window of the most popular posts from
-      every live source (all three fetchers IN PARALLEL), fold them into
-      the stores, recompute conviction + signals (pure .py analytics - a
-      few seconds, no notebooks anywhere), pull prices. The dashboard then
-      renders everything interactively.
+``full``
+    ``data/processed/posts.parquet`` is present. This copy holds the raw
+    post store: a live run merges newly fetched posts into it and splices
+    the tail of every aggregate; ``--full`` rebuilds every aggregate over
+    the whole build range from raw text.
 
-  BACKTEST MODE  END_DATE = "YYYY-MM-DD"
-      View a past regime - instant. The aggregates are WINDOW-INDEPENDENT
-      (built once over BUILD_START_DATE -> today via --full), so a
-      backtest fetches nothing and rebuilds nothing unless the derived
-      outputs are stale. The window drives the price pull and what the
-      dashboard shows.
+``aggregates``
+    No raw store. This copy holds only ``ABSTRACTED_DATA`` (text-free
+    daily aggregates). Newly fetched posts fold straight into the
+    aggregates and raw text is never written to disk.
 
-    Examples:
-        --start 2021-01-01 --end 2021-11-01   -> view Jan-Oct 2021
-        --start 2021-01-01                    -> LIVE, 2021 -> today
+Either way the run ends by verifying that ``ABSTRACTED_DATA`` carries no
+text (the text-free boundary), and by publishing the dashboard bundle.
 
-RUNS ON BOTH MACHINES (auto-detected)
-    * EXTERNAL machine (data/processed/posts.parquet present)
-        Holds the raw post store. Live mode merges new posts into the
-        store and splices the aggregate tail; --full rebuilds every
-        aggregate over the whole build range from raw text.
-    * INTERNAL machine (no posts.parquet)
-        Holds only ABSTRACTED_DATA - text-free daily aggregates. Live
-        posts fold straight into the aggregates; raw text never lands.
-    Either way the run ends by verifying ABSTRACTED_DATA carries no text.
+Windows
+-------
+``END_DATE`` in ``src/config.py`` (overridable per run) selects the view:
 
-WHAT THIS SCRIPT WILL NEVER DO (requirement, 2026-07-28)
-    It does not choose a model, re-select a threshold, or re-run the
-    walk-forward / ablation / ML challenger. It refreshes data and scores
-    it with the ALREADY-FROZEN winner, every time, so the run is one
-    predictable job. The only exception is a machine that has no frozen
-    record at all, which must derive one once before it can score
-    anything (the bootstrap).
-    Two deliberate ways to re-open the research question, both explicit:
-        python -m analytics.run_analytics --what phases --research
-        python update_data.py --full          (a backfill IS new research:
-                                               it rewrites the history the
-                                               thresholds were chosen on)
-    If the frozen record stops at an earlier year than the data, the run
-    prints ONE notice line and keeps scoring at it - that is out-of-sample
-    use, exactly what the walk-forward licenses. See
-    analytics/euphoria.py::needs_research for the full argument.
+* ``END_DATE = ""`` is the live default: fetch the lookback window from
+  every source in parallel, fold it in, rescore, pull prices (Bloomberg
+  or yfinance, per ``--provider`` / ``price_provider``).
+* ``END_DATE = "YYYY-MM-DD"`` views a past regime. Aggregates are
+  window-independent, so nothing is fetched or rebuilt unless a derived
+  output is stale; the window drives the price pull and the dashboard.
 
-WHAT REPLACED THE NOTEBOOKS
-    old: nbconvert-executes 08/09/10 (+ overlays 11-16), minutes + JSON
-         re-serialisation + truncation risk
-    new: analytics/run_analytics.py - the identical mathematics as importable
-         functions, parallelised, seconds. The overlay charts are computed
-         on demand by the dashboard from the same saved outputs.
+What a run never does
+---------------------
+It never chooses a model, re-selects a threshold, or re-runs the
+walk-forward tournament. It refreshes data and scores it with the frozen
+model every time, so a run is one predictable job. The only exception is
+a copy with no frozen record at all, which derives one once before it can
+score (the bootstrap). To re-open the research question deliberately::
 
-EVERY RUN ALSO PRINTS
-    * a DATA COVERAGE table (posts per month, per source) - gaps at a glance
-    * a WINDOW CHECK - whether the chosen view window actually has data,
-      per source, so an empty chart is never a mystery
-    * a RUN SUMMARY - the key facts in one glance
-    * the SAFETY CHECK verdict - PASS before committing ABSTRACTED_DATA
+    python -m analytics.run_analytics --what phases --research
+    python update_data.py --full     # a backfill rewrites the history the
+                                     # thresholds were chosen on
 
-FLAGS
-    --full           rebuild the aggregates over BUILD_START_DATE -> today
-                     (external machine; run once initially and after
-                     theme/schema changes)
-    --fetch          force API fetching in backtest mode
-    --skip-fetch     recompute only, no API calls
-    --skip-prices    skip the Bloomberg pull
-    --start / --end  override the window for this run only
-    --external / --internal   force a machine mode instead of auto-detecting
-    --dry-run        print the plan, run nothing
+If the frozen record stops at an earlier year than the data, the run
+prints one notice and keeps scoring with it; that is out-of-sample use,
+which the walk-forward validation licenses.
+
+Every run prints
+----------------
+* a data-coverage table (posts per month, per source);
+* a window check (whether the selected view has data, per source);
+* a run summary;
+* the text-free safety verdict.
+
+Flags
+-----
+``--full``          rebuild the aggregates from raw text (``full`` mode)
+``--ai``            refresh only the AI pulse and poll
+``--fetch``         force API fetching in a backtest window
+``--skip-fetch``    recompute only, no API calls
+``--provider``      price source for this run: auto | bloomberg | yfinance
+``--skip-prices``   skip the price pull
+``--start/--end``   override the window for this run
+``--mode``          ``full`` or ``aggregates`` instead of auto-detecting
+``--dry-run``       print the plan, run nothing
 """
 
 import argparse
@@ -104,17 +98,13 @@ SIGNAL_FILES = ["trade_signals.parquet", "trade_signals_tickers.parquet"]
 
 
 def _read_panel_subs():
-    """The live subreddit panel, read from the same file the fetchers read
-    (ingestion/finance_subreddits.txt) so the cadence advice is computed
-    over the panel that will actually be crawled - the panel is dynamic and
-    grows at the monthly review."""
-    subs = []
-    with open(config.SUBREDDITS_FILE, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#"):
-                subs.append(line)
-    return subs
+    """The enabled forum panel from config/forums.csv, in file order.
+
+    The same list the fetchers crawl, so cadence advice is computed over
+    the panel that will actually be fetched.
+    """
+    from src import settings
+    return list(settings.load_forums())
 
 
 def log(msg, fh=None):
@@ -132,7 +122,7 @@ def run(cmd, fh, dry, show=False, stage=None):
 
     stage=<name> also TIMES the step and folds the wall clock into
     data/reference/pipeline_stage_times.json. That ledger is what makes the
-    comment fetch budget honest: the pages the crawl may spend are the desk
+    comment fetch budget honest: the pages the crawl may spend are the
     ceiling MINUS what THIS machine actually spends on everything else,
     rather than minus a number someone typed. Only successful runs are
     recorded - a stage that crashed after two seconds is not evidence that
@@ -170,14 +160,14 @@ def _compact(n):
     return str(int(n))
 
 
-def print_data_coverage(fh, internal):
+def print_data_coverage(fh, aggregates_only):
     """A year x month table of data held, per source, so coverage gaps are
-    visible at a glance after every run. The external machine counts POSTS
-    from posts.parquet; the internal machine has no raw store, so it counts
+    visible at a glance after every run. In full mode this counts posts
+    from posts.parquet; in aggregates mode there is no raw store, so it counts
     MENTIONS from the aggregates (same table shape, same gaps)."""
     import pandas as pd
 
-    if not internal:
+    if not aggregates_only:
         import pyarrow.parquet as pq
         if not os.path.exists(POSTS_PATH):
             return
@@ -199,7 +189,7 @@ def print_data_coverage(fh, internal):
               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     for source in sorted(df["source"].unique()):
         one = df[df["source"] == source]
-        if not internal:
+        if not aggregates_only:
             counts = one.groupby(["year", "month"]).size()
         else:
             counts = one.groupby(["year", "month"])["mention_count"].sum()
@@ -222,8 +212,8 @@ def check_window_coverage(fh, start, end):
 
     path = os.path.join(PROCESSED_DIR, "daily_ticker_counts_by_source.parquet")
     if not os.path.exists(path):
-        log("window check: no aggregates yet - hydrate (internal) or run "
-            "'python update_data.py --full' (external) to build them", fh)
+        log("window check: no aggregates yet - hydrate ABSTRACTED_DATA, or run "
+            "'python update_data.py --full' on a copy with the raw store", fh)
         return False
 
     df = pd.read_parquet(path)
@@ -251,7 +241,7 @@ def check_window_coverage(fh, start, end):
                 f"{full['date'].min().date()} -> {full['date'].max().date()}", fh)
     if not any_data:
         log("  >>> NO source has data in this window. If the raw store covers "
-            "it, run 'python update_data.py --full' on the external machine; "
+            "it, run 'python update_data.py --full' on the copy with the raw store; "
             "otherwise widen the window.", fh)
     return any_data
 
@@ -305,10 +295,18 @@ def main():
                    help="force API fetching in backtest mode")
     p.add_argument("--skip-fetch", action="store_true",
                    help="recompute only - no API calls")
+    p.add_argument("--provider", choices=("auto", "bloomberg", "yfinance"),
+                   default=None,
+                   help="price source for this run: auto (Bloomberg if "
+                        "reachable, else yfinance), bloomberg (falls back "
+                        "to yfinance on failure), or yfinance. Default: "
+                        "price_provider in config/settings.csv")
     p.add_argument("--skip-prices", action="store_true",
                    help="skip the Bloomberg price pull")
-    p.add_argument("--external", action="store_true", help="force external-machine mode")
-    p.add_argument("--internal", action="store_true", help="force internal-machine mode")
+    p.add_argument("--mode", choices=("auto", "full", "aggregates"),
+                   default="auto",
+                   help="full = raw post store present; aggregates = "
+                        "text-free aggregates only (default: detect)")
     p.add_argument("--skip-comments", action="store_true",
                    help="do NOT fetch Reddit comments this run (the "
                         "influence board then rescores the same data it "
@@ -323,7 +321,7 @@ def main():
                    help=argparse.SUPPRESS)
     #   ^ accepted and ignored: comments are the default now. Kept so the
     #     command lines printed in the RUNBOOK, the research report and any
-    #     scheduled task the desk already created keep working instead of
+    #     an existing scheduled task keep working instead of
     #     dying on an unrecognised argument.
     p.add_argument("--ai", action="store_true",
                    help="AI LAYER ONLY: agentic scan, poll, pulse and "
@@ -344,13 +342,13 @@ def main():
     dry = args.dry_run
     py = sys.executable
 
-    # ---- machine mode: external (has raw store) vs internal ----
-    if args.external:
-        internal = False
-    elif args.internal:
-        internal = True
+    # ---- mode: full (raw post store present) vs aggregates-only ----
+    if args.mode == "full":
+        aggregates_only = False
+    elif args.mode == "aggregates":
+        aggregates_only = True
     else:
-        internal = not os.path.exists(POSTS_PATH)
+        aggregates_only = not os.path.exists(POSTS_PATH)
 
     # ---- live vs backtest, fast vs full ----
     live = (args.end == "")
@@ -369,7 +367,7 @@ def main():
         do_fetch = False
         args.skip_prices = True
         args.skip_panel_review = True
-    full_chain = args.full and not internal
+    full_chain = args.full and not aggregates_only
 
     config.ensure_dirs()
     today = datetime.date.today().isoformat()
@@ -379,7 +377,7 @@ def main():
     log("=" * 60, fh)
     log("UPDATE DATA (retailAPOLLO - notebook-free pipeline)", fh)
     log(f"  window : {args.start} -> {end_label}", fh)
-    log(f"  machine: {'INTERNAL (abstracted data only)' if internal else 'EXTERNAL (raw store)'} "
+    log(f"  mode: {'aggregates (text-free aggregates only)' if aggregates_only else 'full (raw post store)'} "
         f"(posts.parquet {'present' if os.path.exists(POSTS_PATH) else 'absent'})", fh)
     if full_chain:
         path_label = f"FULL rebuild over {BUILD_START_DATE} -> today"
@@ -414,7 +412,7 @@ def main():
             log("(or:  pip install -r requirements.txt --user  with the same python)", fh)
             return 1
 
-    # The VIEW window travels to pull_bloomberg_prices.py (and any other
+    # The VIEW window travels to pull_prices.py (and any other
     # child process) through these env vars - one window, every script.
     os.environ["PIPELINE_START_DATE"] = args.start
     os.environ["PIPELINE_END_DATE"] = args.end
@@ -428,10 +426,10 @@ def main():
         if args.skip_comments:
             fetch_cmd.append("--skip-comments")
         else:
-            # Comments ride every live run (recorded decision; see docs/DECISIONS.md) so the
+            # Comments ride every live run (recorded decision; see reference/KEY_PARAMETERS.md) so the
             # influence board is rescored on data that is actually new. They
             # are the slow species, so the crawl gets a PAGE ALLOWANCE: the
-            # desk's runtime ceiling minus what this machine measurably
+            # the runtime ceiling minus what this machine measurably
             # spends on everything else, converted to pages at the API's
             # contracted request rate. The comment fetch runs in PARALLEL
             # with the post fetchers inside fetch_all.py, so those pages are
@@ -463,7 +461,7 @@ def main():
         log("AI-only run: no fetch, no fold, no recompute, "
             "no prices - regenerating the AI layer against the "
             "stores already on disk", fh)
-    elif internal:
+    elif aggregates_only:
         log("folding live raw -> ABSTRACTED_DATA + hydrate", fh)
         # The fold's exit code was discarded, so a crashed fold
         # produced a green run: analytics recomputed on unchanged
@@ -521,10 +519,10 @@ def main():
                 log("ABORT: aggregate tail refresh failed", fh)
                 return 1
 
-    # The internal machine mirrors the latest ABSTRACTED_DATA into
+    # An aggregates-only copy mirrors the latest ABSTRACTED_DATA into
     # data/processed (covers a fresh git pull as well as a local append) so
     # the analytics never read stale aggregates.
-    if internal and not dry:
+    if aggregates_only and not dry:
         from src import abstracted_data
         _t = time.time()
         abstracted_data.hydrate(verbose=False)
@@ -534,7 +532,7 @@ def main():
     # ---- 2b. DATA COVERAGE + WINDOW CHECK ----
     if not dry:
         _t = time.time()
-        print_data_coverage(fh, internal)
+        print_data_coverage(fh, aggregates_only)
         check_window_coverage(fh, args.start, args.end)
         pipeline_budget.record_stage("coverage", time.time() - _t)
 
@@ -636,39 +634,41 @@ def main():
                 shutil.copy2(src_path, dest)
             log(f"snapshot -> {dest}", fh)
 
-    # ---- 4b. PRICES: pull Bloomberg closes for the window. Non-fatal:
-    #          without a Terminal/blpapi the pull is skipped and the
-    #          dashboard's price panels show their 'no prices' hint. ----
+    # ---- 4b. PRICES: pull daily closes for the window through the
+    #          configured provider (Bloomberg or yfinance; see
+    #          src/prices.py). Non-fatal: on failure the run continues
+    #          on the prices already on disk and the summary says so. ----
     prices_rc = None
     if not dry and not args.skip_prices:
-        log("pulling Bloomberg prices (Terminal must be open)", fh)
-        prices_rc = run([py, "pull_bloomberg_prices.py"], fh, dry,
-                        show=True, stage="prices")
+        from src import settings as _settings
+        _prov = args.provider or _settings.get("price_provider")
+        log(f"pulling prices (provider: {_prov})", fh)
+        prices_rc = run([py, "pull_prices.py", "--provider", _prov], fh,
+                        dry, show=True, stage="prices")
         if prices_rc != 0:
             # NOT fatal, but it must not pass silently either: the rest
             # of the run is valid on the prices already on disk, and the
-            # RUN SUMMARY says how stale they now are (rationale:
-            # the summary used to print "prices: present" after a failed
-            # pull, which reads as success).
+            # RUN SUMMARY says how stale they now are.
             log("PRICE PULL FAILED - continuing on the prices already "
-                "on disk. Almost always this is the Bloomberg Terminal "
-                "not being open/logged in on this machine (blpapi "
-                "cannot reach 127.0.0.1:8194). Open the Terminal and "
-                "re-run, or `python update_data.py --skip-prices` to "
-                "stop trying. Everything else in this run is unaffected.",
-                fh)
+                "on disk. With provider=bloomberg this usually means no "
+                "Terminal is logged in AND the yfinance fallback could "
+                "not reach Yahoo; with provider=yfinance it is a network "
+                "or symbol-mapping problem (see the pull log above). "
+                "Re-run with `--provider yfinance`, or "
+                "`--skip-prices` to stop trying. Everything else in "
+                "this run is unaffected.", fh)
         if not os.path.exists(PRICES_PATH):
             log("no data/prices/prices.parquet - price overlays will be "
                 "empty. Open the Bloomberg Terminal (and pip install "
                 "blpapi), then re-run or use the dashboard button.", fh)
 
-    # ---- 5. PUBLISH aggregates to ABSTRACTED_DATA (external machine, in
+    # ---- 5. PUBLISH aggregates to ABSTRACTED_DATA (full mode, in
     #         live or --full runs; a backtest changes nothing to publish) ----
-    if not internal and (live or full_chain) and not dry and not ai_only:
+    if not aggregates_only and (live or full_chain) and not dry and not ai_only:
         from src import abstracted_data
         log("publishing aggregates -> ABSTRACTED_DATA", fh)
         abstracted_data.export(verbose=False)
-    elif not internal and not live:
+    elif not aggregates_only and not live:
         log("backtest view: nothing rebuilt, nothing published", fh)
 
     # ---- 5b. AI LAYER (recorded decision: "when i
@@ -678,7 +678,7 @@ def main():
     #            archives (incremental via its ledger; seconds when
     #            nothing is new), no gateway needed;
     #          * the AI PULSE - the LLM's qualitative read, via the
-    #            Apollo gateway (src/ai.py). Off the VPN it skips with
+    #            AI gateway (src/ai.py). Without a provider it skips with
     #            the reason logged and the dashboard keeps the last
     #            pulse; the pipeline NEVER fails on the AI stage.
     ai_poll_msg = ai_pulse_msg = "not run"
@@ -736,7 +736,8 @@ def main():
         try:
             import glob as _glob
             _sugg = sorted(_glob.glob(os.path.join(
-                ROOT, "config", "keyword_suggestions_*.csv")))
+                ROOT, "data", "reference", "keyword_suggestions",
+                "keyword_suggestions_*.csv")))
             _age_ok = True
             if _sugg:
                 _age_ok = (time.time() - os.path.getmtime(_sugg[-1])
@@ -779,14 +780,12 @@ def main():
                 log(f"dashboard bundle skipped: {type(e).__name__}: {e}", fh)
 
     # ---- 6c. GIT AUTO-PUBLISH: commit + push the refreshed data ----
-    # (request 2026-08-31: "update_data does this auto refresh of the
-    # dashboard each time"). The hosted Streamlit redeploys from the
-    # repo, so a refresh that stops short of a push never reaches it -
-    # which is exactly how a fresh AI pulse sat invisible for a day.
-    # DATA PATHS ONLY (DASHBOARD_DATA + ABSTRACTED_DATA): code edits
-    # are never swept into an auto-commit. Refuses to act when other
-    # files are already staged - that is the user's commit in progress,
-    # not ours. Never fatal; the summary reports what happened.
+    # A hosted dashboard redeploys from the repository, so a refresh
+    # that stops short of a push never reaches it. DATA PATHS ONLY
+    # (DASHBOARD_DATA + ABSTRACTED_DATA): code edits are never swept
+    # into an auto-commit. Refuses to act when other files are already
+    # staged - that is a commit in progress. Never fatal; the run
+    # summary reports what happened.
     def _git_autopush():
         import subprocess as _sp
         _env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
@@ -837,8 +836,8 @@ def main():
         log("=" * 60, fh)
         log("RUN SUMMARY", fh)
         log(f"  window        : {args.start} -> {end_label}", fh)
-        log(f"  machine/path  : {'INTERNAL' if internal else 'EXTERNAL'} | {path_label}", fh)
-        if not internal and os.path.exists(POSTS_PATH):
+        log(f"  mode/path     : {'aggregates' if aggregates_only else 'full'} | {path_label}", fh)
+        if not aggregates_only and os.path.exists(POSTS_PATH):
             import pyarrow.parquet as pq
             t = pq.read_table(POSTS_PATH, columns=["date", "source"]).to_pandas()
             log(f"  post store    : {len(t):,} posts total", fh)
@@ -874,8 +873,7 @@ def main():
             else:
                 _msg = f"not pulled this run | {_fresh}"
         else:
-            _msg = ("MISSING (run pull_bloomberg_prices.py with the "
-                    "Terminal open)")
+            _msg = "MISSING (run pull_prices.py)"
         log(f"  prices        : {_msg}", fh)
         # ---- INFLUENCE BOARD + the cadence this run's own timings imply ----
         infl = os.path.join(config.REFERENCE_DIR, "influence", "author_scores.parquet")
@@ -887,7 +885,7 @@ def main():
                 f"{' (comments SKIPPED this run - same data rescored)' if args.skip_comments else ''}",
                 fh)
         if do_fetch and not args.skip_comments and not dry:
-            # This is the number the desk acts on, and it is entirely
+            # This is the number the signal acts on, and it is entirely
             # measured: the fetch budget this machine has left, divided by
             # the panel's observed comment volume. Run at least this often
             # and no comments are ever deferred.

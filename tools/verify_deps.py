@@ -4,40 +4,33 @@
     python tools/verify_deps.py            # from the project root
     python tools/verify_deps.py --quiet    # exit code only (CI / pre-commit)
 
-WHY THIS EXISTS
----------------
-On 2026-07-29 a routine `python update_data.py` died on
+Documentation asserting that code exists is not evidence that it does,
+and neither is a green dashboard: Python resolves imports lazily, so a
+broken reference on a path nobody ran that day is invisible until the day
+somebody runs it. This script makes that class of breakage cheap to find,
+statically, in under a second, without importing anything or touching
+the network.
 
-    ImportError: cannot import name 'pipeline_budget' from 'src'
+It checks five distinct ways a reference can dangle:
 
-and the investigation found that `src/pipeline_budget.py` was not on disk, not
-in any git commit, and had no stale `.pyc` anywhere - i.e. it had NEVER been
-imported successfully - while ARCHITECTURE.md and docs/RESEARCH_RECORD.md both
-described it in detail, and four other files called into it.  Three further
-gaps rode along invisibly: two missing `src/config.py` constants, a CLI flag
-`fetch_all.py` did not accept, and a `default_lookback_days` import in
-dashboard.py that a bare `except` had been swallowing for days.
+1. unresolved local modules: ``import ingestion.foo`` with no ``foo.py``;
+2. imported names: ``from src.config import BAR`` with no ``BAR``;
+3. attributes on local modules: ``config.BAZ`` where ``src/config.py``
+   has no ``BAZ``;
+4. referenced repo paths: a repo path in any ``.py`` or ``.md`` text
+   (comments and docstrings included) with no such file on disk;
+5. CLI flags: a script handed ``--flag`` in an argv list that its
+   argparse rejects.
 
-DOCUMENTATION ASSERTING THAT CODE EXISTS IS NOT EVIDENCE THAT IT DOES, and
-neither is a green dashboard: Python resolves imports lazily, so a broken
-reference on a path nobody ran that day is invisible until the day somebody
-runs it.  This script makes that class of breakage cheap to find, statically,
-in under a second, without importing anything or touching the network.
+It does not check third-party packages (see ``requirements.txt``),
+runtime data files, or anything that only exists dynamically
+(``getattr``, ``globals()``). It is a fast structural check, not a type
+checker: a clean run means no dangling reference, not that the code is
+correct.
 
-WHAT IT CHECKS (five distinct ways a reference can dangle)
-----------------------------------------------------------
-1. UNRESOLVED LOCAL MODULES     - `import ingestion.foo` with no foo.py
-2. IMPORTED NAMES              - `from src.config import BAR` with no BAR
-3. ATTRIBUTES ON LOCAL MODULES - `config.BAZ` where src/config.py has no BAZ
-4. REFERENCED REPO PATHS       - a repo path in a string, no such file there
-5. CLI FLAGS                   - a script handed --flag its argparse rejects
-
-WHAT IT DOES NOT CHECK: third-party packages (see requirements.txt), runtime
-data files, and anything that only exists dynamically (getattr, globals()).
-It is a fast structural check, not a type checker - a clean run means no
-DANGLING reference, not that the code is correct.
-
-Exit code 0 = clean, 1 = at least one finding.  Run it after any session that
+Checks 1-3 and 5 are AST-based (``sweep``); check 4 is a regex over raw
+text (``_cited_paths``, plus ``sweep_docs`` for Markdown). Exit code 0
+means clean, 1 means at least one finding. Run it after any session that
 edits across module boundaries.
 """
 
@@ -49,6 +42,10 @@ import re
 SKIP_DIRS = ("_to_delete", ".git", "__pycache__", "node_modules",
              ".ipynb_checkpoints", "_salvaged_originals", "venv", ".venv",
              ".pytest_cache", "build", "dist")
+# Exact directory names skipped at any depth. research/ is not part of the
+# runtime and is not tracked; presentations/ holds no code. Matched by
+# name, not prefix, so reference/research_record/ is still walked.
+SKIP_NAMES = frozenset({"research", "presentations"})
 
 # `config.py` inside a sentence is prose, not an attribute access; the same
 # goes for a module named in a docstring.  Filtering these keeps the report
@@ -57,9 +54,11 @@ PROSE = {"py", "toml", "json", "md", "txt", "csv", "get"}
 
 
 def _walk(root):
+    """Return ``(python_files, all_files)`` as repo-relative paths under ``root``."""
     py, allf = [], set()
     for r, d, f in os.walk(root):
-        d[:] = [x for x in d if not x.startswith(SKIP_DIRS)]
+        d[:] = [x for x in d
+               if not x.startswith(SKIP_DIRS) and x not in SKIP_NAMES]
         for n in f:
             p = os.path.relpath(os.path.join(r, n), root).replace("\\", "/")
             allf.add(p)
@@ -69,9 +68,12 @@ def _walk(root):
 
 
 def _top_level_names(body, ns):
-    """Names a module exports.  Walks into if/try/with/for bodies because
-    config-style conditional definitions and `try: import x` fallbacks are
-    real definitions, and flagging them would be a false alarm."""
+    """Add the names a module body defines to ``ns``.
+
+    Walks into if/try/with/for bodies because config-style conditional
+    definitions and ``try: import x`` fallbacks are real definitions, and
+    flagging them would be a false alarm.
+    """
     for n in body:
         if isinstance(n, ast.Assign):
             for tg in n.targets:
@@ -98,31 +100,21 @@ def _top_level_names(body, ns):
 # Directory prefixes worth checking even when the directory is absent -
 # absence is exactly the failure this catches. Extend the list rather than
 # deriving it, so a deleted folder stays visible to the sweep.
-_CITED_DIRS = ("src", "analytics", "ingestion", "tools", "helper", "docs",
-               "notebooks", "config", "tests")
+_CITED_DIRS = ("src", "analytics", "ingestion", "tools", "docs",
+               "config", "tests", "reference")
 
 
-# A citation that already SAYS the file is absent is documentation, not a
-# dangling reference. Without this the sweep punishes exactly the honest
-# behaviour it is meant to encourage - notebook 07 says plainly that
-# a since-removed module does not exist, and that sentence should not
-# read as a defect.
-# PRESENT ON THE DESK MACHINE, ABSENT FROM SOME CLONES.
-#
-# Learned the hard way on 2026-08-05: this checker was run inside an
-# incomplete working copy, reported `helper/` and four docs as dangling,
-# and five citations were "corrected" to say the directory did not exist.
-# It does exist - it holds research_charts.py and find_emerging_terms.py.
-#
-# The tool cannot tell a DELETED file from an UN-CLONED one; both are
-# simply not on disk. So paths known to live on the full repository are
-# listed here rather than being reported every run and eventually
-# ignored. Remove an entry only after confirming on the desk machine
-# that the file has genuinely gone.
-_DESK_ONLY = ("helper/", "docs/panel_review_latest.md",
-              "docs/HANDOFF_PROMPT.md", "docs/LIVE_INGESTION.md",
-              "docs/RESEARCH_RECORD.md", "docs/DATA_FLOW.tex")
+# Paths that may legitimately be absent. The checker cannot tell a
+# deleted file from one that is simply not in this working copy. Paths
+# under research/ are untracked by design (see .gitignore), so a citation
+# into research/ from shipped code is documentation of provenance, not a
+# dependency, and is never reported.
+_OPTIONAL_PREFIXES = ("research/",)
 
+# A citation that already SAYS the file is absent is documentation, not
+# a dangling reference. Without this the sweep would punish exactly the
+# honest behaviour it is meant to encourage: a sentence stating that a
+# since-removed module does not exist should not read as a defect.
 _KNOWN_ABSENT = ("not in this repo", "does not exist", "no longer",
                  "is not on disk", "never present", "absent",
                  "was removed", "not present", "was deleted")
@@ -132,12 +124,21 @@ def _cited_paths(txt, pkgs=()):
     """Every repo-relative file path this text mentions, quoted or not.
 
     Two exclusions, both deliberate:
-      * anything under `data/` - those are RUNTIME artefacts. Whether
-        `data/processed/posts.parquet` exists depends on whether the
-        pipeline has run on this machine, so its absence is never a
-        broken reference and flagging it would train the reader to
-        ignore this check.
-      * any line that already declares the file missing (_KNOWN_ABSENT).
+
+    * anything under ``data/``: those are runtime artefacts. Whether
+      ``data/processed/posts.parquet`` exists depends on whether the
+      pipeline has run on this copy, so its absence is never a broken
+      reference and flagging it would train the reader to ignore this
+      check;
+    * any citation whose surrounding lines already declare the file
+      missing (``_KNOWN_ABSENT``).
+
+    Args:
+        txt: File contents.
+        pkgs: Extra top-level directory names to treat as citable.
+
+    Returns:
+        Set of repo-relative paths.
     """
     alt = "|".join(sorted((set(_CITED_DIRS) | set(pkgs)) - {"data"}))
     pat = (r"(?<![\w/.-])((?:%s)/[\w./-]*\.(?:py|json|txt|md|csv|parquet))"
@@ -158,10 +159,17 @@ def _cited_paths(txt, pkgs=()):
 
 
 def sweep_docs(root):
-    """Cited paths in MARKDOWN. Docs are where operator instructions live,
-    so a dangling path here is a command somebody will run and watch fail -
-    which is precisely how the deleted research-charts command survived in
-    the RUNBOOK."""
+    """Find cited paths in Markdown files that do not exist.
+
+    Docs are where operator instructions live, so a dangling path there
+    is a command somebody will run and watch fail.
+
+    Args:
+        root: Repository root.
+
+    Returns:
+        List of ``(markdown_file, missing_path)`` pairs.
+    """
     _py, allf = _walk(root)
     out = []
     for rel in sorted(allf):
@@ -172,12 +180,21 @@ def sweep_docs(root):
         except OSError:
             continue
         for m in _cited_paths(txt):
-            if m not in allf and not m.startswith(_DESK_ONLY):
+            if m not in allf and not m.startswith(_OPTIONAL_PREFIXES):
                 out.append((rel, m))
     return out
 
 
 def sweep(root):
+    """Run checks 1-5 over every Python file under ``root``.
+
+    Args:
+        root: Repository root.
+
+    Returns:
+        Dict with keys ``module``, ``name``, ``attr``, ``path`` and
+        ``flag``, each a list of ``(file, description)`` findings.
+    """
     py, allf = _walk(root)
     pkgs = {p.split("/")[0] for p in py if "/" in p}
     rootmods = {p[:-3] for p in py if "/" not in p}
@@ -260,27 +277,16 @@ def sweep(root):
                     continue
                 findings["attr"].append((p, f"{alias}.{at}"))
         # ---- 4 ----
-        # WIDENED 2026-08-05, after an audit found FOURTEEN cited paths
-        # that do not exist while this tool reported "Nothing dangles".
-        #
-        # The old pattern had two structural blind spots, and every one of
-        # the fourteen sat in one of them:
-        #   * it only matched inside QUOTED STRING LITERALS, so a path in
-        #     a comment or a docstring was invisible - and that is where
-        #     most cited paths live, because they are instructions to a
-        #     human, not arguments to a function;
-        #   * `pkgs` was derived from directories that EXIST, so a
-        #     reference to a directory that had been deleted (`helper/`,
-        #     cited five times including a RUNBOOK command) could never
-        #     be a prefix it looked for. The one broken directory was the
-        #     one it could not see.
-        #
-        # It now scans the raw text of the file rather than only its
-        # literals, and it knows the directory names that have EVER been
-        # cited rather than only those present. Markdown is swept
-        # separately in `sweep_docs` for the same reason.
+        # Scans the raw text of the file rather than only its string
+        # literals: most cited paths live in comments and docstrings,
+        # because they are instructions to a human, not arguments to a
+        # function. The directory prefixes come from _CITED_DIRS (names
+        # that are cited, present or not) plus the packages that exist,
+        # so a reference to a deleted directory is still visible.
+        # Markdown is swept separately in `sweep_docs` for the same
+        # reason.
         for m in _cited_paths(txt, pkgs):
-            if m not in allf and not m.startswith(_DESK_ONLY):
+            if m not in allf and not m.startswith(_OPTIONAL_PREFIXES):
                 findings["path"].append((p, m))
         # ---- 5 ----
         # only scripts that ACTUALLY parse argv: a script with no
@@ -295,48 +301,56 @@ def sweep(root):
 
 
 def _strings(node):
+    """Return every string constant inside an AST node."""
     return {n.value for n in ast.walk(node)
             if isinstance(n, ast.Constant) and isinstance(n.value, str)}
 
 
 def _is_leaf_seq(node):
-    """A list/tuple with no list/tuple inside it - i.e. ONE argv, not a list
-    of argvs.  dashboard.py builds pipeline plans as
+    """Return True for a list/tuple with no list/tuple inside it.
 
-        [(["pull_bloomberg_prices.py"], env),
+    A leaf sequence is one argv, not a list of argvs. ``dashboard.py``
+    builds pipeline plans as::
+
+        [(["pull_prices.py"], env),
          (["update_data.py", "--start", s, "--skip-prices"], None)]
 
     and reading the outer sequence as one command would blame
-    pull_bloomberg_prices.py for update_data.py's flags."""
+    ``pull_prices.py`` for ``update_data.py``'s flags.
+    """
     return not any(isinstance(c, (ast.List, ast.Tuple))
                    for c in ast.walk(node) if c is not node)
 
 
 def _command_flags(tree, accepts):
-    """Yield (target_script, --flag) pairs from ARGV LISTS specifically.
+    """Yield ``(target_script, flag)`` pairs found in argv lists.
 
-    Deliberately NOT a text window around the script name.  The first version
-    scanned 400 characters after any script path and reported
-    `append_live_abstracted.py <- --abstracted` in fetch_all.py, where the
-    path and the flag are in two unrelated statements a few lines apart and no
-    flag is passed at all.  A checker that cries wolf is worse than no checker,
-    because the reader learns to skim its output.
-
-    So a flag counts only when it travels in the SAME leaf argv list as the
-    script -
+    This is deliberately not a text window around the script name: a
+    path and a flag can sit in two unrelated statements a few lines
+    apart with no flag passed at all, and a checker that cries wolf
+    teaches the reader to skim its output. A flag counts only when it
+    travels in the same leaf argv list as the script::
 
         cmd = [py, "ingestion/fetch_all.py", "--no-merge"]
 
-    - or when it is later appended to that same list variable, which is how
-    argv is built conditionally:
+    or when it is later appended to that same list variable, which is
+    how argv is built conditionally::
 
         cmd.append("--skip-comments")
         cmd += ["--comment-pages", str(n)]
 
-    `accepts` must contain ONLY scripts that actually parse argv.  A Streamlit
-    entry point has no argparse at all, so `streamlit run dashboard.py
-    --server.port 8501` passes flags to STREAMLIT, not to the script, and
-    checking them against the script would be a category error."""
+    Args:
+        tree: Parsed module.
+        accepts: Mapping of script path to the flags it accepts. It must
+            contain only scripts that actually parse argv: a Streamlit
+            entry point has no argparse, so ``streamlit run dashboard.py
+            --server.port 8501`` passes flags to Streamlit, not to the
+            script.
+
+    Yields:
+        ``(target_script, flag)`` for every ``--flag`` string that
+        travels with exactly one known script.
+    """
     targets = set(accepts)
     var2target = {}
     for node in ast.walk(tree):
@@ -385,6 +399,11 @@ TITLES = {
 
 
 def main():
+    """Run the sweep and print the findings.
+
+    Returns:
+        ``1`` when anything dangles, otherwise ``0``.
+    """
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("root", nargs="?", default=".")
     ap.add_argument("--quiet", action="store_true",

@@ -1,13 +1,18 @@
-# build_term_counts.py
-# ====================
-# Build ABSTRACTED_DATA/daily_term_counts.parquet - the text-free daily term
-# frequencies that let EMERGING-TERM detection run on the internal machine.
-#
-#     python ingestion/build_term_counts.py
-#
-# EXTERNAL machine (needs posts.parquet). Runs once over the last RETAIN_DAYS
-# of history; after that, live folds keep the file current on any machine.
-# Committing ABSTRACTED_DATA ships it to the HP like the other five.
+"""Build the text-free daily term-frequency table for emerging-term detection.
+
+Writes ``ABSTRACTED_DATA/daily_term_counts.parquet`` (columns ``date``,
+``term``, ``mention_count``) from ``posts.parquet``::
+
+    python ingestion/build_term_counts.py
+
+Requires the raw post store, so it runs in full mode only. It streams the
+store in batches, counts every term from ``src.terms.terms_in_text`` per
+day over the last ``RETAIN_DAYS`` of history, records a per-day post total
+under ``TOTAL_MARKER``, and drops terms below the per-day floors
+(``MIN_PER_DAY_WORD`` / ``MIN_PER_DAY_PAIR``). After this one-off build,
+the live folds keep the file current in either mode, and committing
+``ABSTRACTED_DATA`` ships it alongside the other aggregates.
+"""
 
 import os
 import sys
@@ -33,8 +38,13 @@ OUT_PATH = os.path.join(abstracted_data.ABSTRACTED_DIR, "daily_term_counts.parqu
 
 
 def main():
+    """Count terms per day over the retention window and write the table.
+
+    Returns:
+        ``0`` on success; ``1`` when ``posts.parquet`` is absent.
+    """
     if not os.path.exists(POSTS_PATH):
-        print("no posts.parquet - run this on the external machine.")
+        print("no posts.parquet - run this in full mode.")
         return 1
 
     pf = pq.ParquetFile(POSTS_PATH)

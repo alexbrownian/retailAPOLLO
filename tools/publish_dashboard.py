@@ -6,7 +6,7 @@ reaches a Bloomberg Terminal. It renders whatever this script last
 published to `DASHBOARD_DATA/`, which is committed to the repository the
 same way `ABSTRACTED_DATA/` is.
 
-Run this after a pipeline run, on either machine, then commit and push:
+Run this after a pipeline run, in either mode, then commit and push:
 
     python update_data.py                 # the ordinary refresh
     python tools/publish_dashboard.py     # stage the display bundle
@@ -57,9 +57,9 @@ from src.config import (FORBIDDEN_COLS, PROCESSED_DIR,          # noqa: E402
                         PRICES_PATH, REFERENCE_DIR, SNAPSHOT_DIR)
 
 BUNDLE_DIR = os.path.join(PROJECT_ROOT, "DASHBOARD_DATA")
-LOCAL_CONTROLS_MARKER = os.path.join(PROJECT_ROOT, ".local_controls")
+SETTINGS_LOCAL = os.path.join(PROJECT_ROOT, "config", "settings.local.csv")
 
-# Derived frames the dashboard draws. Absent files are skipped: a machine
+# Derived frames the dashboard draws. Absent files are skipped: a copy
 # that has not run a given stage publishes the rest rather than failing.
 PROCESSED_FILES = [
     "daily_theme_conviction.parquet",
@@ -121,11 +121,10 @@ def _forbidden_columns(path: str) -> list:
     try:
         names = set(pq.ParquetFile(path).schema.names)
     except Exception as exc:                              # noqa: BLE001
-        # FAIL CLOSED. Returning [] here meant an unreadable footer - a
-        # half-written snapshot from a concurrent run, a truncated file -
-        # was copied into the publicly served bundle with no guard
-        # applied at all. A file whose schema cannot be read cannot be
-        # cleared, so it is refused.
+        # FAIL CLOSED. An unreadable footer (a half-written snapshot from
+        # a concurrent run, a truncated file) must not be copied into the
+        # publicly served bundle with no guard applied. A file whose
+        # schema cannot be read cannot be cleared, so it is refused.
         raise SystemExit(
             f"REFUSED: cannot read the schema of "
             f"{os.path.relpath(path, PROJECT_ROOT)} ({exc}). A file that "
@@ -195,7 +194,7 @@ def publish(with_influence: bool = False, dry_run: bool = False,
         stage(os.path.join(REFERENCE_DIR, name), name)
 
     for name in DOCS_RESEARCH_FILES:
-        stage(os.path.join(PROJECT_ROOT, "docs", "research", name), name)
+        stage(os.path.join(PROJECT_ROOT, "reference", "research_record", name), name)
 
     # Signal snapshots drive the "what did it say back then" history.
     for path in sorted(glob.glob(os.path.join(SNAPSHOT_DIR, "*.parquet"))):
@@ -258,18 +257,18 @@ def publish(with_influence: bool = False, dry_run: bool = False,
             log(f"publish manifest skipped: {type(_e).__name__}: {_e}")
 
     if not dry_run:
-        # The marker enables the pipeline-run controls in the sidebar. It
-        # is gitignored, so it exists on this machine and never on the
-        # host - which is the whole point: the hosted app must not offer
-        # buttons that fetch, spend API credit, or call a Terminal.
-        # Written on every publish path: a machine that publishes is by
-        # definition a workstation.
-        if not os.path.exists(LOCAL_CONTROLS_MARKER):
-            with open(LOCAL_CONTROLS_MARKER, "w", encoding="utf-8") as f:
-                f.write("Local machine marker; see tools/publish_dashboard"
-                        ".py. Gitignored on purpose.\n")
-            log("created .local_controls (enables the sidebar pipeline "
-                "controls on this machine only)")
+        # Enable the sidebar pipeline controls on the copy that publishes.
+        # The override file is not committed (see .gitignore), so a hosted
+        # deployment built from the repository never shows buttons that
+        # fetch data or call paid APIs.
+        if not os.path.exists(SETTINGS_LOCAL):
+            with open(SETTINGS_LOCAL, "w", newline="", encoding="utf-8") as f:
+                f.write("key,value,description\n"
+                        "show_pipeline_controls,true,"
+                        "Local override written by tools/publish_dashboard.py"
+                        "; not committed.\n")
+            log("created config/settings.local.csv (enables the sidebar "
+                "pipeline controls on this copy only)")
     if not dry_run and per_file:
         log("\nnext:")
         log("  git add ABSTRACTED_DATA DASHBOARD_DATA")
@@ -279,6 +278,7 @@ def publish(with_influence: bool = False, dry_run: bool = False,
 
 
 def main() -> int:
+    """Parse arguments and stage the bundle."""
     p = argparse.ArgumentParser(
         description="Stage the display bundle the hosted dashboard reads.")
     p.add_argument("--dry-run", action="store_true",

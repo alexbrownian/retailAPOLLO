@@ -1,27 +1,21 @@
-"""
-build_mentions.py
-=================
-Bridge between the cleaned posts and the analysis notebooks.
+"""Daily ticker mention counts from the cleaned posts table.
 
-It takes the tidy posts table (from clean_data.py), runs the ticker extractor
-on each post's title + selftext, and returns a daily count table:
+``build_daily_counts()`` runs the ticker extractor on each post's title +
+selftext and returns a daily count table::
 
     date, ticker, mention_count
 
-That table is exactly what the notebooks (mentions-over-time and
-first-derivative) expect. We keep the heavy ticker logic in extract_tickers.py
-and the valid-symbol list in ticker_universe.py - this file just wires them
-together so a notebook can do it in one line.
+The ticker logic lives in extract_tickers.py and the valid-symbol list in
+ticker_universe.py; this module wires them together so the aggregate
+builders and the live fold produce the counts in one call.
 
-Upvote-weighted counts are deliberately absent (see docs/DECISIONS.md):
-The old weighted_count summed score**2 per post. But archived Reddit dumps
-carry each post's FINAL score - the upvotes it collected over days or weeks
-AFTER posting. A backtest that weights day-t mentions by final scores is
-therefore reading the future ("this post will go viral") - a look-ahead
-leak that silently inflates any result built on it. Raw mention counts are
-immune: one post = 1 the moment it exists. If weighting ever returns, it
-must use scores AS OF the mention day (live re-poll pipeline) - see
-design_decisions.xlsx #30 and the README live-data checklist.
+Upvote-weighted counts are deliberately absent. Archived Reddit dumps
+carry each post's final score, the upvotes it collected over days or
+weeks after posting, so a backtest that weights day-t mentions by final
+scores is reading the future ("this post will go viral"): a look-ahead
+leak that silently inflates any result built on it. Raw mention counts
+are immune: one post = 1 the moment it exists. If weighting ever returns,
+it must use scores as of the mention day.
 """
 
 import pandas as pd
@@ -30,17 +24,20 @@ from .extract_tickers import extract_tickers_from_text
 
 
 def build_daily_counts(posts_df, universe, cashtags_only=False):
-    """
-    posts_df : DataFrame with columns date, title, selftext
-    universe : set of valid ticker symbols (from load_us_ticker_universe)
-    cashtags_only : True = only count $TICKER (cleaner, fewer false hits)
+    """Counts distinct posts mentioning each ticker per day.
 
-    Returns a DataFrame with columns:
-        date, ticker, mention_count
+    Args:
+        posts_df: DataFrame with columns date, title, selftext.
+        universe: Set of valid ticker symbols (from
+            load_us_ticker_universe).
+        cashtags_only: Count only $TICKER mentions (cleaner, fewer false
+            hits).
 
-    mention_count = number of distinct posts that mention the ticker that day
-    (each post counted once regardless of how many times the ticker appears
-    in it - breadth of attention, not verbosity).
+    Returns:
+        DataFrame(date, ticker, mention_count). mention_count is the
+        number of distinct posts that mention the ticker that day; each
+        post is counted once regardless of how many times the ticker
+        appears in it (breadth of attention, not verbosity).
     """
     rows = []
     titles = posts_df["title"].fillna("").astype(str)

@@ -1,34 +1,37 @@
-# fetch_x_live.py
-# ===============
-# LIVE X (Twitter) ingestion with TWO interchangeable backends - whichever
-# has a key in .env gets used (FetchLayer preferred if both are present):
-#
-#   A) FETCHLAYER (fetchlayer.dev - third-party structured social API)
-#        .env:  FETCHLAYER_KEY = ss-...           (the SAME key as Reddit)
-#        One POST per cashtag-chunk to /api/twitter/search, product=Latest.
-#        Billing: 1 credit per REQUEST (same pool as the Reddit fetcher).
-#        NO paid X developer account needed - this is the path that works
-#        today when you only have a FetchLayer key.
-#   B) OFFICIAL X v2 API (needs a PAID developer account)
-#        .env:  X_BEARER_TOKEN = AAAA....         (from developer.x.com)
-#        v2 recent-search (last 7 days). Armed but off until you pay.
-#
-#   python ingestion/fetch_x_live.py --test   # ONE small call, writes nothing
-#   python ingestion/fetch_x_live.py          # real poll (fetch_all calls this)
-#   python ingestion/fetch_x_live.py --max-tweets 150
-#
-# OUTPUT (both backends): data/raw/X Data/x_api_live.csv.zst
-#   a flat csv (id, created_at, text, author, likes) - a REGISTERED dataset
-#   (x_api_live in src/x_data.py, normalise_x_api). Real tweet ids share the
-#   'x_' prefix with the historical dumps, so overlaps dedupe automatically
-#   (first seen wins). The merge into posts.parquet is done by
-#   ingestion/merge_live.py (update_data.py calls it).
-#
-# QUOTA NOTES:
-#   FetchLayer - 1 credit per chunk-request; the default symbol list is a
-#     few chunks per run, so a run costs a handful of credits.
-#   Official   - reads capped per MONTH and ~60 req/15min; --max-tweets is
-#     your seat belt. Both backends stop instantly on HTTP 429/402.
+"""Live X (Twitter) ingestion with two interchangeable backends.
+
+Whichever backend has a key in ``.env`` is used (FetchLayer preferred if
+both are present):
+
+A. FetchLayer (fetchlayer.dev, a third-party structured social API).
+   ``.env``: ``FETCHLAYER_KEY = ss-...`` (the same key as the Reddit
+   fallback fetcher). One POST per query to ``/api/twitter/search``.
+   Billing is one credit per request from the same pool as the Reddit
+   fetcher; no paid X developer account is needed.
+B. Official X v2 API (needs a paid developer account).
+   ``.env``: ``X_BEARER_TOKEN = AAAA....`` (from developer.x.com). Uses
+   v2 recent-search (last 7 days).
+
+Usage::
+
+    python ingestion/fetch_x_live.py --test   # one small call, writes nothing
+    python ingestion/fetch_x_live.py          # real poll (fetch_all calls this)
+    python ingestion/fetch_x_live.py --max-tweets 150
+
+Output (both backends): ``data/raw/X Data/x_api_live.csv.zst``, a flat
+CSV (``id``, ``created_at``, ``text``, ``author``, ``likes``) registered
+as the ``x_api_live`` dataset in ``src/x_data.py`` (``normalise_x_api``).
+Real tweet ids share the ``x_`` prefix with the historical dumps, so
+overlaps dedupe automatically (first seen wins). The merge into
+``posts.parquet`` is done by ``ingestion/merge_live.py``, which
+``update_data.py`` calls.
+
+Quota: with FetchLayer a run costs a handful of credits (one per query).
+With the official API reads are capped per month and at ~60 requests per
+15 minutes, so ``--max-tweets`` is the safety cap. Both backends stop on
+HTTP 402; the FetchLayer backend backs off and retries on 429 before
+stopping.
+"""
 
 import argparse
 import datetime
@@ -60,11 +63,12 @@ PAGE_SIZE = 100          # max_results per request (10-100)
 PAUSE_S = 5.0            # polite gap between requests (X scraping is the
                          # expensive endpoint - going faster earns 429s)
 
-# DISCOVERY queries - broad finance chatter, NO fixed tickers. The point:
-# our extractor pulls every valid ticker out of post TEXT, so scraping the
-# week's top finance posts catches names NOBODY put on a list yet (the next
-# GME). min_faves keeps it to posts with real engagement. The targeted
-# cashtag queries below still guarantee the theme anchors are covered.
+# DISCOVERY queries - broad finance chatter, NO fixed tickers. The
+# extractor pulls every valid ticker out of post TEXT, so scraping the
+# week's top finance posts catches names nobody has put on a list yet.
+# min_faves keeps it to posts with real engagement. The targeted cashtag
+# queries from build_queries() still guarantee the theme anchors are
+# covered.
 DISCOVERY_QUERIES = [
     '(stocks OR "stock market" OR investing) min_faves:50 lang:en -is:retweet',
     '("short squeeze" OR "to the moon" OR tendies OR YOLO) min_faves:20 lang:en -is:retweet',
@@ -85,9 +89,15 @@ STATUS_ID = re.compile(r"/status/(\d+)")
 
 
 def load_env():
-    """Read keys from .env DIRECTLY (no python-dotenv), os.environ fallback.
-    Accepts FETCHLAYER_KEY or FETCHLAYER_API_KEY (same key the Reddit
-    fetcher uses)."""
+    """Read credentials from ``.env`` directly, with ``os.environ`` as fallback.
+
+    Accepts ``FETCHLAYER_KEY`` or ``FETCHLAYER_API_KEY`` (the same key the
+    Reddit fallback fetcher uses).
+
+    Returns:
+        Dict with ``FETCHLAYER_API_KEY`` and ``X_BEARER_TOKEN``; missing
+        keys are empty strings.
+    """
     from_file = {}
     env_path = os.path.join(PROJECT_ROOT, ".env")
     if os.path.exists(env_path):
@@ -109,11 +119,21 @@ def load_env():
 
 
 def build_queries(chunk_size=6, lookback_days=None):
-    """Cashtag queries chunked to stay well under any query-length limit.
-    Smaller chunks = more queries (more credits) but far better coverage per
-    symbol, because each request returns up to PAGE_SIZE tweets for its whole
-    chunk. lookback_days adds since:<N days ago> so the Top product ranks the
-    most popular posts of exactly that window."""
+    """Build cashtag search queries, chunked to stay under query-length limits.
+
+    Smaller chunks mean more queries (more credits) but far better coverage
+    per symbol, because each request returns up to ``PAGE_SIZE`` tweets
+    for its whole chunk.
+
+    Args:
+        chunk_size: Cashtags per query.
+        lookback_days: When given, appends ``since:<N days ago>`` so the
+            Top product ranks the most popular posts of exactly that
+            window.
+
+    Returns:
+        List of query strings.
+    """
     core = {"GME", "AMC", "NVDA", "TSLA", "AAPL", "PLTR", "COIN", "MSTR", "SMCI"}
     symbols = sorted(set(THEME_ETFS.values()) | core)
     suffix = " lang:en -is:retweet"
@@ -134,9 +154,16 @@ def build_queries(chunk_size=6, lookback_days=None):
 
 # ---------------- backend A: FetchLayer ----------------
 def _fl_row(t):
-    """Map ONE FetchLayer tweet object to our flat raw schema. FetchLayer's
-    exact field names can shift, so every field is looked up defensively.
-    Returns None if the tweet has no usable numeric status id."""
+    """Map one FetchLayer tweet object to the flat raw schema.
+
+    FetchLayer's exact field names can shift, so every field is looked up
+    defensively.
+
+    Returns:
+        Dict with ``id``, ``created_at``, ``text``, ``author`` and
+        ``likes``, or ``None`` if the tweet has no usable numeric status
+        id.
+    """
     url = t.get("url") or t.get("tweetUrl") or ""
     tweet_id = ""
     m = STATUS_ID.search(url) if isinstance(url, str) else None
@@ -171,6 +198,7 @@ def _fl_row(t):
 
 
 def fetchlayer_search(key, query, count):
+    """POST one search to FetchLayer (``product=Latest``) and return the response."""
     r = requests.post(FETCHLAYER_URL,
                       headers={"Authorization": f"Bearer {key}",
                                "Content-Type": "application/json"},
@@ -180,7 +208,14 @@ def fetchlayer_search(key, query, count):
 
 
 def fetchlayer_test(key):
-    """ONE call, prints what came back, writes nothing (a few credits)."""
+    """Make one five-tweet FetchLayer call, print the result, write nothing.
+
+    Args:
+        key: FetchLayer API key.
+
+    Returns:
+        ``0`` when the call succeeded, ``1`` otherwise.
+    """
     query = "($NVDA OR $TSLA OR $GME) lang:en -is:retweet"
     print(f"POST twitter/search(product=Latest, count=5)\n  query: {query}")
     r = fetchlayer_search(key, query, 5)
@@ -203,12 +238,23 @@ def fetchlayer_test(key):
 
 
 def fetchlayer_poll(key, max_tweets, max_credits=60, lookback_days=7):
-    """TWO passes over the cashtag chunks (this is where the volume comes
-    from - the signals need a WEEK of X chatter, not a trickle):
-      1. product=Top     of the last 7 days - the most POPULAR tweets, the
-                         main input for the 1-week trading lookback
-      2. product=Latest  - the newest tweets, so nothing recent is missed
-    Dedup on tweet id (here and at merge time) makes overlap harmless."""
+    """Poll FetchLayer for a week of X chatter.
+
+    Two passes supply the volume the signals need. ``product=Top`` over
+    the lookback window returns the most popular tweets (the discovery
+    queries first, then the cashtag chunks); ``product=Latest`` over the
+    cashtag chunks returns the newest tweets so nothing recent is missed.
+    Dedup on tweet id (here and at merge time) makes overlap harmless.
+
+    Args:
+        key: FetchLayer API key.
+        max_tweets: Stop once this many rows have been collected.
+        max_credits: Requests allowed this run.
+        lookback_days: Window for the Top pass.
+
+    Returns:
+        List of flat row dicts, at most ``max_tweets`` long.
+    """
     rows, used = [], 0
     per_chunk = min(PAGE_SIZE, max(10, max_tweets))
     since = (datetime.date.today()
@@ -230,7 +276,7 @@ def fetchlayer_poll(key, max_tweets, max_credits=60, lookback_days=7):
                 stopped = True
                 break
             # 429 = "too fast", NOT "out of credits" - back off and retry
-            # instead of abandoning the whole run like before.
+            # rather than abandoning the whole run.
             r = None
             for wait in (0, 30, 90):
                 if wait:
@@ -282,6 +328,15 @@ def fetchlayer_poll(key, max_tweets, max_credits=60, lookback_days=7):
 
 # ---------------- backend B: official v2 API ----------------
 def official_poll(token, max_tweets):
+    """Run the cashtag queries through the official v2 recent-search API.
+
+    Args:
+        token: X bearer token.
+        max_tweets: Stop once this many rows have been collected.
+
+    Returns:
+        List of flat row dicts.
+    """
     headers = {"Authorization": f"Bearer {token}"}
     rows = []
     for query in build_queries():
@@ -318,7 +373,14 @@ def official_poll(token, max_tweets):
 
 # ---------------- shared: raw append ----------------
 def append_to_raw(rows):
-    """Append new tweets to the registered raw file, deduping on id."""
+    """Append new tweets to the registered raw file, deduping on id.
+
+    The existing CSV is read back, concatenated with ``rows`` (existing
+    rows win on duplicate ids) and rewritten as one zstd blob.
+
+    Args:
+        rows: Flat row dicts from a poll.
+    """
     new = pd.DataFrame(rows)
     if os.path.exists(OUT_FILE):
         old_bytes = zstandard.ZstdDecompressor().decompress(open(OUT_FILE, "rb").read())
@@ -333,6 +395,12 @@ def append_to_raw(rows):
 
 
 def main():
+    """Pick a backend from the credentials, poll it and append new tweets.
+
+    Returns:
+        ``0`` on success or when nothing was fetched; ``1`` when the
+        official-backend test found no tweets.
+    """
     p = argparse.ArgumentParser(description="Live X ingestion (FetchLayer or official v2 API)")
     p.add_argument("--test", action="store_true",
                    help="ONE small call, prints the tweets, writes nothing")

@@ -1,31 +1,32 @@
-# fetch_reddit_live.py
-# ====================
-# LIVE Reddit ingestion with TWO interchangeable backends - whichever has
-# a key in .env gets used (FetchLayer preferred if both are present):
-#
-#   A) FETCHLAYER (fetchlayer.dev - third-party structured Reddit API)
-#        .env:  FETCHLAYER_KEY = ss-...
-#        One POST per subreddit to /api/reddit/community-posts, sort=new.
-#        Billing: 1 credit per REQUEST (free tier: 30 requests; $1.99/1k;
-#        Starter $25/mo = ~500/day). 15 subreddits = 15 credits per run ->
-#        run HOURLY (360/day) on Starter, or 2-3x/day on free credits.
-#   B) OFFICIAL REDDIT OAUTH (free, if you ever get app credentials)
-#        .env:  REDDIT_PERSONAL_USE / REDDIT_SECRET (+ optional user/pass)
-#        One multireddit /new listing, paginated. ~100 req/min allowance.
-#
-#   python ingestion/fetch_reddit_live.py --test   # ONE small call, writes nothing
-#   python ingestion/fetch_reddit_live.py          # real poll (fetch_all calls this)
-#
-# OUTPUT (both backends): data/raw/RedditLive/reddit_live_YYYY-MM-DD.jsonl.zst
-#   - each line is one post's raw JSON exactly as the backend returned it,
-#     tagged with "_backend" so the normaliser knows the shape.
-# DEDUP: a rolling seen-ids file (data/reference/reddit_live_seen.json,
-#   last 20k ids) plus a created-time watermark where the backend provides
-#   timestamps. Final dedup happens again at merge time (first seen wins).
-#
-# NOTE ON MERGING: raw accumulates here; posts reach posts.parquet via
-# ingestion/merge_live.py (append-only, "first seen wins").
-# update_data.py and `fetch_all.py` (normal mode) call it for you.
+"""Manual fallback for live Reddit ingestion with two interchangeable backends.
+
+``fetch_reddit_arctic.py`` is the default Reddit source; this script
+remains available when a keyed backend is preferred. Whichever backend has
+a key in ``.env`` is used (FetchLayer preferred if both are present):
+
+A. FetchLayer (fetchlayer.dev, a third-party structured Reddit API).
+   ``.env``: ``FETCHLAYER_KEY = ss-...``. One POST per subreddit and pass
+   to ``/api/reddit/community-posts``. Billing is one credit per request,
+   so a 15-subreddit panel costs about 30 credits per run.
+B. Official Reddit OAuth (free, given app credentials).
+   ``.env``: ``REDDIT_PERSONAL_USE`` / ``REDDIT_SECRET`` (plus optional
+   username/password). One multireddit ``/new`` listing.
+
+Usage::
+
+    python ingestion/fetch_reddit_live.py --test   # one small call, writes nothing
+    python ingestion/fetch_reddit_live.py          # real poll
+
+Output (both backends): ``data/raw/RedditLive/reddit_live_YYYY-MM-DD.jsonl.zst``.
+Each line is one post's raw JSON exactly as the backend returned it,
+tagged with ``"_backend"`` so the normaliser knows the shape.
+
+Dedup: a rolling seen-ids file (``data/reference/reddit_live_seen.json``,
+last ``MAX_SEEN`` ids). Final dedup happens again at merge time (first
+seen wins). Raw accumulates here; posts reach ``posts.parquet`` via
+``ingestion/merge_live.py`` (append-only), which ``update_data.py`` and
+``fetch_all.py`` run for you.
+"""
 
 import argparse
 import datetime
@@ -48,7 +49,7 @@ except Exception:
 
 OUT_DIR = os.path.join(PROJECT_ROOT, "data", "raw", "RedditLive")
 SEEN_FILE = os.path.join(PROJECT_ROOT, "data", "reference", "reddit_live_seen.json")
-SUBS_FILE = os.path.join(PROJECT_ROOT, "ingestion", "finance_subreddits.txt")
+# Forum panel: config/forums.csv via src.settings.load_forums().
 FETCHLAYER_URL = "https://fetchlayer.dev/api/reddit/community-posts"
 TOKEN_URL = "https://www.reddit.com/api/v1/access_token"
 PAUSE_S = 1.0
@@ -56,8 +57,14 @@ MAX_SEEN = 20_000
 
 
 def load_env():
-    """Read keys from .env DIRECTLY (no python-dotenv dependency), with
-    os.environ as a fallback. Accepts FETCHLAYER_KEY or FETCHLAYER_API_KEY."""
+    """Read credentials from ``.env`` directly, with ``os.environ`` as fallback.
+
+    Accepts ``FETCHLAYER_KEY`` or ``FETCHLAYER_API_KEY`` for FetchLayer.
+
+    Returns:
+        Dict with the ``FETCHLAYER_API_KEY`` and ``REDDIT_*`` values;
+        missing keys are empty strings.
+    """
     from_file = {}
     env_path = os.path.join(PROJECT_ROOT, ".env")
     if os.path.exists(env_path):
@@ -83,11 +90,16 @@ def load_env():
 
 
 def tracked_subs():
-    if os.path.exists(SUBS_FILE):
-        subs = [line.strip() for line in open(SUBS_FILE, encoding="utf-8")
-                if line.strip() and not line.startswith("#")]
-        if subs:
-            return subs
+    """Return the enabled forums from ``config/forums.csv``.
+
+    Falls back to a built-in panel when the settings module cannot be
+    loaded, so the script still runs standalone.
+    """
+    try:
+        from src.settings import load_forums
+        return list(load_forums())
+    except Exception:                                    # noqa: BLE001
+        pass
     return ["wallstreetbets", "stocks", "investing", "options", "pennystocks",
             "stockmarket", "daytrading", "thetagang", "dividends",
             "valueinvesting", "securityanalysis", "personalfinance",
@@ -95,7 +107,7 @@ def tracked_subs():
 
 
 def post_id(p):
-    """A stable id whatever shape the backend returns."""
+    """Return a stable id for a post whatever shape the backend returns."""
     for key in ("id", "postId", "name"):
         if p.get(key):
             return str(p[key])
@@ -104,6 +116,14 @@ def post_id(p):
 
 # ---------------- backend A: FetchLayer ----------------
 def fetchlayer_test(key):
+    """Make one five-post FetchLayer call and print the result.
+
+    Args:
+        key: FetchLayer API key.
+
+    Returns:
+        ``0`` when the call succeeded, ``1`` otherwise.
+    """
     r = requests.post(FETCHLAYER_URL,
                       headers={"Authorization": f"Bearer {key}"},
                       json={"subreddit": "wallstreetbets", "sort": "new", "limit": 5},
@@ -136,13 +156,26 @@ def _timeframe_for(days):
 
 
 def fetchlayer_poll(key, limit, max_credits=60, lookback_days=7):
-    """TWO passes per subreddit:
-      1. sort=new             - the newest posts (catches everything recent)
-      2. sort=top, timeframe  - the most POPULAR posts of the lookback window
-                                (high-engagement posts earlier runs missed)
-    Costs ~2 credits per subreddit per run. Dedup (here on id, and again at
-    merge time) means overlap between passes and between runs is harmless -
-    a longer lookback can only ADD posts, never duplicate them."""
+    """Poll every tracked subreddit through FetchLayer.
+
+    Two passes per subreddit: ``sort=new`` for the newest posts, and
+    ``sort=top`` over the lookback timeframe for the most popular posts of
+    the window (high-engagement posts earlier runs missed). Costs about
+    two credits per subreddit per run. Dedup (here on id, and again at
+    merge time) makes overlap between passes and between runs harmless, so
+    a longer lookback can only add posts, never duplicate them. The run
+    stops early at the credit cap, at a fixed time budget, or when
+    FetchLayer answers 402/429.
+
+    Args:
+        key: FetchLayer API key.
+        limit: Posts requested per subreddit per pass.
+        max_credits: Requests allowed this run.
+        lookback_days: Window for the top-post pass.
+
+    Returns:
+        List of raw post dicts tagged with ``"_backend": "fetchlayer"``.
+    """
     headers = {"Authorization": f"Bearer {key}"}
     all_posts, used = [], 0
     stopped = False
@@ -221,6 +254,15 @@ def fetchlayer_poll(key, limit, max_credits=60, lookback_days=7):
 
 # ---------------- backend B: official OAuth ----------------
 def official_token(creds):
+    """Obtain an OAuth token from Reddit.
+
+    Args:
+        creds: The dict returned by ``load_env``.
+
+    Returns:
+        Tuple ``(access_token, user_agent)``; the token is ``None`` when
+        the request failed.
+    """
     auth = requests.auth.HTTPBasicAuth(creds["REDDIT_PERSONAL_USE"], creds["REDDIT_SECRET"])
     ua = f"windows:{creds['REDDIT_APP_NAME'] or 'retailflow'}:v1.0 " \
          f"(by /u/{creds['REDDIT_USERNAME'] or 'retailflow'})"
@@ -238,6 +280,17 @@ def official_token(creds):
 
 
 def official_poll(creds, limit):
+    """Fetch one multireddit ``/new`` listing through the official API.
+
+    Args:
+        creds: The dict returned by ``load_env``.
+        limit: Posts per subreddit; the listing asks for ``min(limit * 15,
+            100)`` posts in total.
+
+    Returns:
+        List of raw post dicts tagged with ``"_backend": "official"``;
+        empty on any failure.
+    """
     token, ua = official_token(creds)
     if not token:
         return []
@@ -258,12 +311,14 @@ def official_poll(creds, limit):
 
 # ---------------- shared: dedup + raw append ----------------
 def load_seen():
+    """Return the rolling list of previously written post ids."""
     if os.path.exists(SEEN_FILE):
         return list(json.load(open(SEEN_FILE)).get("ids", []))
     return []
 
 
 def save_seen(ids):
+    """Write the newest ``MAX_SEEN`` ids of ``ids`` with a timestamp."""
     os.makedirs(os.path.dirname(SEEN_FILE), exist_ok=True)
     json.dump({"ids": ids[-MAX_SEEN:],
                "updated": datetime.datetime.now().isoformat(timespec="seconds")},
@@ -271,6 +326,14 @@ def save_seen(ids):
 
 
 def append_raw(posts):
+    """Append posts to today's raw file, rewriting the zstd blob.
+
+    Args:
+        posts: Raw post dicts to write, one JSON line each.
+
+    Returns:
+        Path of the file written.
+    """
     os.makedirs(OUT_DIR, exist_ok=True)
     day = datetime.date.today().isoformat()
     path = os.path.join(OUT_DIR, f"reddit_live_{day}.jsonl.zst")
@@ -284,6 +347,12 @@ def append_raw(posts):
 
 
 def main():
+    """Pick a backend from the credentials, poll it and append new posts.
+
+    Returns:
+        ``0`` on success or when nothing new was fetched; ``1`` when the
+        official-backend test found no posts.
+    """
     ap = argparse.ArgumentParser(description="Live Reddit ingestion (FetchLayer or official OAuth)")
     ap.add_argument("--test", action="store_true",
                     help="ONE small call (5 posts from r/wallstreetbets), writes nothing")

@@ -1,58 +1,65 @@
-"""
-influence_graph.py
-==================
-The NETWORK half of the influential-users work: network and label
-analysis on RetailRadar's own reply graph, plus the drawing primitives
-the dashboard needs.
+"""Network and label analysis of the reply graph, plus drawing primitives.
 
-WHY A SEPARATE MODULE (and why no networkx)
--------------------------------------------
-`influence.py` builds the store (who said what, how good were they).
-`influence_ml.py` learns "can we spot a good voice before reading their
-record". This module answers the third, purely descriptive question:
-*what does the crowd's conversation graph actually look like, and do the
-influential nodes sit anywhere special in it?* It is worth a module of
-its own because the answer is a precondition for reading the other two:
-a graph with no community structure, or with the influential nodes
-scattered at random, tells you in advance which models can possibly
-work. Everything here is pandas / numpy / scipy only, because the
-dashboard imports it and the desk's Windows box must not need a graph
-library to draw a picture. The notebook cross-checks the two
-non-trivial routines (Louvain modularity, betweenness) against networkx
-when it happens to be installed - see NB05.
+This module is the descriptive half of the influence work. `influence.py`
+builds the store (who said what, and how good their calls were) and
+`influence_ml.py` asks whether a good voice can be spotted before reading
+its record; this module answers the question both of those depend on:
+what does the crowd's conversation graph look like, and do the
+influential nodes sit anywhere special in it? A graph with no community
+structure, or with the influential nodes scattered at random, says in
+advance which models can possibly work.
 
-WHAT THIS MODULE COMPUTES
--------------------------
-network statistics  : n, m, <k>, density, L, D, C, small-world sigma,
-                      closeness, betweenness  -> `network_stats`
-degree distribution : linear + log-log tails  -> `degree_distribution`
-communities         : Louvain modularity Q, community count,
-                      inter-community edge share -> `louvain`,
-                      `community_report`
-label analysis      : edge and node homophily, overall and per class,
-                      centrality-by-class, attributes-by-class
-                      -> `homophily`, `by_class`
-figures             : ego networks and the k-core backbone
-                      -> `ego_subgraph`, `kcore_subgraph`,
-                         `spring_layout`
+Everything here is pandas / numpy / scipy only. The dashboard imports
+this module, so a copy running with only the text-free aggregates must
+be able to draw a picture without a graph library. The two non-trivial
+routines (Louvain modularity and Brandes betweenness) are implemented
+locally; their measured outputs on the live store are recorded in
+`reference/research_record/nb05_influence.json`.
 
-CONVENTIONS THAT ARE CHOICES (recorded, not hidden)
----------------------------------------------------
-* SCOPE: nodes are the store's authors; an edge exists when one author
+What the module computes:
+
+    network statistics   n, m, <k>, density, L, D, C, small-world sigma,
+                         closeness, betweenness       -> `network_stats`
+    degree distribution  linear and log-log tails     -> `degree_distribution`
+    communities          Louvain modularity Q, community count,
+                         inter-community edge share   -> `louvain`,
+                                                         `community_report`
+    label analysis       edge and node homophily, overall and per class,
+                         attributes by class          -> `homophily`,
+                                                         `by_class`
+    figures              ego networks, the k-core backbone and a seeded
+                         force layout                 -> `ego_subgraph`,
+                                                         `kcore_subgraph`,
+                                                         `spring_layout`
+    call digests         influence-weighted "what is the panel pushing"
+                         views per ticker, theme, author and period
+                                                      -> `suggestion_digest`,
+                                                         `theme_digest`,
+                                                         `crowding_history`
+
+Inputs are the store's parquet tables (`reply_edges`, `author_scores`,
+`calls`), read by the caller and handed in as frames; nothing here reads
+or writes disk.
+
+Conventions:
+
+* Scope: nodes are the store's authors; an edge exists when one author
   replied to another. Reply pairs where either endpoint is not a store
-  author are dropped - those users have no features, so they cannot be
-  scored or drawn. This shortens paths relative to the full conversation
-  graph, which is stated wherever a path statistic is reported.
-* WEIGHT: edge weight = number of distinct reply records between the two
-  authors, capped at MAX_EDGE_W (the same cap influence.py already uses,
-  so audience counts and graph weights agree).
-* DIRECTION: undirected. A reply is an interaction between two people,
+  author are dropped, because those users have no features and cannot
+  be scored or drawn. This shortens paths relative to the full
+  conversation graph, which is stated wherever a path statistic is
+  reported.
+* Weight: edge weight is the number of distinct reply records between
+  the two authors, capped at MAX_EDGE_W (the same cap influence.py
+  applies, so audience counts and graph weights agree).
+* Direction: undirected. A reply is an interaction between two people,
   and which of them typed first does not change that they spoke; every
-  structural statistic here is defined on the undirected graph.
-* SAMPLING: path length, closeness and betweenness are estimated from
+  structural statistic is defined on the undirected graph.
+* Sampling: path length, closeness and betweenness are estimated from
   PIVOT_SAMPLE random source nodes (seeded, so the number is stable
-  between runs). Exact all-pairs on ~12.5k nodes is 150M shortest paths -
-  the estimate is reported WITH its sample size, never as an exact value.
+  between runs). Exact all-pairs on ~12.5k nodes is 150M shortest paths;
+  the estimate is reported with its sample size, never as an exact
+  value.
 """
 
 from __future__ import annotations
@@ -85,8 +92,14 @@ GRAPH_SEED = 42           # project seed, reused so drawings are stable
 class Graph:
     """A weighted undirected graph as (names, symmetric CSR adjacency).
 
-    Deliberately tiny: every routine below takes a Graph and returns
-    pandas, so nothing in the codebase has to know about sparse matrices.
+    Deliberately tiny: every routine in this module takes a Graph and
+    returns pandas objects, so nothing outside it has to know about
+    sparse matrices.
+
+    Attributes:
+        names: Node label per row of `A`.
+        A: Symmetric CSR adjacency with a zero diagonal.
+        idx: Node label -> row number; built from `names` when omitted.
     """
     names: np.ndarray                      # node label per row of A
     A: sparse.csr_matrix                   # symmetric, zero diagonal
@@ -135,13 +148,23 @@ class Graph:
 def build_graph(edges: pd.DataFrame,
                 nodes: pd.Index | np.ndarray | None = None,
                 max_weight: int = MAX_EDGE_W) -> Graph:
-    """Board-scoped weighted reply graph.
+    """Build the board-scoped weighted reply graph.
 
-    HOW: (1) keep reply records whose BOTH endpoints are store authors,
+    Steps: (1) keep reply records whose both endpoints are store authors,
     (2) drop self-replies (an author replying to themselves is not an
     interaction between two people), (3) collapse the remaining records
-    into unordered pairs and count them -> weight, capped at
+    into unordered pairs and count them to get the weight, capped at
     `max_weight`, (4) write the counts symmetrically into a CSR matrix.
+
+    Args:
+        edges: Reply records with `replier` and `author` columns.
+        nodes: Node set to build on. None uses every author appearing
+            in `edges`.
+        max_weight: Cap on the per-pair interaction count.
+
+    Returns:
+        A Graph whose node order follows `nodes` (de-duplicated, NaN
+        dropped).
     """
     if nodes is None:
         nodes = pd.Index(pd.unique(pd.concat(
@@ -182,9 +205,18 @@ def edge_list(g: Graph) -> pd.DataFrame:
 # centralities
 # ---------------------------------------------------------------------------
 def pagerank(g: Graph, damping: float = PAGERANK_D) -> pd.Series:
-    """Weighted PageRank by power iteration - the same algorithm and the
-    same damping influence.py already uses, so the dashboard's 'reach'
-    number cannot disagree with the store's."""
+    """Weighted PageRank by power iteration.
+
+    The same algorithm and the same damping influence.py uses, so the
+    dashboard's 'reach' number cannot disagree with the store's.
+
+    Args:
+        g: The graph.
+        damping: PageRank damping factor.
+
+    Returns:
+        PageRank per author, indexed by author name.
+    """
     n = g.n
     if n == 0:
         return pd.Series(dtype=float, name="pagerank")
@@ -203,10 +235,15 @@ def pagerank(g: Graph, damping: float = PAGERANK_D) -> pd.Series:
 
 
 def eigenvector_centrality(g: Graph) -> pd.Series:
-    """Leading eigenvector of the weighted adjacency (power iteration).
-    Reported beside PageRank, because the two disagree in a useful way:
-    PageRank rewards being replied to at all, eigenvector rewards being
-    replied to by well-connected people."""
+    """Leading eigenvector of the weighted adjacency, by power iteration.
+
+    Reported beside PageRank because the two disagree in a useful way:
+    PageRank rewards being replied to at all, eigenvector centrality
+    rewards being replied to by well-connected people.
+
+    Returns:
+        Eigenvector centrality per author (absolute value, unit norm).
+    """
     n = g.n
     if n == 0:
         return pd.Series(dtype=float, name="eigenvector")
@@ -225,11 +262,17 @@ def eigenvector_centrality(g: Graph) -> pd.Series:
 
 
 def clustering_coefficient(g: Graph) -> pd.Series:
-    """Local clustering C_i = 2*triangles_i / (k_i*(k_i-1)) on the
-    UNWEIGHTED graph. HOW the triangle count is obtained without loops:
-    the number of closed triples through i is the i-th diagonal entry of
-    A^3 / 2, and diag(A^3) = row-sums of (A@A) elementwise-times A - much
-    cheaper than forming A^3."""
+    """Local clustering coefficient on the unweighted graph.
+
+    C_i = 2 * triangles_i / (k_i * (k_i - 1)). The triangle count is
+    obtained without loops: the number of closed triples through i is
+    the i-th diagonal entry of A^3 / 2, and diag(A^3) equals the row sums
+    of (A @ A) elementwise-times A, which is much cheaper than forming
+    A^3.
+
+    Returns:
+        Clustering coefficient per author; 0 for degree < 2.
+    """
     B = g.A.copy()
     B.data = np.ones_like(B.data)
     tri = np.asarray(((B @ B).multiply(B)).sum(axis=1)).ravel() / 2.0
@@ -241,9 +284,15 @@ def clustering_coefficient(g: Graph) -> pd.Series:
 
 
 def core_number(g: Graph) -> pd.Series:
-    """k-core decomposition (peeling): repeatedly remove the lowest-degree
-    node, recording the degree it had when removed. The k-core backbone
-    drawn by `kcore_subgraph` is `core_number >= k`."""
+    """k-core decomposition by peeling.
+
+    Repeatedly removes the lowest-degree node, recording the degree it
+    had when removed. The k-core backbone drawn by `kcore_subgraph` is
+    `core_number >= k`.
+
+    Returns:
+        Core number per author.
+    """
     A = g.A.copy()
     A.data = np.ones_like(A.data)
     A = A.tolil()
@@ -282,13 +331,25 @@ def _pivots(g: Graph, sample: int, seed: int) -> np.ndarray:
 
 def path_stats(g: Graph, sample: int = PIVOT_SAMPLE,
                seed: int = GRAPH_SEED) -> dict:
-    """Sampled average shortest-path length, eccentricity-based diameter
-    lower bound, and mean closeness. Hop counts, unweighted - an
-    interaction is one hop regardless of how many replies it carried.
+    """Sampled path statistics: mean path length, diameter bound, closeness.
 
-    Closeness uses the Wasserman-Faust correction (reachable fraction
-    times inverse mean distance) so nodes in small components are not
-    flattered - the same choice networkx makes by default.
+    Distances are hop counts on the unweighted graph: an interaction is
+    one hop regardless of how many replies it carried. Closeness uses the
+    Wasserman-Faust correction (reachable fraction times inverse mean
+    distance) so nodes in small components are not flattered, matching
+    networkx's default.
+
+    Args:
+        g: The graph.
+        sample: Number of random source nodes.
+        seed: Seed for the pivot draw.
+
+    Returns:
+        Dict with `avg_path_len`, `diameter_lb` (max eccentricity over
+        the pivots, a lower bound on the true diameter), `mean_closeness`,
+        `pivots` (sample size actually used), `closeness` (all-NaN
+        placeholder indexed by every author) and `closeness_pivots`
+        (closeness for the sampled nodes only).
     """
     piv = _pivots(g, sample, seed)
     if len(piv) == 0:
@@ -316,19 +377,26 @@ def path_stats(g: Graph, sample: int = PIVOT_SAMPLE,
 
 def betweenness(g: Graph, sample: int = PIVOT_SAMPLE,
                 seed: int = GRAPH_SEED) -> pd.Series:
-    """Brandes betweenness from a random sample of source nodes, scaled
-    to the full-source estimate and normalised by (n-1)(n-2)/2 so the
-    number sits on the standard 0-1 scale and stays comparable across
-    graphs of different sizes.
+    """Sampled Brandes betweenness on the standard 0-1 scale.
 
-    HOW Brandes works, in two sweeps per source s:
-      forward  - BFS from s, recording each node's distance and its
-                 number of shortest paths sigma (a node's sigma is the
-                 sum of its predecessors' sigmas);
-      backward - walk the BFS layers in reverse, pushing each node's
-                 dependency delta back to its predecessors in proportion
-                 to sigma. Summing delta over all sources gives
-                 betweenness.
+    Estimated from a random sample of source nodes, scaled up to the
+    full-source estimate and normalised by (n-1)(n-2)/2 so the number
+    stays comparable across graphs of different sizes.
+
+    Two sweeps per source s: a forward BFS records each node's distance
+    and its number of shortest paths sigma (the sum of its predecessors'
+    sigmas); a backward walk over the BFS layers pushes each node's
+    dependency delta back to its predecessors in proportion to sigma.
+    Summing delta over all sources gives betweenness.
+
+    Args:
+        g: The graph.
+        sample: Number of random source nodes.
+        seed: Seed for the pivot draw.
+
+    Returns:
+        Betweenness per author; all zeros for graphs with fewer than
+        three nodes or no non-isolated node.
     """
     piv = _pivots(g, sample, seed)
     n = g.n
@@ -370,10 +438,22 @@ def betweenness(g: Graph, sample: int = PIVOT_SAMPLE,
 def centrality_table(g: Graph, sample: int = PIVOT_SAMPLE,
                      seed: int = GRAPH_SEED,
                      bc: pd.Series | None = None) -> pd.DataFrame:
-    """Every centrality in one frame, indexed by author. Closeness is
-    only defined on the sampled pivots, so it is left NaN elsewhere and
-    the notebook says so in the caption. Pass `bc` to reuse an already
-    computed betweenness (it is by far the most expensive column)."""
+    """Every centrality in one frame, indexed by author.
+
+    Closeness is only defined on the sampled pivots and is left NaN
+    elsewhere; callers that display it should say so.
+
+    Args:
+        g: The graph.
+        sample: Pivot sample size for the path-based columns.
+        seed: Seed for the pivot draw.
+        bc: An already computed betweenness Series to reuse; it is by
+            far the most expensive column.
+
+    Returns:
+        Frame with degree, weighted_degree, pagerank, eigenvector,
+        clustering, core_number, betweenness and closeness columns.
+    """
     ps = path_stats(g, sample, seed)
     out = pd.concat([
         g.series(g.degree, "degree"),
@@ -390,14 +470,21 @@ def centrality_table(g: Graph, sample: int = PIVOT_SAMPLE,
 # communities (own Louvain - no networkx dependency)
 # ---------------------------------------------------------------------------
 def as_labels(g: Graph, comm) -> np.ndarray:
-    """Coerce a partition to a POSITIONAL array aligned to `g.names`.
+    """Coerce a partition to a positional array aligned to `g.names`.
 
-    Every routine in here indexes a partition by matrix row number, but
-    `louvain` hands back a Series keyed by author (which is what the
-    notebook and the dashboard want to read). Rather than make callers
-    remember which form each function needs, both are accepted and
-    normalised here exactly once: a Series is reindexed onto the graph's
-    own node order, anything else is taken as already positional.
+    Every routine here indexes a partition by matrix row number, but
+    `louvain` returns a Series keyed by author, which is the form the
+    dashboard reads. Both forms are accepted and normalised in one
+    place: a Series is reindexed onto the graph's own node order,
+    anything else is taken as already positional.
+
+    Args:
+        g: The graph whose node order defines the positions.
+        comm: A Series keyed by author, or an array-like already in
+            row order.
+
+    Returns:
+        Community label per row of `g.A`.
     """
     if isinstance(comm, pd.Series):
         return comm.reindex(g.names).to_numpy()
@@ -405,12 +492,22 @@ def as_labels(g: Graph, comm) -> np.ndarray:
 
 
 def modularity(g: Graph, comm, resolution: float = 1.0) -> float:
-    """Newman-Girvan Q for a partition of the WEIGHTED graph:
-    Q = sum_c [ w_in(c)/W - gamma*(strength(c)/(2W))^2 ],
-    where W is total edge weight. Q ~ 0 means "no better than a random
-    graph with the same degrees"; anything well above 0 is real community
-    structure. `network_stats` reports our own graph's Q as
-    `modularity_Q`."""
+    """Newman-Girvan modularity Q for a partition of the weighted graph.
+
+    Q = sum_c [ w_in(c)/W - gamma * (strength(c) / (2W))^2 ], where W is
+    the total edge weight and gamma the resolution. Q ~ 0 means no better
+    than a random graph with the same degrees; anything well above 0 is
+    real community structure. `network_stats` reports it as
+    `modularity_Q`.
+
+    Args:
+        g: The graph.
+        comm: Partition, in either form `as_labels` accepts.
+        resolution: The gamma multiplier on the null-model term.
+
+    Returns:
+        Q as a float; 0.0 for a graph with no edge weight.
+    """
     comm = as_labels(g, comm)
     W = g.A.sum() / 2.0
     if W <= 0:
@@ -427,12 +524,22 @@ def modularity(g: Graph, comm, resolution: float = 1.0) -> float:
 
 def _louvain_one_level(A: sparse.csr_matrix, resolution: float,
                        order: np.ndarray) -> np.ndarray:
-    """One Louvain level: greedy local moving until no single-node move
-    raises modularity. The gain of moving node i into community c is
-      dQ = w(i -> c)/W - gamma * strength(i) * strength(c) / (2 W^2)
-    i.e. "edges I actually have there" minus "edges I'd expect there by
-    chance". `order` is a fixed permutation so the result is
-    deterministic for a given seed.
+    """One Louvain level: greedy local moving until no move raises Q.
+
+    The gain of moving node i into community c is
+        dQ = w(i -> c)/W - gamma * strength(i) * strength(c) / (2 W^2)
+    i.e. the edges i actually has there minus the edges it would be
+    expected to have there by chance. `order` is a fixed permutation so
+    the result is deterministic for a given seed.
+
+    Args:
+        A: Symmetric CSR adjacency of the current level (self-loops
+            carry a super-node's internal weight).
+        resolution: The gamma multiplier.
+        order: Node visiting order.
+
+    Returns:
+        Community id per row of `A` (not yet compacted to 0..k-1).
     """
     n = A.shape[0]
     strength = np.asarray(A.sum(axis=1)).ravel()
@@ -475,9 +582,20 @@ def _louvain_one_level(A: sparse.csr_matrix, resolution: float,
 
 def louvain(g: Graph, resolution: float = 1.0,
             seed: int = GRAPH_SEED) -> pd.Series:
-    """Multi-level Louvain: local moving, then collapse each community
-    into a super-node and repeat, until a level stops improving. Returns
-    a 0-based community id per author (largest community = 0)."""
+    """Multi-level Louvain community detection.
+
+    Local moving, then collapse each community into a super-node and
+    repeat until a level stops merging.
+
+    Args:
+        g: The graph.
+        resolution: The gamma multiplier on the null-model term.
+        seed: Seed for the per-level visiting order.
+
+    Returns:
+        A 0-based community id per author, relabelled by size so the
+        largest community is 0.
+    """
     if g.n == 0:
         return pd.Series(dtype=int, name="community")
     rng = np.random.default_rng(seed)
@@ -493,11 +611,11 @@ def louvain(g: Graph, resolution: float = 1.0,
         M = sparse.csr_matrix(
             (np.ones(A.shape[0]), (comm, np.arange(A.shape[0]))),
             shape=(comm.max() + 1, A.shape[0]))
-        # NOTE the diagonal is deliberately KEPT: a super-node's self-loop
-        # carries its community's internal weight, which is what keeps the
-        # next level's degrees (and therefore its null model) correct.
-        # Zeroing it is the classic bug - it makes every later level merge
-        # everything, because the chance-expectation term collapses.
+        # The diagonal is deliberately kept: a super-node's self-loop
+        # carries its community's internal weight, which keeps the next
+        # level's degrees (and therefore its null model) correct. Zeroing
+        # it makes every later level merge everything, because the
+        # chance-expectation term collapses.
         A2 = (M @ A @ M.T).tocsr()
         A2.eliminate_zeros()
         if A2.shape[0] == A.shape[0]:
@@ -510,9 +628,18 @@ def louvain(g: Graph, resolution: float = 1.0,
 
 
 def community_report(g: Graph, comm: pd.Series) -> dict:
-    """The three community numbers: modularity, community count, and the
-    share of edges that cross communities (a high value means the
-    communities are loose interest clusters, not silos)."""
+    """Summary numbers for a partition.
+
+    Args:
+        g: The graph.
+        comm: Community id per author (Series keyed by author).
+
+    Returns:
+        Dict with `modularity`, `n_communities`,
+        `inter_community_edge_share` (a high value means the communities
+        are loose interest clusters, not silos),
+        `largest_community_share` and `communities_ge_10`.
+    """
     c = comm.reindex(g.names).to_numpy()
     coo = sparse.triu(g.A, k=1).tocoo()
     cross = float((c[coo.row] != c[coo.col]).mean()) if coo.nnz else np.nan
@@ -532,12 +659,25 @@ def network_stats(g: Graph, sample: int = PIVOT_SAMPLE,
                   seed: int = GRAPH_SEED,
                   comm: pd.Series | None = None,
                   bc: pd.Series | None = None) -> pd.Series:
-    """The headline statistics table for our graph, in one Series.
+    """The headline statistics table for a graph, as one Series.
 
-    small-world sigma = (C/C_rand) / (L/L_rand) with the standard
+    Small-world sigma = (C/C_rand) / (L/L_rand) with the standard
     Erdos-Renyi references C_rand = <k>/n and L_rand = ln n / ln <k>.
     sigma >> 1 is the small-world signature: tight local clustering with
     global shortcuts.
+
+    Args:
+        g: The graph.
+        sample: Pivot sample size for the path-based statistics.
+        seed: Seed for the pivot draw and for Louvain.
+        comm: A precomputed partition; computed with `louvain` when None.
+        bc: A precomputed betweenness Series; computed when None.
+
+    Returns:
+        Series named `value` with node/edge counts, degree summary,
+        density, components, giant-component share, clustering, sampled
+        path statistics, small-world sigma, community numbers and the
+        pivot count the sampled statistics rest on.
     """
     n, m = g.n, g.m
     k = g.degree
@@ -577,9 +717,15 @@ def network_stats(g: Graph, sample: int = PIVOT_SAMPLE,
 
 
 def degree_distribution(g: Graph) -> pd.DataFrame:
-    """P(k) for the linear and log-log degree-distribution panels. A
-    heavy right tail (a few users replied to by hundreds) is what makes
-    'influence' a meaningful word here at all."""
+    """P(k) for the linear and log-log degree-distribution panels.
+
+    A heavy right tail (a few users replied to by hundreds) is what makes
+    'influence' a meaningful word here at all.
+
+    Returns:
+        Frame with `degree`, `count`, `p` and `ccdf` columns, one row per
+        observed degree in ascending order.
+    """
     k = g.degree
     vc = pd.Series(k).value_counts().sort_index()
     out = pd.DataFrame({"degree": vc.index.astype(int),
@@ -593,17 +739,29 @@ def degree_distribution(g: Graph) -> pd.DataFrame:
 # label analysis
 # ---------------------------------------------------------------------------
 def homophily(g: Graph, labels: pd.Series) -> dict:
-    """Two standard measures:
+    """Edge and node homophily of a labelling, overall and per class.
 
-    EDGE homophily  = share of edges whose endpoints share a label. It is
-      dominated by the majority class in an imbalanced problem.
-    NODE homophily   = average over nodes of "fraction of my neighbours
-      with my label". Reported per class, because that is where the real
-      finding lives: on the live store the high-predictive nodes score
-      0.095 (their neighbours are almost all ordinary users) against
-      0.963 for the low-predictive ones - see NB05 section 3.6. Low
-      positive-class homophily is exactly why a neighbourhood-averaging
-      model struggles - it is a diagnosis, not a bug.
+    Edge homophily is the share of edges whose endpoints share a label;
+    it is dominated by the majority class in an imbalanced problem. Node
+    homophily is the average over nodes of the fraction of a node's
+    neighbours that carry its label. It is reported per class because
+    that is where the finding lives: on the live store the
+    high-predictive nodes score 0.095 (their neighbours are almost all
+    ordinary users) against 0.963 for the low-predictive ones
+    (`reference/research_record/nb05_influence.json`, `homophily`). Low
+    positive-class homophily is why a neighbourhood-averaging model
+    struggles on this label.
+
+    Args:
+        g: The graph.
+        labels: Class label per author; authors missing from it count
+            as class 0.
+
+    Returns:
+        Dict with `edge_homophily`, `node_homophily` (mean over nodes
+        with at least one neighbour), one `node_homophily_class_<c>` per
+        class, and `node_homophily_series` (per-node values, NaN for
+        isolated nodes).
     """
     y = labels.reindex(g.names).fillna(0).to_numpy()
     coo = sparse.triu(g.A, k=1).tocoo()
@@ -630,13 +788,24 @@ def homophily(g: Graph, labels: pd.Series) -> dict:
 
 def by_class(tab: pd.DataFrame, label: str | pd.Series = "y",
              cols: list | None = None) -> pd.DataFrame:
-    """Mean of each attribute split by class, with the ratio. The ratio
-    column is the useful one - it says which attributes a classifier
-    could plausibly separate on.
+    """Mean of each attribute split by class, with the class-1/class-0 ratio.
 
-    `label` is either a column of `tab` or a Series to align onto its
-    index - the second form is the common one, because the centrality
-    table is built from the graph while the labels live in the node table.
+    The ratio column says which attributes a classifier could plausibly
+    separate on.
+
+    Args:
+        tab: Attribute table indexed by author.
+        label: Either the name of a column of `tab` or a Series aligned
+            onto its index. The Series form is the common one, because
+            the centrality table is built from the graph while the
+            labels live in the node table.
+        cols: Attribute columns to include; default every numeric column
+            other than the label.
+
+    Returns:
+        Frame with one row per attribute and one `class_<c>` column per
+        class, plus `ratio_1_over_0` when both classes 0 and 1 exist,
+        sorted by the last column descending.
     """
     if isinstance(label, pd.Series):
         tab = tab.assign(_y=label.reindex(tab.index))
@@ -659,10 +828,23 @@ def by_class(tab: pd.DataFrame, label: str | pd.Series = "y",
 # ---------------------------------------------------------------------------
 def ego_subgraph(g: Graph, center: str, radius: int = 1,
                  max_nodes: int = 150) -> Graph:
-    """The neighbourhood around one author, out to `radius` hops. If the
-    hop ball is bigger than `max_nodes`, the highest-strength neighbours
-    are kept (so the picture shows the busy part of the ego network
-    rather than a random slice) - and the caller is expected to say so."""
+    """The neighbourhood around one author, out to `radius` hops.
+
+    If the hop ball is bigger than `max_nodes`, the highest-strength
+    members are kept (the centre always survives) so the picture shows
+    the busy part of the ego network rather than a random slice; the
+    caller is expected to say so.
+
+    Args:
+        g: The graph.
+        center: Author at the centre; an unknown name yields an empty
+            graph.
+        radius: Hops to walk outward.
+        max_nodes: Cap on the subgraph size.
+
+    Returns:
+        The induced subgraph.
+    """
     if center not in g.idx:
         return g.subgraph(np.array([], dtype=object))
     seen = {g.idx[center]}
@@ -684,12 +866,24 @@ def ego_subgraph(g: Graph, center: str, radius: int = 1,
 
 def kcore_subgraph(g: Graph, k: int | None = None, min_nodes: int = 40,
                    max_nodes: int = 400) -> tuple[Graph, int]:
-    """The k-core BACKBONE: the DEEPEST core that still has at least
-    `min_nodes` members (walking k down from the maximum until the
-    picture has something in it). Returns (subgraph, k). This is the way
-    to draw a 12k-node graph honestly - instead of thinning at random, it
-    shows the densely interconnected heart of it, and every node in a
-    k-core provably has >= k neighbours inside it."""
+    """The k-core backbone of the graph.
+
+    With `k` None, the deepest core that still has at least `min_nodes`
+    members is chosen by walking k down from the maximum. Instead of
+    thinning a 12k-node graph at random this shows its densely
+    interconnected heart, and every node in a k-core provably has >= k
+    neighbours inside it.
+
+    Args:
+        g: The graph.
+        k: Core depth to draw; chosen automatically when None.
+        min_nodes: Smallest acceptable core when choosing k.
+        max_nodes: Cap on the subgraph size; the highest-strength members
+            are kept beyond it.
+
+    Returns:
+        Tuple (subgraph, k).
+    """
     core = core_number(g)
     if k is None:
         k = max(int(core.max()), 1)
@@ -705,13 +899,23 @@ def kcore_subgraph(g: Graph, k: int | None = None, min_nodes: int = 40,
 
 def spring_layout(g: Graph, seed: int = GRAPH_SEED,
                   iterations: int = LAYOUT_ITERS) -> pd.DataFrame:
-    """Fruchterman-Reingold force layout, vectorised, seeded.
+    """Fruchterman-Reingold force layout, vectorised and seeded.
 
-    HOW: every pair of nodes repels with force k^2/d, every edge attracts
-    with d^2/k (k = ideal spacing = sqrt(area/n)); positions move a little
-    each step and the step size "cools" linearly to zero, which is what
-    makes the picture settle instead of oscillating. O(n^2) per iteration,
-    so this is for drawings of a few hundred nodes - never the full graph.
+    Every pair of nodes repels with force k^2/d and every edge attracts
+    with d^2/k, where k = sqrt(area/n) is the ideal spacing; positions
+    move a little each step and the step size cools linearly to zero,
+    which makes the picture settle instead of oscillating. O(n^2) per
+    iteration, so this is for drawings of a few hundred nodes, never
+    the full graph.
+
+    Args:
+        g: The graph to lay out.
+        seed: Seed for the initial positions.
+        iterations: Number of force steps.
+
+    Returns:
+        Frame indexed by author with `x` and `y` columns, centred and
+        scaled to unit span.
     """
     n = g.n
     if n == 0:
@@ -729,7 +933,7 @@ def spring_layout(g: Graph, seed: int = GRAPH_SEED,
         diff = pos[:, None, :] - pos[None, :, :]
         dist = np.linalg.norm(diff, axis=-1)
         dist = np.clip(dist, 0.01, None)
-        # the diagonal must be FINITE and non-zero: diff is exactly zero
+        # The diagonal must be finite and non-zero: diff is exactly zero
         # there, so both forces vanish anyway, whereas an infinity would
         # turn 0*inf into NaN and poison the whole layout.
         np.fill_diagonal(dist, 1.0)
@@ -749,9 +953,23 @@ def spring_layout(g: Graph, seed: int = GRAPH_SEED,
 def map_frames(g: Graph, board: pd.DataFrame,
                comm: pd.Series | None = None,
                seed: int = GRAPH_SEED) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Everything a plotly scatter needs, computed here so the dashboard
-    stays a view: a node frame (x, y, size basis, community, store
-    attributes) and an edge frame with per-edge endpoint coordinates."""
+    """Node and edge frames for a plotly scatter of the graph.
+
+    Computed here so the dashboard stays a view.
+
+    Args:
+        g: The graph to draw.
+        board: The author-scores table; its columns are joined onto the
+            node frame by author.
+        comm: A precomputed partition; computed with `louvain` when None.
+        seed: Seed for the layout and for Louvain.
+
+    Returns:
+        Tuple (nodes, edges). `nodes` has one row per author with x, y,
+        community, degree_here, strength_here and the board attributes;
+        `edges` has one row per undirected edge with u, v, weight and
+        the endpoint coordinates x0, y0, x1, y1.
+    """
     pos = spring_layout(g, seed=seed)
     if comm is None:
         comm = louvain(g, seed=seed)
@@ -772,8 +990,19 @@ def recent_calls(calls: pd.DataFrame, authors: list | np.ndarray | None = None,
                  days: int = 30, asof: pd.Timestamp | None = None,
                  ) -> pd.DataFrame:
     """The store's calls for the given authors inside a trailing window.
+
     Text-free by construction: `calls` never holds post bodies, only the
-    extracted (ticker, direction, stance, kind) tuple."""
+    extracted (ticker, direction, stance, kind) tuple.
+
+    Args:
+        calls: The store's calls table.
+        authors: Authors to keep; None keeps everyone.
+        days: Window length.
+        asof: End of the window; the newest call date when None.
+
+    Returns:
+        The windowed calls, newest first.
+    """
     if not len(calls):
         return calls
     c = calls.copy()
@@ -786,10 +1015,11 @@ def recent_calls(calls: pd.DataFrame, authors: list | np.ndarray | None = None,
 
 
 def _direction_sign(direction: pd.Series) -> np.ndarray:
-    """+1 long / -1 short, whichever way the store spells it. The store
-    writes direction as int (+1/-1); this also accepts the words in case
-    a future extractor version changes the encoding, so the dashboard can
-    never silently read every short as a long."""
+    """+1 long / -1 short, whichever way the store spells it.
+
+    The store writes direction as int (+1/-1); the words are accepted
+    too in case a later extractor version changes the encoding, so the
+    dashboard can never silently read every short as a long."""
     if pd.api.types.is_numeric_dtype(direction):
         return np.where(direction.to_numpy() < 0, -1.0, 1.0)
     s = direction.astype(str).str.upper().str.strip()
@@ -798,8 +1028,10 @@ def _direction_sign(direction: pd.Series) -> np.ndarray:
 
 
 def direction_label(direction) -> str:
-    """The human word for one direction value - used by the dashboard so
-    "LONG"/"SHORT" is spelled in exactly one place."""
+    """The display word ("LONG" or "SHORT") for one direction value.
+
+    Used by the dashboard so the words are spelled in exactly one place.
+    """
     sign = _direction_sign(pd.Series([direction]))[0]
     return "LONG" if sign > 0 else "SHORT"
 
@@ -811,21 +1043,30 @@ def _weighted_calls(calls: pd.DataFrame, board: pd.DataFrame,
     """The one place the influence weighting is applied.
 
     Every "what is the panel pushing" view below is the same four columns
-    grouped differently, so they are computed ONCE here.  Two of them are
+    grouped differently, so they are computed once here. Two of them are
     the whole arithmetic of this module:
 
-        den = w * |stance|        the BACKING a call carries
+        den = w * |stance|        the backing a call carries
         num = w * |stance| * dir  the same backing, signed by direction
 
-    w is the author's board score, |stance| their conviction (0-1) and dir
-    is +1 long / -1 short.  Any influence-weighted net direction is then
-    sum(num) / sum(den) over whatever slice you care about - per ticker,
-    per week, per author - which is why every caller can be three lines
-    long and none of them can disagree with the others about the weighting.
+    w is the author's board score, |stance| their conviction (0-1) and
+    dir is +1 long / -1 short. Any influence-weighted net direction is
+    then sum(num) / sum(den) over whatever slice is wanted (per ticker,
+    per week, per author), which is why every caller is a few lines long
+    and none of them can disagree about the weighting.
 
-    Returns the windowed calls with `w`, `conv`, `dir_num`, `num`, `den`
-    added, or an EMPTY frame carrying those same columns so callers can
-    group without an existence check.
+    Args:
+        calls: The store's calls table.
+        board: The author-scores table (source of `w`).
+        authors: Authors to keep; None keeps everyone.
+        days: Window length.
+        asof: End of the window; the newest call date when None.
+        weight_col: Board column used as `w`.
+
+    Returns:
+        The windowed calls with `w`, `conv`, `dir_num`, `num` and `den`
+        added, or an empty frame carrying those same columns so callers
+        can group without an existence check.
     """
     c = recent_calls(calls, authors, days, asof)
     if not len(c):
@@ -846,13 +1087,26 @@ def suggestion_digest(calls: pd.DataFrame, board: pd.DataFrame,
                       weight_col: str = "composite") -> pd.DataFrame:
     """Per ticker: what the selected voices are currently suggesting.
 
-    The consensus number is an INFLUENCE-WEIGHTED net direction:
+    The consensus number is an influence-weighted net direction:
         consensus = sum_i w_i * dir_i * |stance_i| / sum_i w_i * |stance_i|
     with w_i the author's composite score and dir_i in {+1, -1}. It sits
-    in [-1, +1]: +1 = every influential voice in the window is long this
-    name with full conviction, -1 = every one is short. Weighting by
-    composite is the point of the whole influence store - a call from
-    someone with a record counts for more than a call from a first-timer.
+    in [-1, +1]: +1 means every influential voice in the window is long
+    this name with full conviction, -1 that every one is short.
+    Weighting by composite is the point of the influence store: a call
+    from someone with a record counts for more than a call from a
+    first-timer.
+
+    Args:
+        calls: The store's calls table.
+        board: The author-scores table.
+        authors: Authors to keep; None keeps everyone.
+        days: Window length.
+        asof: End of the window; the newest call date when None.
+        weight_col: Board column used as the weight.
+
+    Returns:
+        One row per ticker with the DIGEST_COLS columns, sorted by
+        `weighted_voices` then `n_calls` descending.
     """
     c = _weighted_calls(calls, board, authors, days, asof, weight_col)
     return _digest_frame(c, "ticker")
@@ -865,11 +1119,10 @@ DIGEST_COLS = ["n_calls", "n_authors", "longs", "shorts", "consensus",
 def _digest_frame(c: pd.DataFrame, key: str) -> pd.DataFrame:
     """`suggestion_digest`'s arithmetic, over whatever key is handed in.
 
-    Split out so the THEME view cannot drift from the TICKER view.  The
-    consensus and backing formulas are the desk's accepted numbers; a
-    second copy of them written for themes would be a second place for
-    them to be wrong, and the two views sit side by side on one toggle
-    where any disagreement would be visible and unexplainable."""
+    Split out so the theme view cannot drift from the ticker view: the
+    two sit side by side on one toggle, where any disagreement between
+    the consensus and backing formulas would be visible and
+    unexplainable, so there is exactly one copy of them."""
     if not len(c):
         return pd.DataFrame(columns=[key] + DIGEST_COLS)
     g = c.groupby(key)
@@ -888,25 +1141,32 @@ def _digest_frame(c: pd.DataFrame, key: str) -> pd.DataFrame:
 
 
 def explode_to_themes(c: pd.DataFrame) -> pd.DataFrame:
-    """One row per (call, theme) for every call on a ticker that belongs to
-    at least one theme.
+    """One row per (call, theme) for every call on a theme-mapped ticker.
 
-    The map is `src.themes.build_ticker_to_themes()` - the SAME membership
-    the euphoria product's theme tab already runs on, so a theme means one
-    thing across the whole application.  Nothing new is defined here.
+    The map is `src.themes.build_ticker_to_themes()`, the same membership
+    the euphoria theme tab runs on, so a theme means one thing across the
+    whole application.
 
     A ticker may sit in several themes (NVDA is in `semiconductors`, `ai`
-    and `ai_megacap`), and the row is duplicated into each: the question
-    "are the influential accounts converging on AI" is asked of the theme,
-    and NVDA is evidence for it whether or not it is also evidence for
-    semiconductors.  This means theme backing shares are shares of the
-    THEME-MAPPED room, not of the ticker room, and the two are different
-    denominators - which is why the toggle recomputes rather than reusing.
+    and `ai_megacap`) and the row is duplicated into each: the question
+    "are the influential accounts converging on AI" is asked of the
+    theme, and NVDA is evidence for it whether or not it is also evidence
+    for semiconductors. Theme backing shares are therefore shares of the
+    theme-mapped room, not of the ticker room; the two denominators
+    differ, which is why the toggle recomputes rather than reusing.
 
     Calls on tickers in no theme are dropped rather than bucketed into an
-    "other" catch-all: "other" is not a theme a PM can position in, and on
-    the measured store it would be the largest bar on the chart (58.5% of
-    live calls map to no theme) purely by being a residue."""
+    "other" catch-all: "other" is not a theme anyone can position in,
+    and on the measured store it would be the largest bar on the chart
+    (58.5% of live calls map to no theme) purely by being a residue.
+
+    Args:
+        c: A frame from `_weighted_calls` (needs a `ticker` column).
+
+    Returns:
+        The theme-mapped rows with a `theme` column, exploded so each
+        (call, theme) pair is one row.
+    """
     from src.themes import build_ticker_to_themes
     if not len(c):
         return c.assign(theme=pd.Series(dtype="object"))
@@ -919,16 +1179,29 @@ def theme_digest(calls: pd.DataFrame, board: pd.DataFrame,
                  authors: list | np.ndarray | None = None,
                  days: int = 30, asof: pd.Timestamp | None = None,
                  weight_col: str = "composite") -> pd.DataFrame:
-    """`suggestion_digest`, rolled up to THEMES instead of tickers.
+    """`suggestion_digest`, rolled up to themes instead of tickers.
 
-    The desk's question was "what if lots of influential accounts converge
-    on a theme" - this is that question, asked literally.  Same weighting,
-    same consensus, same backing share; only the grouping key changes.
+    Answers "are many influential accounts converging on one theme?"
+    with the same weighting, the same consensus and the same backing
+    share; only the grouping key changes.
 
-    INFORMATION ONLY.  Theme convergence was tested as a predictor of the
-    house cliff outcome and REJECTED - see the parameter register (docs/RESEARCH_RECORD.md §7, Class 6)c.
-    This exhibit describes where the room is positioned, which is a fact
-    about the room, not a forecast about the price."""
+    Information only. Theme convergence was tested as a predictor of the
+    house cliff outcome and rejected (see the parameter register,
+    reference/KEY_PARAMETERS.md). This exhibit describes where
+    the room is positioned, which is a fact about the room, not a
+    forecast about the price.
+
+    Args:
+        calls: The store's calls table.
+        board: The author-scores table.
+        authors: Authors to keep; None keeps everyone.
+        days: Window length.
+        asof: End of the window; the newest call date when None.
+        weight_col: Board column used as the weight.
+
+    Returns:
+        One row per theme with the DIGEST_COLS columns.
+    """
     c = explode_to_themes(
         _weighted_calls(calls, board, authors, days, asof, weight_col))
     return _digest_frame(c, "theme")
@@ -939,23 +1212,29 @@ def ticker_voices(calls: pd.DataFrame, board: pd.DataFrame,
                   days: int = 30, asof: pd.Timestamp | None = None,
                   weight_col: str = "composite",
                   top: int = 6) -> pd.DataFrame:
-    """Per ticker: WHO is behind the call, strongest voice first.
+    """Per ticker: who is behind the call, strongest voice first.
 
-    `suggestion_digest` tells you a ticker's net direction and how much
-    influence sits behind it, but a single number cannot answer the
-    follow-up a PM always asks - *who, and how sure were they?*  This
-    returns exactly that, preformatted for a chart hover: one line per
+    `suggestion_digest` gives a ticker's net direction and how much
+    influence sits behind it; this answers the follow-up (who, and how
+    sure were they?) preformatted for a chart hover: one line per
     contributing author, strongest first, capped at `top` names with an
     "and N more" tail so a crowded name does not produce a hover box
     taller than the screen.
 
-    Returns one row per ticker with:
-      voices      - "<br>"-joined lines, ready to drop into a hovertemplate
-      top_author  - the single strongest voice (for compact labels)
-      n_more      - how many contributors were cut from the list
+    Args:
+        calls: The store's calls table.
+        board: The author-scores table.
+        authors: Authors to keep; None keeps everyone.
+        days: Window length.
+        asof: End of the window; the newest call date when None.
+        weight_col: Board column used as the weight.
+        top: Maximum number of named voices per ticker.
 
-    The direction word comes from `direction_label`, so LONG/SHORT is
-    still spelled in exactly one place in this module.
+    Returns:
+        One row per ticker with `voices` ("<br>"-joined lines ready for
+        a hovertemplate; handles are half-masked), `top_author` (the
+        single strongest voice, unmasked, for use as a key) and `n_more`
+        (how many contributors were cut from the list).
     """
     c = _weighted_calls(calls, board, authors, days, asof, weight_col)
     return _voices_frame(c, "ticker", board, weight_col, top)
@@ -966,12 +1245,14 @@ def theme_voices(calls: pd.DataFrame, board: pd.DataFrame,
                  days: int = 30, asof: pd.Timestamp | None = None,
                  weight_col: str = "composite",
                  top: int = 6) -> pd.DataFrame:
-    """`ticker_voices` for the theme view: who is behind a THEME.
+    """`ticker_voices` for the theme view: who is behind a theme.
 
-    An author who called three names inside one theme appears ONCE, with
-    their three calls netted - otherwise the loudest hover on the chart
+    An author who called three names inside one theme appears once, with
+    the three calls netted; otherwise the loudest hover on the chart
     would belong to whoever spreads the widest, not to whoever the crowd
-    actually follows."""
+    follows. Arguments and return shape are as for `ticker_voices`, keyed
+    by `theme`.
+    """
     c = explode_to_themes(
         _weighted_calls(calls, board, authors, days, asof, weight_col))
     return _voices_frame(c, "theme", board, weight_col, top)
@@ -979,10 +1260,22 @@ def theme_voices(calls: pd.DataFrame, board: pd.DataFrame,
 
 def _voices_frame(c: pd.DataFrame, key: str, board: pd.DataFrame,
                   weight_col: str, top: int) -> pd.DataFrame:
+    """The hover-text frame behind `ticker_voices` and `theme_voices`.
+
+    Args:
+        c: A frame from `_weighted_calls`, optionally exploded to themes.
+        key: Grouping column (`ticker` or `theme`).
+        board: The author-scores table, for the top-of-board weight.
+        weight_col: Board column the influence figure is scaled from.
+        top: Maximum number of named voices per key.
+
+    Returns:
+        One row per key with `voices`, `top_author` and `n_more`.
+    """
     if not len(c):
         return pd.DataFrame(columns=[key, "voices", "top_author", "n_more"])
     # One row per (key, author): their net lean on that name, how many
-    # times they said it, and their usefulness score.  Summing dir_num
+    # times they said it, and their usefulness score. Summing dir_num
     # means an author who flip-flopped nets out toward zero rather than
     # being counted twice in opposite directions.
     per = (c.groupby([key, "author"])
@@ -992,7 +1285,7 @@ def _voices_frame(c: pd.DataFrame, key: str, board: pd.DataFrame,
            .sort_values([key, "weight"], ascending=[True, False]))
     # The hover quotes influence on the 0-100 board scale, not the raw
     # composite: 0.71 means nothing to a reader, "influence 84" says
-    # "84% of the strongest record in the store" - see influence_index().
+    # "84% of the strongest record in the store" (see influence_index).
     top_w = float(board[weight_col].max() or 1.0) or 1.0
     rows = []
     for gkey, grp in per.groupby(key, sort=False):
@@ -1001,12 +1294,12 @@ def _voices_frame(c: pd.DataFrame, key: str, board: pd.DataFrame,
         for r in head.itertuples(index=False):
             word = "LONG" if r.lean > 0 else ("SHORT" if r.lean < 0
                                               else "MIXED")
-            # `voices` is HOVER TEXT, not data - it is the one field in this
+            # `voices` is hover text, not data - the one field in this
             # module that goes to a screen verbatim - so the handle is
-            # half-masked here, at the point it becomes a string a
-            # human reads.
-            # `top_author` below keeps the TRUE handle: it is a key, and a
-            # masked key would collide across authors and break any join.
+            # half-masked here, at the point it becomes a string a human
+            # reads. `top_author` below keeps the true handle: it is a
+            # key, and a masked key would collide across authors and
+            # break any join.
             lines.append(f"{half_mask(str(r.author))} - {word}, {int(r.n)} call"
                          f"{'s' if int(r.n) != 1 else ''}, "
                          f"influence {100.0 * float(r.weight) / top_w:.0f}")
@@ -1022,8 +1315,20 @@ def _voices_frame(c: pd.DataFrame, key: str, board: pd.DataFrame,
 def author_calls_wide(calls: pd.DataFrame, authors: list | np.ndarray,
                       days: int = 30, asof: pd.Timestamp | None = None,
                       per_author: int = 5) -> pd.DataFrame:
-    """One row per (author, call) for the most recent `per_author` calls -
-    the "what are they suggesting" table behind the dashboard's leaderboard.
+    """The most recent `per_author` calls for each author, one row per call.
+
+    Backs the "what are they suggesting" table behind the dashboard's
+    leaderboard.
+
+    Args:
+        calls: The store's calls table.
+        authors: Authors to include.
+        days: Window length.
+        asof: End of the window; the newest call date when None.
+        per_author: Calls kept per author, newest first.
+
+    Returns:
+        Frame with author, date, ticker, direction, stance and kind.
     """
     c = recent_calls(calls, authors, days, asof)
     if not len(c):
@@ -1035,55 +1340,58 @@ def author_calls_wide(calls: pd.DataFrame, authors: list | np.ndarray,
 
 
 # ---------------------------------------------------------------------------
-# MAKING THE NUMBERS MEAN SOMETHING (added 2026-07-27)
+# Display units for the influence tab.
 #
-# The influence tab was accurate and unreadable, for one reason: two of the
-# three numbers it showed had no unit a reader could hold.
+# Two of the tab's numbers have no unit a reader can hold as stored:
 #
-#   * `composite` is MIN-MAX NORMALISED inside build_author_scores(), so the
-#     strongest author scores ~1.0 BY CONSTRUCTION, not by being always
-#     right.  Printed as "usefulness 0.987" it reads like a 98.7% hit rate.
-#     It is not - it is a position in the field.  influence_index() states
-#     that outright by rescaling to 0-100 where 100 IS the top of the field.
-#   * `weighted_voices` is a sum of (score x conviction) over calls.  "3.42"
-#     is unitless: it depends on how many people called the name AND how the
-#     scores happen to be scaled.  backing_share() turns it into the name's
-#     SHARE of all the influence-weighted conviction the room spent in the
-#     window, in per cent - so "26%" means a quarter of everything the panel
-#     said, weighted by who said it and how hard, went into one name.
+#   * `composite` is min-max normalised inside build_author_scores(), so
+#     the strongest author scores ~1.0 by construction, not by being
+#     always right. Printed as "usefulness 0.987" it reads like a 98.7% hit
+#     rate; it is a position in the field. influence_index() states that
+#     outright by rescaling to 0-100, where 100 is the top of the field.
+#   * `weighted_voices` is a sum of (score x conviction) over calls. "3.42"
+#     is unitless: it depends on how many people called the name and on
+#     how the scores happen to be scaled. backing_share() turns it into
+#     the name's share of all the influence-weighted conviction the room
+#     spent in the window, in per cent, so "26%" means a quarter of
+#     everything the panel said, weighted by who said it and how hard,
+#     went into one name.
 #
-# Both are monotone transforms - no ranking anywhere changes.  What changes
-# is that the reader can say what the number means out loud.
+# Both are monotone transforms: no ranking changes, only the readability.
 #
-# WHY SHARE AND NOT "x THE TYPICAL NAME" (measured, 2026-07-27)
-# The first version of this divided backing by the MEDIAN name in the window,
-# mirroring the euphoria detector's self-anchoring convention (A1's "2x its
-# own 120d median").  It was measured on the real store and rejected, because
-# the two cases are not alike.  A1 divides a name by ITS OWN history, which
-# is a stable reference.  Dividing by the median NAME divides by whatever the
-# middle of the cross-section happens to be - and the cross-section is a long
-# tail: in the week ending 2026-06-28, 163 names were mentioned and the
-# median one had a single call from a single author, so the median backing
-# was 0.24 and MSFT came out at 141x.  Weekly maxima ran 141x, 41x, 2.7x,
-# 14x, 26x on the 30-day view and 171x on the 90-day view: numbers that
-# cannot be spoken, and that move with how many one-off tickers a given
-# fetch happened to catch rather than with the crowd.
-#
-# Share has none of that.  It is bounded 0-100, it is additive (the names on
-# a chart sum to a share of the whole, which is what "crowded" MEANS), and
-# adding a hundred one-off names barely moves the denominator because they
-# barely contribute to a sum - where they move a median a lot.  On the same
-# store the shares read 26%, 7%, 5%, 4%, 3%, ... 0.2%, and the reference
-# line is DERIVED rather than chosen: 100/n per cent is what every name
-# would show if attention were spread evenly, so "above the line" means
-# "more crowded than an even split".
+# Why a share rather than "x the typical name": dividing backing by the
+# median name in the window (mirroring the euphoria detector's
+# self-anchoring "2x its own 120d median") was measured on the live store
+# and rejected, because the two cases are not alike. The detector divides
+# a name by its own history, a stable reference. The median name is
+# whatever the middle of a long-tailed cross-section happens to be: in a
+# typical week over 160 names are mentioned and the median one has a
+# single call from a single author, so weekly maxima ran from 2.7x to
+# 171x - numbers that move with how many one-off tickers a fetch happened
+# to catch rather than with the crowd. A share is bounded 0-100, additive
+# (the names on a chart sum to a share of the whole, which is what
+# "crowded" means), and a hundred one-off names barely move a sum where
+# they move a median a lot. The reference line is derived rather than
+# chosen: 100/n per cent is what every name would show if attention were
+# spread evenly, so "above the line" means "more crowded than an even
+# split".
 # ---------------------------------------------------------------------------
 def influence_index(board: pd.DataFrame, score_col: str = "composite",
                     ) -> pd.Series:
-    """`composite` rescaled to 0-100, where 100 = the strongest record in
-    the board handed in.  A RELATIVE scale, and deliberately so: composite
-    is itself min-max normalised, so it was never an absolute accuracy and
-    should not be dressed as one."""
+    """`composite` rescaled to 0-100, where 100 is the strongest record.
+
+    A relative scale, deliberately: composite is itself min-max
+    normalised, so it was never an absolute accuracy and should not be
+    dressed as one.
+
+    Args:
+        board: The author-scores table.
+        score_col: Column to rescale.
+
+    Returns:
+        The rescaled score, aligned to `board.index`; all zeros when the
+        column has no positive value.
+    """
     s = pd.to_numeric(board[score_col], errors="coerce")
     top = float(s.max()) if len(s) and pd.notna(s.max()) else 0.0
     if top <= 0:
@@ -1092,16 +1400,23 @@ def influence_index(board: pd.DataFrame, score_col: str = "composite",
 
 
 def backing_share(weighted: pd.Series) -> pd.Series:
-    """Unitless backing -> PER CENT of the window's total backing.
+    """Unitless backing -> per cent of the window's total backing.
 
-    The one unit this tab uses for crowding.  `weighted` is a column of
-    sum(influence x conviction) per name; the share is that divided by the
-    column's own sum, so the names shown sum to a share of everything the
-    room said.  See the block comment above for why this replaced the
-    earlier "x the typical name" ratio.
+    The one unit the tab uses for crowding. `weighted` is a column of
+    sum(influence x conviction) per name; the share is that divided by
+    the column's own sum, so the names shown sum to a share of everything
+    the room said. See the block comment above for why a share is used
+    rather than a ratio to the typical name.
 
-    Zero total (nobody in the board said anything) returns zeros rather than
-    NaN: on this tab an empty window means "no crowding", not "unknown"."""
+    Args:
+        weighted: Backing per name (e.g. the `weighted_voices` column).
+
+    Returns:
+        Share in per cent, aligned to `weighted`'s index. A zero total
+        (nobody in the board said anything) returns zeros rather than
+        NaN: on this tab an empty window means "no crowding", not
+        "unknown".
+    """
     s = pd.to_numeric(weighted, errors="coerce").fillna(0.0)
     tot = float(s.sum()) if len(s) else 0.0
     if tot <= 0:
@@ -1112,9 +1427,16 @@ def backing_share(weighted: pd.Series) -> pd.Series:
 def even_share(n_names: int) -> float:
     """The share every name would show if attention were spread evenly.
 
-    A DERIVED reference line, not a chosen threshold: with n names in the
-    window, an even split is 100/n per cent each.  Anything above it is more
-    crowded than even, which is the whole question the chart asks."""
+    A derived reference line, not a chosen threshold: with n names in the
+    window an even split is 100/n per cent each, and anything above it is
+    more crowded than even.
+
+    Args:
+        n_names: Number of names in the window.
+
+    Returns:
+        100/n as a float; NaN when n is zero.
+    """
     n = int(n_names or 0)
     return 100.0 / n if n > 0 else float("nan")
 
@@ -1124,20 +1446,29 @@ def author_push_table(calls: pd.DataFrame, board: pd.DataFrame,
                       days: int = 30, asof: pd.Timestamp | None = None,
                       weight_col: str = "composite",
                       per_author: int = 4) -> pd.DataFrame:
-    """One row per author: their influence, and THE TICKERS THEY ARE PUSHING.
+    """One row per author: the tickers they are pushing in the window.
 
-    This is the leaderboard the tab actually needs.  The old one showed a
-    hit rate next to an influence score, which invites the one comparison
-    that does not hold (the score is shrunk toward the crowd base rate, the
-    hit rate is raw) - and it showed `latest_calls`, a pre-baked string of
-    "LONG RDDT (2026-05-05) | ..." that ignores the window the user chose.
+    The tickers are recomputed from the chosen window rather than read
+    from the board's pre-baked `latest_calls` string (which ignores the
+    window), netted per author so a flip-flop shows as MIXED rather than
+    as two opposite calls, and ordered by how much conviction the author
+    put behind each one. No hit rate is shown beside the influence score:
+    the score is shrunk toward the crowd base rate while the hit rate is
+    raw, so the two do not compare.
 
-    Here the tickers are recomputed FROM the chosen window, netted per
-    author so a flip-flop shows as MIXED rather than as two opposite calls,
-    and ordered by how much conviction the author put behind each one.
+    Args:
+        calls: The store's calls table.
+        board: The author-scores table.
+        authors: Authors to keep; None keeps everyone.
+        days: Window length.
+        asof: End of the window; the newest call date when None.
+        weight_col: Board column used as the weight.
+        per_author: Named tickers per author before the "+N more" tail.
 
-    Returns author, n_calls, n_tickers, longs, shorts, pushing (a display
-    string like "LONG GME, LONG AMC, SHORT TSLA"), top_ticker, top_dir.
+    Returns:
+        Frame with author, n_calls, n_tickers, longs, shorts, pushing (a
+        display string like "LONG GME, LONG AMC, SHORT TSLA"), top_ticker
+        and top_dir.
     """
     cols = ["author", "n_calls", "n_tickers", "longs", "shorts", "pushing",
             "top_ticker", "top_dir"]
@@ -1176,17 +1507,26 @@ def ticker_backers(calls: pd.DataFrame, board: pd.DataFrame, ticker: str,
                    authors: list | np.ndarray | None = None,
                    days: int = 30, asof: pd.Timestamp | None = None,
                    weight_col: str = "composite") -> pd.DataFrame:
-    """WHO is behind one ticker, one row per person, strongest first.
+    """Who is behind one ticker, one row per person, strongest first.
 
     `ticker_voices` answers the same question as a hover string; this
-    answers it as data, so the tab can DRAW it.  A hover is a dead end for
-    a PM - it cannot be compared across people, cannot be sorted, and
-    vanishes when the mouse moves.  A bar per person, length = their
-    influence, colour = their direction, is the same information in a form
-    you can read at a glance and screenshot into a note.
+    answers it as data so the tab can draw it as a bar per person
+    (length = influence, colour = direction), which can be compared,
+    sorted and screenshotted where a hover cannot.
 
-    Returns author, influence (0-100), lean (net sign), word (LONG / SHORT /
-    MIXED), n_calls, conviction (mean |stance|), last_date.
+    Args:
+        calls: The store's calls table.
+        board: The author-scores table.
+        ticker: The ticker to look up.
+        authors: Authors to keep; None keeps everyone.
+        days: Window length.
+        asof: End of the window; the newest call date when None.
+        weight_col: Board column used as the weight.
+
+    Returns:
+        Frame with author, influence (0-100), lean (net sign), word
+        (LONG / SHORT / MIXED), n_calls, conviction (mean |stance|) and
+        last_date, sorted by influence descending.
     """
     cols = ["author", "influence", "lean", "word", "n_calls", "conviction",
             "last_date"]
@@ -1218,34 +1558,46 @@ def crowding_history(calls: pd.DataFrame, board: pd.DataFrame,
                      tickers: list | None = None) -> pd.DataFrame:
     """Per (period, ticker): how much influence-weighted backing piled in.
 
-    The tab had NO time axis, which is the single biggest thing missing
-    from it.  "GME is the most-backed name" is a fact about a snapshot;
-    "GME's backing has tripled over three weeks" is the thing a PM can act
-    on, and the store has carried the dates all along.
+    The time axis of the tab: "GME is the most-backed name" is a fact
+    about a snapshot, "GME's backing has tripled over three weeks" is
+    something a reader can act on.
 
-    `backing` is sum(w * |stance|) inside the period - the same quantity
-    the bubble chart's height shows, cut by week instead of pooled.  `tilt`
-    is the influence-weighted net direction inside the period, so a name
-    can be seen switching sides, not just getting louder.
+    `backing` is sum(w * |stance|) inside the period, the same quantity
+    the bubble chart's height shows, cut by period instead of pooled.
+    `tilt` is the influence-weighted net direction inside the period, so
+    a name can be seen switching sides, not just getting louder.
 
-    `share` is `backing` as a per cent of ALL the backing spent in the SAME
-    period, which is the only way this chart can be read: raw backing rises
-    and falls with how busy the week was, so an unnormalised line conflates
-    "this name is being crowded into" with "everybody posted a lot that
-    week".  `even` is the share an even split would give (100 / names that
-    period), the line to read `share` against.
-
-    Both are computed over every ticker in the period BEFORE the `tickers`
-    filter, so restricting the chart to five names cannot move its own
-    baseline - draw five lines or fifty, each week's denominator is the same.
+    `share` is `backing` as a per cent of all the backing spent in the
+    same period. Raw backing rises and falls with how busy the week was,
+    so an unnormalised line would conflate "this name is being crowded
+    into" with "everybody posted a lot that week". `even` is the share an
+    even split would give (100 / names that period), the line to read
+    `share` against. Both are computed over every ticker in the period
+    before the `tickers` filter, so restricting the chart to five names
+    cannot move its own baseline.
 
     Weekly by default because the comment fetch runs about twice a week
-    (see the parameter register (docs/RESEARCH_RECORD.md §7, Class 7)): a daily axis would mostly plot the
-    ingestion cadence rather than the crowd.  Weekly is not a cure for a
-    THIN week, though - the fetch budget leaves some weeks with a few dozen
-    calls and others with thousands - so `n_calls` and `n_authors` come back
-    per row and every chart drawn from this is expected to show them, rather
-    than quietly dropping thin weeks behind a cut-off.
+    (see the parameter register, reference/KEY_PARAMETERS.md): a
+    daily axis would mostly plot the ingestion cadence rather than the
+    crowd. Weekly does not cure a thin week (the fetch budget leaves some
+    weeks with a few dozen calls and others with thousands), so `n_calls`
+    and `n_authors` come back per row and every chart drawn from this is
+    expected to show them rather than quietly dropping thin weeks behind
+    a cut-off.
+
+    Args:
+        calls: The store's calls table.
+        board: The author-scores table.
+        authors: Authors to keep; None keeps everyone.
+        days: Window length.
+        asof: End of the window; the newest call date when None.
+        weight_col: Board column used as the weight.
+        freq: pandas period alias for the bucket.
+        tickers: Tickers to return; None returns all.
+
+    Returns:
+        Frame with period (bucket end date), ticker, backing, share,
+        even, tilt, n_calls and n_authors, sorted by ticker then period.
     """
     cols = ["period", "ticker", "backing", "share", "even", "tilt",
             "n_calls", "n_authors"]
@@ -1274,10 +1626,25 @@ def panel_tilt_history(calls: pd.DataFrame, board: pd.DataFrame,
                        days: int = 30, asof: pd.Timestamp | None = None,
                        weight_col: str = "composite", freq: str = "W",
                        ) -> pd.DataFrame:
-    """The whole panel on one line: net direction per period, and how much
-    was said.  Computed over EVERY call in the window, not just the tickers
-    a chart happens to draw, so it answers "is the room turning bullish?"
-    without a top-N cut deciding the answer."""
+    """The whole panel on one line: net direction and volume per period.
+
+    Computed over every call in the window, not just the tickers a chart
+    happens to draw, so it answers "is the room turning bullish?" without
+    a top-N cut deciding the answer.
+
+    Args:
+        calls: The store's calls table.
+        board: The author-scores table.
+        authors: Authors to keep; None keeps everyone.
+        days: Window length.
+        asof: End of the window; the newest call date when None.
+        weight_col: Board column used as the weight.
+        freq: pandas period alias for the bucket.
+
+    Returns:
+        Frame with period, tilt, backing, n_calls, n_authors and
+        n_tickers, sorted by period.
+    """
     cols = ["period", "tilt", "backing", "n_calls", "n_authors", "n_tickers"]
     c = _weighted_calls(calls, board, authors, days, asof, weight_col)
     if not len(c):

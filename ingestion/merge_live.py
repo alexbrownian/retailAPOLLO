@@ -1,36 +1,41 @@
-# merge_live.py
-# =============
-# Append the RAW live files written by the ingestion/ fetchers into
-# data/processed/posts.parquet, so live Reddit, X and StockTwits posts reach
-# the signals - not just the raw folder. EXTERNAL machine only (the internal
-# machine has no raw store; it uses ingestion/append_live_abstracted.py).
-#
-# Sources merged (each self-skips if its raw folder is empty):
-#   data/raw/RedditLive/*.jsonl.zst    -> src.reddit_live_data
-#   data/raw/StockTwits/*.jsonl.zst    -> src.stocktwits_data
-#   data/raw/X Data/x_api_live.csv.zst -> src.x_data (normalise_x_api)
-#
-# THE DEDUP CONTRACT ("first seen wins"): a candidate post is dropped if its
-# id is already in posts.parquet. The script is append-only and idempotent -
-# it only ever adds posts it has never seen and never revises history.
-#   (Distinct id prefixes keep the sources apart: Reddit base36, 'x_' tweets,
-#    'st_' StockTwits - collisions are impossible across sources.)
-#
-# vs add_x_data.py: that script REBUILDS the X block from the frozen
-# HuggingFace dumps (historical backfill). This one only appends fresh live
-# posts. They do not conflict: merge_live never drops rows.
-#
-# HOW (memory-safe - the full store is never loaded at once):
-#   1. normalise every raw live file -> candidate rows (standard 9 columns)
-#   2. read ONLY the id column to find which candidates are new; if none,
-#      exit immediately (no rewrite - the common no-op case costs seconds)
-#   3. otherwise stream posts.parquet row group by row group into a new
-#      file and append the new candidates as a final date-sorted block
-#   4. verify row counts + schema, then swap the new file in atomically
-#
-# Run from anywhere:  python ingestion/merge_live.py
-#   --dry-run   normalise + count what WOULD be added, write nothing
-#   --posts / --raw-root / --out   override default paths
+"""Append the raw live posts written by the fetchers into ``posts.parquet``.
+
+Live Reddit, X and StockTwits posts reach the signals only once they are in
+``data/processed/posts.parquet``, not merely in the raw folder. This script
+applies in full mode only: aggregates mode has no raw store and uses
+``ingestion/append_live_abstracted.py`` instead.
+
+Sources merged (each self-skips if its raw folder is empty):
+
+==================================== ==============================
+``data/raw/RedditLive/*.jsonl.zst``  ``src.reddit_live_data``
+``data/raw/StockTwits/*.jsonl.zst``  ``src.stocktwits_data``
+``data/raw/X Data/x_api_live.csv.zst`` ``src.x_data.normalise_x_api``
+==================================== ==============================
+
+The dedup contract is "first seen wins": a candidate post is dropped if its
+id is already in ``posts.parquet``. The script is append-only and
+idempotent: it only ever adds posts it has never seen and never revises
+history. Distinct id prefixes keep the sources apart (Reddit base36,
+``x_`` tweets, ``st_`` StockTwits), so collisions across sources are
+impossible.
+
+The merge is memory-safe; the full store is never loaded at once:
+
+1. normalise every raw live file into candidate rows (the standard nine
+   columns in ``SCHEMA``);
+2. read only the ``id`` column to find which candidates are new; if none,
+   exit immediately (no rewrite: the common no-op case costs seconds);
+3. otherwise stream ``posts.parquet`` row group by row group into a new
+   file and append the new candidates as a final block;
+4. verify row counts and schema, then swap the new file in atomically.
+
+Usage (from anywhere)::
+
+    python ingestion/merge_live.py
+        --dry-run                  normalise and count what would be added, write nothing
+        --posts / --raw-root / --out   override the default paths
+"""
 
 import argparse
 import glob
@@ -78,6 +83,15 @@ COLS = [f.name for f in SCHEMA]
 
 # ---------------- collect candidate rows from the raw live files ----------
 def collect_reddit_live(raw_root):
+    """Normalise every ``RedditLive/*.jsonl.zst`` file under ``raw_root``.
+
+    Args:
+        raw_root: The ``data/raw`` directory.
+
+    Returns:
+        DataFrame in the standard column order; empty when no records
+        exist.
+    """
     files = sorted(glob.glob(os.path.join(raw_root, "RedditLive", "*.jsonl.zst")))
     records = []
     for path in files:
@@ -90,6 +104,15 @@ def collect_reddit_live(raw_root):
 
 
 def collect_stocktwits(raw_root):
+    """Normalise every ``StockTwits/*.jsonl.zst`` file under ``raw_root``.
+
+    Args:
+        raw_root: The ``data/raw`` directory.
+
+    Returns:
+        DataFrame in the standard column order; empty when no messages
+        exist.
+    """
     files = sorted(glob.glob(os.path.join(raw_root, "StockTwits", "*.jsonl.zst")))
     messages = []
     for path in files:
@@ -102,6 +125,15 @@ def collect_stocktwits(raw_root):
 
 
 def collect_x_live(raw_root):
+    """Normalise ``X Data/x_api_live.csv.zst`` under ``raw_root``.
+
+    Args:
+        raw_root: The ``data/raw`` directory.
+
+    Returns:
+        DataFrame in the standard column order; empty when the file is
+        absent.
+    """
     path = os.path.join(raw_root, "X Data", "x_api_live.csv.zst")
     if not os.path.exists(path):
         return pd.DataFrame(columns=COLS)
@@ -113,6 +145,18 @@ def collect_x_live(raw_root):
 
 
 def collect_candidates(raw_root):
+    """Gather candidate rows from all three live sources.
+
+    Duplicate ids within the candidates are dropped (first kept) and the
+    dtypes are locked so the arrow table matches ``SCHEMA`` exactly.
+
+    Args:
+        raw_root: The ``data/raw`` directory.
+
+    Returns:
+        DataFrame with exactly the ``COLS`` columns; empty when no source
+        produced rows.
+    """
     parts = [collect_reddit_live(raw_root),
              collect_stocktwits(raw_root),
              collect_x_live(raw_root)]
@@ -131,6 +175,17 @@ def collect_candidates(raw_root):
 
 # ---------------- conform an existing row group to the output schema ------
 def conform(t):
+    """Cast an existing row group to ``SCHEMA``.
+
+    Row groups written before the ``source`` column existed get it filled
+    with ``"reddit"``.
+
+    Args:
+        t: A ``pyarrow.Table`` read from the store.
+
+    Returns:
+        The table restricted to ``COLS`` and cast to ``SCHEMA``.
+    """
     if "source" not in t.schema.names:
         t = t.append_column("source", pa.array(["reddit"] * t.num_rows, pa.string()))
     return t.select(COLS).cast(SCHEMA)
@@ -138,9 +193,15 @@ def conform(t):
 
 # ---------------- a human-readable snapshot of what was pulled -------------
 def print_snapshot(df):
-    """Sanity view: posts per source, the reddit subreddit mix, and the
-    newest few posts from each source - confirms a run really pulled
-    live data (and what)."""
+    """Print a human-readable view of the candidate posts.
+
+    Shows posts per source, the Reddit subreddit mix and the newest few
+    posts from each source, which confirms that a run really pulled live
+    data and what it was.
+
+    Args:
+        df: Candidate rows in the standard column order.
+    """
     print("\n" + "=" * 64)
     print("LIVE INGESTION SNAPSHOT  (what the fetchers pulled into raw)")
     print("=" * 64)
@@ -168,6 +229,12 @@ def print_snapshot(df):
 
 
 def main():
+    """Normalise, deduplicate and append the live raw posts.
+
+    Returns:
+        ``0`` on success or when nothing is new; ``1`` when the final
+        rename failed because another process holds ``posts.parquet`` open.
+    """
     p = argparse.ArgumentParser(description="Append live raw posts into posts.parquet")
     p.add_argument("--posts", default=DEFAULT_POSTS)
     p.add_argument("--raw-root", default=DEFAULT_RAW_ROOT)

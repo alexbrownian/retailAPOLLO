@@ -1,10 +1,9 @@
-"""
-x_data.py
-=========
-Turn RAW X (Twitter) dumps into the project's standard posts shape, so
-tweets and Reddit posts live in ONE table. THREE HuggingFace datasets are
-supported; each has its own tiny normaliser, but they all funnel into the
-SAME 9 columns - that is the whole trick for "same format, no new files":
+"""Normalisation of X (Twitter) dumps into the standard posts schema.
+
+Turns raw X data into the project's standard posts shape, so tweets and
+Reddit posts live in one table. Three HuggingFace datasets and the live
+v2 API feed are supported; each has its own small normaliser, but they
+all funnel into the same 9 columns::
 
     id           <- real tweet/status id where the dataset has one
                     (prefixed 'x_'), else a dataset-scoped row id
@@ -19,11 +18,13 @@ SAME 9 columns - that is the whole trick for "same format, no new files":
     num_comments <- reply/comment count where available, else 0
     source       <- 'x'  (Reddit rows carry source='reddit')
 
-THE REGISTRY (bottom of this file) maps a short key to the HuggingFace repo
-and the right normaliser. fetch_x_data.py downloads each registry entry to
-data/raw/X Data/<key>.csv.zst; add_x_data.py normalises every raw file it
-finds there and rebuilds the x block of posts.parquet in one go.
-To add ANOTHER dataset later: write one normaliser, add one registry line.
+The DATASETS registry (bottom of this file) maps a short key to the
+HuggingFace repo and the right normaliser; raw files live at
+data/raw/X Data/<key>.csv.zst. The live feed is the one consumed by the
+pipeline: ingestion/fetch_x_live.py writes x_api_live.csv.zst and
+ingestion/merge_live.py / append_live_abstracted.py normalise it with
+``normalise_x_api()``. To add another dataset: write one normaliser, add
+one registry line.
 
 Datasets and their quirks:
   financial_tweets (StephanAkkerman/financial-tweets)
@@ -37,15 +38,14 @@ Datasets and their quirks:
   stock_market_tweets (mjw/stock_market_tweets)
       Millions of rows, 2015-2020 (top S&P companies). Real 'tweet_id';
       text in 'body'; 'writer' is the author; HAS engagement: like_num ->
-      score, comment_num -> num_comments. NOTE: the file repeats a tweet
-      once per 'ticker_symbol' it mentions - the id dedup below collapses
-      those back to one row (our extractor re-finds all tickers from the
-      text anyway).
+      score, comment_num -> num_comments. The file repeats a tweet once
+      per 'ticker_symbol' it mentions; the id dedup collapses those back
+      to one row (the extractor re-finds all tickers from the text).
 
-SCORE CAVEAT: only the mjw dataset carries likes; the score column is kept
-in the schema for spam filtering only. ALL counting uses raw mention counts
-(one post = 1) - score-based weighting was removed project-wide (see
-design_decisions.xlsx #30).
+Score caveat: only the mjw dataset carries likes; the score column is
+kept in the schema for spam filtering only. All counting uses raw mention
+counts (one post = 1); score-based weighting is not used anywhere in the
+project because archived scores leak future information.
 """
 
 from __future__ import annotations
@@ -62,31 +62,32 @@ STATUS_ID = re.compile(r"/status/(\d+)")
 
 
 def _dates_from(series) -> pd.Series:
-    """Timestamps -> 'YYYY-MM-DD'. Handles ISO strings AND unix
-    seconds or milliseconds (dumps vary). Mixed formats are expected
-    here, so pandas' per-element-parse warning is suppressed.
+    """Converts timestamps to 'YYYY-MM-DD' strings.
 
-    RANGE-GUARDED (fix 2026-08-31): a raw feed row can carry a huge
-    numeric in created_at (a tweet/status id is ~2e18). Feeding that
-    to to_datetime(unit='s') multiplies toward nanoseconds and
-    OVERFLOWS - which crashed the whole fold with FloatingPointError
-    on machines where numpy is set to raise. Only values inside a
-    sane band are treated as timestamps: seconds ~1973-2128, and the
-    matching millisecond band; anything else (ids, garbage) becomes
-    NaT and the row is dropped downstream. A snowflake id is
-    deliberately NOT decoded as a nanosecond stamp - it would produce
-    a plausible-looking wrong date."""
+    Handles ISO strings and unix seconds or milliseconds (dumps vary).
+    Mixed formats are expected, so pandas' per-element-parse warning is
+    suppressed.
+
+    The numeric path is range-guarded: a raw feed row can carry a huge
+    numeric in created_at (a tweet/status id is ~2e18), and feeding that
+    to to_datetime(unit='s') multiplies toward nanoseconds and overflows,
+    which raises FloatingPointError where numpy is set to raise. Only
+    values inside a sane band are treated as timestamps: seconds
+    ~1973-2128, and the matching millisecond band; anything else (ids,
+    garbage) becomes NaT and the row is dropped downstream. A snowflake
+    id is deliberately not decoded as a nanosecond stamp; it would
+    produce a plausible-looking wrong date.
+    """
     import warnings
     import numpy as np
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         parsed = pd.to_datetime(series, errors="coerce", utc=True)
-    # The numeric fallback is BEST-EFFORT on top of the string parse -
-    # so it may never be allowed to kill the fold. Belt (range bands)
-    # AND braces (errstate) failed to stop a FloatingPointError on one
-    # machine's numpy/pandas pairing, so the whole fallback now sits
-    # behind a try: a row the fallback cannot date is simply dropped
-    # downstream, which is the correct cost.
+    # The numeric fallback is best-effort on top of the string parse and
+    # must never kill the fold. The range bands and errstate do not stop
+    # a FloatingPointError on every numpy/pandas pairing, so the whole
+    # fallback sits behind a try: a row the fallback cannot date is
+    # dropped downstream, which is the correct cost.
     try:
         with warnings.catch_warnings(), np.errstate(all="ignore"):
             warnings.simplefilter("ignore")
@@ -105,16 +106,18 @@ def _dates_from(series) -> pd.Series:
 
 
 def _finish(df: pd.DataFrame) -> pd.DataFrame:
-    """Shared final step for every normaliser: drop unusable rows,
-    dedup on id (first seen wins - same rule as the Reddit pipeline),
-    sort by date so the rows form date-ordered blocks in the parquet."""
+    """Shared final step for every normaliser: drops unusable rows,
+    dedups on id (first seen wins, the same rule as the Reddit pipeline)
+    and sorts by date so the rows form date-ordered blocks in the parquet."""
     df = df[(df["date"].notna()) & (df["id"] != "") & (df["title"].str.strip() != "")]
     df = df.drop_duplicates(subset="id", keep="first")
     return df.sort_values("date").reset_index(drop=True)[OUTPUT_COLUMNS]
 
 
 def author_from_embed_title(embed_title) -> str:
-    """'Crypto Mikey tweeted about PRIME, AXS' -> 'Crypto Mikey'."""
+    """Extracts the author from a financial-tweets embed title, for
+    example 'Crypto Mikey tweeted about PRIME, AXS' -> 'Crypto Mikey'.
+    Returns '' when no known marker is present."""
     if not isinstance(embed_title, str):
         return ""
     for marker in (" tweeted about ", " retweeted ", " quoted "):
@@ -124,8 +127,16 @@ def author_from_embed_title(embed_title) -> str:
 
 
 def normalise_tweets(raw: pd.DataFrame, keep_tweet_types=None) -> pd.DataFrame:
-    """StephanAkkerman/financial-tweets (Nov 2023+, no like counts).
-    keep_tweet_types: e.g. ['tweet'] to drop retweets/quotes; None = all."""
+    """Normalises StephanAkkerman/financial-tweets (Nov 2023+, no likes).
+
+    Args:
+        raw: The raw dataset frame.
+        keep_tweet_types: Values of tweet_type to keep, for example
+            ['tweet'] to drop retweets and quotes; None keeps all.
+
+    Returns:
+        DataFrame with OUTPUT_COLUMNS.
+    """
     df = raw.copy()
     if keep_tweet_types and "tweet_type" in df.columns:
         df = df[df["tweet_type"].isin(keep_tweet_types)]
@@ -152,8 +163,11 @@ def normalise_tweets(raw: pd.DataFrame, keep_tweet_types=None) -> pd.DataFrame:
 
 
 def normalise_smt(raw: pd.DataFrame) -> pd.DataFrame:
-    """StephanAkkerman/stock-market-tweets-data (Apr-Jul 2020).
-    Columns: id (row number!), created_at, text. No author, no likes."""
+    """Normalises StephanAkkerman/stock-market-tweets-data (Apr-Jul 2020).
+
+    Columns are id (a row number, not a tweet id), created_at and text;
+    no author, no likes.
+    """
     df = raw.copy()
     ids = pd.to_numeric(df.get("id"), errors="coerce")
     out = pd.DataFrame({
@@ -171,10 +185,13 @@ def normalise_smt(raw: pd.DataFrame) -> pd.DataFrame:
 
 
 def normalise_x_api(raw: pd.DataFrame) -> pd.DataFrame:
-    """LIVE X data from the official v2 API (fetch_x_live.py writes it).
-    The fetcher stores a flat csv: id, created_at, text, author, likes.
-    Real tweet ids get the same 'x_' prefix as the historical dumps, so a
-    tweet present in both can never be double-counted (first seen wins)."""
+    """Normalises live X data from the official v2 API.
+
+    fetch_x_live.py stores a flat csv: id, created_at, text, author,
+    likes. Real tweet ids get the same 'x_' prefix as the historical
+    dumps, so a tweet present in both is never double-counted (first
+    seen wins).
+    """
     df = raw.copy()
     ids = pd.to_numeric(df.get("id"), errors="coerce")
     out = pd.DataFrame({
@@ -192,10 +209,12 @@ def normalise_x_api(raw: pd.DataFrame) -> pd.DataFrame:
 
 
 def normalise_mjw(raw: pd.DataFrame) -> pd.DataFrame:
-    """mjw/stock_market_tweets (2015-2020, top S&P companies).
+    """Normalises mjw/stock_market_tweets (2015-2020, top S&P companies).
+
     Columns: tweet_id, writer, post_date, body, comment_num, retweet_num,
     like_num, ticker_symbol. The same tweet_id repeats once per
-    ticker_symbol - _finish()'s id dedup collapses that."""
+    ticker_symbol; _finish()'s id dedup collapses that.
+    """
     df = raw.copy()
     ids = pd.to_numeric(df.get("tweet_id"), errors="coerce")
     out = pd.DataFrame({
@@ -213,7 +232,7 @@ def normalise_mjw(raw: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------
-# THE REGISTRY - one line per dataset. Raw file = data/raw/X Data/<key>.csv.zst
+# The registry: one entry per dataset. Raw file = data/raw/X Data/<key>.csv.zst
 # ---------------------------------------------------------------------
 DATASETS = {
     "financial_tweets": {
@@ -228,9 +247,9 @@ DATASETS = {
         "repo": "mjw/stock_market_tweets",
         "normaliser": normalise_mjw,
     },
-    # LIVE X via the official v2 API - fetch_x_live.py appends to this file
-    # whenever X_BEARER_TOKEN is set in .env (pipeline armed, off until paid).
-    # No HF repo: fetch_x_data.py skips entries without one.
+    # Live X via the official v2 API. fetch_x_live.py appends to this
+    # file whenever X_BEARER_TOKEN is set in .env; without the token the
+    # feed is inactive. No HF repo.
     "x_api_live": {
         "repo": None,
         "normaliser": normalise_x_api,

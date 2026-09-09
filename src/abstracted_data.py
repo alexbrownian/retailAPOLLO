@@ -1,50 +1,50 @@
-"""
-abstracted_data.py
-==================
-ABSTRACTED_DATA/ is the one data folder committed to the repository and
-shared with the INTERNAL machine. It holds no post text, no authors, no post
-ids and no subreddit names - only daily COUNTS and SENTIMENT SCORES per
-ticker / theme. Five small parquet files (~2 MB total) from which the signal
-notebooks (08/09/10) and the price overlays run with zero access to the
-underlying Reddit / X / StockTwits posts.
+"""Text-free daily aggregates: the committed ABSTRACTED_DATA store.
 
-WHY THIS IS SAFE TO COMMIT
---------------------------
-The raw stores (posts.parquet, posts_slice.parquet) reveal everything: title,
-selftext, author, id, subreddit. The five aggregate files below are what the
-pipeline produces AFTER text has been turned into numbers - they carry only
-(date, ticker/theme, counts, sentiment scores). No individual post can be
-reconstructed from them. The source column keeps the readable labels
-'reddit'/'x'/'stocktwits', with no text attached.
+ABSTRACTED_DATA/ is the one data folder committed to the repository. It
+holds no post text, no authors, no post ids and no subreddit names, only
+daily counts and sentiment scores per ticker and per theme. Everything
+downstream (the analytics package, the dashboard, the price overlays) runs
+from these files with no access to the underlying Reddit / X / StockTwits
+posts.
 
-THE FIVE FILES (exact schema the notebooks write / read)
+Why the store is safe to commit: the raw stores (posts.parquet,
+posts_slice.parquet) carry title, selftext, author, id and subreddit. The
+aggregate files are produced after text has been turned into numbers and
+carry only (date, ticker/theme, counts, sentiment scores); no individual
+post can be reconstructed from them. The source column keeps the readable
+labels 'reddit' / 'x' / 'stocktwits' with no text attached.
+
+The six files and their schemas::
+
     daily_ticker_counts.parquet            date, ticker, mention_count
     daily_ticker_counts_by_source.parquet  date, ticker, source, mention_count
     daily_ticker_sentiment.parquet         date, ticker, n_posts, avg_sentiment, net_bullish
     daily_theme_counts.parquet             date, theme,  mention_count
     daily_theme_sentiment.parquet          date, theme,  n_posts, avg_sentiment, net_bullish
+    daily_term_counts.parquet              date, term,   mention_count (rolling retention)
 
-TWO JOBS THIS MODULE DOES
-    1. export()   copy the five files data/processed -> ABSTRACTED_DATA
-       (EXTERNAL machine, after the aggregates are built from raw data).
-       hydrate()  copy the five files ABSTRACTED_DATA -> data/processed
-       (INTERNAL machine, so the unchanged notebooks find them where they
-       already look). No notebook edits needed - only a copy.
+The module does two jobs:
 
-    2. aggregate_posts() + merge_into_abstracted()  fold a batch of NEW live
-       posts into the committed aggregates WITHOUT keeping the posts. Counts
-       simply ADD; sentiment means RECOMBINE weighted by n_posts. Both give
-       the identical result one-shot aggregation would.
+1. Copying. ``export()`` copies the files data/processed -> ABSTRACTED_DATA
+   (full mode, after the aggregates are built from raw text).
+   ``hydrate()`` copies ABSTRACTED_DATA -> data/processed (aggregates mode,
+   so every consumer finds the files at the path it already reads).
 
-WHY THE SENTIMENT MERGE IS WEIGHTED
-    avg_sentiment is a mean over posts, and net_bullish = (bulls - bears)/n
-    is also a per-post mean. Combining an OLD day-row (n_old posts) with a
-    NEW day-row (n_new posts) cannot average the two averages - a row built
-    from 100 posts must count more than a row built from 3. The merge
-    rebuilds the underlying sums:
-        combined_avg = (avg_old*n_old + avg_new*n_new) / (n_old + n_new)
-    and the same for net_bullish - exactly what one-shot aggregation would
-    compute, so history never gets revised, only extended.
+2. Folding. ``aggregate_posts()`` turns a batch of new posts into the six
+   aggregate frames and ``merge_into_abstracted()`` folds them into the
+   committed store without keeping the posts. Counts add; sentiment means
+   recombine weighted by n_posts. Both give the result a one-shot
+   aggregation over all posts would.
+
+Why the sentiment merge is weighted: avg_sentiment is a mean over posts and
+net_bullish = (bulls - bears) / n is also a per-post mean, so an old day-row
+built from n_old posts and a new day-row built from n_new posts cannot be
+combined by averaging the two averages. The merge rebuilds the underlying
+sums::
+
+    combined_avg = (avg_old * n_old + avg_new * n_new) / (n_old + n_new)
+
+and likewise for net_bullish, so history is extended, never revised.
 """
 
 from __future__ import annotations
@@ -55,28 +55,29 @@ import shutil
 import pandas as pd
 
 # ---------------------------------------------------------------------------
-# WHERE THINGS LIVE
+# Locations.
 # ---------------------------------------------------------------------------
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ABSTRACTED_DIR = os.path.join(ROOT, "ABSTRACTED_DATA")      # committed to git
 PROCESSED_DIR = os.path.join(ROOT, "data", "processed")     # private, gitignored
 
-# The six canonical filenames (used everywhere - one source of truth).
+# The six canonical filenames; every reader and writer imports these.
 TICKER_COUNTS = "daily_ticker_counts.parquet"
 TICKER_COUNTS_BY_SOURCE = "daily_ticker_counts_by_source.parquet"
 TICKER_SENT = "daily_ticker_sentiment.parquet"
 THEME_COUNTS = "daily_theme_counts.parquet"
 THEME_SENT = "daily_theme_sentiment.parquet"
-TERM_COUNTS = "daily_term_counts.parquet"    # rolling word/phrase frequencies
-                                             # for emerging-term detection -
-                                             # text-free like everything here
+TERM_COUNTS = "daily_term_counts.parquet"    # Rolling word/phrase frequencies
+                                             # for emerging-term detection;
+                                             # text-free like the others.
 
 FILES = [TICKER_COUNTS, TICKER_COUNTS_BY_SOURCE, TICKER_SENT,
          THEME_COUNTS, THEME_SENT, TERM_COUNTS]
 
-# For each file: how a merge combines it, and the columns that make a row unique.
-#   "counts"    -> mention_count adds up
-#   "sentiment" -> n_posts adds, means recombine weighted by n_posts
+# For each file: how a merge combines it, and the columns that make a row
+# unique.
+#   "counts"    -> mention_count adds up.
+#   "sentiment" -> n_posts adds; means recombine weighted by n_posts.
 MERGE_RULES = {
     TICKER_COUNTS:            ("counts",    ["date", "ticker"]),
     TICKER_COUNTS_BY_SOURCE:  ("counts",    ["date", "ticker", "source"]),
@@ -88,10 +89,10 @@ MERGE_RULES = {
 
 
 # ---------------------------------------------------------------------------
-# COPY HELPERS - export (external machine) and hydrate (internal machine)
+# Copy helpers: export (full mode) and hydrate (aggregates mode).
 # ---------------------------------------------------------------------------
 def _copy_files(src_dir, dst_dir, verbose):
-    """Copy whichever of the five files exist from src_dir to dst_dir."""
+    """Copies whichever of the aggregate files exist from src_dir to dst_dir."""
     os.makedirs(dst_dir, exist_ok=True)
     copied = []
     for name in FILES:
@@ -108,7 +109,19 @@ def _copy_files(src_dir, dst_dir, verbose):
 
 
 def export(src_dir=PROCESSED_DIR, dst_dir=ABSTRACTED_DIR, verbose=True):
-    """External machine: publish the five aggregates to ABSTRACTED_DATA."""
+    """Publishes the aggregate files from data/processed to ABSTRACTED_DATA.
+
+    Used in full mode, after the aggregates are rebuilt from the raw post
+    store.
+
+    Args:
+        src_dir: Folder holding the freshly built aggregates.
+        dst_dir: The committed store to publish into.
+        verbose: Print one line per file copied or skipped.
+
+    Returns:
+        List of the filenames that were copied.
+    """
     if verbose:
         print(f"export: {src_dir} -> {dst_dir}")
     copied = _copy_files(src_dir, dst_dir, verbose)
@@ -118,8 +131,20 @@ def export(src_dir=PROCESSED_DIR, dst_dir=ABSTRACTED_DIR, verbose=True):
 
 
 def hydrate(src_dir=ABSTRACTED_DIR, dst_dir=PROCESSED_DIR, verbose=True):
-    """Internal machine: copy the committed aggregates into data/processed so
-    the unchanged notebooks and scripts find them where they already look."""
+    """Copies the committed aggregates into data/processed.
+
+    Used in aggregates mode, where there is no raw post store: every
+    consumer reads from data/processed, so the committed files are copied
+    to the path they already look at.
+
+    Args:
+        src_dir: The committed store to read from.
+        dst_dir: The working folder to copy into.
+        verbose: Print one line per file copied or skipped.
+
+    Returns:
+        List of the filenames that were copied.
+    """
     if verbose:
         print(f"hydrate: {src_dir} -> {dst_dir}")
     copied = _copy_files(src_dir, dst_dir, verbose)
@@ -129,32 +154,55 @@ def hydrate(src_dir=ABSTRACTED_DIR, dst_dir=PROCESSED_DIR, verbose=True):
 
 
 # ---------------------------------------------------------------------------
-# MERGE MATHS - append without revising history
+# Merge arithmetic: append without revising history.
 # ---------------------------------------------------------------------------
 def _normalise_date(df):
-    """Make the date column a real datetime so grouping never treats the
-    string '2021-01-01' and the Timestamp 2021-01-01 as two different days."""
+    """Casts the date column to datetime so grouping never treats the string
+    '2021-01-01' and the Timestamp 2021-01-01 as two different days."""
     out = df.copy()
     out["date"] = pd.to_datetime(out["date"])
     return out
 
 
 def merge_counts(old, new, keys):
-    """Additive merge: same (date, ticker[, source]) rows have their
-    mention_count summed. Brand-new rows are carried through."""
+    """Additively merges two count frames.
+
+    Rows sharing the same key have their mention_count summed; rows present
+    in only one frame are carried through unchanged.
+
+    Args:
+        old: Existing aggregate frame.
+        new: Frame of newly aggregated rows.
+        keys: Columns that identify a row (for example ["date", "ticker"]).
+
+    Returns:
+        The merged frame sorted by keys, with a fresh RangeIndex.
+    """
     both = pd.concat([_normalise_date(old), _normalise_date(new)], ignore_index=True)
     merged = both.groupby(keys, as_index=False)["mention_count"].sum()
     return merged.sort_values(keys).reset_index(drop=True)
 
 
 def merge_sentiment(old, new, keys):
-    """n_posts-weighted merge (see the module docstring). Rebuilds the
-    per-day sums, adds them, then divides back out."""
+    """Merges two sentiment frames weighted by n_posts.
+
+    Rebuilds each row's underlying sums (mean * n_posts), adds them across
+    the two frames, then divides back out, so the result equals a one-shot
+    aggregation over the union of posts (see the module docstring).
+
+    Args:
+        old: Existing aggregate frame.
+        new: Frame of newly aggregated rows.
+        keys: Columns that identify a row (for example ["date", "theme"]).
+
+    Returns:
+        The merged frame in schema column order, sorted by keys.
+    """
     def prep(df):
         df = _normalise_date(df)
-        # avg_sentiment * n_posts = total compound score that day
+        # avg_sentiment * n_posts is the day's total compound score.
         df["_sent_sum"] = df["avg_sentiment"] * df["n_posts"]
-        # net_bullish * n_posts = (bulls - bears) that day
+        # net_bullish * n_posts is the day's (bulls - bears).
         df["_nb_sum"] = df["net_bullish"] * df["n_posts"]
         return df
 
@@ -167,18 +215,20 @@ def merge_sentiment(old, new, keys):
     grouped["avg_sentiment"] = grouped["_sent_sum"] / grouped["n_posts"]
     grouped["net_bullish"] = grouped["_nb_sum"] / grouped["n_posts"]
     grouped = grouped.drop(columns=["_sent_sum", "_nb_sum"])
-    # keep the columns in the schema order the notebooks expect
+    # Keep the columns in the schema order every reader expects.
     entity = [k for k in keys if k != "date"]
     cols = ["date"] + entity + ["n_posts", "avg_sentiment", "net_bullish"]
     return grouped[cols].sort_values(keys).reset_index(drop=True)
 
 
 def _safe_write(df, path):
-    """Write a parquet atomically: write a .tmp file, then swap it in with
-    os.replace (which overwrites the target in one step, on Windows too, so
-    there is never a moment with no file). If the target is locked (open in
-    Jupyter/Excel) the manual rename commands are printed instead of leaving
-    things half-written."""
+    """Writes a parquet file atomically.
+
+    Writes a .tmp file, then swaps it in with os.replace, which overwrites
+    the target in one step (on Windows too), so there is never a moment
+    with no file. If the target is locked by another process the manual
+    rename commands are printed and the PermissionError is re-raised rather
+    than leaving a half-written file."""
     tmp = path + ".tmp"
     df.to_parquet(tmp, index=False)
     try:
@@ -195,9 +245,23 @@ def _safe_write(df, path):
 
 
 def merge_into_abstracted(new_aggs, target_dir=ABSTRACTED_DIR, verbose=True):
-    """Fold a dict of {filename: new_aggregate_df} into ABSTRACTED_DATA.
-    Each file is read, merged by its rule, and written back. Files that
-    already exist accumulate; files that don't are created."""
+    """Folds a batch of new aggregates into the committed store.
+
+    Each file named in MERGE_RULES is read, merged by its rule (additive
+    for counts, n_posts-weighted for sentiment) and written back
+    atomically. Files that already exist accumulate; files that do not are
+    created. The term file is trimmed to its retention window after the
+    merge.
+
+    Args:
+        new_aggs: Mapping {filename: aggregate frame}, as returned by
+            aggregate_posts(). Missing or empty entries are skipped.
+        target_dir: The store to merge into.
+        verbose: Print one line per file merged.
+
+    Returns:
+        Mapping {filename: row count after the merge}.
+    """
     os.makedirs(target_dir, exist_ok=True)
     summary = {}
     for name, (kind, keys) in MERGE_RULES.items():
@@ -214,8 +278,8 @@ def merge_into_abstracted(new_aggs, target_dir=ABSTRACTED_DIR, verbose=True):
         else:
             merged = _normalise_date(new)
         if name == TERM_COUNTS:
-            # the term file rolls - old days fall off so it stays small
-            # enough to commit (the spike test never looks that far back)
+            # The term file rolls: old days fall off so it stays small
+            # enough to commit; the spike test never looks that far back.
             from src.terms import trim_to_retention
             merged = trim_to_retention(merged)
         _safe_write(merged, path)
@@ -226,13 +290,13 @@ def merge_into_abstracted(new_aggs, target_dir=ABSTRACTED_DIR, verbose=True):
 
 
 # ---------------------------------------------------------------------------
-# AGGREGATION - turn a batch of posts into the five aggregate frames.
-# Reuses the SAME functions the notebooks use, so live and historical numbers
-# are produced by identical code.
+# Aggregation: turn a batch of posts into the six aggregate frames. The
+# same functions build the live and the historical numbers, so both are
+# produced by identical code.
 # ---------------------------------------------------------------------------
 def _build_daily_theme_counts(posts_df):
-    """date, theme, mention_count - each post counts once per theme it
-    mentions (breadth of attention), the same rule the ticker side uses."""
+    """Builds (date, theme, mention_count). Each post counts once per theme
+    it mentions (breadth of attention), the same rule the ticker side uses."""
     from src.themes import themes_in_text
 
     rows = []
@@ -251,9 +315,15 @@ def _build_daily_theme_counts(posts_df):
 
 
 def load_universe():
-    """The valid US ticker set (cached Nasdaq files + delisted supplement).
-    max_cache_age_days is huge so this never hits the network on the
-    internal machine - the cache under data/reference is enough."""
+    """Loads the valid US ticker set (cached Nasdaq files + delisted supplement).
+
+    max_cache_age_days is set very large so the call never hits the network;
+    the cache under data/reference is sufficient in aggregates mode.
+
+    Returns:
+        The ticker universe as returned by
+        src.ticker_universe.load_us_ticker_universe().
+    """
     from pathlib import Path
     from src.ticker_universe import load_us_ticker_universe
     return load_us_ticker_universe(Path(ROOT) / "data" / "reference",
@@ -261,10 +331,23 @@ def load_universe():
 
 
 def aggregate_posts(posts_df, universe=None, cashtags_only=False):
-    """posts_df: standard 9-column posts (needs date, title, selftext, source).
-    Returns {filename: aggregate_df} for the six files.
+    """Turns a batch of posts into the six aggregate frames.
 
-    Uses build_mentions + sentiment exactly like notebooks 02/06/07 do."""
+    Ticker counts are built per source and summed into the combined
+    series; sentiment is looked up in the permanent score store and only
+    unseen posts are scored; theme counts, theme sentiment and rolling
+    term counts are built from the same batch.
+
+    Args:
+        posts_df: Standard 9-column posts frame; needs at least date, title,
+            selftext and source.
+        universe: Ticker universe; loaded via load_universe() when None.
+        cashtags_only: Count only $-prefixed ticker mentions.
+
+    Returns:
+        Mapping {filename: aggregate frame} keyed by the six canonical
+        filenames.
+    """
     from src.build_mentions import build_daily_counts
     from src.sentiment import (add_sentiment_cached,
                                build_daily_ticker_sentiment,
@@ -273,7 +356,7 @@ def aggregate_posts(posts_df, universe=None, cashtags_only=False):
     if universe is None:
         universe = load_universe()
 
-    # ---- ticker counts: per source first, then sum into the combined signal
+    # Ticker counts: per source first, then sum into the combined signal.
     parts = []
     for source_name in sorted(posts_df["source"].unique()):
         one = posts_df[posts_df["source"] == source_name]
@@ -286,16 +369,16 @@ def aggregate_posts(posts_df, universe=None, cashtags_only=False):
         by_source = pd.DataFrame(columns=["date", "ticker", "mention_count", "source"])
     counts = by_source.groupby(["date", "ticker"], as_index=False)["mention_count"].sum()
 
-    # ---- sentiment: look up the permanent score store first, then score
-    # only posts never seen before, then roll up per ticker and per theme
+    # Sentiment: look up the permanent score store first, score only posts
+    # never seen before, then roll up per ticker and per theme.
     posts_scored = add_sentiment_cached(posts_df)
     ticker_sent = build_daily_ticker_sentiment(posts_scored, universe,
                                                cashtags_only=cashtags_only)
     theme_sent = build_daily_theme_sentiment(posts_scored)
     theme_counts = _build_daily_theme_counts(posts_df)
 
-    # ---- term counts: rolling word/phrase frequencies so emerging-term
-    # detection keeps working after the fold, on whichever machine folded
+    # Term counts: rolling word/phrase frequencies so emerging-term
+    # detection keeps working after the fold, in either mode.
     from src.terms import count_daily_terms
     term_counts = count_daily_terms(posts_df)
 

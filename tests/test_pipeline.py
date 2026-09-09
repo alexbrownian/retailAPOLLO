@@ -1,16 +1,26 @@
-"""
-test_pipeline.py
-================
-Pytest checks for the retailAPOLLO pipeline - the parts where a silent
-mistake would corrupt every downstream number.
+"""Invariant tests for the retailAPOLLO pipeline.
 
-    python -m pytest tests/ -v
+Each test pins a property that must hold whatever the data looks like,
+rather than a snapshot of a particular output: incremental merges equal
+one-shot aggregation, trailing statistics never read the future, one
+surge yields one crossing, committed stores carry no raw text, display
+transforms never alter the columns the joins run on.  Because the
+properties are data-independent the suite does not rot as the dataset
+grows.
 
-The suite tests INVARIANTS, not snapshots: the merge maths must equal
-one-shot aggregation, the trailing z must never see the future, one surge
-must yield exactly one crossing, the committed data must stay text-free.
-These hold whatever the data looks like, so the tests never rot as the
-dataset grows.
+Three kinds of test appear:
+
+* pure-function tests on synthetic frames with hand-computed answers;
+* store tests that read the built parquet files when they are present
+  on the machine and skip otherwise;
+* source-text tests that read another module's source and assert a
+  structural fact about it (a helper exists, a call site routes through
+  one function, a forbidden expression is absent).  These guard rules
+  that cannot be expressed as a unit test because the module executes
+  at import time (``dashboard.py``) or because the rule is about the
+  absence of a code path.
+
+Run with ``python -m pytest tests/ -v``.
 """
 
 import os
@@ -430,8 +440,10 @@ class TestEuphoria:
             "compute_euphoria takes a price argument - Reddit-only rule broken"
 
     def test_judgeable_window_excludes_unpriced_eras(self):
-        """Alerts before price history (or too close to its end) must be
-        PENDING, not false alarms - scoring them was the 2018-20 FA bug."""
+        """Alerts before price history begins, or within the forward
+        horizon of its end, must be PENDING rather than false alarms:
+        an alert cannot be judged without a priced outcome window, and
+        scoring it as a miss inflates the false-alarm rate."""
         from analytics.euphoria import judgeable_window
         idx = pd.date_range("2021-01-01", periods=200, freq="D")
         px = pd.Series(100.0, index=idx)
@@ -442,9 +454,9 @@ class TestEuphoria:
 
 class TestInfluence:
     def test_vol_scaled_bar(self):
-        """The correctness bar must rise with the name's own volatility
-        (thesis 4.5): tau = max(3%, 0.5 sigma) - one fixed bar would
-        misgrade an index ETF and a meme stock with the same ruler."""
+        """The correctness bar must rise with the name's own volatility:
+        tau = max(3%, 0.5 sigma).  One fixed bar would grade an index
+        ETF and a meme stock with the same ruler."""
         from analytics.influence import score_calls
         idx = pd.date_range("2025-01-01", periods=400, freq="D")
         rng = np.random.default_rng(7)
@@ -497,11 +509,10 @@ class TestInfluence:
 
 
 class TestInfluenceGraph:
-    """analytics/influence_graph.py - the pure-numpy/scipy graph layer the
-    notebook and the dashboard's influence map both stand on. There is no
-    networkx anywhere in this project, so these invariants are the only
-    thing standing between a hand-rolled Louvain/k-core and a silently
-    wrong picture. Each test uses a graph whose answer is known BY HAND.
+    """analytics/influence_graph.py - the pure numpy/scipy graph layer
+    under the dashboard's influence map.  The project has no networkx
+    dependency, so the hand-rolled Louvain and k-core implementations
+    are verified here against graphs whose answers are known by hand.
     """
 
     @staticmethod
@@ -554,9 +565,10 @@ class TestInfluenceGraph:
         assert ig.modularity(g, comm) == pytest.approx(0.35714, abs=1e-4)
 
     def test_modularity_accepts_series_or_array(self):
-        """as_labels() exists so a caller can pass either a Series keyed by
-        author or a bare array in node order and get the same number - the
-        bug this replaced silently scored a shuffled partition."""
+        """modularity() must accept either a Series keyed by author or a
+        bare array in node order and return the same number.  A Series
+        that is not re-aligned to node order would score a shuffled
+        partition without raising."""
         from analytics import influence_graph as ig
         g = ig.build_graph(self._two_triangles())
         comm = ig.louvain(g, seed=42)
@@ -578,9 +590,10 @@ class TestInfluenceGraph:
     def test_homophily_splits_by_class(self):
         """On a graph where the positives are deliberately spread apart
         (each one surrounded by negatives), positive-class node homophily
-        must be ~0 while negative-class is ~1. This is the measurement the
-        notebook's whole 'why the graph fails' argument rests on, so it
-        must not quietly average the two classes together."""
+        must be ~0 while negative-class is ~1.  Per-class homophily is
+        what shows whether graph structure carries label information, so
+        the two classes must be reported separately and never averaged
+        into one number."""
         from analytics import influence_graph as ig
         # positives hang off the negative cluster, one edge each; the
         # negatives are wired to each other. By hand: class-1 homophily 0,
@@ -600,9 +613,9 @@ class TestInfluenceGraph:
 
     def test_by_class_accepts_a_label_series(self):
         """by_class() takes either a column name or an external Series, so
-        the notebook can score a centrality table against labels that live
-        in a different frame. Unlabelled rows must be DROPPED, not counted
-        as zeros."""
+        a centrality table can be scored against labels that live in a
+        different frame.  Unlabelled rows must be DROPPED, not counted as
+        zeros."""
         from analytics import influence_graph as ig
         tab = pd.DataFrame({"x": [1.0, 3.0, 10.0]},
                            index=["a", "b", "c"])
@@ -646,12 +659,12 @@ class TestInfluenceGraph:
         assert -1.0 <= row["consensus"] <= 1.0
 
     def test_ticker_voices_orders_by_record_and_nets_flip_flops(self):
-        """ticker_voices() is what the bubble chart's hover reads. Two
-        properties matter and both are easy to get silently wrong:
+        """ticker_voices() builds the bubble chart's hover text.  Two
+        properties are easy to get silently wrong:
 
         1. the STRONGEST record must be listed first, because the hover is
-           truncated to `top` lines and a PM reading three of six names must
-           be reading the three that count;
+           truncated to `top` lines and the lines that survive the cut
+           must be the ones that carry the most weight;
         2. an author who said LONG once and SHORT once must show as MIXED,
            not appear twice pulling in both directions - their lean is the
            SUM of their calls, so it nets to zero.
@@ -669,11 +682,11 @@ class TestInfluenceGraph:
                               "composite": [0.10, 0.95, 0.50]})
         out = ig.ticker_voices(calls, board, days=30,
                               asof=pd.Timestamp("2026-07-02"))
-        # Hover text is a SCREEN surface, so the handles in it arrive
-        # half-masked (see docs/DECISIONS.md). The masking is asserted through
-        # the same helper the display uses rather than hard-coded, so this
-        # test keeps testing ORDERING and does not become a second, stale
-        # copy of the mask rule.
+        # Hover text is a screen surface, so the handles in it arrive
+        # half-masked (see reference/KEY_PARAMETERS.md).  The expected labels are
+        # built through the same helper the display uses rather than
+        # hard-coded, so this test keeps testing ORDERING and does not
+        # become a second, stale copy of the mask rule.
         from analytics.plain_english import half_mask
         _m = half_mask
         lines = out.set_index("ticker").loc["GME", "voices"].split("<br>")
@@ -735,11 +748,11 @@ class TestInfluenceGraph:
         assert ig.direction_label("bearish") == "SHORT"
 
     def test_backing_share_sums_to_one_hundred_and_is_order_preserving(self):
-        """The unit the whole Influence tab is denominated in (2026-07-27,
-        replacing the divide-by-median-name ratio). Two properties are the
-        reason it was chosen over that ratio, so both are pinned: it is
-        bounded and totals 100, and it is a POSITIVE rescaling, so no
-        ranking anywhere on the tab can change because of it."""
+        """backing_share is the unit the whole Influence tab is
+        denominated in.  Two properties justify it over a ratio to the
+        median name, so both are pinned: it is bounded and totals 100,
+        and it is a POSITIVE rescaling, so no ranking anywhere on the tab
+        can change because of it."""
         from analytics import influence_graph as ig
         w = pd.Series([8.0, 4.0, 2.0, 1.0, 1.0])
         s = ig.backing_share(w)
@@ -749,10 +762,9 @@ class TestInfluenceGraph:
         assert (s >= 0).all() and (s <= 100).all()
 
     def test_backing_share_empty_window_is_zero_not_nan(self):
-        """The rejected ratio returned NaN whenever its denominator was 0,
-        which on this tab happened whenever nobody on the board had spoken.
-        An empty window means "no crowding", not "unknown", so it reads 0 -
-        and a chart cannot plot NaN heights."""
+        """A zero denominator (nobody on the board spoke in the window)
+        must yield 0, not NaN.  An empty window means "no crowding", not
+        "unknown", and a bar chart cannot plot NaN heights."""
         from analytics import influence_graph as ig
         assert list(ig.backing_share(pd.Series([0.0, 0.0]))) == [0.0, 0.0]
         assert list(ig.backing_share(pd.Series([], dtype=float))) == []
@@ -768,9 +780,9 @@ class TestInfluenceGraph:
     def test_crowding_history_denominator_ignores_the_ticker_filter(self):
         """Share and even split are computed over EVERY name in the period
         before `tickers` is applied, so drawing five lines and drawing fifty
-        give the same height for the same name. Computing them after the
-        filter (the original bug) made the baseline move with how many lines
-        the caller happened to ask for."""
+        give the same height for the same name.  Computing them after the
+        filter would make the baseline move with how many lines the caller
+        happened to ask for."""
         from analytics import influence_graph as ig
         calls = pd.DataFrame({
             "rec_id": [str(i) for i in range(4)],
@@ -793,16 +805,17 @@ class TestInfluenceGraph:
 
 
 class TestInfluenceAdoption:
-    """analytics/influence_ml.py - the DISCIPLINE, not the models. These
-    guard the rules that decide what ships: paired seeds, a confidence
-    interval that must clear zero, parsimony on ties, and the leakage
-    blacklist. A model that ships because a rule quietly inverted is the
-    single worst failure mode in this repo."""
+    """analytics/influence_ml.py - the adoption discipline, not the
+    models.  These guard the rules that decide which model ships: paired
+    seeds, a confidence interval that must clear zero, parsimony on
+    ties, and the leakage blacklist.  A model adopted because one of
+    those rules quietly inverted would ship an unverified claim."""
 
     def test_leakage_blacklist_covers_every_label_ingredient(self):
-        """The label is built from composite/s_conf/s_z/s_enh. Every one of
-        those, and every column derived from them, must be barred from the
-        feature bank by NAME - not by hoping nobody adds it."""
+        """The label is built from composite/s_conf/s_z/s_enh.  Every one
+        of those, and every column derived from them, must be barred from
+        the feature bank by NAME so that a new feature cannot leak the
+        label by accident."""
         from analytics import influence_ml as ml
         for col in ("composite", "s_conf", "s_z", "s_enh", "score", "tier",
                     "hit_rate", "hits", "n_judged", "fwd_ret", "z", "tau"):
@@ -812,8 +825,10 @@ class TestInfluenceAdoption:
     def test_score_adjacent_features_are_not_in_the_shipped_bank(self):
         """mean_conf is an arithmetic FACTOR of the label (composite is
         built from conf * y terms), so a bank containing it is scoring
-        itself. It is measured in the notebook - worth +0.098 AP, which is
-        exactly why it must never ship - and kept out of FULL_BANK."""
+        itself.  Its lift is recorded in
+        reference/research_record/nb05_influence.json as circular, which
+        is exactly why it lives in WIDE_BANK for measurement and never in
+        FULL_BANK."""
         from analytics import influence_ml as ml
         assert not set(ml.SCORE_ADJACENT) & set(ml.FULL_BANK)
         assert set(ml.SCORE_ADJACENT) <= set(ml.WIDE_BANK)
@@ -863,10 +878,11 @@ class TestInfluenceAdoption:
 
     def test_split_is_stratified_and_disjoint(self):
         """With ~5% positives an UNstratified split can hand a fold zero
-        positives, which makes average precision undefined. Every node must
-        land in exactly one fold, and every fold must see the minority
-        class. Tested on an integer index too, because that is where a
-        read-only index buffer used to break the shuffle."""
+        positives, which makes average precision undefined.  Every node
+        must land in exactly one fold, every fold must see the minority
+        class, and the split must be a function of the seed alone.  The
+        label carries a default RangeIndex because a read-only index
+        buffer is the case in which an in-place shuffle fails."""
         from analytics import influence_ml as ml
         rng = np.random.default_rng(0)
         y = pd.Series((rng.random(600) < 0.05).astype(int))
@@ -883,9 +899,9 @@ class TestInfluenceAdoption:
 
 
 class TestEuphoriaPhases:
-    """The July-2026 phases study (onset detector + episode ground truth,
-    analytics/euphoria_phases.py). Same invariants philosophy as
-    TestEuphoria: the crowd-only rule, no look-ahead, honest windows."""
+    """analytics/euphoria_phases.py - the onset detector and the episode
+    ground truth.  Same invariants as TestEuphoria: the crowd-only rule,
+    no look-ahead, and hit windows that cannot be gamed."""
 
     def _synthetic_episode_px(self):
         """A price path with one unambiguous boom-bust arc: flat 100 ->
@@ -1011,10 +1027,11 @@ class TestEuphoriaPhases:
 
 
 class TestDynamicPanel:
-    """The dynamic subreddit panel (ingestion/discover_subreddits.py,
-    recorded decisions 2026-07-24): crowd-referral discovery with the A0
-    coverage floor reused as the qualification bar, a same-ruler finance
-    screen, a 1-add/review cap and a committed audit manifest."""
+    """ingestion/discover_subreddits.py - the dynamic subreddit panel:
+    crowd-referral discovery with the A0 coverage floor reused as the
+    qualification bar, a finance screen that measures candidate and
+    panel with the same sampler, a one-add-per-review cap and a
+    committed audit manifest."""
 
     def test_referral_regex(self):
         """r/Name referrals extract from prose; look-alikes do not."""
@@ -1074,8 +1091,8 @@ class TestDynamicPanel:
 
 
 class TestResearchLiveSplit:
-    """recorded decision:, TIGHTENED 2026-07-28: research decides
-    once, live scores - and a data pull NEVER decides on its own.
+    """Research decides thresholds once; live runs only score with them.
+    A data pull never re-fits on its own.
 
     A pull derives a threshold in exactly one case: the machine has no
     usable frozen record, so it cannot score at all (the bootstrap).
@@ -1085,15 +1102,19 @@ class TestResearchLiveSplit:
     inside `update_data`."""
 
     def test_needs_research_only_bootstraps(self):
+        """needs_research is True only when no usable record exists."""
         from analytics.euphoria import needs_research
         stored = {"thresholds": {"2024": 85, "2025": 85, "2026": 85}}
         assert needs_research(None, 2026)            # no report yet
         assert needs_research({}, 2026)              # empty report
         assert not needs_research(stored, 2026)      # covered year: frozen
-        # THE 2026-07-28 CONTRACT: a rolled-over year must NOT re-fit.
+        # a rolled-over year must NOT trigger a re-fit
         assert not needs_research(stored, 2027)
 
     def test_record_lags_data_reports_the_year(self):
+        """A record that stops before the current year yields the last
+        covered year as a notice; a missing record is the bootstrap's
+        case and yields None."""
         from analytics.euphoria import record_lags_data
         stored = {"thresholds": {"2024": 85, "2025": 85, "2026": 85}}
         assert record_lags_data(stored, 2026) is None      # covered
@@ -1101,6 +1122,7 @@ class TestResearchLiveSplit:
         assert record_lags_data(None, 2027) is None        # bootstrap's job
 
     def test_onset_needs_research_only_bootstraps(self):
+        """The onset detector follows the same bootstrap-only contract."""
         from analytics.euphoria_phases import (onset_needs_research,
                                                onset_record_lags_data)
         stored = {"live_threshold": 0.89,
@@ -1114,32 +1136,38 @@ class TestResearchLiveSplit:
 
 
 class TestEpisodeCoherence:
-    """Coherence rule, asymmetric by measurement: a START within
-    one 21d cooldown after an END is suppressed (contradictory flip);
-    an END after a START is NEVER suppressed - fast manias genuinely
-    run start-to-end inside a cooldown, and the symmetric rule cost the
-    top detector half its captures (17->9) when tested."""
+    """The episode coherence rule is asymmetric by design: a START within
+    one 21d cooldown after an END is suppressed (a contradictory flip);
+    an END after a START is NEVER suppressed.  Fast manias genuinely run
+    start-to-end inside one cooldown, and a symmetric rule measured as
+    cutting the top detector's captures from 17 to 9."""
 
     def test_start_after_end_is_suppressed(self):
+        """A START inside the cooldown after an END is dropped; the END
+        survives."""
         from analytics.euphoria_phases import episode_coherent_alerts
         t = pd.Timestamp
         o, tp = episode_coherent_alerts([t("2026-01-11")], [t("2026-01-01")])
         assert o == [] and tp == [t("2026-01-01")]
 
     def test_fast_mania_end_is_never_suppressed(self):
+        """An END five days after a START is a valid fast mania: both
+        alerts survive."""
         from analytics.euphoria_phases import episode_coherent_alerts
         t = pd.Timestamp
-        # end fires 5d after start: a violent mania - BOTH survive
         o, tp = episode_coherent_alerts([t("2026-01-01")], [t("2026-01-06")])
         assert o == [t("2026-01-01")] and tp == [t("2026-01-06")]
 
     def test_separated_phases_both_survive(self):
+        """Alerts further apart than the cooldown are never touched."""
         from analytics.euphoria_phases import episode_coherent_alerts
         t = pd.Timestamp
         o, tp = episode_coherent_alerts([t("2026-01-01")], [t("2026-03-01")])
         assert o == [t("2026-01-01")] and tp == [t("2026-03-01")]
 
     def test_same_day_tie_goes_to_the_risk_signal(self):
+        """A START and an END on the same day resolve to the END: the
+        risk-reducing signal wins a tie."""
         from analytics.euphoria_phases import episode_coherent_alerts
         t = pd.Timestamp
         o, tp = episode_coherent_alerts([t("2026-01-01")], [t("2026-01-01")])
@@ -1147,11 +1175,11 @@ class TestEpisodeCoherence:
 
 
 class TestDeskConfiguration:
-    """The adopted desk configuration (recorded decision; see docs/DECISIONS.md):
+    """The shipped signal configuration (see reference/KEY_PARAMETERS.md):
     GET OUT = boom-gated + 7d-smoothed end rules; GET IN = phase-aware +
-    7d-smoothed onset rules. These tests pin the SEMANTICS the decision
-    rests on - candidacy, the end-stage mask, trailing smoothing - and
-    the text-free contract of the shipped store."""
+    7d-smoothed onset rules.  These tests pin the semantics that
+    configuration rests on - candidacy, the end-stage mask, trailing
+    smoothing - and the text-free contract of the shipped store."""
 
     def _frame(self):
         return pd.DataFrame({
@@ -1204,8 +1232,8 @@ class TestDeskConfiguration:
             "smoothing looked ahead"
 
     def test_desk_needs_research_only_bootstraps(self):
-        """2026-07-28: same contract as the other two - bootstrap only,
-        a lagging record is a notice rather than a silent refit."""
+        """Same contract as the euphoria and onset records: bootstrap
+        only, and a lagging record is a notice rather than a refit."""
         from analytics.euphoria_phases import (desk_needs_research,
                                                desk_record_lags_data)
         stored = {"get_in": {"walk_forward": {"test_years": [2024, 2025,
@@ -1220,14 +1248,14 @@ class TestDeskConfiguration:
         assert desk_record_lags_data(stored, 2026) is None
 
     def test_desk_store_contract(self):
-        """The shipped store: text-free (FORBIDDEN_COLS) and internally
-        coherent. The PM-trust invariant - no GET IN on an end-stage day
-        - holds under EVERY model (the rules got it from candidacy; the
-        learned models get it from the display-layer suppression in
-        rebuild_phase_files). The boom-gate invariant - no GET OUT
-        without a confirmed price boom - is a RULES-candidacy
-        consequence only: the learned models (adopted 2026-08-07)
-        replaced that hard gate with continuous price features, so it is
+        """The shipped store is text-free (FORBIDDEN_COLS) and internally
+        coherent.  The coherence invariant - no GET IN on an end-stage
+        day - holds under EVERY model: the rule-based configuration gets
+        it from candidacy, the learned models from the display-layer
+        suppression in rebuild_phase_files.  The boom-gate invariant - no
+        GET OUT without a confirmed price boom - is a consequence of
+        rules candidacy only, because the learned models replace that
+        hard gate with continuous price features; it is therefore
         asserted only when the frozen record says the rules ship."""
         import json
         import os
@@ -1239,17 +1267,17 @@ class TestDeskConfiguration:
         assert not (set(df.columns) & FORBIDDEN_COLS)
         assert not (df["get_in"] & df["end_stage"]).any()
         if "get_in_strict" in df.columns:
-            # the Strict setting obeys the same PM-trust
-            # invariant as the standard columns. (No subset assertion
-            # on counts: with a crossing trigger a higher cut is not
-            # mathematically a subset - one long push above the low cut
-            # can re-cross the high cut several times.)
+            # the Strict setting obeys the same coherence invariant as
+            # the standard columns.  (No subset assertion on counts:
+            # with a crossing trigger a higher cut is not mathematically
+            # a subset - one long push above the low cut can re-cross
+            # the high cut several times.)
             assert not (df["get_in_strict"] & df["end_stage"]).any()
         if "boomed120" in df.columns:
-            # the SHAPED trigger (2026-08-09 v2): a GET OUT can only
-            # exist after the ground truth's own boom bar; a GET IN
-            # only before it; and no GET IN stands within 21d of a
-            # GET OUT in either direction - on BOTH signal settings.
+            # the shaped trigger: a GET OUT can only exist after the
+            # ground truth's own boom bar; a GET IN only before it; and
+            # no GET IN stands within 21d of a GET OUT in either
+            # direction - on BOTH signal settings.
             df2 = df.copy()
             df2["date"] = pd.to_datetime(df2["date"])
             for sfx in ("", "_strict"):
@@ -1275,15 +1303,15 @@ class TestDeskConfiguration:
 
 
 class TestChartLabelLayout:
-    """dashboard.py::_thin_labels - the ONLY rule on this project that is
-    allowed to be about pixels rather than data, and it is fenced in here so
-    that stays true.  It decides where there is room for ink; it never
-    decides which names matter.  Every point it un-labels is still drawn,
-    still hovers, and still appears in the exact-numbers table.
+    """dashboard.py::_thin_labels - the only rule in the project that is
+    about pixels rather than data.  It decides where there is room for
+    ink; it never decides which names matter.  Every point it un-labels
+    is still drawn, still hovers, and still appears in the exact-numbers
+    table.
 
-    It exists because `consensus` is bounded at +/-1 and hits +1.00 exactly
-    whenever every call on a name was long, so a dozen names pile into one
-    column and their tickers print through each other.
+    It exists because `consensus` is bounded at +/-1 and hits +1.00
+    exactly whenever every call on a name was long, so many names pile
+    into one column and their tickers print through each other.
     """
 
     @staticmethod
@@ -1293,19 +1321,20 @@ class TestChartLabelLayout:
                               w_px=880.0, h_px=398.0)
 
     def test_same_column_and_too_close_in_height_loses_one_label(self):
-        """The measured collision: INTU 4.04% and MELI 3.58%, both at
-        x=+1.00, are 0.46pp apart - about 9px on a 35% axis - and a 10pt
-        label needs 13.  The taller one keeps its label."""
+        """Two points in the same column 0.46pp apart on a 35% axis are
+        about 9px apart, and a 10pt label needs 13px, so exactly one
+        label is dropped: the taller point keeps its label."""
         keep = self._mask([1.0, 1.0], [4.04, 3.58])
         assert keep == [True, False]
 
     def test_same_height_but_different_column_keeps_both(self):
-        """The suppression must need BOTH axes to be tight, or the chart
-        starts hiding names that never overlapped: GOOG at x=0.53 and MELI
-        at x=1.00 share a height but not a column."""
+        """Suppression must require BOTH axes to be tight, or the chart
+        starts hiding names that never overlapped: two points that share
+        a height but not a column both keep their labels."""
         assert self._mask([0.53, 1.0], [3.60, 3.58]) == [True, True]
 
     def test_well_separated_heights_keep_every_label(self):
+        """Same column, heights far apart: nothing is suppressed."""
         assert self._mask([1.0, 1.0], [26.1, 7.05]) == [True, True]
 
     def test_ties_resolve_toward_the_earlier_row(self):
@@ -1326,20 +1355,21 @@ class TestChartLabelLayout:
 
 
 class TestEuphoriaGauge:
-    """dashboard.py's speedometer.  The dial is the most dangerous kind of
-    exhibit on this project: it compresses a whole name into one number, so
-    a PM will read it and act.  Four things therefore have to stay true and
-    are fenced here.
+    """dashboard.py's euphoria gauge.  The dial compresses a whole name
+    into one number that a reader acts on directly, so four properties
+    are pinned:
 
-      1. Its edges come from MEASUREMENT (docs/research/gauge_zones.json),
-         never from a literal in dashboard.py - "why 76?" has to have an
-         answer that is not "someone typed it".
-      2. The red edge is the SAME number the walk-forward froze for the END
-         alert, so the gauge cannot become a second, softer threshold.
-      3. The needle equals the plotted curve's last value, so the dial and
-         the chart under it can never disagree.
-      4. The dial reports a STATE and never an instruction - band alone
-         must not be able to masquerade as a signal.
+      1. Its edges come from a measured record
+         (reference/research_record/gauge_zones.json), never from a
+         literal in dashboard.py, so every band edge has a traceable
+         origin.
+      2. The red edge is the SAME number the walk-forward froze for the
+         END alert, so the gauge cannot become a second, softer
+         threshold.
+      3. The needle equals the plotted curve's last value, so the dial
+         and the chart under it can never disagree.
+      4. The dial reports a STATE and never an instruction - a band
+         label must not be able to masquerade as a signal.
     """
 
     @staticmethod
@@ -1347,14 +1377,14 @@ class TestEuphoriaGauge:
         import json
         import os
         import dashboard as D
-        p = os.path.join(D.ROOT, "docs", "research", "gauge_zones.json")
+        p = os.path.join(D.ROOT, "reference", "research_record", "gauge_zones.json")
         assert os.path.exists(p), \
-            "notebook 06 has not written gauge_zones.json"
+            "reference/research_record/gauge_zones.json is missing"
         return json.load(open(p, encoding="utf-8"))
 
     def test_edges_are_not_literals_in_the_dashboard(self):
-        """The whole point of reading a JSON is that the number is not in
-        the code.  If either edge is ever inlined, this fails."""
+        """Neither band edge may appear as a numeric literal in the gauge
+        function body: the number must be read from the record."""
         import os
         import re
         import dashboard as D
@@ -1381,6 +1411,8 @@ class TestEuphoriaGauge:
         assert self._zones()["red_edge"] == int(thr[max(thr)])
 
     def test_amber_edge_is_below_red_and_was_measured(self):
+        """The amber edge is the lowest cut whose hit rate is significantly
+        above the base rate, and it sits below the red edge."""
         z = self._zones()
         assert z["amber_edge"] < z["red_edge"]
         band = z["bands"][f"level >= {z['amber_edge']}"]
@@ -1414,6 +1446,8 @@ class TestEuphoriaGauge:
         assert fig.data[0].delta.decreasing.color == D.BULL
 
     def test_bands_are_ordered_and_cover_the_whole_axis(self):
+        """The gauge steps tile [0, 100] with no gaps, so every level
+        falls in exactly one band."""
         import dashboard as D
         z = self._zones()
         steps = D.fig_euphoria_gauge(50.0, 50.0, False, z,
@@ -1424,9 +1458,9 @@ class TestEuphoriaGauge:
             assert a[1] == b[0], "a gap between bands leaves a dead zone"
 
     def test_state_is_a_description_and_never_an_instruction(self):
-        """gauge_state must return WHERE the crowd is.  The words GET IN and
-        GET OUT belong to the detector; if they leak into a band label a PM
-        will read the dial as a trade."""
+        """gauge_state must describe WHERE the crowd is.  The words GET IN
+        and GET OUT belong to the detector; if they leak into a band
+        label the dial reads as a trade instruction."""
         import dashboard as D
         z = self._zones()
         for lvl, dgr in ((10.0, False), (80.0, False), (95.0, False),
@@ -1448,10 +1482,9 @@ class TestEuphoriaGauge:
         assert D.gauge_state(red + 1, False, z)[0] == "red"
 
     def test_missing_evidence_draws_no_bands_rather_than_invented_ones(self):
-        """With no frozen gauge record on disk there are no measured
-        edges, and the dial must decline to exist instead of guessing.
-        (The record is gauge_zones.json, frozen by the strictness study
-        before its notebook was retired on 2026-08-07.)"""
+        """With no frozen gauge record (gauge_zones.json) there are no
+        measured edges, and the dial must report an unknown state instead
+        of guessing band boundaries."""
         import dashboard as D
         key, label, _ = D.gauge_state(80.0, False, {})
         assert key == "unknown"
@@ -1459,36 +1492,34 @@ class TestEuphoriaGauge:
 
 
 class TestHandleCensoring:
-    """`analytics.plain_english.censor` - the display-only mask on obscene
-    Reddit handles (recorded decision:).
+    """`analytics.plain_english.censor` - the display-only mask on
+    obscene Reddit handles.
 
     Two failure modes matter and neither is caught by "it ran without
-    error", so both are fenced here:
+    error":
 
-      * UNDER-masking is embarrassing on a screen a PM shares.
-      * OVER-masking is worse and much easier to do accidentally.  The first
-        implementation matched a stem list as plain substrings and mangled
+      * UNDER-masking lets a crude handle reach a shared screen.
+      * OVER-masking is easier to do accidentally: a stem list matched
+        as plain substrings mangles innocent handles such as
         `Painkiller_830`, `AssumptionPretty7018` and `Ok-Grapefruit2910`.
-        Those exact handles are real rows in `author_scores.parquet`, so
-        they are pinned here: any future edit to the word lists that brings
-        the naive behaviour back fails this test rather than reaching the
-        desk.
+        Those handles are real rows in `author_scores.parquet`, so they
+        are pinned here and any word-list edit that reintroduces
+        substring matching fails this test.
 
-    The third test is the one that protects the DATA: masking is a display
-    transform, and the moment it touches a handle used as a key the joins
-    between `author_scores`, `calls` and `reply_edges` start silently
-    dropping people.
+    The store test protects the DATA: masking is a display transform,
+    and the moment it touches a handle used as a key the joins between
+    `author_scores`, `calls` and `reply_edges` silently drop people.
     """
 
-    # handles that MUST be masked, with the stem that catches each
+    # handles that MUST be masked
     DIRTY = ["just_lick_my_ass", "fucktheredditapp15", "BigBoiBenis",
              "CuntyAnne_Conway", "RetardedChimpanzee", "dick-knuckle",
              "I_love_boobs86", "Hornysnek69", "BallsOfStonk", "nut-sack",
              "TittyClapper", "spez_eats_nazi_ass", "sluthouseincel"]
 
-    # real handles from the store that must survive UNTOUCHED. Each one is a
-    # substring false positive the two-tier design exists to prevent; the
-    # trailing comment is the stem that used to catch it.
+    # real handles from the store that must survive UNTOUCHED.  Each one
+    # is a substring false positive the two-tier design exists to
+    # prevent; the trailing comment is the stem a naive matcher hits.
     CLEAN = ["Painkiller_830",        # kill
              "AssumptionPretty7018",  # ass
              "passionlessDrone",      # ass
@@ -1515,12 +1546,14 @@ class TestHandleCensoring:
              "TheRedditModsSuck"]     # deliberately not in the word list
 
     def test_obscene_handles_are_masked(self):
+        """Every handle in DIRTY is detected and its output carries MASK."""
         from analytics.plain_english import censor, is_obscene, MASK
         for h in self.DIRTY:
             assert is_obscene(h), h
             assert MASK in censor(h), (h, censor(h))
 
     def test_innocent_handles_are_left_exactly_alone(self):
+        """Every handle in CLEAN passes through byte-for-byte."""
         from analytics.plain_english import censor, is_obscene
         for h in self.CLEAN:
             assert not is_obscene(h), h
@@ -1536,10 +1569,11 @@ class TestHandleCensoring:
         assert len({censor(h) for h in self.DIRTY}) == len(self.DIRTY)
 
     def test_masking_runs_to_a_fixed_point(self):
-        """A real case from the store: `Buttslut69696969` tokenises as
-        [Buttslut, 69696969], so the first pass only removes `slut` and
-        LEAVES `Butt**...`, where `Butt` has become a whole token.  One pass
-        would ship a crude word on a handle it claimed to have censored."""
+        """`Buttslut69696969` tokenises as [Buttslut, 69696969], so a
+        single pass removes only `slut` and leaves `Butt**...`, where
+        `Butt` has become a whole token.  The censor must iterate to a
+        fixed point or it ships a crude word on a handle it claims to
+        have censored."""
         from analytics.plain_english import censor
         assert censor("Buttslut69696969") == "**69696969"
 
@@ -1579,23 +1613,21 @@ class TestHandleCensoring:
 class TestThemeRollup:
     """`theme_digest` / `theme_voices` - the influence tab's THEME view.
 
-    The crowding question is asked at the theme level ("what if lots
-    of influential accounts converge on a theme"), and the tab could only
-    answer it one ticker at a time.  The roll-up therefore reuses the
-    ACCEPTED consensus and backing arithmetic through one shared
-    `_digest_frame` rather than restating it, and these tests exist to keep
-    that promise honest: the two views sit side by side on one toggle, so
-    any disagreement between them would be visible to a PM and impossible
-    to explain.
+    Crowding is a theme-level question (many influential accounts
+    converging on one theme), so the roll-up reuses the ticker-level
+    consensus and backing arithmetic through one shared `_digest_frame`
+    rather than restating it.  The two views sit side by side on one
+    toggle, so any arithmetic disagreement between them would be visible
+    and unexplainable; these tests keep them consistent.
 
-    Every case below has an answer known BY HAND from a three-row frame.
+    Every case below has an answer known by hand from a three-row frame.
     """
 
     @staticmethod
     def _fixture():
-        """NVDA is in three themes, MSFT in three, and ZZZZ in none.
+        """NVDA is in several themes, MSFT in several, and ZZZZ in none.
 
-        Chosen from the REAL `src/themes.py` membership, not invented, so
+        Chosen from the real `src/themes.py` membership, not invented, so
         the test fails if that membership is edited in a way that breaks
         the multi-theme assumption the exhibit is built on."""
         calls = pd.DataFrame({
@@ -1611,10 +1643,10 @@ class TestThemeRollup:
         return calls, board, pd.Timestamp("2026-07-02")
 
     def test_a_ticker_in_several_themes_counts_in_every_one(self):
-        """NVDA is semiconductors AND ai AND ai_megacap.  A PM asking "is
-        the panel crowded into AI" must see the NVDA call; a roll-up that
-        assigned each ticker to one primary theme would answer a different
-        question and would silently under-count the theme that matters."""
+        """NVDA is semiconductors AND ai AND ai_megacap.  A crowding read
+        on any of those themes must include the NVDA call; a roll-up that
+        assigned each ticker to one primary theme would silently
+        under-count every other theme the ticker belongs to."""
         from analytics import influence_graph as ig
         from src.themes import build_ticker_to_themes
         calls, board, asof = self._fixture()
@@ -1626,20 +1658,20 @@ class TestThemeRollup:
             assert got.loc[th, "n_calls"] >= 1
 
     def test_unmapped_tickers_are_dropped_not_bucketed_into_other(self):
-        """ZZZZ belongs to no theme.  An "other" bucket is not a theme a
-        PM can position in, and on the live store it would be the LARGEST
-        bar on the chart purely by being a residue - so the call is left
-        out of the theme view entirely, and the two views therefore have
-        different denominators on purpose."""
+        """ZZZZ belongs to no theme.  An "other" bucket is not a theme
+        anyone can position in, and on the live store it would be the
+        LARGEST bar on the chart purely by being a residue - so the call
+        is left out of the theme view entirely, and the two views
+        therefore have different denominators on purpose."""
         from analytics import influence_graph as ig
         calls, board, asof = self._fixture()
         dig = ig.theme_digest(calls, board, days=30, asof=asof)
         assert "other" not in set(dig["theme"])
-        # ZZZZ contributed NOTHING - assert it exactly, not via a "themes
-        # per ticker" bound: the ticker->theme membership is config now
-        # (config/theme_tickers.csv, incl. ETF-constituent rows), so its
-        # size may legitimately grow.  Each mapped call lands once in each
-        # of its own themes; an unmapped call lands nowhere.
+        # ZZZZ contributed NOTHING - asserted exactly rather than via a
+        # "themes per ticker" bound, because the ticker->theme membership
+        # is config (config/theme_tickers.csv, incl. ETF-constituent
+        # rows) and may legitimately grow.  Each mapped call lands once
+        # in each of its own themes; an unmapped call lands nowhere.
         from src.themes import build_ticker_to_themes
         _homes = build_ticker_to_themes()
         _expected = sum(len(_homes.get(t, [])) for t in ("NVDA", "MSFT"))
@@ -1687,11 +1719,11 @@ class TestThemeRollup:
                                      "n_more"]
 
     def test_the_theme_view_never_sees_a_price(self):
-        """The house rule: prediction is Reddit-only.  This exhibit is
-        information rather than a signal, but it sits on the same page as
-        the alerts, so the price-free invariant is asserted here too - a
-        theme roll-up that quietly joined prices would be the easiest
-        possible way to leak one in."""
+        """Prediction is crowd-only.  This exhibit is information rather
+        than a signal, but it sits on the same page as the alerts, so
+        the price-free invariant is asserted here too - a theme roll-up
+        that quietly joined prices would be the easiest way to leak
+        one in."""
         import ast
         import inspect
         from analytics import influence_graph as ig
@@ -1712,10 +1744,10 @@ class TestThemeRollup:
             assert "price" not in code
 
     def test_half_mask_shows_some_of_the_handle_and_hides_most(self):
-        """Requirement: "abstract the names with *** but
-        see". Both halves of that are load-bearing - a label that reveals
-        nothing makes the leaderboard unreadable, and one that reveals
-        everything is not a mask."""
+        """A half-masked handle must reveal a recognisable prefix and hide
+        at least half of the rest.  Both halves are load-bearing: a label
+        that reveals nothing makes the leaderboard unreadable, and one
+        that reveals everything is not a mask."""
         from analytics.plain_english import half_mask, IDENT_MASK
         for h in ["tomato232", "Love-to-Trade101", "Independent-Use-228",
                   "zq7495", "Funklemire"]:
@@ -1731,11 +1763,11 @@ class TestThemeRollup:
         assert half_mask(None) is None
 
     def test_half_mask_never_merges_two_people_into_one_label(self):
-        """The whole point of revealing a prefix is telling rows apart, so
-        the one failure that matters is two handles landing on one label.
-        A fixed 2-char disambiguator was not enough - `Marketspike` and
-        `Markthehare` mask alike AND hashed alike - so the tag grows until
-        the group is unique."""
+        """The point of revealing a prefix is telling rows apart, so the
+        one failure that matters is two handles landing on one label.  A
+        fixed 2-char disambiguator is not enough (`Marketspike` and
+        `Markthehare` mask alike AND hash alike), so the tag must grow
+        until the group is unique."""
         import pandas as pd
         from analytics.plain_english import half_mask_series
         s = pd.Series(["Marketspike", "Markthehare", "trader_bull_99",
@@ -1751,6 +1783,7 @@ class TestThemeRollup:
             assert not is_obscene(half_mask(h)), (h, half_mask(h))
 
     def test_the_whole_real_store_masks_without_collisions(self):
+        """half_mask_series keeps every author distinct on the real store."""
         import os
         import pandas as pd
         from analytics.plain_english import half_mask_series
@@ -1775,16 +1808,17 @@ class TestThemeRollup:
 
 
 class TestDashboardModuleHygiene:
-    """The dashboard body executes at MODULE scope, so a loop variable in a
-    tab can silently rebind a module-level helper of the same name.  That
-    is exactly what happened once: a local `_unit` for "names or themes"
-    overwrote the `_unit()` scaler, and the influence MAP three hundred
-    lines further down died with "'str' object is not callable".  Importing
-    the module is what proves the script runs at all; this proves the
-    helpers survived it."""
+    """The dashboard body executes at MODULE scope, so a loop variable in
+    a tab can silently rebind a module-level helper of the same name (a
+    tab-local string `_unit` shadowing the `_unit()` scaler, for
+    example, fails hundreds of lines later with "'str' object is not
+    callable").  Importing the module proves the script runs at all;
+    this proves the helpers survived it."""
 
     def test_module_level_helpers_are_still_callable_after_the_script_runs(
             self):
+        """Each named module-level helper is still a callable after the
+        script body has executed."""
         import dashboard as D
         for name in ("_unit", "_dig", "_theme", "_thin_labels", "_facts"):
             assert callable(getattr(D, name)), (
@@ -1792,13 +1826,16 @@ class TestDashboardModuleHygiene:
 
 
 class TestPulseNoFillerRule:
-    """The desk's standing rule "if something is like
-    'there is minimum discussion' then we shouldnt include it, whatever
-    is included should be the most interesting / most mentioned / most
-    recent (never useless information)".  The prompt asks for that; this
-    is the half that does not depend on the model complying."""
+    """AI Pulse output must not contain filler items: a brief whose whole
+    content is "there is minimal discussion" carries no information and
+    is dropped, so that everything shown is the most interesting, most
+    mentioned or most recent material.  The prompt asks the model for
+    that; `_drop_filler` is the half that does not depend on the model
+    complying."""
 
     def test_empty_calorie_items_are_dropped(self):
+        """Theme briefs and vibe bullets that are entirely filler are
+        removed; substantive ones survive."""
         from analytics.ai_pulse import _drop_filler
         doc = _drop_filler({
             "theme_briefs": [
@@ -1834,14 +1871,14 @@ class TestPulseNoFillerRule:
 class TestWatchSideIsStable:
     """The DISPLAY gate must not flip on knife-edge noise.
 
-    Reported 2026-09-01: "why does it go from cut exposure one day to
-    increase the next?" The raw boomed120 is an instantaneous test
-    against a hard bar, so a name parked near it flipped sides on
-    rounding (96% of measured flips were within 5pp of the bar).
-    boomed120_stable adds hysteresis + an ASYMMETRIC debounce. All
-    three properties below are load-bearing; the asymmetry especially,
-    because debouncing the turn-ON put 14 of 124 real CUT calls on a
-    day the display still called teal."""
+    The raw boomed120 is an instantaneous test against a hard bar, so a
+    name parked near the bar flips sides on rounding (96% of measured
+    flips were within 5pp of the bar), and the displayed side alternates
+    between CUT and INCREASE day to day.  boomed120_stable adds
+    hysteresis plus an ASYMMETRIC debounce.  All three properties below
+    are load-bearing; the asymmetry especially, because debouncing the
+    turn-ON put 14 of 124 real CUT calls on a day the display still
+    showed the INCREASE side."""
 
     @staticmethod
     def _frame(px):
@@ -1861,6 +1898,8 @@ class TestWatchSideIsStable:
         return pd.Series(np.r_[np.full(150, 100.0), tail], index=idx)
 
     def test_knife_edge_noise_does_not_flip_the_displayed_side(self):
+        """A price oscillating around the boom bar chatters in the raw
+        gate and settles in the stable one."""
         import numpy as np
         px = self._px(100 * (1 + 0.20 + 0.02
                              * np.sin(np.arange(250) / 2.0)))
@@ -1873,15 +1912,18 @@ class TestWatchSideIsStable:
         assert n_stb <= 2, f"displayed side still chatters: {n_stb}"
 
     def test_a_real_breakout_registers_immediately(self):
-        # NOT debounced on the way in: a CUT can only fire on a
-        # run-up day, so a lag here re-creates the red-marker-on-a-
-        # teal-band contradiction.
+        """The stable gate turns ON on the same day as the raw gate.  A
+        CUT can only fire on a run-up day, so any lag on the way in
+        would place a CUT marker on a day the display still shows the
+        opposite side."""
         import numpy as np
         f = self._frame(self._px(np.linspace(100, 180, 250)))
         assert (int(np.argmax(f["boomed120"].values))
                 == int(np.argmax(f["boomed120_stable"].values)))
 
     def test_leaving_the_run_up_state_is_slower_than_entering(self):
+        """Hysteresis: the stable gate stays ON after the raw gate has
+        dropped below the bar."""
         import numpy as np
         f = self._frame(self._px(np.r_[np.linspace(100, 130, 60),
                                        np.linspace(130, 112, 190)]))
@@ -1893,7 +1935,9 @@ class TestWatchSideIsStable:
 
     def test_the_model_gate_itself_is_untouched(self):
         """boomed120 is what every frozen threshold was calibrated
-        against; the stable twin is display-only."""
+        against; the stable twin is consumed by the display gate only,
+        so the dashboard must route through `watch_gate` rather than
+        redefine the model gate."""
         from pathlib import Path
         src = (Path(__file__).resolve().parents[1] / "dashboard.py"
                ).read_text(encoding="utf-8")
@@ -1902,15 +1946,15 @@ class TestWatchSideIsStable:
 
 
 class TestPollPromptPanel:
-    """The poll's value IS its continuity: a reworded prompt silently
-    breaks that prompt_id's history (see the module docstring)."""
+    """The poll's value is its continuity: a reworded prompt silently
+    breaks that prompt_id's time series (see the module docstring of
+    analytics/ai_poll.py)."""
 
     def test_the_kept_prompts_are_untouched(self):
-        # 2026-08-28: panel cut from 36 to 12 on request ("its too much
-        # now"). REMOVING a prompt only ends its series; REWORDING a
-        # surviving one corrupts it - so the wording of every kept id
-        # is pinned. A retired id (p04, p12, ...) may be re-added later
-        # with its exact original wording and its series resumes.
+        """The wording of every surviving prompt_id is pinned.  REMOVING
+        a prompt only ends its series; REWORDING a surviving one corrupts
+        it.  A retired id may be re-added later with its exact original
+        wording and its series resumes."""
         from analytics.ai_poll import _prompts
         frozen = {
             "p01": "What should I invest in right now?",
@@ -1927,12 +1971,14 @@ class TestPollPromptPanel:
                 "a new prompt_id instead")
 
     def test_every_prompt_has_a_unique_id_and_a_family(self):
+        """prompt_ids are unique, every prompt carries a family tag, and
+        the panel stays small enough to poll on every run."""
         from analytics.ai_poll import _prompts
         ps = _prompts()
         ids = [p["prompt_id"] for p in ps]
         assert len(ids) == len(set(ids))
-        # 12-prompt panel since 2026-08-28; a couple of additions are
-        # fine, silent re-bloat back past 20 is not
+        # the panel is 12 prompts; a few additions are fine, silent
+        # growth past 20 is not
         assert 12 <= len(ps) <= 20, f"panel has {len(ps)} prompts"
         for p in ps:
             assert (p.get("family") or "").strip(), (
@@ -1940,16 +1986,17 @@ class TestPollPromptPanel:
 
 
 class TestSingleNameUniverse:
-    """The EUPHORIA: Singles tab picks its own names. Three things went
-    wrong at once and each is pinned here (fixed 2026-08-04):
+    """The EUPHORIA: Singles tab picks its own names via
+    `single_name_universe`.  Three properties of that selection are
+    pinned, each guarding a distinct way it can go wrong:
 
-      * it ranked on ALL HISTORY, and 2021 is 39% of every mention ever
-        recorded, so it tracked BBBY (bankrupt), SNDL, CLOV, WKHS;
-      * it had no idea what an ETF was, so SPY and SCHD were "single
-        names";
-      * finance acronyms that have since been issued to real ETFs -
-        HYSA, DRAM, BTC - were counted as tickers. HYSA was the single
-        most-mentioned symbol in the entire store."""
+      * membership must be ranked on RECENT chatter, not all history -
+        2021 is 39% of every mention ever recorded, so an all-history
+        rank tracks bankrupt and delisted names for years;
+      * ETFs must be excluded, or SPY and SCHD read as "single names";
+      * finance acronyms that have since been issued to real ETFs (HYSA,
+        DRAM, BTC) must be stoplisted, or they count as tickers - HYSA
+        alone would otherwise be the most-mentioned symbol in the store."""
 
     def _prices(self):
         import pandas as pd
@@ -1959,6 +2006,7 @@ class TestSingleNameUniverse:
         return pd.read_parquet(PRICES_PATH)
 
     def test_no_etfs_in_a_tab_called_single_names(self):
+        """No symbol in the ETF directory appears in the universe."""
         from pathlib import Path
         from analytics.euphoria import single_name_universe
         from src.config import REFERENCE_DIR
@@ -1972,6 +2020,7 @@ class TestSingleNameUniverse:
         assert not bad, f"ETFs in the single-name universe: {bad}"
 
     def test_jargon_symbols_never_reach_the_universe(self):
+        """Stoplisted finance acronyms are excluded from the universe."""
         from analytics.euphoria import single_name_universe
         uni = set(single_name_universe(self._prices()))
         for junk in ("HYSA", "DYOR", "DRAM", "BTC", "REIT"):
@@ -1979,18 +2028,16 @@ class TestSingleNameUniverse:
                 f"{junk} is jargon, not a tracked single name")
 
     def test_the_universe_tracks_names_that_are_ALIVE(self):
-        """The function's own docstring promises "today's NVDA is
-        tomorrow's something else". A universe ranked over all history
-        cannot keep that promise - it tracked BBBY for years after the
-        bankruptcy. Membership must mean "this name has enough recent
-        chatter to measure", which is what the coverage floor encodes.
+        """Every tracked name has at least EUPHORIA_MIN_COVERAGE posts in
+        the trailing EUPHORIA_SINGLE_WINDOW_D days.  Membership means
+        "this name has enough recent chatter to measure", which is what
+        the coverage floor encodes; a universe ranked over all history
+        would keep tracking a name for years after it went quiet.
 
-        NOTE the test asserts COVERAGE, not mention rank. Since
-        2026-08-04 EUPHORIA_SINGLE_TOP_N (80) sits above the number of
-        eligible names, so the cap is deliberately non-binding and a
-        name can be tracked without being in the mention top-N - AMAT is
-        the live example. That is the intended behaviour: the real gate
-        is measurability."""
+        The test asserts COVERAGE, not mention rank: EUPHORIA_SINGLE_TOP_N
+        sits above the number of eligible names, so the cap is
+        deliberately non-binding and a name can be tracked without being
+        in the mention top-N.  The real gate is measurability."""
         import pandas as pd
         from analytics.euphoria import single_name_universe
         from src.config import (PROCESSED_DIR, EUPHORIA_SINGLE_WINDOW_D,
@@ -2010,6 +2057,9 @@ class TestSingleNameUniverse:
             f"{dead}")
 
     def test_the_stoplist_is_config_driven_and_fails_loudly(self):
+        """STOP_TICKERS is loaded from config, and a malformed stoplist
+        file raises rather than loading as empty - an empty stoplist
+        would silently let jargon such as CEO back into the counts."""
         import tempfile
         from pathlib import Path
         from src.extract_tickers import load_stop_tickers, STOP_TICKERS
@@ -2023,18 +2073,16 @@ class TestSingleNameUniverse:
 
 
 class TestEverythingIsIncremental:
-    """Rule: "on the dashboard it should only be doing
-    incremental when i do LIVE. update_data should be for the full redo
-    but for the final end-user (the dashboard refresh live) it should
-    always be incremental."
+    """The dashboard's LIVE refresh is always incremental; the
+    full-history rebuild belongs to `update_data.py --full` only.
 
-    The slow work in this pipeline is re-reading raw archives. Every
+    The slow work in this pipeline is re-reading raw archives.  Every
     scanner therefore keeps a ledger and skips what it has already seen,
-    and the dashboard must never launch the full-history rebuild. Both
-    properties are cheap to break by accident and expensive to notice,
-    so they are pinned here."""
+    and the dashboard must never launch the full-history rebuild.  Both
+    properties are cheap to break by accident and expensive to notice."""
 
     def test_every_scanner_keeps_a_ledger(self):
+        """agentic_watch declares a LEDGER path under data/reference/."""
         import src.agentic_watch as A
         path = getattr(A, "LEDGER", None)
         assert path, "agentic_watch has no LEDGER - it would rescan"
@@ -2056,8 +2104,9 @@ class TestEverythingIsIncremental:
 
     def test_the_dashboard_never_launches_a_full_rebuild(self):
         """`--full` rebuilds nine years of aggregates from posts.parquet.
-        It only works on the machine that holds that file, and it is a
-        RE-VALIDATION EVENT. No dashboard button may reach it."""
+        It only works on a copy with the raw post store, and it is a
+        re-validation event rather than a refresh.  No dashboard button
+        may pass it to start_pipeline."""
         src = open(os.path.join(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__))), "dashboard.py"),
             encoding="utf-8").read()
@@ -2069,9 +2118,11 @@ class TestEverythingIsIncremental:
 
 
 class TestTickerAllowlist:
-    """recorded decision: "stuff like MU should be considered
-    as tickers". Two gaps fed one fix - see the block comment in
-    src/extract_tickers.py."""
+    """Short, allowlisted tickers (MU, AMD, COIN) must count when written
+    in capitals without a cashtag.  The bare-CAPS pass only matches 4-5
+    letter words, so an explicit allowlist is the only way a 2-3 letter
+    symbol can be counted from prose; see the block comment in
+    src/extract_tickers.py for how the allowlist and stoplist interact."""
 
     def _universe(self):
         from src.abstracted_data import load_universe
@@ -2081,9 +2132,11 @@ class TestTickerAllowlist:
         return u
 
     def test_short_tickers_are_counted_without_a_dollar_sign(self):
-        """WORD_BARE is [A-Z]{4,5}, so MU and AMD were invisible in bare
-        form: MU had 265 bare-CAPS mentions against SIX $MU cashtags in
-        six days of comments."""
+        """WORD_BARE is [A-Z]{4,5}, so MU and AMD are invisible to the
+        bare pass unless allowlisted.  Measured over six days of
+        comments, MU had 265 bare-CAPS mentions against six $MU
+        cashtags, so a cashtag-only rule loses almost all of its
+        attention."""
         from src.extract_tickers import extract_tickers_from_text
         u = self._universe()
         got = extract_tickers_from_text(
@@ -2124,8 +2177,9 @@ class TestTickerAllowlist:
             "AI is the future", u, cashtags_only=False)
 
     def test_the_ambiguous_ones_were_deliberately_left_out(self):
-        """The exclusions are the evidence the list is judged, not
-        stuffed. Each of these measured as the English word winning."""
+        """Symbols whose bare-CAPS samples measured as the English word
+        dominating (GOLD, COST, LOW, ...) must stay off the allowlist;
+        adding one would count ordinary prose as a ticker."""
         from src.extract_tickers import ALLOW_TICKERS
         for sym in ("GOLD", "COST", "LOW", "NOW", "TEAM", "CAT", "PE"):
             assert sym not in ALLOW_TICKERS, (
@@ -2137,12 +2191,12 @@ class TestFlagLabelsAndConfigReload:
     """The dashboard must SAY which instrument a flag refers to, and it
     must notice when config/theme_etfs.csv changes.
 
-    Both come from the same incident the china_geopolitics
-    anchor was corrected KWEB -> FXI in the CSV, the long-running
-    Streamlit process kept serving the map it imported at start-up, and
-    from the screen that was indistinguishable from the fix having
-    failed. Meanwhile the single-name banners read `IREN`, `NBIS`,
-    `SNDK` with nothing to say what those are."""
+    Streamlit reruns the script on every interaction but never
+    re-imports an already-imported module, so a theme->ETF map imported
+    once at start-up keeps serving stale anchors after the CSV is
+    edited, and the screen is indistinguishable from the edit having
+    failed.  Separately, a banner that prints a bare symbol gives the
+    reader nothing to say what the instrument is."""
 
     @staticmethod
     def _src():
@@ -2150,9 +2204,9 @@ class TestFlagLabelsAndConfigReload:
         return Path(__file__).resolve().parents[1] / "dashboard.py"
 
     def test_theme_etf_map_is_keyed_on_the_files_mtime(self):
-        """A module-level `from src.themes import THEME_ETFS` is exactly
-        the bug: Streamlit reruns the script but does not re-import an
-        imported module. The map must be re-derived on mtime instead."""
+        """A module-level `from src.themes import THEME_ETFS` freezes the
+        map for the life of the process.  The map must be re-derived
+        through a helper keyed on the CSV's mtime instead."""
         src = self._src().read_text(encoding="utf-8")
         assert "from src.themes import THEME_ETFS" not in src, (
             "THEME_ETFS is imported once at start-up again - a config "
@@ -2171,8 +2225,9 @@ class TestFlagLabelsAndConfigReload:
                 f"{theme}: the anchor must lead its own fallback chain")
 
     def test_china_geopolitics_is_broad_china_not_the_internet_basket(self):
-        """The correction that started all of this. KWEB is the China
-        INTERNET basket; geopolitics moves broad China beta."""
+        """china_geopolitics anchors on FXI (broad China beta), with KWEB
+        (the China INTERNET basket) retained only as a fallback:
+        geopolitics moves broad China beta, not the internet basket."""
         import src.themes as themes
         etfs, chains = themes._load_theme_etfs()
         assert etfs["china_geopolitics"] == "FXI"
@@ -2180,9 +2235,9 @@ class TestFlagLabelsAndConfigReload:
             "KWEB should stay in the chain as a fallback, just not lead it")
 
     def test_every_theme_note_that_claims_a_proxy_names_the_real_line(self):
-        """The `note` column is now shown on screen, so a caveat that
-        says 'PROXY' without naming what it stands in for is a caveat
-        that helps nobody."""
+        """The `note` column is shown on screen, so a caveat that says
+        'PROXY' without naming the instrument it stands in for helps
+        nobody."""
         import csv
         from pathlib import Path
         p = Path(__file__).resolve().parents[1] / "config" / "theme_etfs.csv"
@@ -2195,8 +2250,8 @@ class TestFlagLabelsAndConfigReload:
                         "not say what the right instrument is")
 
     def test_the_colour_legend_matches_the_boxes_on_screen(self):
-        """INCREASE EXPOSURE renders through st.success, which is GREEN.
-        The legend said blue for weeks.
+        """INCREASE EXPOSURE renders through st.success, which is GREEN,
+        so the legend must say green, not blue.
 
         INCREASE EXPOSURE and CUT EXPOSURE are the on-screen labels for
         the get_in and get_out signals; the stored column names are
@@ -2218,11 +2273,12 @@ class TestFlagLabelsAndConfigReload:
             "route through flag_label")
 
     def test_security_names_drop_the_share_class_boilerplate(self):
-        """'AMC Entertainment Holdings, Inc. Class A Common Stock' cut at
-        38 characters gave '...Inc. Class', which reads as broken data."""
-        # dashboard.py cannot be imported in a test (importing it runs
-        # the whole app), so the one pure function is compiled out of the
-        # source on its own.
+        """Share-class boilerplate is stripped before the 38-character
+        cut: 'AMC Entertainment Holdings, Inc. Class A Common Stock'
+        truncated raw gives '...Inc. Class', which reads as broken
+        data."""
+        # dashboard.py executes the whole app on import, so the one pure
+        # function is compiled out of the source on its own.
         src = self._src().read_text(encoding="utf-8")
         start = src.index("_NAME_TAIL = re.compile(")
         end = src.index("@st.cache_data", start)
@@ -2241,11 +2297,11 @@ class TestDataFreshnessIsVisible:
     """A dashboard must be able to say that its DATA is out of date.
 
     Distinct from TestStaleTabIsVisible, which is about a stale
-    *process* serving an old dashboard.py. This one is about a
-    perfectly healthy process serving perfectly stale numbers: the
-    masthead used to print `last update: <now>` - the render time -
-    which reads as "just updated" on a page whose newest reading is
-    three weeks old. A reader had no way to tell."""
+    *process* serving an old dashboard.py.  This one is about a healthy
+    process serving stale numbers: a masthead that prints the render
+    time reads as "just updated" on a page whose newest reading is
+    weeks old, so the masthead must print the data date and grade its
+    age."""
 
     @staticmethod
     def _src():
@@ -2255,10 +2311,9 @@ class TestDataFreshnessIsVisible:
 
     @staticmethod
     def _fresh():
-        """dashboard.py cannot be imported in a test (importing it runs
-        the whole app), so the pure function is compiled out of the
-        source on its own - the same trick the security-name test
-        uses."""
+        """dashboard.py executes the whole app on import, so the
+        freshness helper and its level constants are compiled out of the
+        source on their own."""
         import pandas as pd
         src = TestDataFreshnessIsVisible._src()
         start = src.index("_FRESH_OK, _FRESH_LATE, _FRESH_STALE =")
@@ -2268,6 +2323,8 @@ class TestDataFreshnessIsVisible:
         return ns
 
     def test_the_masthead_no_longer_passes_render_time_off_as_freshness(self):
+        """No live line prints `last update:` (the render clock); the
+        masthead reports `data through` instead."""
         src = self._src()
         _live = [ln for ln in src.splitlines()
                  if "last update:" in ln and not ln.lstrip().startswith("#")]
@@ -2277,10 +2334,10 @@ class TestDataFreshnessIsVisible:
         assert "data through " in src
 
     def test_a_weekend_does_not_make_monday_look_late(self):
-        """The whole reason this counts BUSINESS days. Friday's data
-        read on Monday morning is current; a calendar-day rule would
-        paint the masthead amber every Monday, and a weekly false
-        alarm is a warning nobody reads."""
+        """Age is counted in BUSINESS days: Friday's data read on Monday
+        morning is current.  A calendar-day rule would paint the
+        masthead amber every Monday, and a weekly false alarm is a
+        warning nobody reads."""
         import pandas as pd
         ns = self._fresh()
         lvl, bd = ns["_data_freshness"](pd.Timestamp("2026-08-28"),   # Fri
@@ -2289,6 +2346,7 @@ class TestDataFreshnessIsVisible:
         assert bd <= 1
 
     def test_same_day_and_yesterday_are_current(self):
+        """Data dated today or the previous business day grades OK."""
         import pandas as pd
         ns = self._fresh()
         for d in ("2026-09-02", "2026-09-01"):      # Wed today, Tue
@@ -2297,6 +2355,8 @@ class TestDataFreshnessIsVisible:
             assert lvl == ns["_FRESH_OK"], d
 
     def test_two_business_days_is_late_and_a_working_week_is_stale(self):
+        """Two business days of age grades LATE; five or more grade
+        STALE."""
         import pandas as pd
         ns = self._fresh()
         today = pd.Timestamp("2026-09-04")                 # Friday
@@ -2306,7 +2366,8 @@ class TestDataFreshnessIsVisible:
         assert lvl == ns["_FRESH_STALE"] and bd >= 5
 
     def test_a_missing_date_counts_as_stale_not_as_fine(self):
-        """Silence about freshness is the exact failure this removes."""
+        """None and NaT grade STALE: an unknown data date must never
+        read as current."""
         import pandas as pd
         ns = self._fresh()
         assert ns["_data_freshness"](None,
@@ -2317,6 +2378,7 @@ class TestDataFreshnessIsVisible:
             == ns["_FRESH_STALE"]
 
     def test_a_future_date_never_reports_negative_age(self):
+        """A data date after today clamps to age 0 and grades OK."""
         import pandas as pd
         ns = self._fresh()
         lvl, bd = ns["_data_freshness"](pd.Timestamp("2026-09-10"),
@@ -2324,10 +2386,10 @@ class TestDataFreshnessIsVisible:
         assert lvl == ns["_FRESH_OK"] and bd == 0
 
     def test_the_notice_tells_the_reader_what_to_do(self):
-        """A warning that only states a fact is half a warning. The
-        hosted copy points at the owner; the desk copy names the
-        command, because there the reader IS the person who can fix
-        it."""
+        """A warning that only states a fact is half a warning.  The
+        hosted copy points the reader at the dashboard owner; the copy
+        with local controls names the command, because there the reader
+        is the person who can run it."""
         src = self._src()
         assert "Contact the dashboard owner to refresh it or check" in src
         assert "for issues." in src
@@ -2335,9 +2397,10 @@ class TestDataFreshnessIsVisible:
         assert "LOCAL_CONTROLS else" in src
 
     def test_a_half_applied_deploy_is_diagnosed_separately(self):
-        """The other failure with the same symptom: the pipeline DID
-        run, the page just never picked it up. Same screen, opposite
-        fix - so it gets its own message, and it outranks the age line
+        """A second failure has the same symptom: the pipeline DID run
+        and published, but the page never picked the bundle up.  The fix
+        is the opposite (restart, not re-run), so it gets its own
+        message, and that branch must be tested before the age branch
         because sending the reader to re-run a pipeline that already
         ran is the wrong instruction."""
         src = self._src()
@@ -2352,9 +2415,10 @@ class TestDataFreshnessIsVisible:
 
     def test_only_published_ahead_is_a_fault(self):
         """A workstation that has run the pipeline and not published
-        yet has a manifest BEHIND its data. That is the normal state of
-        a desk machine mid-morning and must stay silent - so the
-        comparison is strictly one-directional."""
+        yet has a manifest BEHIND its data.  That is the normal state of
+        a local copy between a run and a publish and must stay silent,
+        so the comparison is strictly one-directional: only a manifest
+        AHEAD of the data is a fault."""
         src = self._src()
         _line = [ln for ln in src.splitlines()
                  if "_pub_through > pd.Timestamp(data_max)" in ln]
@@ -2395,13 +2459,13 @@ class TestDataFreshnessIsVisible:
 class TestStaleTabIsVisible:
     """A running dashboard must be able to say that it is out of date.
 
-    `.streamlit/config.toml` inflections the file watcher OFF on purpose - the
+    `.streamlit/config.toml` turns the file watcher OFF on purpose: the
     pipeline rewrites parquet in place and a watcher reloading mid-read
-    is a source of spurious errors. The cost is that an edited
+    is a source of spurious errors.  The cost is that an edited
     dashboard.py is never picked up by a live server, and a second
     `streamlit run` takes the next port while the pinned tab keeps
-    serving the original process. Both look exactly like "the fix did
-    not work"."""
+    serving the original process.  Both look exactly like "the fix did
+    not work", so the page must detect and announce a stale process."""
 
     @staticmethod
     def _src():
@@ -2409,6 +2473,7 @@ class TestStaleTabIsVisible:
         return Path(__file__).resolve().parents[1] / "dashboard.py"
 
     def test_the_watcher_is_still_off_and_still_explains_itself(self):
+        """The watcher setting is off and its reason sits next to it."""
         from pathlib import Path
         cfg = (Path(__file__).resolve().parents[1]
                / ".streamlit" / "config.toml")
@@ -2420,8 +2485,10 @@ class TestStaleTabIsVisible:
             "the setting must keep its reason next to it")
 
     def test_the_build_stamp_is_pinned_per_process(self):
-        """cache_resource survives reruns, so it holds the mtime this
-        PROCESS started with - which is the whole detection."""
+        """The start-up mtime is held in a cache_resource, which survives
+        reruns and so holds the mtime this PROCESS started with.  A
+        cache_data keyed on its own argument would be invalidated by the
+        very change it is meant to detect."""
         src = self._src().read_text(encoding="utf-8")
         assert "_mtime_at_process_start" in src
         i = src.index("def _mtime_at_process_start")
@@ -2430,6 +2497,7 @@ class TestStaleTabIsVisible:
             "could never detect a change; it must be cache_resource")
 
     def test_the_stale_banner_says_what_to_do(self):
+        """The banner names the fix (restart) and the port trap."""
         src = self._src().read_text(encoding="utf-8")
         assert "Stale tab." in src
         assert "restart the server" in src.lower()
@@ -2443,6 +2511,7 @@ class TestStaleTabIsVisible:
         assert "server.port" in src
 
     def test_the_runbook_has_the_restart_recipe(self):
+        """RUNBOOK.md documents the stale-tab symptom and both ports."""
         from pathlib import Path
         rb = (Path(__file__).resolve().parents[1]
               / "RUNBOOK.md").read_text(encoding="utf-8")
@@ -2451,15 +2520,13 @@ class TestStaleTabIsVisible:
 
 
 class TestApprovedUniverseCoverage:
-    """The approved list is the firm's tradeable universe. Nothing on it
-    should be unreachable, and nothing on screen should quote an
-    instrument the chart is not actually using.
+    """APPROVED_INSTRUMENTS is the tradeable universe.  Nothing on it
+    may be unreachable (unrequested from the price source), and nothing
+    on screen may quote an instrument the chart is not actually using.
 
-    Design question: "are there fewer themes than ETFs? is that
-    why we are getting less in the dropdown?" - yes to the first, no to
-    the second. The dropdown lists THEMES; instruments outnumber them
-    because seven anchors serve two themes each, twenty-one lines are
-    fallbacks and twelve are benchmarks nobody posts about."""
+    The dropdown lists THEMES, and instruments legitimately outnumber
+    themes: several anchors serve two themes each, many lines are
+    fallbacks, and the rest are benchmarks nobody posts about."""
 
     @staticmethod
     def _src():
@@ -2467,11 +2534,11 @@ class TestApprovedUniverseCoverage:
         return Path(__file__).resolve().parents[1] / "dashboard.py"
 
     def test_every_approved_instrument_is_requested_from_bloomberg(self):
-        """The regression that hid fifteen instruments: the puller built
-        its request from theme anchors and fallbacks only, so an approved
-        line no theme pointed at was never asked for and had no price
-        history - silently, with nothing on screen to say so."""
-        import pull_bloomberg_prices as pull
+        """The price puller's symbol universe must cover every approved
+        instrument.  A request built from theme anchors and fallbacks
+        only silently omits any approved line no theme points at, which
+        then has no price history and nothing on screen to say so."""
+        import pull_prices as pull
         from src.themes import APPROVED_INSTRUMENTS
         universe = set(pull.build_symbol_universe())
         missing = sorted(s for s in APPROVED_INSTRUMENTS
@@ -2510,6 +2577,7 @@ class TestApprovedUniverseCoverage:
         assert "unpriced" in body
 
     def test_a_substituted_anchor_is_reported_not_hidden(self):
+        """A theme drawn on a fallback line says so on screen."""
         src = self._src().read_text(encoding="utf-8")
         assert "Drawn on a fallback, not the named anchor" in src
 
@@ -2527,11 +2595,12 @@ class TestApprovedUniverseCoverage:
 
 class TestTickerMappingsAreCurrent:
     """Every mapped symbol must be one that still trades under that
-    ticker, or be reachable by NAME instead.
+    ticker, or be reachable by company NAME instead.
 
-    Full audit 2026-08-05 (desk: "please check ALL the ticker mappings").
-    A renamed ticker does not break anything loudly - it just quietly
-    counts nothing, forever, while the theme it belonged to looks fine."""
+    A renamed or delisted ticker does not break anything loudly - it
+    quietly counts nothing, forever, while the theme it belonged to
+    looks fine - so the known renames and the name-reachability rule
+    are pinned."""
 
     @staticmethod
     def _universe():
@@ -2549,8 +2618,9 @@ class TestTickerMappingsAreCurrent:
             return list(csv.DictReader(fh))
 
     def test_the_retired_tickers_are_gone(self):
-        """Each of these was found mapped and dead. The replacement is
-        checked too, so a half-applied rename fails."""
+        """Known re-tickered symbols are absent and their replacements
+        present, so a half-applied rename fails; delisted symbols are
+        absent outright."""
         mapped = {r["ticker"] for r in self._rows("theme_tickers.csv")}
         for dead, live in (("SQ", "XYZ"),        # Block re-tickered
                            ("PARA", "PSKY"),     # Paramount Skydance
@@ -2562,16 +2632,16 @@ class TestTickerMappingsAreCurrent:
             assert live in mapped, f"{dead} was removed but {live} is absent"
         for gone in ("CYBR", "DIDI"):
             assert gone not in mapped, f"{gone} is delisted"
-        # SPLG -> SPYM was the same class of correction, but its only home
-        # was the short-lived broad_market_passive basket, which the sp500
-        # theme replaced with actual constituents. Nothing should carry
-        # the dead symbol either way.
+        # SPLG -> SPYM is the same class of correction; its only home was
+        # the broad_market_passive basket, which the sp500 theme replaced
+        # with actual constituents.  Nothing should carry the dead symbol
+        # either way.
         assert "SPLG" not in mapped
 
     def test_keel_moved_theme_as_well_as_ticker(self):
-        """Bitfarms did not just re-ticker - it stopped being a bitcoin
-        miner and became US AI infrastructure. A rename that keeps the
-        old theme is still a wrong mapping."""
+        """Bitfarms did not just re-ticker to KEEL - it stopped being a
+        bitcoin miner and became AI infrastructure.  A rename that keeps
+        the old theme is still a wrong mapping."""
         rows = self._rows("theme_tickers.csv")
         themes = {r["theme"] for r in rows if r["ticker"] == "KEEL"}
         assert "crypto" not in themes
@@ -2591,10 +2661,10 @@ class TestTickerMappingsAreCurrent:
         names = {}
         for r in self._rows("etf_constituents.csv"):
             names.setdefault(r["ticker"], r["company"])
-        # A few mapped symbols are CURATED rather than ETF holdings, so
-        # etf_constituents.csv carries no company for them. Named here
-        # because the relationship has to be written down somewhere for
-        # this check to mean anything; add a line when you add such a row.
+        # A few mapped symbols are curated rather than ETF holdings, so
+        # etf_constituents.csv carries no company for them.  Their names
+        # are supplied here so the reachability check covers them; add a
+        # line when adding such a row.
         names.setdefault("NTDOY", "Nintendo ADR")
         kw = collections.defaultdict(set)
         for r in self._rows("theme_keywords.csv"):
@@ -2620,11 +2690,11 @@ class TestTickerMappingsAreCurrent:
             f"the keyword map either: {orphans}")
 
     def test_no_symbol_is_both_jargon_and_a_theme_ticker_by_accident(self):
-        """AI, DD and NOW are mapped AND stoplisted. That is deliberate -
-        the stoplist wins in extract_tickers, so C3.ai, DuPont and
-        ServiceNow are documented as theme members but never counted from
-        prose. ES joined them 2026-08-05 (it is the E-mini future, not
-        Eversource). The test pins the SET so a new clash gets noticed."""
+        """AI, DD, ES and NOW are mapped AND stoplisted.  That is
+        deliberate: the stoplist wins in extract_tickers, so C3.ai,
+        DuPont, Eversource and ServiceNow are documented as theme members
+        but never counted from prose (ES in bare CAPS is the E-mini
+        future).  The test pins the SET so a new clash gets noticed."""
         from src.extract_tickers import STOP_TICKERS
         mapped = {r["ticker"] for r in self._rows("theme_tickers.csv")}
         clash = sorted(mapped & STOP_TICKERS)
@@ -2632,22 +2702,24 @@ class TestTickerMappingsAreCurrent:
             f"the set of deliberate jargon/ticker clashes changed: {clash}")
 
     def test_es_can_never_become_a_ticker(self):
-        """Measured: all six sampled bare-CAPS "ES" hits were the E-mini
-        S&P future, not Eversource. It is stoplisted so a future
-        allowlist edit cannot poison utilities_power."""
+        """Every sampled bare-CAPS "ES" hit was the E-mini S&P future,
+        not Eversource.  It is stoplisted and kept off the allowlist so
+        an allowlist edit cannot poison utilities_power."""
         from src.extract_tickers import ALLOW_TICKERS, STOP_TICKERS
         assert "ES" in STOP_TICKERS and "ES" not in ALLOW_TICKERS
 
     def test_pm_was_measured_and_rejected(self):
-        """220 bare CAPS would have passed a ratio test. Reading the
-        samples showed "send a PM", "make this guy a PM", "Canadian PM" -
-        one hit in six was Philip Morris."""
+        """PM's bare-CAPS count would pass a ratio test, but the sampled
+        hits were overwhelmingly the abbreviations for private message
+        and prime minister - about one in six meant Philip Morris - so
+        it stays off the allowlist."""
         from src.extract_tickers import ALLOW_TICKERS
         assert "PM" not in ALLOW_TICKERS
 
 
 class TestCrawlAndBudgetHygiene:
-    """Two bugs the 2026-08-05 run made visible in its own log."""
+    """Crawl-budget and run-to-run determinism properties of the
+    ingestion and analytics stages."""
 
     @staticmethod
     def _src(rel):
@@ -2657,40 +2729,44 @@ class TestCrawlAndBudgetHygiene:
 
     def test_a_dry_subreddit_stops_instead_of_burning_the_budget(self):
         """The crawl walks newest-first, so once pages stop yielding
-        anything it is re-reading collected ground. Measured on that run:
-        ~95 budgeted pages returned ZERO new comments (personalfinance
-        21, Daytrading 14, Bogleheads 10) while r/wallstreetbets was
-        deferred for want of pages."""
+        anything it is re-reading collected ground.  Without a dry-page
+        stop, a quiet subreddit spends tens of budgeted pages returning
+        zero new comments while a busy one is deferred for want of
+        pages."""
         src = self._src("ingestion/fetch_reddit_comments.py")
         assert "DRY_PAGES_STOP" in src
         assert "dry_pages >= DRY_PAGES_STOP" in src
 
     def test_a_dry_crawl_advances_its_watermark(self):
-        """The half that unsticks it. Leaving `completed` False made the
-        next run start in the same place and buy the same dead pages -
-        a dry subreddit could never make progress."""
+        """A dry stop must mark the crawl `completed`.  Leaving it False
+        makes the next run start in the same place and buy the same
+        dead pages, so a dry subreddit could never make progress."""
         src = self._src("ingestion/fetch_reddit_comments.py")
-        i = src.index("dry_pages >= DRY_PAGES_STOP")
-        block = src[max(0, i - 2200):i]
-        assert "completed = True" in block or "completed` = True" in block \
-            or "completed = True" in src[i - 2600:i + 400], (
+        # `completed` starts True for every subreddit crawl ...
+        assert "got, newest, completed = 0, int(wm) if wm else 0, True" in src
+        # ... and the dry-stop branch breaks out without clearing it.
+        i = src.index("if dry_pages >= DRY_PAGES_STOP:")
+        branch = src[i:src.index("break", i) + 5]
+        assert "completed = False" not in branch, (
             "the dry-stop must leave completed True or the watermark "
             "will not advance")
 
     def test_a_rate_limit_wearing_a_422_is_retried(self):
-        """r/Bitcoin stopped at page 15 on {"error": "Timeout. Maybe slow
-        down a bit"} - a rate limit returned as a client error. The body
-        is what separates it from a genuinely malformed request."""
+        """The API returns some rate limits as HTTP 422 with a body of
+        {"error": "Timeout. Maybe slow down a bit"}.  The body is what
+        separates that from a genuinely malformed request, so the
+        fetcher must inspect it and retry rather than abandon the
+        subreddit."""
         src = self._src("ingestion/fetch_reddit_comments.py")
         assert 'slow down' in src
         assert "r.status_code == 422" in src
 
     def test_the_fa_budget_is_a_constant_not_a_file_read(self):
-        """It was read from euphoria_report.json while the euphoria stage
-        rewrote that file IN PARALLEL, so the adoption bar depended on
-        which stage finished first: two consecutive passes over identical
-        data printed budget 0.23 then 0.19 and disagreed on the result
-        (GET OUT captured 17 then 16, adjacency 4 then 5)."""
+        """The false-alarm budget is a config constant, never read from
+        euphoria_report.json.  The euphoria stage rewrites that file in
+        parallel with the phases stage, so a budget read from it depends
+        on which stage finishes first: two passes over identical data
+        can read 0.23 then 0.19 and disagree on the adopted result."""
         from src.config import EUPHORIA_FA_BUDGET_PER_IY
         assert EUPHORIA_FA_BUDGET_PER_IY == 0.23
         src = self._src("analytics/euphoria_phases.py")
@@ -2700,8 +2776,9 @@ class TestCrawlAndBudgetHygiene:
         assert src.count("EUPHORIA_FA_BUDGET_PER_IY") >= 3
 
     def test_no_silent_boolean_downcast_remains(self):
-        """Both pandas FutureWarnings came from filling NaN into an
-        otherwise-boolean column and relying on a deprecated downcast."""
+        """Filling NaN into an otherwise-boolean column without stating
+        the dtype relies on a deprecated pandas downcast and emits a
+        FutureWarning; every such fill must state `.astype(bool)`."""
         for rel in ("analytics/euphoria_phases.py", "analytics/signals.py"):
             src = self._src(rel)
             assert ".fillna(False)\n" not in src.replace(
@@ -2709,10 +2786,10 @@ class TestCrawlAndBudgetHygiene:
                 f"{rel} still fills a bool column without stating dtype")
 
     def test_a_theme_with_no_priced_line_is_reported(self):
-        """broad_market_passive is defined, counted, and then dropped
-        before scoring because RSP/VTV/VUG/IVE/IVW are all unpriced -
-        which is why the universe line says 36 themes and the config
-        defines 37. Silent is the wrong way for that to happen."""
+        """A theme whose entire fallback chain is unpriced is defined,
+        counted, and then dropped before scoring, so the universe line
+        shows one theme fewer than the config defines.  The page must
+        report that rather than let the counts disagree silently."""
         src = self._src("dashboard.py")
         assert "No priced instrument at all" in src
 
@@ -2720,15 +2797,16 @@ class TestCrawlAndBudgetHygiene:
 
 
 class TestNothingCanDangle:
-    """The guards that stop this class of error coming back.
+    """No file, command or path cited anywhere in the repository may
+    point at something that does not exist.
 
-    An audit on 2026-08-05 found FOURTEEN cited paths that did not exist -
-    including a RUNBOOK command an operator would run and watch fail -
-    while `tools/verify_deps.py` reported "Nothing dangles". The checker
-    had two structural blind spots: it read only quoted string literals in
-    .py files, and it derived its directory prefixes from directories that
-    EXIST, so a reference to a deleted folder was invisible by
-    construction. Both are fixed; these tests keep them fixed."""
+    A dangling citation fails silently until an operator runs the
+    command or opens the path.  `tools/verify_deps.py` catches them,
+    and it has two structural requirements that are pinned here: it
+    must sweep comments and markdown, not just quoted string literals
+    in .py files, and its directory-prefix list must include
+    directories that do NOT exist, because a reference to a deleted
+    folder is otherwise invisible by construction."""
 
     @staticmethod
     def _root():
@@ -2736,19 +2814,15 @@ class TestNothingCanDangle:
         return Path(__file__).resolve().parents[1]
 
     def test_no_cited_path_is_missing(self):
-        """If this fails, something references a file that is not there -
-        fix the reference, or say in the same paragraph that the file is
-        gone.
+        """verify_deps exits 0.  If this fails, something references a
+        file that is not there - fix the reference, or say in the same
+        paragraph that the file is gone.
 
-        BEFORE YOU "FIX" A FINDING, CHECK YOU HAVE THE WHOLE REPO. On
-        2026-08-05 this check was run inside an incomplete clone that was
-        missing `helper/` and four docs; it reported them as dangling and
-        five citations were edited to say the directory did not exist,
-        which was false. verify_deps cannot tell a deleted file from an
-        un-cloned one, so a "missing file" result is only as good as the
-        tree it ran against. `helper/` is skipped here for that reason -
-        Paths known to live on the full repository are listed in
-        `_DESK_ONLY` inside verify_deps rather than filtered here."""
+        Check the tree is complete before acting on a finding:
+        verify_deps cannot tell a deleted file from an un-cloned one, so
+        a "missing file" result is only as good as the tree it ran
+        against.  Paths that live only on a full checkout are declared
+        inside verify_deps rather than filtered here."""
         import subprocess
         import sys
         r = subprocess.run([sys.executable, "tools/verify_deps.py"],
@@ -2757,19 +2831,22 @@ class TestNothingCanDangle:
             "verify_deps found dangling references:\n" + r.stdout[-3000:])
 
     def test_the_checker_still_reads_comments_and_markdown(self):
-        """The blind spots, pinned. A future 'tidy-up' that narrows this
-        back to string literals would silently stop catching anything."""
+        """The checker sweeps markdown, lists non-existent directories in
+        its prefix set, and honours the known-absent phrases.  Narrowing
+        it back to string literals would silently stop it catching
+        anything."""
         src = (self._root() / "tools" / "verify_deps.py").read_text(
             encoding="utf-8")
         assert "def sweep_docs(" in src, "markdown is no longer swept"
-        assert "_CITED_DIRS" in src and '"helper"' in src, (
+        assert "_CITED_DIRS" in src and '"reference"' in src, (
             "the prefix list must include directories that DO NOT exist - "
             "that is the case the old checker could not see")
         assert "_KNOWN_ABSENT" in src
 
     def test_every_python_file_parses(self):
         """A syntax error anywhere is a broken pipeline, and several of
-        these files are only imported on the desk machine."""
+        these files are only imported on a copy with the raw post store,
+        so the test suite would not otherwise exercise them."""
         import ast
         bad = []
         for p in self._root().rglob("*.py"):
@@ -2782,8 +2859,8 @@ class TestNothingCanDangle:
         assert not bad, "files will not parse:\n" + "\n".join(bad)
 
     def test_config_exposes_everything_its_importers_ask_for(self):
-        """`from src.config import (...)` fails at IMPORT time, which on
-        the desk machine means the dashboard does not start at all."""
+        """`from src.config import (...)` of a missing name fails at
+        IMPORT time, which means the dashboard does not start at all."""
         import ast
         import src.config as C
         missing = []
@@ -2806,11 +2883,12 @@ class TestNothingCanDangle:
 
 
 class TestAiPulseControls:
-    """The AI Pulse changes of 2026-08-05."""
+    """analytics/ai_pulse.py - back-dating and prompt-structure
+    properties."""
 
     def test_a_back_dated_run_cannot_overwrite_the_live_pulse(self):
-        """Reading history must never clobber today's page. The dated
-        run writes ai_pulse_<date>.json; only a live run touches
+        """Reading history must never clobber today's page.  A dated run
+        writes ai_pulse_<date>.json; only a live run touches
         ai_pulse.json."""
         from pathlib import Path
         src = (Path(__file__).resolve().parents[1] / "analytics"
@@ -2831,9 +2909,10 @@ class TestAiPulseControls:
         assert "AS_OF is not None" in body and 'df["date"] <= AS_OF' in body
 
     def test_the_forum_paragraph_asks_what_they_SAY(self):
-        """It used to ask the model to contrast what the boards ARE,
-        which produced 'r/investing is a long-term community' - a
-        sentence the desk already knows."""
+        """The forum prompt asks what each board is SAYING, not what it
+        IS.  Asking the model to characterise the boards produces static
+        descriptions ('r/investing is a long-term community') that carry
+        no information about the current week."""
         from pathlib import Path
         src = (Path(__file__).resolve().parents[1] / "analytics"
                / "ai_pulse.py").read_text(encoding="utf-8")
@@ -2842,17 +2921,17 @@ class TestAiPulseControls:
         assert "THE FORUMS THEMSELVES" not in src
 
     def test_theme_briefs_are_long_and_structured(self):
-        """Raising the word target alone just yields more adjectives -
-        the four required elements are what make the extra words carry
-        content."""
+        """The theme prompt sets a 220-300 word target AND names four
+        required elements.  Raising the word target alone yields more
+        adjectives; the required elements are what make the extra words
+        carry content."""
         from pathlib import Path
         src = (Path(__file__).resolve().parents[1] / "analytics"
                / "ai_pulse.py").read_text(encoding="utf-8")
         assert "220-300 " in src
-        # check the PROMPT text, not the file: the comment above the
-        # change legitimately mentions the old target, and a test that
-        # forbids explaining what changed is a test that discourages
-        # explaining what changed.
+        # the shorter target must not appear as a JSON-spec value; a
+        # comment may legitimately mention it, so the check targets the
+        # quoted spec form rather than the bare number
         assert '"brief: 80-120' not in src.replace(" ", "")\
             .replace("brief:80-120", '"brief: 80-120')
         for part in ("THE ARGUMENT", "THE EVIDENCE THEY CITE",
@@ -2860,16 +2939,16 @@ class TestAiPulseControls:
             assert part in src, f"{part} missing from the theme prompt"
 
     def test_the_roadmap_panel_is_gone(self):
+        """The AI Pulse tab has no planned-segments expander, exposes the
+        prompt behind the page, and owns its date through the single
+        slider at the top (see reference/KEY_PARAMETERS.md)."""
         from pathlib import Path
         src = (Path(__file__).resolve().parents[1]
                / "dashboard.py").read_text(encoding="utf-8")
-        # the EXPANDER must be gone; the comment recording why it went
-        # is meant to stay
+        # the expander must be absent; the prompt expander must remain
         assert 'st.expander("planned LLM segments' not in src
         assert "the exact prompt behind this page" in src
-        # the time control moved to a SLIDER at the top of the page
-        # (see docs/DECISIONS.md) - one control owns the date, so the old
-        # lower expander is gone on purpose
+        # one control owns the date: the slider at the top of the page
         assert "the market's mood on" in src
         assert "_market_read(" in src
 
@@ -2879,6 +2958,7 @@ class TestPreflight:
     catches the failures nothing else reports."""
 
     def test_preflight_runs_clean(self):
+        """tools/preflight.py exits 0 on this checkout."""
         import subprocess
         import sys
         from pathlib import Path
@@ -2890,9 +2970,9 @@ class TestPreflight:
             "wrong:\n" + r.stdout[-2500:])
 
     def test_the_164mb_write_stays_disabled(self):
-        """daily_ticker_conviction.parquet was 164MB, rebuilt every run,
-        and read by nothing. A write that large on a finite disk is a
-        failure waiting for a quiet week."""
+        """daily_ticker_conviction.parquet is ~164MB, would be rebuilt
+        every run, and is read by nothing; the conviction stage must
+        write the theme file only."""
         from pathlib import Path
         src = (Path(__file__).resolve().parents[1] / "analytics"
                / "conviction.py").read_text(encoding="utf-8")
@@ -2905,12 +2985,10 @@ class TestPreflight:
 
 
 class TestPulseRegister:
-    """Section 2 must read like a colleague briefing you, not a summary.
-
-    Specified output format: "users on WSB are
-    really talking a lot about this stock xx because of this but many
-    are worried about y ... sentiment super bullish as everyone is
-    posting that they are making money"."""
+    """The AI Pulse narrative sections must read like a colleague
+    briefing the reader - forum, ticker and reason in one sentence,
+    mood shown as behaviour - and must be written from posts alone.
+    Only the divergences call may see the numeric evidence pack."""
 
     @staticmethod
     def _src():
@@ -2919,13 +2997,14 @@ class TestPulseRegister:
                 / "ai_pulse.py").read_text(encoding="utf-8")
 
     def test_no_aggregate_reaches_the_model(self):
-        """POSTS ONLY, desk 2026-08-12. The four prompts carry posts and
-        nothing else; the evidence pack is still built and saved (the
-        dropdown orders from it) but must never be handed to a prompt.
+        """The market, themes and agentic prompts carry posts and nothing
+        else; the evidence pack is still built and saved (the dropdown
+        orders from it) but must never be handed to those prompts, and
+        the system prompt must forbid invented numbers.
 
-        This is a tripwire, not decoration: passing `ev` back into a
-        prompt is a one-word change and would silently undo the desk's
-        instruction while every other test still passed."""
+        Passing `ev` back into a prompt is a one-word change that would
+        silently reintroduce aggregates while every other test still
+        passed, so the call signatures are pinned."""
         src = self._src()
         for bad in ("_market_prompt(ev", "_themes_prompt(ev",
                     "_agentic_prompt(ev"):
@@ -2937,11 +3016,11 @@ class TestPulseRegister:
         assert "system=_PULSE_SYSTEM" in src
 
     def test_divergences_is_the_only_call_with_numbers(self):
-        """Requirement: "the divergences part can be
-        the only one which is using the numbers". Call 3 gets the pack
-        AND its own system prompt - handing it numbers under the
-        posts-only prompt would tell the model in one breath that it has
-        no statistics and in the next to cite them."""
+        """The divergences call is the only one that receives the
+        evidence pack, and it runs under its own system prompt.  Handing
+        it numbers under the posts-only system prompt would tell the
+        model in one breath that it has no statistics and in the next to
+        cite them."""
         src = self._src()
         assert "_watch_prompt(ev, posts)" in src
         assert "system=_WATCH_SYSTEM" in src
@@ -2959,9 +3038,9 @@ class TestPulseRegister:
         assert "EVIDENCE" not in ap._agentic_prompt([])
 
     def test_the_measured_record_is_still_kept(self):
-        """Withholding the pack from the MODEL must not stop us MEASURING
-        it - the dashboard orders the theme dropdown from it and the desk
-        checks the story against it by hand."""
+        """Withholding the pack from the MODEL must not stop it being
+        MEASURED and saved: the dashboard orders the theme dropdown from
+        it, and it is the record the narrative can be checked against."""
         src = self._src()
         assert "emerging_terms_7d" in src
         assert "daily_term_counts.parquet" in src
@@ -2979,12 +3058,14 @@ class TestPulseRegister:
 
     def test_mood_must_be_shown_as_behaviour_not_asserted(self):
         """An adjective is the model's conclusion; the behaviour behind
-        it is evidence, and a desk can judge evidence."""
+        it is evidence the reader can judge, so the prompt must demand
+        the behaviour."""
         src = self._src()
         assert "never just label the mood" in src
         assert "gain screenshots" in src
 
     def test_the_forum_ticker_reason_triple_is_required(self):
+        """The prompt requires forum, ticker and reason in one sentence."""
         src = self._src()
         assert "Name the forum, name the " in src
         assert "REASON in the same " in src
@@ -3034,10 +3115,10 @@ class TestBackfillRunner:
 
 
 class TestInflectionMarker:
-    """The INFLECTION head, integrated 2026-08-12 as a CONTEXT MARKER.
+    """The INFLECTION head is a CONTEXT MARKER, not a call.
 
-    The desk adopted it knowing the numbers (9.6% hit vs a 5.6% base,
-    no direction), on the explicit condition that it stays furniture:
+    It was adopted with its numbers known (9.6% hit vs a 5.6% base, no
+    direction), on the condition that it stays furniture:
     drawn on the price panel, never a call, never in the watchlist, and
     never able to change GET IN or GET OUT. These tests are the fence
     around that condition, because every one of those boundaries is a
@@ -3122,10 +3203,9 @@ class TestInflectionMarker:
         # page must SAY so rather than silently drawing nothing, which
         # reads identically to "this name has no inflections"
         assert "predates them" in src
-        # THE WATCHLIST CLAIM CHANGED 2026-08-12. The inflection head was
-        # originally kept out of the watchlist entirely; the desk then
-        # asked for a "closest to an INFLECTION" ordering, so it now appears
-        # there as a THIRD SIDE. What must remain true is that it is
+        # The inflection head appears in the watchlist as a THIRD SIDE
+        # ("closest to an INFLECTION" ordering). What must remain true is
+        # that it is
         # labelled context wherever it is rendered and that it still
         # cannot fire, gate or re-score a call.
         # In the watchlist the inflection appears as a COLUMN, not as a
@@ -3236,10 +3316,9 @@ class TestWeeklySnapshot:
     def test_the_snapshot_is_computed_not_retrieved(self):
         src = self._src()
         assert "def _snapshot_text(" in src
-        # 2026-08-27: the rendered digest (snapshot quote + the crowd/
-        # felt columns) was removed from the AI Pulse tab on request
-        # ("remove this section"); the composer stays for notebook and
-        # CLI use. Guard that the section STAYS removed.
+        # The rendered digest (snapshot quote + the crowd/felt columns)
+        # is not shown on the AI Pulse tab; the composer stays for
+        # research and CLI use. Guard that the section STAYS removed.
         assert "What the crowd was talking about" not in src
 
     def test_it_reports_flags_terms_and_rotation(self):
@@ -3254,7 +3333,7 @@ class TestWeeklySnapshot:
 
     def test_breadth_reads_wide_or_narrow_not_loud_or_quiet(self):
         """Breadth is an absolute share of themes, and with the
-        intensity score removed (see docs/DECISIONS.md) it is the ONLY axis
+        intensity score removed (see reference/KEY_PARAMETERS.md) it is the ONLY axis
         the sentence may speak to - wide vs carried-by-a-few, never a
         loudness claim it no longer measures."""
         src = self._src()
@@ -3401,9 +3480,9 @@ class TestMLDetector:
     """analytics/ml_detector.py - the learned desk detectors (2026-08)."""
 
     def test_winner_is_picked_on_lift_not_raw_ap(self):
-        """The incumbent's gated frame gives it a base rate of ~0.5, so
-        its raw AP dwarfs every learner's while its LIFT is ~1x. Raw-AP
-        ranking would hand the tournament to the incumbent forever."""
+        """The rule-based baseline's gated frame gives it a base rate of
+        ~0.5, so its raw AP dwarfs every learner's while its LIFT is ~1x.
+        Raw-AP ranking would hand the tournament to the baseline forever."""
         from analytics.ml_detector import pick_winner
         results = {
             "get_out": {"rules": {"ap": 0.60, "ap_baseline": 0.59,
@@ -3468,7 +3547,7 @@ class TestMLDetector:
         assert a == b
 
     def test_shipped_store_never_shows_a_start_right_after_an_end(self):
-        """The PM-trust rule, verified on the store that actually ships:
+        """The coherence rule, verified on the store that actually ships:
         no GET IN within one cooldown after a GET OUT on the same name."""
         import os
         from src.config import PROCESSED_DIR, EUPHORIA_COOLDOWN_DAYS
@@ -3540,8 +3619,8 @@ class TestPriceBlindTrigger:
         # trigger-aware parts, never assembled ad hoc at a call site.
         assert '_c = f"{base}{_XP_PART}{_gate_part}{_SIG_SUFFIX}"' in src
         assert "experimental_price_blind" in src
-        # 2026-08-23: the trigger SELECTOR was removed at the desk's
-        # request - the dashboard is hardwired to the shipped pair, so
+        # The trigger SELECTOR is not exposed - the dashboard is hardwired
+        # to the shipped pair, so
         # the "your store predates the experimental columns" warning it
         # used to show has no way to fire and was removed with it. The
         # fence therefore changes shape: instead of asserting the
@@ -3592,7 +3671,7 @@ class TestPriceBlindTrigger:
 
 class TestSignedReadinessAndUngatedGetIn:
     """The adoptions (notebook 08 §10, record
-    docs/research/nb08_single_dial.json): the ungated GET IN, the one
+    reference/research_record/nb08_single_dial.json): the ungated GET IN, the one
     SIGNED readiness, and the retirement of the Relaxed setting.
 
     The contradiction these changes killed - a name reading 100% of the
@@ -3630,7 +3709,7 @@ class TestSignedReadinessAndUngatedGetIn:
             "GET OUT never does", "")
 
     def test_ungated_get_in_exists_and_respects_coherence(self):
-        """The ungated columns are real columns with the PM-trust rule
+        """The ungated columns are real columns with the coherence rule
         still applied: no GET IN on an end-stage day, none within one
         cooldown of a (gated) GET OUT. Dropping the gate widens WHEN a
         start may be called, never the coherence promise."""
@@ -3717,7 +3796,7 @@ class TestRetailFlowDial:
         block = src[max(0, i - 600):i]
         assert "try:" in block, (
             "the retail-flow attach is not wrapped - a dial error "
-            "would kill the desk store write")
+            "would kill the signal store write")
 
     def test_the_dial_filter_is_causal(self):
         """The Kalman recursion may only ever fold in the CURRENT
@@ -3746,7 +3825,7 @@ class TestRetailFlowDial:
 
 class TestPinnedModelFamily:
     """DESK_MODEL_FAMILY must skip the tournament without weakening the
-    validation that follows it (see docs/DECISIONS.md)."""
+    validation that follows it (see reference/KEY_PARAMETERS.md)."""
 
     def _spy(self):
         import analytics.ml_detector as mld

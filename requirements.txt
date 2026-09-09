@@ -70,3 +70,5 @@ anthropic
 # Dashboard.
 streamlit
 plotly
+yfinance>=0.2.40      # daily closes when no Bloomberg Terminal is available
+datasketch>=1.6.0    # MinHash LSH for the bot screen (ingestion/bot_screen.py)

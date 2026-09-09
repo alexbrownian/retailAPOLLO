@@ -1,29 +1,38 @@
-"""
-data_health.py - is the data actually healthy?  (READ-ONLY)
-==========================================================
-recorded decision: `!! 3 subreddit(s) gave up` and `NO DATA for 8
-of 267 symbols` print once, into a 200-line log, and are gone. This
-answers "is my data healthy?" without reading that log.
+"""Read-only health check of the data stores.
+
+Fetcher warnings such as ``3 subreddit(s) gave up`` or ``NO DATA for 8 of
+267 symbols`` print once into a long log and are gone. This answers "is
+the data healthy?" without reading that log::
 
     python tools/data_health.py
     python tools/data_health.py --json      # machine-readable only
 
-IT WRITES NOTHING except data/reference/ingestion_status.json, and it
-opens every other file read-only. Safe to run at any time, including
-while the pipeline is running.
+It writes nothing except ``data/reference/ingestion_status.json`` and
+opens every other file read-only, so it is safe to run at any time,
+including while the pipeline is running. The exit code is ``1`` when any
+check reports ``BAD``.
 
-WHAT IT CHECKS
-    freshness   how stale each aggregate and the price store are
-    coverage    per-source span, and days missing inside that span
-    dedup       size of the durable seen-id set, and whether the legacy
-                JSON ledger holds ids the parquet does not
-    ledgers     every data/reference JSON: present, parseable, size
-    backups     are there recent snapshots of data/reference
-    raw         how much raw is on disk, and dead .tmp files
-    integrity   the one that matters: aggregate merges are ADDITIVE, so
-                a duplicate fold is permanent and invisible. This looks
-                for the signature - a day whose mention total is a near
-                exact multiple of its neighbours.
+Checks:
+
+freshness
+    How stale each aggregate and the price store are.
+corporate actions
+    Single-session price moves consistent with an unadjusted split.
+coverage
+    Per-source span, and days missing inside that span.
+dedup
+    Size of the durable seen-id set, and whether the legacy JSON ledger
+    holds ids the parquet does not.
+ledgers
+    Every ``data/reference`` JSON: present, parseable, size.
+backups
+    Whether there are recent snapshots of ``data/reference``.
+raw
+    How much raw is on disk, and dead ``.tmp`` files.
+integrity
+    Aggregate merges are additive, so a duplicate fold is permanent and
+    invisible. This looks for the signature: a month whose mention total
+    is a near multiple of its neighbours.
 """
 from __future__ import annotations
 
@@ -55,6 +64,7 @@ OK, WARN, BAD = "ok", "warn", "BAD"
 
 
 def _age_days(path):
+    """Return whole days since ``path`` was modified, or ``None`` if absent."""
     if not os.path.exists(path):
         return None
     return (datetime.datetime.now()
@@ -62,6 +72,12 @@ def _age_days(path):
 
 
 def check_freshness(out, say):
+    """Report how old the newest aggregate day and the newest close are.
+
+    Args:
+        out: Dict the JSON status is assembled in (mutated).
+        say: Line reporter ``say(msg, status=None)``.
+    """
     say("FRESHNESS")
     tc = os.path.join(ABS, "daily_ticker_counts.parquet")
     if os.path.exists(tc):
@@ -86,7 +102,66 @@ def check_freshness(out, say):
                 WARN)
 
 
+# Single-session close-to-close moves beyond these bars are reported for
+# a corporate-action check. Most are stock splits or reverse splits the
+# price source did not back-adjust (a 30x jump in one session on a
+# sub-$1 name); left in place they create spurious boom-bust episodes in
+# the ground truth. A few are real - the largest retail squeezes have
+# printed +400% in a session - so the check reports and never edits.
+SPLIT_JUMP_UP = 4.0       # +400% in one session
+SPLIT_JUMP_DOWN = -0.70   # -70% in one session
+
+
+def check_corporate_actions(out, say):
+    """Flag single-session price jumps consistent with an unadjusted split.
+
+    Reports every ``(symbol, date)`` whose close moved by more than
+    ``SPLIT_JUMP_UP`` or below ``SPLIT_JUMP_DOWN`` against the previous
+    close. Read-only: the fix is to re-pull the symbol with adjusted
+    prices.
+
+    Args:
+        out: Dict the JSON status is assembled in (mutated).
+        say: Line reporter ``say(msg, status=None)``.
+    """
+    say("EXTREME SINGLE-SESSION MOVES (possible unadjusted splits)")
+    if not os.path.exists(PRICES):
+        say("  no prices.parquet", WARN)
+        return
+    px = pd.read_parquet(PRICES, columns=["date", "symbol", "px_last"])
+    px = px.dropna(subset=["px_last"])
+    px["date"] = pd.to_datetime(px["date"])
+    hits = []
+    for sym, g in px.sort_values("date").groupby("symbol"):
+        r = g["px_last"].pct_change()
+        bad = g[(r > SPLIT_JUMP_UP) | (r < SPLIT_JUMP_DOWN)]
+        for _, row in bad.iterrows():
+            prev = g["px_last"].shift(1).loc[row.name]
+            hits.append({"symbol": sym, "date": str(row["date"].date()),
+                         "prev_close": float(prev),
+                         "close": float(row["px_last"]),
+                         "move": float(row["px_last"] / prev - 1)})
+    out["split_jumps"] = hits
+    if not hits:
+        say(f"  no single-session move beyond +{SPLIT_JUMP_UP:.0%} / "
+            f"{SPLIT_JUMP_DOWN:.0%} across {px['symbol'].nunique()} symbols",
+            OK)
+        return
+    for h in hits:
+        say(f"  {h['symbol']:<8} {h['date']}  {h['prev_close']:.4f} -> "
+            f"{h['close']:.4f}  ({h['move']:+.0%})", WARN)
+    say(f"  {len(hits)} move(s) to verify: a genuine squeeze needs no "
+        "action; a split needs the symbol re-pulled with adjusted prices",
+        WARN)
+
+
 def check_coverage(out, say):
+    """Report each source's date span and how densely it is populated.
+
+    Args:
+        out: Dict the JSON status is assembled in (mutated).
+        say: Line reporter ``say(msg, status=None)``.
+    """
     say("COVERAGE BY SOURCE")
     f = os.path.join(ABS, "daily_ticker_counts_by_source.parquet")
     if not os.path.exists(f):
@@ -117,6 +192,12 @@ def check_coverage(out, say):
 
 
 def check_dedup(out, say):
+    """Report the size and readability of the seen-id set and ``LIVE_START``.
+
+    Args:
+        out: Dict the JSON status is assembled in (mutated).
+        say: Line reporter ``say(msg, status=None)``.
+    """
     say("DEDUP SET (the only thing preventing permanent double counting)")
     seen_p = os.path.join(REF, "abstracted_seen_ids.parquet")
     meta_p = os.path.join(REF, "abstracted_live_meta.json")
@@ -147,6 +228,12 @@ def check_dedup(out, say):
 
 
 def check_ledgers(out, say):
+    """Parse every ``data/reference`` JSON file and report its size.
+
+    Args:
+        out: Dict the JSON status is assembled in (mutated).
+        say: Line reporter ``say(msg, status=None)``.
+    """
     say("LEDGERS")
     bad = []
     for f in sorted(glob.glob(os.path.join(REF, "*.json"))):
@@ -162,6 +249,12 @@ def check_ledgers(out, say):
 
 
 def check_backups(out, say):
+    """Report how many reference snapshots exist and how old the newest is.
+
+    Args:
+        out: Dict the JSON status is assembled in (mutated).
+        say: Line reporter ``say(msg, status=None)``.
+    """
     say("BACKUPS of data/reference")
     bdir = os.path.join(REF, "_backups")
     if not os.path.isdir(bdir):
@@ -178,6 +271,12 @@ def check_backups(out, say):
 
 
 def check_raw(out, say):
+    """Report raw bytes on disk and count dead ``.tmp`` files.
+
+    Args:
+        out: Dict the JSON status is assembled in (mutated).
+        say: Line reporter ``say(msg, status=None)``.
+    """
     say("RAW STORE")
     total = tmp_bytes = tmp_n = 0
     for root, _dirs, files in os.walk(RAW):
@@ -212,6 +311,10 @@ def check_double_count(out, say):
     either side, excluding itself: a self-excluding baseline is
     required because a doubled month doubles its own median, and a
     per-day check against low-volume history flags ordinary variance.
+
+    Args:
+        out: Dict the JSON status is assembled in (mutated).
+        say: Line reporter ``say(msg, status=None)``.
     """
     say("DOUBLE-COUNT SCAN (additive merges make a duplicate permanent)")
     f = os.path.join(ABS, "daily_ticker_counts.parquet")
@@ -243,12 +346,11 @@ def check_double_count(out, say):
             flagged.append((per, vals[i], base, r))
 
     if flagged:
-        # WARN, never BAD. Verified on this store: the scan flags
-        # 2021-01/02 (GameStop), 2021-06 (AMC) and 2026-07 (the month
-        # StockTwits and X came online) alongside a deliberately injected
-        # duplicate. It cannot tell a mania or a new source from a double
-        # fold - only a human with the ledger can - so it hands over
-        # candidates rather than pretending to a verdict.
+        # WARN, never BAD. The scan flags mania months and the month a
+        # new source came online just as readily as an injected
+        # duplicate. It cannot tell a mania or a new source from a
+        # double fold - only a human with the ledger can - so it hands
+        # over candidates rather than pretending to a verdict.
         say(f"  {len(flagged)} month(s) at >=1.7x the median of their "
             f"neighbours - CANDIDATES, not findings:", WARN)
         for per, v, base, r in flagged[:12]:
@@ -269,6 +371,11 @@ def check_double_count(out, say):
 
 
 def main() -> int:
+    """Run every check, write the status JSON and print the report.
+
+    Returns:
+        ``0`` unless any check reported ``BAD``, then ``1``.
+    """
     p = argparse.ArgumentParser(description="Read-only data health check.")
     p.add_argument("--json", action="store_true",
                    help="print the JSON only (for scripting)")
@@ -283,8 +390,9 @@ def main() -> int:
         tag = {OK: "  [ok] ", WARN: "  [!]  ", BAD: "  [XX] "}.get(status, "")
         lines.append(f"{tag}{msg}" if tag else msg)
 
-    for fn in (check_freshness, check_coverage, check_dedup, check_ledgers,
-               check_backups, check_raw, check_double_count):
+    for fn in (check_freshness, check_corporate_actions, check_coverage,
+               check_dedup, check_ledgers, check_backups, check_raw,
+               check_double_count):
         try:
             fn(out, say)
         except Exception as exc:                              # noqa: BLE001

@@ -1,40 +1,40 @@
-theme,etf,fallbacks,note
-semiconductors,SMH,SMH|SOXX,
-memory,SMH,SMH|SOXX,"SMH is the whole semi complex, not memory alone - MU and the HBM names are inside it but so is NVDA. Accepted: no approved memory-only line exists, and the theme moves with the complex."
-ai,IYW,IYW|QQQ|XLK,"IYW is BROAD US tech, not AI-specific - natural ETF is AIQ (not approved). Strictness/triggering studied in notebook 06."
-datacenters,DTCR,DTCR|IYW,VPN was renamed/re-tickered to DTCR (Global X Data Center & Digital Infrastructure) in late 2024.
-ai_megacap,QQQ,QQQ|XLK,
-gold_metals,GLD,GLD|GDX|SLV|SIL|COPX,
-energy,XLE,XLE|XOP|OIH|USO|UNG,
-ev_clean_energy,LIT,LIT|XLY,
-uranium_nuclear,URA,URA,
-defense_aerospace,ITA,ITA|XLI,
-europe_defense,EUAD,EUAD|ITA,European A&D (Select STOXX). ITA was a US proxy - wrong region. EUAD approval CONFIRMED by the desk 2026-08-05.
-short_squeeze,ARKK,ARKK,"PROXY, weak by construction: no squeeze ETF exists. ARKK is the closest approved high-beta speculative basket, so it tracks the RISK APPETITE these names ride, not the names themselves. Read this theme's price panel as a regime indicator, not a tradeable line."
-meme_stocks,ARKK,ARKK,"PROXY, same caveat as short_squeeze: ARKK holds none of the meme names. It is the approved stand-in for speculative appetite. The single-name tab is where GME/AMC are actually tracked."
-biotech_pharma,XBI,XBI|XLV|BBH,
-rates_bonds,,,"REMOVED from the tradeable universe (desk instruction 2026-08-04: ""remove bonds TLT and real estate"") - still tracked in the data; refill the etf cell to reinstate."
-real_estate,,,"REMOVED from the tradeable universe (desk instruction 2026-08-04: ""remove bonds TLT and real estate"") - still tracked in the data; refill the etf cell to reinstate."
-cloud_saas,IGV,IGV|IYW,
-china_geopolitics,FXI,FXI|ASHR|KWEB|CQQQ|159915 CS|588000 CH,"CORRECTED 2026-08-04 (desk: ""china geopolitics is not KWEB""). KWEB is the China INTERNET basket - a sector bet on Alibaba/Tencent/Meituan. Geopolitics (tariffs, export controls, Taiwan) moves BROAD China beta, so FXI (China large-cap) is the right anchor and ASHR (CSI 300 A-shares) the first fallback. KWEB stays in the chain as the third line."
-financials,XLF,XLF|KBE|KRE,
-consumer_retail,XRT,XRT|XLY,"XRT newly approved 2026-07 - retail-specific, replaces broad discretionary XLY."
-cybersecurity,CIBR,CIBR,
-fintech_payments,XLF,XLF|IGV,"XLF is correct since the 2023 GICS change moved V, MA and PYPL into Financials - this is no longer the banks-only proxy it once was."
-gaming_esports,SOCL,SOCL|IYW,natural ETF is ESPO (SOCL is social media) - swap here if ESPO gets approved.
-travel_airlines,JETS,JETS,
-housing_builders,ITB,ITB|XLB,
-robotics_automation,XLI,XLI|IYW|ARKK,PROXY: XLI is broad industrials. BOTZ/ROBO are the natural lines (not approved).
-space,ITA,ITA,"PROXY: ITA is US Aerospace & DEFENSE - the pure-play space names (RKLB, ASTS, LUNR) are not meaningful holdings. ARKX is the natural line if it is ever approved. The single-name tab carries RKLB and ASTS directly."
-quantum_computing,IYW,IYW|QQQ,IYW is a broad-tech proxy; QTUM is the natural line (not approved).
-weight_loss_glp1,XLV,XLV|XBI,PROXY: XLV is broad healthcare. LLY is a top-5 holding so the theme is partly represented; NVO is not (non-US). No GLP-1 line is approved.
-solar,LIT,LIT|XLU,"natural ETF is TAN (LIT is lithium/battery, holds no solar names) - swap here if TAN gets approved."
-agriculture_food,MOO,MOO|XLP|XLB,MOO newly approved 2026-07 - replaces staples proxy XLP.
-shipping_logistics,IYT,IYT,
-utilities_power,XLU,XLU,
-media_streaming,XLC,XLC|SOCL,
-infrastructure,XLI,XLI|XLB,
-japan,1622 JT,1622 JT,"DELIBERATELY narrow: 1622 JT is TOPIX-17 Autos & Transport Equip, the approved Japan line - not broad Japan (EWJ/1306 JT would be)."
-crypto,,,"tracked, no approved instrument - fill etf to enable (e.g. IBIT if approved)"
-cannabis,,,"tracked, no approved instrument"
-small_caps,,,"tracked, no approved instrument"
+theme,etf,fallbacks,show_on_dashboard,note
+semiconductors,SMH,SMH|SOXX,yes,
+memory,SMH,SMH|SOXX,yes,"SMH is the whole semi complex, not memory alone - MU and the HBM names are inside it but so is NVDA. Accepted: no approved memory-only line exists, and the theme moves with the complex."
+ai,IYW,IYW|QQQ|XLK,yes,"IYW is BROAD US tech, not AI-specific - natural ETF is AIQ (not approved). Strictness/triggering studied in notebook 06."
+datacenters,DTCR,DTCR|IYW,yes,VPN was renamed/re-tickered to DTCR (Global X Data Center & Digital Infrastructure) in late 2024.
+ai_megacap,QQQ,QQQ|XLK,yes,
+gold_metals,GLD,GLD|GDX|SLV|SIL|COPX,yes,
+energy,XLE,XLE|XOP|OIH|USO|UNG,yes,
+ev_clean_energy,LIT,LIT|XLY,yes,
+uranium_nuclear,URA,URA,yes,
+defense_aerospace,ITA,ITA|XLI,yes,
+europe_defense,EUAD,EUAD|ITA,yes,European A&D (Select STOXX). ITA is a US proxy (wrong region) and stays only as a fallback.
+short_squeeze,ARKK,ARKK,yes,"PROXY, weak by construction: no squeeze ETF exists. ARKK is the closest approved high-beta speculative basket, so it tracks the RISK APPETITE these names ride, not the names themselves. Read this theme's price panel as a regime indicator, not a tradeable line."
+meme_stocks,ARKK,ARKK,no,"PROXY, same caveat as short_squeeze: ARKK holds none of the meme names. It is the approved stand-in for speculative appetite. The single-name tab is where GME/AMC are actually tracked."
+biotech_pharma,XBI,XBI|XLV|BBH,yes,
+rates_bonds,,,yes,"REMOVED from the tradeable universe (desk instruction 2026-08-04: ""remove bonds TLT and real estate"") - still tracked in the data; refill the etf cell to reinstate."
+real_estate,,,yes,"REMOVED from the tradeable universe (desk instruction 2026-08-04: ""remove bonds TLT and real estate"") - still tracked in the data; refill the etf cell to reinstate."
+cloud_saas,IGV,IGV|IYW,yes,
+china_geopolitics,FXI,FXI|ASHR|KWEB|CQQQ|159915 CS|588000 CH,yes,"CORRECTED 2026-08-04 (desk: ""china geopolitics is not KWEB""). KWEB is the China INTERNET basket - a sector bet on Alibaba/Tencent/Meituan. Geopolitics (tariffs, export controls, Taiwan) moves BROAD China beta, so FXI (China large-cap) is the right anchor and ASHR (CSI 300 A-shares) the first fallback. KWEB stays in the chain as the third line."
+financials,XLF,XLF|KBE|KRE,yes,
+consumer_retail,XRT,XRT|XLY,yes,"XRT newly approved 2026-07 - retail-specific, replaces broad discretionary XLY."
+cybersecurity,CIBR,CIBR,yes,
+fintech_payments,XLF,XLF|IGV,yes,"XLF is correct since the 2023 GICS change moved V, MA and PYPL into Financials - this is no longer the banks-only proxy it once was."
+gaming_esports,SOCL,SOCL|IYW,yes,natural ETF is ESPO (SOCL is social media) - swap here if ESPO gets approved.
+travel_airlines,JETS,JETS,yes,
+housing_builders,ITB,ITB|XLB,yes,
+robotics_automation,XLI,XLI|IYW|ARKK,yes,PROXY: XLI is broad industrials. BOTZ/ROBO are the natural lines (not approved).
+space,ITA,ITA,yes,"PROXY: ITA is US Aerospace & DEFENSE - the pure-play space names (RKLB, ASTS, LUNR) are not meaningful holdings. ARKX is the natural line if it is ever approved. The single-name tab carries RKLB and ASTS directly."
+quantum_computing,IYW,IYW|QQQ,yes,IYW is a broad-tech proxy; QTUM is the natural line (not approved).
+weight_loss_glp1,XLV,XLV|XBI,yes,PROXY: XLV is broad healthcare. LLY is a top-5 holding so the theme is partly represented; NVO is not (non-US). No GLP-1 line is approved.
+solar,LIT,LIT|XLU,yes,"natural ETF is TAN (LIT is lithium/battery, holds no solar names) - swap here if TAN gets approved."
+agriculture_food,MOO,MOO|XLP|XLB,yes,MOO newly approved 2026-07 - replaces staples proxy XLP.
+shipping_logistics,IYT,IYT,yes,
+utilities_power,XLU,XLU,yes,
+media_streaming,XLC,XLC|SOCL,yes,
+infrastructure,XLI,XLI|XLB,yes,
+japan,1622 JT,1622 JT,no,"DELIBERATELY narrow: 1622 JT is TOPIX-17 Autos & Transport Equip, the approved Japan line - not broad Japan (EWJ/1306 JT would be)."
+crypto,,,yes,"tracked, no approved instrument - fill etf to enable (e.g. IBIT if approved)"
+cannabis,,,yes,"tracked, no approved instrument"
+small_caps,,,yes,"tracked, no approved instrument"

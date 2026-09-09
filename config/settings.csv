@@ -1,0 +1,12 @@
+key,value,description
+app_title,RetailRadar,Name shown in the dashboard masthead and sidebar.
+app_tagline,"A real-time read on where retail attention is building, and where it is ending.",One-line description under the title.
+app_credit,,Optional credit line under the tagline. Leave empty to show none.
+show_pipeline_controls,false,true shows the fetch/price/rebuild buttons in the sidebar. Keep false on a hosted copy: those buttons spend API credit. Environment variable RETAILAPOLLO_CONTROLS=1 overrides to true.
+price_provider,auto,"Daily-close source: auto (Bloomberg if a Terminal is reachable, else yfinance), bloomberg (falls back to yfinance on failure), or yfinance."
+single_name_top_n,25,How many single names the detector tracks: the most-mentioned priced tickers over the trailing window.
+single_name_window_days,365,"Trailing window, in days, used to rank single names for inclusion."
+bot_screen_enabled,true,Screen posts for automated/duplicate content before aggregation.
+bot_screen_threshold,0.6,Posts with bot_score at or above this value are excluded from the aggregates (kept in the raw store).
+bot_screen_duplicate_jaccard,0.85,MinHash Jaccard similarity above which two posts count as near-duplicates.
+bot_screen_burst_posts_per_day,12,An author posting at least this many times in one day is flagged as a burst poster.

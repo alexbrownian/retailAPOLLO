@@ -1,7 +1,11 @@
-"""
-Load a US-listed equity ticker universe (letters only, length 1–5).
+"""US-listed ticker universe from the Nasdaq Trader symbol directories.
 
-Uses Nasdaq Trader symbol directory files (cached on disk). See:
+``load_us_ticker_universe()`` returns the set of valid symbols (letters
+only, length 1-5) from nasdaqlisted.txt and otherlisted.txt, cached on
+disk under a caller-supplied directory and re-downloaded when stale, plus
+a hand-curated supplement of delisted retail favourites so their history
+keeps counting. ``load_etf_symbols()`` reads the ETF flag from the same
+cached files. File format reference:
 https://www.nasdaqtrader.com/trader.aspx?id=symboldirdefinitions
 """
 
@@ -22,18 +26,18 @@ OTHER_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
 _SYMBOL_OK = re.compile(r"^[A-Z]{1,5}$")
 
 # ---------------------------------------------------------------------------
-# SURVIVORSHIP FIX: the Nasdaq Trader files list TODAY'S symbols, so tickers
-# that were delisted (bankruptcy, buyout, deregistration) vanish from the
-# universe - and their historical mentions silently stop counting. That
-# flatters any backtest: the casualties are exactly the names retail piled
-# into before they died. This hand-curated supplement re-adds known dead
-# retail favourites so their history counts again. Extend it whenever a
-# name you KNOW was loud on Reddit fails to appear in notebook 02.
-# Proper long-term fix: a point-in-time universe (archived nasdaqlisted.txt
-# snapshots or a Bloomberg/CRSP export) - see README live-data checklist.
+# Survivorship supplement. The Nasdaq Trader files list today's symbols,
+# so tickers that were delisted (bankruptcy, buyout, deregistration)
+# vanish from the universe and their historical mentions silently stop
+# counting. That flatters any backtest: the casualties are exactly the
+# names retail piled into before they died. This hand-curated supplement
+# re-adds known dead retail favourites so their history counts again.
+# Extend it whenever a name known to have been loud on Reddit is missing
+# from the mention counts. The complete fix is a point-in-time universe
+# (archived nasdaqlisted.txt snapshots or a Bloomberg/CRSP export).
 # ---------------------------------------------------------------------------
 DELISTED_TICKERS: frozenset[str] = frozenset({
-    "BBBY",  # Bed Bath & Beyond - bankrupt 2023, THE meme casualty
+    "BBBY",  # Bed Bath & Beyond - bankrupt 2023
     "WISH",  # ContextLogic - delisted 2024
     "EXPR",  # Express - bankrupt 2024
     "NAKD",  # Naked Brand - merged into CENN 2021
@@ -51,13 +55,15 @@ DELISTED_TICKERS: frozenset[str] = frozenset({
 
 
 def _fetch_text(url: str, timeout: int = 120) -> str:
+    """Downloads one symbol directory file as text."""
     r = requests.get(url, timeout=timeout)
     r.raise_for_status()
     return r.text
 
 
 def _parse_nasdaq_listed(text: str) -> set[str]:
-    """Symbol|...|Test Issue|... — skip Test Issue == Y."""
+    """Parses nasdaqlisted.txt (Symbol|...|Test Issue|...), skipping test
+    issues and symbols that are not 1-5 letters."""
     out: set[str] = set()
     for line in text.splitlines():
         if not line or line.startswith("Symbol|"):
@@ -77,7 +83,8 @@ def _parse_nasdaq_listed(text: str) -> set[str]:
 
 
 def _parse_other_listed(text: str) -> set[str]:
-    """ACT Symbol|...|Test Issue|... — skip Test Issue == Y."""
+    """Parses otherlisted.txt (ACT Symbol|...|Test Issue|...), skipping
+    test issues and symbols that are not 1-5 letters."""
     out: set[str] = set()
     for line in text.splitlines():
         if not line or line.startswith("ACT Symbol|"):
@@ -102,12 +109,25 @@ def load_us_ticker_universe(
     max_cache_age_days: float = 7.0,
     force_refresh: bool = False,
 ) -> set[str]:
-    """
-    Return uppercase tickers from nasdaqlisted + otherlisted, excluding test issues.
+    """Returns the uppercase ticker universe.
 
-    Caches raw .txt files under cache_dir. Re-downloads if missing or older than
-    max_cache_age_days (unless force_refresh is False and you want always refresh—
-    use force_refresh=True to ignore age).
+    Combines nasdaqlisted + otherlisted (excluding test issues) with the
+    DELISTED_TICKERS supplement. The raw .txt files are cached under
+    cache_dir and re-downloaded when missing or older than
+    max_cache_age_days.
+
+    Args:
+        cache_dir: Directory for the cached symbol files; created if
+            needed.
+        max_cache_age_days: Cache age beyond which the files are
+            re-downloaded.
+        force_refresh: Re-download regardless of age.
+
+    Returns:
+        Set of uppercase symbols.
+
+    Raises:
+        requests.HTTPError: If a download is needed and fails.
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
     paths = {
@@ -131,7 +151,7 @@ def load_us_ticker_universe(
 
     nasdaq = _parse_nasdaq_listed((cache_dir / "nasdaqlisted.txt").read_text(encoding="utf-8"))
     other = _parse_other_listed((cache_dir / "otherlisted.txt").read_text(encoding="utf-8"))
-    merged = nasdaq | other | DELISTED_TICKERS   # survivorship supplement
+    merged = nasdaq | other | DELISTED_TICKERS   # Survivorship supplement.
     logger.info(
         "Ticker universe: %s unique symbols (nasdaqlisted %s, otherlisted %s, "
         "delisted supplement %s)",
@@ -144,19 +164,23 @@ def load_us_ticker_universe(
 
 
 # ---------------------------------------------------------------------------
-# ETF vs single name.  Both Nasdaq files carry an ETF column ('Y'/'N'), so
-# the distinction is available for free from files this project already
-# caches - no new dependency, no hand list to maintain.
-#
-# Rationale: the euphoria single-name detector previously ranked on
-# mentions alone, which put SPY, QQQ, VXUS and SCHD into a tab whose whole
-# premise is single names; their mentions are real signal and stay in the
-# counts, they simply are not single names.
+# ETF vs single name. Both Nasdaq files carry an ETF column ('Y'/'N'), so
+# the distinction is available from files this project already caches:
+# no new dependency, no hand list to maintain. The euphoria single-name
+# universe uses it to keep SPY, QQQ, VXUS and SCHD out of a ranking whose
+# premise is single names; their mentions stay in the counts, they simply
+# are not single names.
 # ---------------------------------------------------------------------------
 def load_etf_symbols(cache_dir: Path) -> set[str]:
-    """Symbols flagged as ETFs by the Nasdaq symbol directories. Returns an
-    empty set if the cached files are missing, so every caller degrades to
-    "we cannot tell" rather than to a wrong answer."""
+    """Returns the symbols flagged as ETFs by the Nasdaq symbol directories.
+
+    Returns an empty set if the cached files are missing or have an
+    unexpected layout, so every caller degrades to "cannot tell" rather
+    than to a wrong answer.
+
+    Args:
+        cache_dir: Directory holding the cached symbol files.
+    """
     out: set[str] = set()
     for fname, sym_col in (("nasdaqlisted.txt", "Symbol"),
                            ("otherlisted.txt", "ACT Symbol")):
@@ -170,11 +194,11 @@ def load_etf_symbols(cache_dir: Path) -> set[str]:
         try:
             sym_i, etf_i = head.index(sym_col), head.index("ETF")
         except ValueError:
-            continue                     # unexpected layout - skip, never guess
+            continue                     # Unexpected layout: skip, never guess.
         for line in lines[1:]:
             parts = line.split("|")
             if len(parts) <= max(sym_i, etf_i):
-                continue                 # the trailing "File Creation Time" row
+                continue                 # The trailing "File Creation Time" row.
             if parts[etf_i].strip().upper() == "Y":
                 sym = parts[sym_i].strip().upper()
                 if sym:

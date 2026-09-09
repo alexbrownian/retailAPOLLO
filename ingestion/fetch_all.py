@@ -1,48 +1,64 @@
-# fetch_all.py
-# ============
-# The single entry point for all live API calls - now with the three source
-# fetchers running IN PARALLEL (they are independent network jobs, so there
-# is no reason to wait for Reddit before starting X and StockTwits; a full
-# fetch that used to take fetchers' summed time now takes the slowest one's).
-#
-#   TESTING MODE   python ingestion/fetch_all.py --test
-#       Makes exactly ONE FetchLayer call, prints what came back, writes
-#       nothing. Verifies the key works. Pick the endpoint with --source:
-#           --test                 (Reddit: r/wallstreetbets newest 5)
-#           --test --source x      (X: newest tweets for a few cashtags)
-#
-#   NORMAL MODE    python ingestion/fetch_all.py
-#       1. Checks .env - a source with its key filled is CALLED; a source
-#          with an empty key is SKIPPED (no request sent).
-#       2. Runs every enabled fetcher CONCURRENTLY (each writes raw files;
-#          they touch disjoint folders, so parallelism is safe).
-#       3. Appends the new posts - destination picked automatically:
-#            * external machine (posts.parquet exists) -> merge_live.py
-#              appends the raw posts into posts.parquet (first seen wins)
-#            * internal machine (no posts.parquet, or --abstracted) ->
-#              append_live_abstracted.py folds them into ABSTRACTED_DATA
-#              as text-free aggregates
-#          Skip the append entirely with --no-merge (update_data.py does -
-#          it owns the append step itself).
-#
-#   Other flags:
-#       --check       print the .env key check only, call nothing
-#       --no-merge    NORMAL mode but stop after writing raw (no append)
-#       --abstracted  force the ABSTRACTED_DATA append (internal-machine path)
-#       --serial      run the fetchers one after another (debugging - the
-#                     interleaved parallel output can be hard to read)
-#
-# Sources and their keys (.env at the project root):
-#   StockTwits : no key needed          - always called
-#   Reddit     : Arctic Shift public API - no key needed (FetchLayer is the
-#                manual fallback in fetch_reddit_live.py)
-#   X          : FETCHLAYER_KEY         (or official X_BEARER_TOKEN)
-#
-# WHY SUBPROCESSES (not threads calling functions directly): each fetcher is
-# also a standalone script with its own CLI, retries and rate-limit logic.
-# Running them as subprocesses keeps that independence (one crashing can
-# never take the others down), gives each a hard timeout, and lets the
-# pipeline show each fetcher's exit status separately.
+"""Entry point for every live API call: parallel source fetch, then append.
+
+The three source fetchers (StockTwits, Reddit via Arctic Shift, X) and the
+Reddit comments fetcher are independent network jobs, so they run
+concurrently; a full fetch takes as long as the slowest fetcher rather than
+the sum of all of them.
+
+Testing mode::
+
+    python ingestion/fetch_all.py --test              # Reddit: r/wallstreetbets newest 5
+    python ingestion/fetch_all.py --test --source x   # X: newest tweets for a few cashtags
+
+Makes exactly one FetchLayer call, prints what came back and writes nothing.
+This verifies that the key works.
+
+Normal mode::
+
+    python ingestion/fetch_all.py
+
+1. Reads ``.env``: a source with its key filled is called; a source with an
+   empty key is skipped (no request is sent).
+2. Runs every enabled fetcher concurrently. Each writes raw files into its
+   own folder, so the fetchers never touch the same files.
+3. Appends the new posts. The destination is picked automatically:
+
+   * full mode (``posts.parquet`` exists): ``merge_live.py`` appends the raw
+     posts into ``posts.parquet`` (first seen wins);
+   * aggregates mode (no ``posts.parquet``, or ``--abstracted``):
+     ``append_live_abstracted.py`` folds them into ``ABSTRACTED_DATA`` as
+     text-free aggregates.
+
+   ``--no-merge`` skips the append entirely; ``update_data.py`` passes it
+   because it owns the append step itself.
+
+Other flags:
+
+``--check``
+    Print the ``.env`` key check only; call nothing.
+``--no-merge``
+    Normal mode, but stop after writing raw files (no append).
+``--abstracted``
+    Force the ``ABSTRACTED_DATA`` append (the aggregates-mode path).
+``--serial``
+    Run the fetchers one after another. Useful for debugging, because the
+    interleaved parallel output can be hard to read.
+
+Sources and their keys (``.env`` at the project root):
+
+=========== ============================================================
+StockTwits  no key needed; always called
+Reddit      Arctic Shift public API, no key needed (FetchLayer is the
+            manual fallback in ``fetch_reddit_live.py``)
+X           ``FETCHLAYER_KEY`` (or the official ``X_BEARER_TOKEN``)
+=========== ============================================================
+
+Each fetcher runs as a subprocess rather than as a function called from a
+thread: every fetcher is also a standalone script with its own CLI, retries
+and rate-limit logic. Subprocesses keep that independence (one crashing can
+never take the others down), give each fetcher a hard timeout, and let the
+pipeline report each fetcher's exit status separately.
+"""
 
 import argparse
 import concurrent.futures
@@ -59,7 +75,12 @@ from src.config import FETCH_TIMEOUT_S  # noqa: E402
 
 
 def read_env():
-    """Read .env directly (no dependency). Values are never printed."""
+    """Read ``.env`` at the project root without any third-party dependency.
+
+    Returns:
+        Dict mapping each key name to its raw value. Values are never
+        printed by this module.
+    """
     keys = {}
     env_path = os.path.join(PROJECT_ROOT, ".env")
     if os.path.exists(env_path):
@@ -72,10 +93,16 @@ def read_env():
 
 
 def fetch_plan():
-    """THE CHECK. Returns [(source, will_call, reason, script_args)].
+    """Decide which sources will be called this run.
 
-    Only sources whose credentials exist are called - a fetcher is never
-    started just to fail on a missing key."""
+    Only sources whose credentials exist are called; a fetcher is never
+    started just to fail on a missing key.
+
+    Returns:
+        List of ``(source, will_call, reason, script_args)`` tuples, where
+        ``script_args`` is the fetcher script name followed by its fixed
+        arguments.
+    """
     keys = read_env()
 
     def have(*names):                       # is ANY of these keys filled?
@@ -94,10 +121,10 @@ def fetch_plan():
         # fetch_reddit_live.py remains available as a manual fallback.
         ("Reddit", True, "Arctic Shift public API - no key needed",
          ["fetch_reddit_arctic.py"]),
-        # Reddit COMMENTS feed the influence tracker (live-first;
-        # decision July 2026): watermarked like the post fetcher, so only
-        # the first run pays for the lookback window. Runs in parallel
-        # with the other three - it touches its own raw folder.
+        # Reddit COMMENTS feed the influence tracker (live-first):
+        # watermarked like the post fetcher, so only the first run pays
+        # for the lookback window. Runs in parallel with the other three -
+        # it touches its own raw folder.
         ("Reddit comments", True,
          "Arctic Shift public API - influence tracker source",
          ["fetch_reddit_comments.py"]),
@@ -106,8 +133,23 @@ def fetch_plan():
 
 
 def run_script(script_args, extra=None, timeout=None):
-    """Run one fetcher to completion, capturing its output so parallel
-    fetchers don't interleave lines. Returns (exit_code, captured_output)."""
+    """Run one fetcher subprocess to completion.
+
+    Output is captured rather than streamed so that parallel fetchers never
+    interleave lines.
+
+    Args:
+        script_args: Fetcher script name (relative to this directory)
+            followed by its fixed arguments.
+        extra: Additional command-line arguments appended after
+            ``script_args``.
+        timeout: Hard wall-clock limit in seconds; the process is killed
+            when it is exceeded.
+
+    Returns:
+        Tuple ``(exit_code, captured_output)``. A timeout yields exit code
+        124 and whatever stdout had been produced so far.
+    """
     cmd = [sys.executable, os.path.join(THIS_DIR, script_args[0]),
            *script_args[1:], *(extra or [])]
     try:
@@ -121,7 +163,14 @@ def run_script(script_args, extra=None, timeout=None):
 
 
 def run_test(source):
-    """TESTING MODE: one FetchLayer call, prints output, writes nothing."""
+    """Testing mode: make one FetchLayer call, print the output, write nothing.
+
+    Args:
+        source: ``"reddit"`` or ``"x"``; selects which endpoint is hit.
+
+    Returns:
+        The fetcher subprocess's exit code.
+    """
     print("=" * 60)
     print(f"TESTING MODE - one FetchLayer call ({source}), nothing is written")
     print("=" * 60)
@@ -132,6 +181,12 @@ def run_test(source):
 
 
 def main():
+    """Parse arguments and run testing mode or the normal fetch-and-append.
+
+    Returns:
+        ``0`` when every fetcher and the append step succeeded, otherwise
+        ``1``.
+    """
     p = argparse.ArgumentParser(
         description="Live API calls: --test (1 call) or normal (parallel fetch + append)")
     p.add_argument("--test", action="store_true",
@@ -145,22 +200,19 @@ def main():
     p.add_argument("--abstracted", action="store_true",
                    help="fold new posts into ABSTRACTED_DATA (text-free "
                         "aggregates) instead of posts.parquet - the "
-                        "internal-machine path")
+                        "aggregates-mode path")
     p.add_argument("--serial", action="store_true",
                    help="run fetchers one at a time (easier-to-read output)")
     p.add_argument("--skip-comments", action="store_true",
                    help="skip the Reddit COMMENTS fetcher (the influence "
-                        "tracker source). Superseded default: the previous "
-                        "decision was to leave comments OUT of the daily run "
-                        "because they are the slow species (10-50x post "
-                        "volume at 1s/page). The budgeted scheme turned "
-                        "them back ON by default - an influence board is "
-                        "only current if the comments behind it are - and "
-                        "solved the runtime instead, by BUDGETING the crawl "
-                        "against the pipeline's ~10-minute ceiling "
-                        "(--comment-pages). This flag remains the way to opt "
-                        "one run out; update_comments.py is the unbudgeted "
-                        "catch-up runner")
+                        "tracker source). Comments run by default - an "
+                        "influence board is only current if the comments "
+                        "behind it are - and their runtime is kept in check "
+                        "by BUDGETING the crawl against the pipeline's "
+                        "~10-minute ceiling (--comment-pages) rather than "
+                        "by leaving them out. This flag opts one run out; "
+                        "update_comments.py is the unbudgeted catch-up "
+                        "runner")
     p.add_argument("--lookback-days", type=int, default=7,
                    help="how far back the fetch reaches (top posts of the "
                         "last N days); overlap never duplicates")
@@ -192,10 +244,10 @@ def main():
         print("\n--check: no calls made. Run without --check to fetch.")
         return 0
 
-    # the two knobs travel to every fetcher that understands them
-    # (the comments fetcher deliberately does NOT inherit the post lookback -
-    # comments are ~10x volume, and its own window is DERIVED from this
-    # machine's measured run cadence rather than typed in)
+    # The two knobs travel to every fetcher that understands them. The
+    # comments fetcher deliberately does NOT inherit the post lookback:
+    # comments are ~10x volume, and its own window is derived from the
+    # measured run cadence of this copy rather than typed in.
     knobs = {"fetch_reddit_arctic.py": ["--lookback-days", str(args.lookback_days)],
              "fetch_reddit_live.py": ["--lookback-days", str(args.lookback_days),
                                       "--max-credits", str(args.max_credits)],
@@ -279,9 +331,9 @@ def main():
 
     # ---- APPEND the fresh raw ------------------------------------------
     # Two possible destinations, picked automatically:
-    #   * posts.parquet   (external machine - the raw store exists)
+    #   * posts.parquet   (full mode - the raw store exists)
     #       -> ingestion/merge_live.py
-    #   * ABSTRACTED_DATA (internal machine - no raw store allowed;
+    #   * ABSTRACTED_DATA (aggregates mode - no raw store is kept;
     #       --abstracted forces this, and it is also chosen automatically
     #       when posts.parquet is absent)
     #       -> ingestion/append_live_abstracted.py
@@ -295,7 +347,7 @@ def main():
         print(f"--no-merge: raw written, {target} NOT touched. "
               f"To append later:  python {later}")
     elif use_abstracted:
-        why = "--abstracted" if args.abstracted else "no posts.parquet found (internal machine)"
+        why = "--abstracted" if args.abstracted else "no posts.parquet found (aggregates mode)"
         print(f"\n--- APPEND: folding new posts into ABSTRACTED_DATA ({why}) ---")
         rc = subprocess.run(
             [sys.executable, os.path.join(THIS_DIR, "append_live_abstracted.py")],

@@ -1,30 +1,28 @@
-"""
-ai_keyword_audit.py — the LLM proposes keyword-map maintenance;
-a human approves it.  Nothing is ever auto-applied.
-================================================================
+"""LLM-proposed keyword-map maintenance, applied only after human approval.
 
-The theme->keyword map (config/theme_keywords.csv) rots quietly: new
-slang appears ("neocloud" did), companies get renamed, a keyword drifts
-to the wrong theme.  This tool has the LLM audit the map against what
-the crowd ACTUALLY says, and writes its proposals as a REVIEWED DIFF:
+The theme-to-keyword map (``config/theme_keywords.csv``) rots quietly:
+new slang appears, companies get renamed, a keyword drifts to the wrong
+theme. This tool has the LLM audit the map against what the crowd
+actually says and writes its proposals as a reviewable diff::
 
-    config/keyword_suggestions_<date>.csv
+    data/reference/keyword_suggestions/keyword_suggestions_<date>.csv
         action (add|move|remove), theme, keyword, reason, approved
 
-The `approved` column ships empty.  You review the file (Excel is
-fine), put YES on the rows you accept, then apply exactly those rows:
+The ``approved`` column ships empty. Review the file (a spreadsheet is
+fine), put ``YES`` on the rows you accept, then apply exactly those
+rows::
 
     python tools/ai_keyword_audit.py            # audit -> suggestions csv
-    python tools/ai_keyword_audit.py --apply config/keyword_suggestions_<date>.csv (dated example; not present)
+    python tools/ai_keyword_audit.py --apply data/reference/keyword_suggestions/keyword_suggestions_<date>.csv
 
-The apply step edits config/theme_keywords.csv (adds/moves/removes),
-prints the diff it made, and never touches a row you did not approve —
-the config stays the single human-owned source of truth, the model is
-a research assistant with no write access to it.
+The apply step edits ``config/theme_keywords.csv`` (adds, moves,
+removes), prints the diff it made, and never touches a row that was not
+approved. The config stays the single human-owned source of truth; the
+model is a research assistant with no write access to it.
 
-WHAT THE MODEL SEES: the current map, the top UNMAPPED high-frequency
-terms from the crowd's own text (daily_term_counts vs the map), and the
-theme list.  Cadence: after a FULL update, weekly is plenty.
+The model sees the current map, the top unmapped high-frequency terms
+from the crowd's own text (``daily_term_counts`` against the map), and
+the theme list. After a full update, a weekly audit is plenty.
 """
 
 from __future__ import annotations
@@ -49,7 +47,15 @@ KW_CSV = os.path.join(ROOT, "config", "theme_keywords.csv")
 
 
 def _unmapped_terms(top_n: int = 80) -> list[dict]:
-    """High-frequency crowd terms (trailing 60d) not in any keyword list."""
+    """Return high-frequency crowd terms (trailing 60d) not in any keyword list.
+
+    Args:
+        top_n: Maximum number of terms to return, by mention volume.
+
+    Returns:
+        List of ``{"term", "mentions_60d"}`` dicts; empty when the term
+        counts file is absent.
+    """
     p = os.path.join(PROCESSED_DIR, "daily_term_counts.parquet")
     if not os.path.exists(p):
         return []
@@ -83,6 +89,14 @@ _SYSTEM = (
 
 
 def audit() -> str:
+    """Ask the LLM to audit the map and write the suggestions CSV.
+
+    Returns:
+        Path of the suggestions file written.
+
+    Raises:
+        SystemExit: When the LLM gateway is unavailable.
+    """
     if not ai.available():
         raise SystemExit(f"[SKIP] LLM unavailable: "
                          f"{ai.explain_unavailable()}")
@@ -105,8 +119,9 @@ def audit() -> str:
           "errors.")
     res = ai.chat(prompt, system=_SYSTEM, want_json=True,
                   max_tokens=3200)
-    out_path = os.path.join(
-        ROOT, "config", f"keyword_suggestions_{date.today()}.csv")
+    out_dir = os.path.join(ROOT, "data", "reference", "keyword_suggestions")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f"keyword_suggestions_{date.today()}.csv")
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["action", "theme", "keyword", "reason", "approved"])
@@ -131,6 +146,15 @@ def audit() -> str:
 
 
 def apply(path: str) -> None:
+    """Apply the approved rows of a suggestions CSV to the keyword map.
+
+    Args:
+        path: A ``keyword_suggestions_<date>.csv`` with ``approved`` set
+            to ``YES`` (or ``Y``/``TRUE``/``1``) on the rows to apply.
+
+    Raises:
+        SystemExit: When no row is approved.
+    """
     rows = list(csv.DictReader(open(path, newline="",
                                     encoding="utf-8-sig")))
     approved = [r for r in rows

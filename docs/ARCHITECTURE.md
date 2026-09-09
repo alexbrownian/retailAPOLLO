@@ -1,186 +1,207 @@
-# ARCHITECTURE — how the system is put together, and what may never change
+# Architecture
 
-*This file holds the SHAPE of the system and its invariants. It is the
-home for "why is it built this way". It deliberately does not repeat
-what lives elsewhere — see the documentation map at the end.*
+How retailAPOLLO is put together, and which properties may never change.
+This page holds the shape of the system and its invariants. Operating
+commands are in `RUNBOOK.md`; file formats in `docs/DATA.md`; parameter
+rationale in `reference/KEY_PARAMETERS.md`.
 
-> **Note, 2026-08-04.** Five shipped files (`README.md`, `dashboard.py`,
-> `src/pipeline_budget.py`, `tools/verify_deps.py`,
-> `POST_INTERN_HANDOVER.md`) cited `docs/ARCHITECTURE.md` and its
-> section numbers while the file itself was missing from the repository.
-> Rather than strip the references, the file was written and the cited
-> sections (3.1b, 3.1b-i, 6.1) created to hold what those call sites
-> promise. Same remedy the docs/RESEARCH_RECORD.md applied to its own broken
-> pointer, and recorded for the same reason.
-
----
-
-## 1. The shape of one run
+## 1. One run
 
 `python update_data.py` is the whole system. Everything else — the
-dashboard, the notebooks — reads what it leaves on disk.
+dashboard, the tools, the optional research notebooks — reads what it
+leaves on disk.
 
 ```
- 1. FETCH      three sources in parallel (Reddit, StockTwits, Reddit live),
-               30-second heartbeat so a rate-limited pull never looks frozen
- 2. STORE      new posts folded into posts.parquet (external machine only)
- 3. REBUILD    raw text -> the small aggregate stores everything else reads
- 4. COVERAGE   is the window even readable? reported, never silently patched
- 5. ANALYSE    conviction -> signals -> euphoria + onset -> influence board
- 5a. PRICES    Bloomberg pull for the approved instrument list
- 5b. AI LAYER  the local scanner, then the gateway consumers (section 4)
- 6. SAFETY     verify_abstracted: nothing with text reaches a commit
- 7. SUMMARY    the run's key facts in one glance
+ 1. FETCH      every enabled source in parallel (Reddit posts and comments,
+               StockTwits, X); a heartbeat keeps a rate-limited pull visible
+ 2. SCREEN     ingestion/bot_screen.py drops automated and duplicated posts
+ 3. STORE      full mode: append to posts.parquet
+               aggregates mode: aggregate the new posts and fold text-free
+               deltas into ABSTRACTED_DATA/
+ 4. COVERAGE   is the window readable? reported, never silently patched
+ 5. ANALYSE    features -> frozen model -> per-instrument state; influence board
+ 5a. PRICES    Bloomberg or Yahoo Finance for the approved instruments
+ 5b. AI LAYER  optional: agentic scan, poll, pulse (section 5)
+ 6. SAFETY     verify_abstracted: nothing with text can be committed
+ 7. PUBLISH    stage DASHBOARD_DATA/ for a hosted copy
+ 8. SUMMARY    the run's key facts in one glance
 ```
 
-**Where the speed came from** (the claim README makes). The old chain
-re-derived nine years of signals by re-executing notebooks. The
-re-engineering made three changes: every analysis became an importable
-module operating on wide daily matrices instead of row loops; the
-expensive text pass (keyword and ticker extraction) happens ONCE at
-ingestion and is never repeated downstream; and the stores are small
-typed parquet rather than re-parsed CSV. A full recompute is seconds
-because nothing recomputes text.
+A full recompute takes seconds because nothing downstream re-reads text:
+keyword and ticker extraction happens once, at ingestion, and every
+analysis is an importable module operating on wide daily matrices stored
+as typed parquet.
 
-## 2. Two machines, one contract
+## 2. Two storage modes, one contract
 
-| | External machine | Desk machine |
+| | `full` mode | `aggregates` mode |
 |---|---|---|
-| Holds | `posts.parquet`, the raw `.jsonl.zst` archives | the committed aggregates, prices |
-| Can reach | the public internet, the fetchers | Bloomberg, the VPN, the Apollo LLM gateway |
-| Runs | fetch, store, rebuild, the scanners | everything, plus the LLM consumers |
+| Holds | `data/processed/posts.parquet` and the raw `.jsonl.zst` archives | the committed aggregates only |
+| Can | rebuild every aggregate from text; run `--full` | fold live posts incrementally |
+| Produces | the same aggregate tables | the same aggregate tables |
 
-The contract between them is `ABSTRACTED_DATA/`: **counts only, never
-text**. Section 5 states that rule; `verify_abstracted` enforces it at
-every run.
+The contract between them is `ABSTRACTED_DATA/`: **counts and
+sentiment only, never text, never identities**. `FORBIDDEN_COLS` in
+`src/config.py` names the columns that may never appear in a committed
+frame, and `verify_abstracted` in `update_data.py` enforces it on every
+run. `tools/publish_dashboard.py` applies the same rule to the display
+bundle.
 
-## 3. The fetch budget
+## 3. Ingestion
 
-### 3.1b Why a budget exists at all
+### 3.1 Sources and the forum panel
 
-The desk's instruction is a cadence, not a size: run it about twice a
-week, and a full refresh must stay under roughly ten minutes.
-`PIPELINE_BUDGET_S = 600` is that sentence expressed as a number the
-code can enforce. Everything in `src/pipeline_budget.py` exists to spend
-that ceiling well rather than to make the run smaller.
+`config/forums.csv` is the panel: one row per forum with an `enabled`
+flag. Every reader (`fetch_reddit_live.py`, `fetch_reddit_comments.py`,
+`fetch_reddit_arctic.py`, `tools/backfill_reddit.py`,
+`tools/fold_historical.py`) loads the panel through
+`src.settings.load_forums()`, so adding a forum is a one-row edit. A
+monthly review (`ingestion/discover_subreddits.py`) may append at most
+one forum per review, in the `exploration` tier, when enough referrals
+from the existing panel and a sampled ticker-mention rate justify it.
 
-### 3.1b-i Running short is a deferral, not data loss
+### 3.2 The fetch budget
 
-The crawl walks **newest-first**, and a subreddit's watermark advances
-only over ground a run FULLY covered. A subreddit that hits its cap
-keeps its old watermark, so the next run resumes exactly where this one
-stopped, and every deferral is printed. The pipeline never silently
-collects less than it claims.
+The design cadence is twice a week with a full refresh under roughly ten
+minutes; `PIPELINE_BUDGET_S = 600` is that constraint as a number the
+code can enforce. `src/pipeline_budget.py` allocates the ceiling across
+sources using two machine-local ledgers (`pipeline_stage_times.json`,
+`reddit_comments_cost.json`) that are git-ignored on purpose: they
+measure this machine, and committing them would plan one machine's run
+with another's numbers.
 
-The two ledgers behind this (`pipeline_stage_times.json`,
-`reddit_comments_cost.json`) are MACHINE-LOCAL and git-ignored on
-purpose: they measure how long each stage takes *on this machine*.
-Committing them would plan a laptop's run with a desktop's numbers.
+Running short is a deferral, not data loss. The crawl walks newest-first
+and a forum's watermark advances only over ground a run fully covered,
+so a forum that hits its cap resumes exactly where it stopped. Every
+deferral is printed. Nothing in the budget touches a signal: it decides
+how much a run fetches, never how anything is scored.
 
-**Nothing in this section touches a signal.** These numbers decide how
-much data a run FETCHES, never how anything is scored.
+### 3.3 The bot screen
 
-## 4. The AI layer — one gateway, several consumers
+`ingestion/bot_screen.py` scores every post in `[0, 1]` from five
+deterministic signals — near-duplicate text (MinHash LSH over word
+3-shingles), posting bursts, self-disclosed bots, low text diversity per
+author, and a deleted author — and both aggregation entry points drop
+posts at or above `bot_screen_threshold` before anything is counted.
+Excluded posts stay in the raw files and are recorded as seen, so the
+decision is reversible and never re-judged. The rate is printed on every
+run and stored in `data/reference/bot_screen_last.json`.
 
-`src/ai.py` is the ONLY file in the project that talks to a language
-model. Everything else asks it. Self-test: `python -m src.ai --selftest`
-(expect Paris).
+### 3.4 Dedup
 
-```
-                          src/ai.py
-              (Apollo gateway via dimsum_lite; VPN + JFrog,
-               so it only connects on the desk machine)
-                              |
-   +--------------+-----------+-----------+---------------+
-   |              |                       |               |
- ai_pulse.py   ai_poll.py       tools/ai_keyword_audit  notebook 10 (retired 2026-08-07; record frozen)
- the words     the poll          the map auditor        sentiment test
-```
+Aggregate merges are additive and carry no post ids, so the seen-id set
+(`data/reference/abstracted_seen_ids.parquet`, uncapped, written
+atomically) is the only guard against permanent double counting. It is
+snapshotted after every successful fold.
 
-One **scanner** feeds that layer and needs no gateway at all — it is
-plain regex over the archives, so it runs everywhere and always:
+## 4. Analytics
 
-* `src/agentic_watch.py` — posts about trading WITH an AI. Research
-  only; its record is notebook 09 (retired 2026-08-07, JSON frozen) and `daily_agentic_counts.parquet`,
-  deliberately not a dashboard page.
+### 4.1 Ground truth
 
-### 4.1 The rule that shapes every AI feature
+An episode is defined from price alone, before any crowd data is
+consulted: a run-up of at least `EUPHORIA_BOOM_MIN_*` over the trailing
+`EUPHORIA_BOOM_LOOKBACK_D` days into a local peak, followed by a
+drawdown of at least `EUPHORIA_CRASH_MIN_*` within
+`EUPHORIA_CRASH_WINDOW_D` days. ETFs and single names have different
+bars because their unconditional volatility differs. The full
+definition, the sweep that chose the bars and the resulting episode
+counts are in `reference/KEY_PARAMETERS.md`.
 
-**Numbers come from the stores; words come from the model.** The LLM is
-never asked to produce a statistic. It is handed an evidence pack of
-already-computed numbers, and that pack is saved beside the prose so any
-sentence can be audited against its inputs.
+### 4.2 Features and the model
 
-Two patterns implement it, and any future AI feature should copy one:
+Nine crowd features (attention level, one-month and two-week change,
+week-vs-month acceleration, hype ratio, attention convexity, bullishness
+level, bullishness persistence, mood inflection) and two price features
+(run-up, 21-day return) are computed as trailing windows only. The
+production model is a rank ensemble of a logistic regression and a
+monotone gradient-boosting classifier, one family for both heads
+(INCREASE EXPOSURE at episode starts, CUT EXPOSURE at tops), chosen by a
+walk-forward tournament under a rule stated before the numbers were
+computed. Each head's threshold is the score percentile that meets a
+false-alarm budget on the training years only.
 
-* **Evidence pack** (the pulse) — compute first, narrate second, store
-  both.
-* **Approve-then-apply** (the keyword auditor) — the model proposes into
-  a CSV with an empty `approved` column and CANNOT write to the config;
-  a human types YES and runs the apply step, which is the only writer.
+### 4.3 Walk-forward
 
-### 4.2 Degrade, never crash
+For each test year the model is fitted on strictly earlier years and
+scored blind; no number the dashboard quotes was computed on the year it
+is scored against. The record of that procedure —
+`data/processed/euphoria_desk_report.json` and the JSON files in
+`reference/research_record/` — is what the dashboard reads. It never
+recomputes a headline figure.
 
-Off the VPN, `available()` is False and every consumer returns a reason
-instead of raising. The pipeline logs it and moves on; the dashboard
-shows an honest banner and the last good output. An AI stage has never
-been allowed to fail a run.
+### 4.4 Frozen means frozen
 
-## 5. The text-free boundary
+A live run never re-selects: it does not choose a model, re-fit a
+threshold or re-run the walk-forward. Research decides once and the
+answer is stored. The reason is traceability rather than speed: a
+threshold re-fitted on every run cannot be reconstructed, and a
+threshold nobody can reconstruct cannot be defended. Research re-opens
+through two typed commands only (`analytics.run_analytics --research`,
+`update_data.py --full`) and automatically on year rollover or a
+missing record.
 
-Raw crowd text goes TO the model and INTO the scanners. What comes back
-and gets stored is counts and model-written paraphrases — no verbatim
-crowd text, no usernames. The local-only text files
-(`data/reference/agentic_samples.jsonl`,
-`nb10_sample_texts.jsonl`) are git-ignored and must stay that way.
+`tests/test_production_hygiene.py` pins the ground-truth constants; an
+edit to `src/config.py` fails the suite until the research record is
+re-run alongside it.
 
-`verify_abstracted` enforces the boundary at every update. It is not a
-lint; it is the reason the aggregates can be committed at all.
+## 5. The AI layer (optional)
 
-## 6. The signal contract
+`src/ai.py` is the only module that talks to a language model. Two
+providers sit behind one interface (an OpenAI-compatible gateway via
+`dimsum_lite`, or the Anthropic API); `AI_PROVIDER` selects and `auto`
+falls through. Consumers: `analytics/ai_pulse.py` (a written market
+read), `analytics/ai_poll.py` (a fixed question set), the keyword-map
+auditor, and the agentic-watch scanner (`src/agentic_watch.py`, plain
+regex, needs no model).
 
-### 6.1 Parameters are FROZEN
+Two rules shape every AI feature:
 
-Every knob lives in `src/config.py` with its evidence quoted beside it,
-and every value belongs to a class recorded in
-`docs/RESEARCH_RECORD.md`. The pipeline snapshots signals daily and
-never revises them: that forward record is the only true out-of-sample
-test this project has.
+* **Numbers come from the stores; words come from the model.** The model
+  is handed an evidence pack of already-computed numbers and the pack is
+  saved beside the prose, so any sentence can be audited against its
+  inputs.
+* **Approve-then-apply.** Where a model proposes a config change (the
+  keyword auditor), it writes to a CSV with an empty `approved` column
+  and cannot touch `config/`; a person approves and runs the apply step.
 
-A live run therefore **never re-selects**. It does not choose a model,
-re-fit a threshold, or re-run the walk-forward. Research decides once,
-in the notebooks, and the answer is frozen into a stored record. The
-reason is not speed — it is that re-fitting on every run makes the
-number on screen untraceable: nothing on disk would describe how today's
-threshold differs from yesterday's, and a threshold nobody can
-reconstruct cannot be defended.
+With no provider configured, `available()` is False and every consumer
+returns a reason instead of raising. An AI stage has never been allowed
+to fail a run.
 
-Two doors re-open research, both typed on purpose and never reached by
-drift: `python -m analytics.run_analytics --what phases --research`, and
-`python update_data.py --full` (a backfill rewrites the history the
-thresholds were chosen on, so scoring new history against old thresholds
-would be a silent lookahead).
+## 6. The dashboard
 
-### 6.2 The five invariants
+`dashboard.py` reads the stores and the frozen record and renders them.
+It has no mode selectors; the production configuration is fixed in code.
+Branding, the pipeline buttons and the bot-screen settings come from
+`config/settings.csv`; a git-ignored `config/settings.local.csv`
+overrides any key on one machine. A hosted copy renders
+`DASHBOARD_DATA/` and can neither fetch nor recompute.
+
+## 7. Configuration layers
+
+| Layer | Where | Who changes it | Effect |
+|---|---|---|---|
+| Universe and vocabulary | `config/*.csv` | any user, in a spreadsheet | next run |
+| Settings | `config/settings.csv` (+ `settings.local.csv`) | any user | next run or restart |
+| Frozen constants | `src/config.py` | a research pass | re-validation |
+| Credentials | `.env` | the machine's owner | next run |
+
+`tools/validate_config.py` checks every CSV and the references between
+them; preflight and the test suite run the same check.
+
+## 8. Invariants
 
 1. **Frozen means frozen.** Any change to scoring code or constants is a
-   RE-VALIDATION EVENT: re-run the research pass, compare the stored
-   record, re-execute notebooks 00-04 and the presentation pack (11). Nothing ships as live
-   flags unless it beats the incumbent under the pre-stated rule.
-   The single-state study (notebook 08, retired 2026-08-07 with its
-   record frozen) is the worked example of a change that WON the
-   display and LOST the flags — that division is by design.
-2. **Committed data is text-free.** Section 5. Never weaken it.
-3. **The dashboard shows conclusions; the notebooks are the record.**
-   Performance claims belong in notebooks with confidence intervals,
-   not on screens.
-4. **Every constant carries its provenance.** No unexplained numbers,
-   ever — `docs/RESEARCH_RECORD.md` has a row for each.
-5. **AI writes words, never numbers, and never edits config.** Section
-   4.1.
-
----
-
-*The map of which document holds what — one fact, one home — is in
-`README.md` under "Where everything is documented". It is kept there
-rather than here because the front door is where someone looks for it.*
+   re-validation event: re-run the research pass and compare the stored
+   record. Nothing ships as live flags unless it beats the current
+   record under the pre-stated rule.
+2. **Committed data is text-free.** Section 2. Never weaken it.
+3. **The dashboard shows conclusions; the record is the evidence.**
+   Performance claims live in `reference/research_record/` with their
+   confidence intervals, and the dashboard quotes them.
+4. **Every constant carries its provenance.** `reference/KEY_PARAMETERS.md`
+   has a row for each.
+5. **AI writes words, never numbers, and never edits config.** Section 5.
+6. **The pipeline never depends on `research/`.** The folder is
+   git-ignored and optional; a test fails if a shipped module imports
+   from it.

@@ -1,64 +1,55 @@
-# fold_historical.py
-# ==================
-# Fold HISTORICAL posts into ABSTRACTED_DATA on a machine that has no
-# posts.parquet - the missing piece for the 2023-2025 coverage gap.
-#
-#     python tools/fold_historical.py --arctic            # files already on disk
-#     python tools/fold_historical.py --dumps "data/raw/dumps/*_submissions.zst"
-#     python tools/fold_historical.py --arctic --dry-run  # count, write nothing
-#
-# WHY THIS EXISTS (desk bug report 2026-08-18)
-# --------------------------------------------
-# `tools/backfill_reddit.py` pulled 904,026 posts across 16 monthly chunks
-# (45.7 hours) and NOT ONE of them reached the aggregates. The reason is
-# not a bug in the backfill: it is that this machine is the INTERNAL one
-# (no posts.parquet), so the only fold-in path is
-# `ingestion/append_live_abstracted.py` - and that script keeps only
-# candidates dated >= LIVE_START, where LIVE_START is frozen at
-# (newest committed day + 1). Every backfilled 2023-2025 post is older
-# than LIVE_START, so it is dropped silently, by design. `update_data.py
-# --full` cannot rescue it either: it rebuilds from posts.parquet, which
-# only exists on the external machine, and its guard aborts rather than
-# revert committed months.
-#
-# That filter is CORRECT for live ingestion - it is what stops the daily
-# run re-folding the committed historical block and double-counting it.
-# This script is the deliberate, separate door for the opposite job:
-# adding history that was never there.
-#
-# WHAT IT DOES NOT CHANGE
-#   * LIVE_START is read, never written. The live path keeps its guard.
-#   * Text never lands on disk. Posts are streamed, aggregated in memory
-#     and only the daily COUNT/SENTIMENT rows are written - the same
-#     text-free boundary `append_live_abstracted.py` works under, and the
-#     reason this is safe to run on the committable store.
-#   * Counting rules are not reimplemented: aggregation goes through
-#     `abstracted_data.aggregate_posts`, the same function the live fold
-#     and the full rebuild use, so a folded month is indistinguishable
-#     from a month that was there all along.
-#
-# IDEMPOTENCY - READ THIS BEFORE RE-RUNNING
-# -----------------------------------------
-# `merge_into_abstracted` ADDS counts. Folding the same posts twice would
-# inflate them, and no downstream number would look obviously wrong. So
-# every (file, month) block that is folded is recorded in
-# data/reference/historical_fold_ledger.json, and a block already in the
-# ledger is skipped. A crash mid-file therefore costs only the months
-# that had not yet flushed, never a double count. `--force` overrides the
-# ledger and is exactly as dangerous as it sounds.
-#
-# WHERE TO GET THE FILES
-#   * ALREADY ON DISK: data/raw/RedditLive/*.jsonl.zst - what the backfill
-#     runner pulled. Use --arctic. Nothing to download.
-#   * TORRENT DUMPS: the per-subreddit monthly archives this project was
-#     originally built from - `<subreddit>_submissions.zst`, the naming
-#     documented in ingestion/finance_subreddits.txt. They are ordinary
-#     NDJSON inside long-window zstd; src.clean_data.read_json_lines
-#     already streams that format (max_window_size=2**31), so a dump can
-#     be dropped straight into data/raw/dumps/ and pointed at with
-#     --dumps. Submissions are what the historical block was built from;
-#     comment archives are accepted with --include-comments but change
-#     what a "post" means, so they are off by default.
+"""Fold historical posts into ``ABSTRACTED_DATA`` in aggregates mode.
+
+A copy without ``posts.parquet`` has only one fold-in path,
+``ingestion/append_live_abstracted.py``, and that script keeps only
+candidates dated on or after ``LIVE_START`` (frozen at the newest
+committed day + 1). Any backfilled post older than ``LIVE_START`` is
+dropped silently, by design. ``update_data.py --full`` cannot fold it in
+either: it rebuilds from ``posts.parquet``, which only exists in full
+mode, and its guard aborts rather than revert committed months.
+
+That filter is correct for live ingestion: it is what stops the daily run
+re-folding the committed historical block and double-counting it. This
+script is the deliberate, separate door for the opposite job, adding
+history that was never there::
+
+    python tools/fold_historical.py --arctic            # files already on disk
+    python tools/fold_historical.py --dumps "data/raw/dumps/*_submissions.zst"
+    python tools/fold_historical.py --arctic --dry-run  # count, write nothing
+
+What it does not change:
+
+* ``LIVE_START`` is read, never written. The live path keeps its guard.
+* Text never lands on disk. Posts are streamed, aggregated in memory and
+  only the daily count/sentiment rows are written; the same text-free
+  boundary ``append_live_abstracted.py`` works under, and the reason
+  this is safe to run on the committable store.
+* Counting rules are not reimplemented: aggregation goes through
+  ``abstracted_data.aggregate_posts``, the same function the live fold
+  and the full rebuild use, so a folded month is indistinguishable from
+  a month that was there all along.
+
+Idempotency: ``merge_into_abstracted`` adds counts. Folding the same
+posts twice would inflate them, and no downstream number would look
+obviously wrong. So every ``(file, month)`` block that is folded is
+recorded in ``data/reference/historical_fold_ledger.json``, and a
+complete block already in the ledger is skipped. A crash mid-file
+therefore costs only the months that had not yet flushed, never a double
+count. ``--force`` overrides the ledger and can double count.
+
+Input files:
+
+* Already on disk: ``data/raw/RedditLive/*.jsonl.zst``, what the backfill
+  runner pulled. Use ``--arctic``.
+* Archive dumps: per-subreddit monthly archives named
+  ``<subreddit>_submissions.zst`` (the naming documented in
+  ``config/forums.csv``). They are ordinary NDJSON inside long-window
+  zstd; ``src.clean_data.read_json_lines`` streams that format, so a dump
+  can be dropped into ``data/raw/dumps/`` and pointed at with
+  ``--dumps``. Submissions are what the historical block was built from;
+  comment archives are accepted with ``--include-comments`` but change
+  what a "post" means, so they are off by default.
+"""
 
 import argparse
 import glob
@@ -95,6 +86,7 @@ NEEDED = ["id", "date", "title", "selftext", "source"]
 
 # ---------------------------------------------------------------- ledger
 def load_ledger():
+    """Return the fold ledger, or an empty one when absent or unreadable."""
     if os.path.exists(LEDGER_PATH):
         try:
             return json.load(open(LEDGER_PATH, encoding="utf-8"))
@@ -104,6 +96,7 @@ def load_ledger():
 
 
 def save_ledger(led):
+    """Write the fold ledger atomically."""
     os.makedirs(os.path.dirname(LEDGER_PATH), exist_ok=True)
     tmp = LEDGER_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -112,9 +105,11 @@ def save_ledger(led):
 
 
 def live_start():
-    """The first day LIVE ingestion owns. Anything on or after it is the
-    live path's business and must not be folded here - that is the double
-    count this whole script exists to avoid."""
+    """Return ``LIVE_START`` from the live ledger, or ``None`` if unset.
+
+    Anything on or after it belongs to the live path and must not be
+    folded here; that is the double count this script exists to avoid.
+    """
     if os.path.exists(LIVE_META):
         try:
             ls = json.load(open(LIVE_META, encoding="utf-8")).get("live_start")
@@ -127,25 +122,37 @@ def live_start():
 
 # ------------------------------------------------------------ subreddits
 def allowed_subreddits():
-    """The 17 finance subreddits the committed history was built from -
-    folding anything else in would change what the counts MEAN, not just
-    how many there are."""
+    """Return the panel subreddits (lower-cased) from ``config/forums.csv``.
+
+    The committed history was built from this panel; folding anything
+    else in would change what the counts mean, not just how many there
+    are. Returns an empty set when the settings module cannot be loaded.
+    """
     try:
-        with open(config.SUBREDDITS_FILE, encoding="utf-8") as f:
-            return {ln.strip().lower() for ln in f
-                    if ln.strip() and not ln.startswith("#")}
-    except OSError:
+        from src.settings import load_forums
+        return {s.lower() for s in load_forums()}
+    except Exception:                                    # noqa: BLE001
         return set()
 
 
 # -------------------------------------------------------------- records
 def to_row(rec):
-    """One raw record -> the 5 columns the aggregator needs, or None.
+    """Reduce one raw record to the columns the aggregator needs.
 
-    Handles both shapes with the same code: a torrent SUBMISSION
-    (title + selftext) and a COMMENT (body). Timestamps arrive as unix
-    seconds in the dumps and as either seconds or ISO in the project's
-    own pulls, so both are accepted."""
+    Handles both shapes with the same code: a submission (title plus
+    selftext) and a comment (body). Timestamps arrive as unix seconds in
+    the dumps and as either seconds or ISO in the project's own pulls, so
+    both are accepted. Deleted/removed bodies are blanked because they
+    carry no signal and would dilute sentiment.
+
+    Args:
+        rec: One decoded JSON record.
+
+    Returns:
+        Dict with the ``NEEDED`` columns plus ``_sub`` (lower-cased
+        subreddit), or ``None`` when the record has no id, no parseable
+        date or no text.
+    """
     if not isinstance(rec, dict):
         return None
     rid = rec.get("id") or rec.get("name") or ""
@@ -178,7 +185,17 @@ def to_row(rec):
 
 # ----------------------------------------------------------------- fold
 def flush(buf, label, dry, verbose=True):
-    """Aggregate one (file, month) block and merge the deltas in."""
+    """Aggregate one ``(file, month)`` block and merge the deltas in.
+
+    Args:
+        buf: List of row dicts from ``to_row``.
+        label: ``"<file>:<YYYY-MM>"`` for progress output.
+        dry: Count only; write nothing.
+        verbose: Print one line per block folded.
+
+    Returns:
+        Number of unique posts in the block.
+    """
     df = pd.DataFrame(buf)[NEEDED]
     df = df.drop_duplicates(subset="id", keep="first")
     if dry:
@@ -192,8 +209,24 @@ def flush(buf, label, dry, verbose=True):
 
 
 def fold_file(path, led, args, subs, lo, hi):
-    """Stream one archive, month by month. Months already in the ledger
-    are skipped without being parsed into memory twice."""
+    """Stream one archive and fold it month by month.
+
+    Complete months already in the ledger are skipped without being held
+    in memory. Months are flushed once they reach ``args.chunk`` rows,
+    with the ledger written at the same moment, so an interrupted run
+    never leaves folded-but-unrecorded posts behind.
+
+    Args:
+        path: Archive to read.
+        led: The fold ledger (mutated and saved as blocks complete).
+        args: Parsed CLI arguments (``chunk``, ``dry_run``, ``force``).
+        subs: Allowed subreddits; empty means all.
+        lo: First day to fold (ISO).
+        hi: Last day to fold (ISO, inclusive).
+
+    Returns:
+        Number of posts kept from this file.
+    """
     base = os.path.basename(path)
     buf = defaultdict(list)
     kept = skipped_sub = skipped_win = 0
@@ -212,11 +245,10 @@ def fold_file(path, led, args, subs, lo, hi):
             continue
         key = f"{base}:{row['date'][:7]}"
         # A mid-file chunk flush records the block with partial=True.
-        # Skipping on presence alone therefore dropped every remaining
-        # record of that month IN THE SAME FILE - a 200k-post month at
-        # the default chunk size lost everything after the first flush,
-        # and the ledger then asserted the block was done. Only a
-        # COMPLETE block skips.
+        # Skipping on presence alone would drop every remaining record
+        # of that month in the same file after its first flush, while
+        # the ledger asserted the block was done. Only a COMPLETE block
+        # skips.
         _blk = led["blocks"].get(key)
         if _blk is not None and not _blk.get("partial") and not args.force:
             continue
@@ -256,8 +288,18 @@ def fold_file(path, led, args, subs, lo, hi):
 
 
 def coverage_snapshot(lo, hi):
-    """Mention rows per quarter in the target window - printed before and
-    after so the fold's effect is a number, not a hope."""
+    """Count ticker-mention rows per quarter in the target window.
+
+    Printed before and after the fold so its effect is a number.
+
+    Args:
+        lo: Window start (ISO).
+        hi: Window end (ISO, inclusive).
+
+    Returns:
+        Series indexed by quarter period, empty when the window has no
+        rows, or ``None`` when no counts file exists yet.
+    """
     p = os.path.join(abstracted_data.ABSTRACTED_DIR,
                      abstracted_data.TICKER_COUNTS)
     if not os.path.exists(p):
@@ -274,6 +316,12 @@ def coverage_snapshot(lo, hi):
 
 
 def main():
+    """Fold the selected archives below ``LIVE_START`` and hydrate.
+
+    Returns:
+        ``0`` on success; ``1`` when no input archives were found or the
+        requested window reaches ``LIVE_START``.
+    """
     p = argparse.ArgumentParser(
         description="Fold historical posts into ABSTRACTED_DATA "
                     "(text-free; the door update_data.py does not have).")
@@ -291,7 +339,7 @@ def main():
     p.add_argument("--chunk", type=int, default=120_000,
                    help="posts per aggregation flush (memory ceiling)")
     p.add_argument("--all-subreddits", action="store_true",
-                   help="do not restrict to ingestion/finance_subreddits.txt")
+                   help="do not restrict to the panel in config/forums.csv")
     p.add_argument("--include-comments", action="store_true",
                    help="accept comment archives too (changes what a post "
                         "means; submissions built the committed history)")
@@ -332,7 +380,7 @@ def main():
     print(f"--- historical fold: {len(files)} archive(s) ---")
     print(f"window   : {lo} -> {hi}"
           + (f"   (LIVE_START {ls}, untouched)" if ls else ""))
-    print(f"subreddits: {'ALL' if not subs else f'{len(subs)} from finance_subreddits.txt'}")
+    print(f"subreddits: {'ALL' if not subs else f'{len(subs)} from config/forums.csv'}")
     led = load_ledger()
     print(f"ledger   : {len(led['blocks'])} block(s) already folded")
 

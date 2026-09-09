@@ -1,24 +1,30 @@
-# build_aggregates.py
-# ===================
-# Build ALL FIVE aggregate files from posts.parquet in one pass - the fast
-# replacement for running notebooks 02/06/07 (+ the theme scan) in sequence.
-#
-#     python ingestion/build_aggregates.py
-#     python ingestion/build_aggregates.py --start 2017-01-01
-#
-# WHY IT IS FAST
-#   * Each post's text is processed ONCE: one extraction pass feeds ticker
-#     counts, ticker sentiment, theme counts and theme sentiment together
-#     (the notebooks each re-read and re-extract the same posts).
-#   * Extraction and theme matching run in PARALLEL across all CPU cores.
-#   * Sentiment uses the permanent id->score store: every post is scored
-#     exactly once per engine, ever. Rebuilds look scores up instead of
-#     recomputing them, so only genuinely new posts cost anything.
-#   * The store streams in batches - the raw text is never held in memory
-#     all at once.
-#
-# Output is identical in schema and counting rules to the notebook chain
-# (one post = one mention per ticker/theme; n_posts-weighted sentiment).
+"""Build all five aggregate files from ``posts.parquet`` in one pass.
+
+This is the full rebuild used by ``update_data.py --full``::
+
+    python ingestion/build_aggregates.py
+    python ingestion/build_aggregates.py --start 2017-01-01
+
+It requires the raw post store, so it runs in full mode only. The pass is
+fast because:
+
+* each post's text is processed once: a single extraction pass feeds
+  ticker counts, ticker sentiment, theme counts and theme sentiment
+  together;
+* extraction and theme matching run in parallel across all CPU cores
+  (``joblib``);
+* sentiment uses the permanent id-to-score store (``src.sentiment``):
+  every post is scored exactly once per engine, ever. Rebuilds look scores
+  up instead of recomputing them, so only genuinely new posts cost
+  anything;
+* the store streams in batches, so the raw text is never held in memory
+  all at once.
+
+The output matches the schema and counting rules of the live folds (one
+post = one mention per ticker/theme; ``n_posts``-weighted sentiment) and is
+written through ``src.abstracted_data._safe_write`` into
+``data/processed``.
+"""
 
 import argparse
 import os
@@ -47,8 +53,24 @@ BATCH = 100_000
 
 
 def _extract_batch(dates, titles, bodies, sources, scores):
-    """Worker: process one batch of posts. ONE extraction pass per post
-    feeds every aggregate. Returns four lists of partial rows."""
+    """Worker: extract tickers and themes from one batch of posts.
+
+    One extraction pass per post feeds every aggregate.
+
+    Args:
+        dates: Post dates (anything whose ``str()`` starts with
+            ``YYYY-MM-DD``).
+        titles: Post titles.
+        bodies: Post bodies.
+        sources: Source label per post.
+        scores: Sentiment score per post.
+
+    Returns:
+        Tuple of four row lists: ticker mentions ``(date, ticker,
+        source)``, ticker sentiment ``(date, ticker, sent, is_bull,
+        is_bear)``, theme mentions ``(date, theme)`` and theme sentiment
+        ``(date, theme, sent, is_bull, is_bear)``.
+    """
     import sys as _sys
     if PROJECT_ROOT not in _sys.path:
         _sys.path.insert(0, PROJECT_ROOT)
@@ -75,7 +97,7 @@ def _extract_batch(dates, titles, bodies, sources, scores):
 
 _UNIVERSE = None
 def _universe_cache():
-    """One universe load per worker process."""
+    """Return the ticker universe, loading it once per worker process."""
     global _UNIVERSE
     if _UNIVERSE is None:
         from src.abstracted_data import load_universe
@@ -84,7 +106,16 @@ def _universe_cache():
 
 
 def _sent_frame(rows, entity):
-    """(date, entity, sent, bull, bear) rows -> daily aggregate frame."""
+    """Aggregate ``(date, entity, sent, bull, bear)`` rows to a daily frame.
+
+    Args:
+        rows: Per-post sentiment rows.
+        entity: Name of the entity column (``"ticker"`` or ``"theme"``).
+
+    Returns:
+        DataFrame with ``date``, ``entity``, ``n_posts``, ``avg_sentiment``
+        and ``net_bullish`` columns.
+    """
     df = pd.DataFrame(rows, columns=["date", entity, "sentiment", "bull", "bear"])
     daily = (df.groupby(["date", entity])
              .agg(n_posts=("sentiment", "size"),
@@ -96,6 +127,11 @@ def _sent_frame(rows, entity):
 
 
 def main():
+    """Score any unscored posts, extract once, and write the five aggregates.
+
+    Returns:
+        ``0`` on success; ``1`` when ``posts.parquet`` is absent.
+    """
     ap = argparse.ArgumentParser(description="Build the five aggregates in one fast pass.")
     ap.add_argument("--start", default="2014-01-01",
                     help="build range start (default 2014-01-01)")
@@ -103,7 +139,7 @@ def main():
     args = ap.parse_args()
 
     if not os.path.exists(POSTS_PATH):
-        print("no posts.parquet - external machine only.")
+        print("no posts.parquet - full mode only.")
         return 1
 
     from joblib import Parallel, delayed
@@ -118,8 +154,12 @@ def main():
 
     pf = pq.ParquetFile(POSTS_PATH)
     batches, new_ids, new_texts = [], [], []
-    for b in pf.iter_batches(columns=["id", "date", "title", "selftext", "source"],
-                             batch_size=BATCH):
+    # author and subreddit are read for the bot screen only; they never
+    # reach an aggregate (the text-free boundary is checked after the run)
+    _cols = ["id", "date", "title", "selftext", "source"]
+    _have = set(pf.schema_arrow.names)
+    _cols += [c for c in ("author", "subreddit") if c in _have]
+    for b in pf.iter_batches(columns=_cols, batch_size=BATCH):
         df = b.to_pandas()
         df = df[df["date"] >= args.start]
         if not len(df):
@@ -135,6 +175,21 @@ def main():
     total = sum(len(d) for d in batches)
     print(f"{total:,} posts in range | {len(new_ids):,} need scoring "
           f"({time.time() - t0:.0f}s to load)")
+
+    # ---- bot screen: drop automated / duplicated posts before they can
+    #      reach an aggregate. Scored across all batches at once so a
+    #      copy-paste campaign split over two batches is still seen.
+    from ingestion.bot_screen import apply_screen, format_report, write_report
+    from src.config import REFERENCE_DIR
+    if batches:
+        _all = pd.concat(batches, ignore_index=True)
+        _kept, _rep = apply_screen(_all)
+        print(format_report(_rep) + f" ({time.time() - t0:.0f}s elapsed)")
+        write_report(_rep, os.path.join(REFERENCE_DIR, "bot_screen_last.json"))
+        if _rep["rows_excluded"]:
+            batches = [_kept.iloc[i:i + BATCH]
+                       for i in range(0, len(_kept), BATCH)]
+            total = len(_kept)
 
     if new_ids:
         chunks = [new_texts[i:i + 20_000] for i in range(0, len(new_texts), 20_000)]

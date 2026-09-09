@@ -2,7 +2,7 @@
 retail_flow.py
 ==============
 The continuous retail-flow dial (desk adoption 2026-08-17; research
-record notebook 08 §9, docs/research/nb08_retail_flow.json). One smooth
+record notebook 08 §9, reference/research_record/nb08_retail_flow.json). One smooth
 number per name per day in [-1, +1]:
 
     retail_flow      the walk-forward gauge itself (state-space filtered)
@@ -14,7 +14,7 @@ Construction, exactly as §9.4 froze it:
 
   * ANCHORED HALF - posts-only P(onset) and P(top) (logit + monotone
     GBM, each calibrated through its TRAIN-year score ECDF),
-    subtracted. The anchors are the desk's own GET IN / GET OUT
+    subtracted. The anchors are the production GET IN / GET OUT
     definitions made continuous; nothing about them changes here.
   * SLOW HALF - ridge + GBM regression of 63-day forward EXCESS return
     on the slowest crowd measures (attention age/saturation, breadth,
@@ -268,8 +268,8 @@ def build_retail_flow(frame: pd.DataFrame, prices: pd.DataFrame,
 def attach_retail_flow(ds: pd.DataFrame, frame: pd.DataFrame,
                        prices: pd.DataFrame, sym_by: dict,
                        verbose: bool = True) -> pd.DataFrame:
-    """Merge the dial columns onto the desk store. Failure-isolated by
-    the caller: the desk store must never be lost to a dial bug."""
+    """Merge the dial columns onto the signal store. Failure-isolated by
+    the caller: the signal store must never be lost to a dial bug."""
     flow = build_retail_flow(frame, prices, sym_by, verbose=verbose)
     ds = ds.drop(columns=[c for c in ("retail_flow", "retail_flow_disp")
                           if c in ds.columns])

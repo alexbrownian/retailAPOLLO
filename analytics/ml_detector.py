@@ -5,16 +5,16 @@ The LEARNED euphoria detectors (August 2026) - one shared crowd-only
 feature bank, two heads (GET IN / GET OUT), three model families, judged
 by the SAME walk-forward discipline as everything else in this project.
 
-WHY THIS EXISTS (design brief, 2026-08-07)
-----------------------------------------
-The incumbent desk signals are hand rules stacked on gates, and every
-gate carries a constant that has to be defended one by one in a
-presentation (2.0x hype, 1.10x onset floor, 0.90 attention percentile,
-75% persistence, a 0.23 FA budget, a 0.5 FA penalty...). The brief:
-replace the rule/threshold stack with a model that (a) is at least as
-accurate, (b) needs only a handful of explainable numbers, and (c) is
-technically presentable ("not just rules-based"). No prior FA budget is
-imposed - the operating point is chosen for accuracy alone.
+WHY A LEARNED MODEL
+-------------------
+The rule-based baseline is a stack of hand-set gates, each carrying a
+constant that has to be justified on its own (2.0x hype, 1.10x onset
+floor, 0.90 attention percentile, 75% persistence, a 0.23 false-alarm
+budget, a 0.5 false-alarm penalty). The learned model replaces that
+stack with something that is at least as accurate, needs only a handful
+of explainable numbers, and learns the interactions the rules had to
+hard-code. No prior false-alarm budget is imposed on it: the operating
+point is chosen for accuracy alone.
 
 WHAT SURVIVES OF THE OLD SYSTEM (three numbers, each one sentence)
 ------------------------------------------------------------------
@@ -46,7 +46,7 @@ gate constants)
 
 THE MODELS (the tournament; criterion pre-stated below)
 -------------------------------------------------------
-  rules     the incumbent desk configuration, unchanged (baseline)
+  rules     the rule-based baseline, unchanged
   logit     L2 logistic regression - one weight per feature, readable
             as a formula
   gbm       gradient-boosted trees with MONOTONE constraints: every
@@ -63,12 +63,13 @@ THE MODELS (the tournament; criterion pre-stated below)
             check: if it beats gbm materially, structure is being
             missed; if not, gbm is capturing what is learnable.
 
-ADOPTION CRITERION (stated before the numbers were computed): the
-walk-forward TEST-YEAR Average Precision (threshold-free score quality,
-the thesis convention) decides the winner per head; ties break by
-AUROC, then by fewer false alarms at the chosen operating point. The
-winner replaces the incumbent desk fit only if it beats the incumbent's
-AP on the same test years.
+ADOPTION CRITERION (fixed before the numbers were computed; implemented
+by pick_winner below): one model family serves both heads, and the
+family with the highest COMBINED AP LIFT wins - walk-forward test-year
+average precision divided by that frame's own base rate, summed over the
+two heads. Lift rather than raw AP because the rule-based baseline only
+scores days that already passed its gates, which inflates its raw AP by
+construction. Ties break by combined AUROC, then by fewer false alarms.
 
 Price NEVER enters any feature (crowd-only rule unchanged) - price
 appears only in the ground truth and the scoring, exactly as before.
@@ -101,14 +102,13 @@ ML_BANK = ["attention_accel", "hype_ratio", "bull_inflection",
            "influx_speed", "attention_convexity", "e1", "e3",
            "bull_level", "bull_persist"]
 
-# THE PRICE PAIR (desk heads only). The desk configuration lifted the
-# crowd-only restriction in July 2026 ("we should be using both price
-# and the social media"); the incumbent spent that licence on a HARD
-# boom gate (>=25%/50% above the 54d low - two more constants). The ML
-# bank spends it on two CONTINUOUS features and lets the model find the
-# cut: measured 2026-08-07, they move GET OUT AUROC 0.63 -> 0.74 and
-# GET IN 0.58 -> 0.77 walk-forward. The crowd-only variant is still run
-# and reported alongside (the "crowd alone" claim keeps its own record).
+# THE PRICE PAIR. The production heads use price as well as crowd data.
+# The rule-based baseline expressed price as a hard boom gate (a fixed
+# run-up above the 54-day low - two more constants); the learned bank
+# expresses it as two continuous features and lets the model find the
+# cut. Measured walk-forward, the pair moves GET OUT AUROC from 0.63 to
+# 0.74 and GET IN from 0.58 to 0.77. The crowd-only variant is still run
+# and reported alongside, so the "crowd alone" claim keeps its own record.
 PRICE_FEATURES = ["price_runup", "price_ret21"]
 DESK_ML_BANK = ML_BANK + PRICE_FEATURES
 
@@ -134,7 +134,7 @@ RANDOM_STATE = 0     # determinism: same data -> same fitted model
 def price_feature_frame(series: list, pxmap: dict) -> pd.DataFrame:
     """name/date/price_runup/price_ret21 - trailing only (day t uses
     closes <= t). The run-up window is EUPHORIA_BOOM_WINDOW_D (54), the
-    same one the incumbent's boom gate already uses - no new constant."""
+    same one the rule-based boom gate already uses - no new constant."""
     from src.config import (EUPHORIA_BOOM_WINDOW_D,
                             EUPHORIA_BOOM_WINDOW_MIN_D)
     rows = []
@@ -292,7 +292,7 @@ def _choose_threshold_fbeta(train_scored: pd.DataFrame,
 def choose_threshold_f1(train_scored: pd.DataFrame, episodes: pd.DataFrame,
                         mode: str, fa_budget_per_iy: float,
                         n_instruments: int) -> float:
-    """Chooser for run_tournament_entry (same signature as the incumbent
+    """Chooser for run_tournament_entry (same signature as the baseline
     choose_threshold; fa_budget_per_iy is accepted and IGNORED - that is
     the point): episode-level F1 on the train years."""
     return _choose_threshold_fbeta(train_scored, episodes, mode, beta=1.0)
@@ -327,8 +327,8 @@ def choose_threshold_strict(train_scored: pd.DataFrame,
 # a bull run. Verdict: the edge it found on the train years did not
 # survive out of sample (GET OUT +0.1%, GET IN 0.0% excess), while the
 # plain precision-weighted STRICT cut delivered -1.4% / +0.7%. Removed
-# at the desk's instruction; the measurement stays in
-# docs/research/max_performance.json as the record of a tested null.
+# from the production path; the measurement stays in
+# reference/research_record/max_performance.json as the record of a tested null.
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
@@ -400,8 +400,8 @@ def run_ml_tournament(frame: pd.DataFrame, episodes: pd.DataFrame,
                       pxmap: dict, sym_by: dict,
                       series=None, boom=None, families=None) -> dict:
     """Every model through both heads; returns the full comparison table
-    (the deck's Table 1). The incumbent rules run on their OWN candidacy
-    (gates and budget intact - that IS the incumbent); the learners run
+    (the comparison table). The rule-based baseline runs on its OWN
+    candidacy (gates and budget intact); the learners run
     on the coverage-only frame with the F1 chooser. Each learner is run
     twice: crowd-only (the clean-claim record) and crowd+price (the
     desk configuration the winner is drawn from)."""
@@ -415,8 +415,8 @@ def run_ml_tournament(frame: pd.DataFrame, episodes: pd.DataFrame,
     entries = [("logit", make_logit_fit), ("gbm", make_gbm_fit),
                ("mlp", make_mlp_fit), ("ens", make_ens_fit)]
 
-    # PINNED MODE (src.config.DESK_MODEL_FAMILY). Fit only the family
-    # the desk has settled on, and only in its deployable crowd+price
+    # PINNED MODE (src.config.DESK_MODEL_FAMILY). Fit only the selected
+    # production family, and only in its deployable crowd+price
     # form - the *_crowd variants exist as the clean-claim control for
     # the tournament and pick_winner already refuses to adopt them, so
     # fitting them when nothing is being chosen is pure cost.
@@ -481,7 +481,7 @@ def run_ml_tournament(frame: pd.DataFrame, episodes: pd.DataFrame,
                       f"(elapsed {_time.time() - _t_all:.0f}s)",
                       flush=True)
 
-    # The incumbent rules exist for the COMPARISON TABLE. With a family
+    # The rule-based baseline exists for the COMPARISON TABLE. With a family
     # pinned there is no comparison to draw, so skip them unless "rules"
     # was the pinned family itself.
     _want_rules = (not pinned) or ("rules" in set(families or ()))
@@ -534,16 +534,16 @@ def pick_winner(results: dict) -> str:
       parts, not more.
     * The family with the highest COMBINED AP LIFT (test-year AP divided
       by its own frame's base rate, summed over the two heads) wins.
-      LIFT, not raw AP: the incumbent's candidacy gates give it a frame
+      LIFT, not raw AP: the baseline's candidacy gates give it a frame
       where 40-60%% of candidate days are already labelled positive, so
       its raw AP is inflated by construction - "how many times better
       than guessing on your own frame" is the number that compares.
     * Ties by combined AUROC, then by fewer total false alarms.
 
-    Only deployable entries compete: the incumbent and the crowd+price
-    learners (the *_crowd variants are the clean-claim record, kept in
-    the table but not adoptable - the desk configuration is allowed
-    price and should use it)."""
+    Only deployable entries compete: the rule-based baseline and the
+    crowd+price learners (the *_crowd variants are the clean-claim record,
+    kept in the table but not adoptable - the production configuration is
+    allowed price and should use it)."""
     heads = ("get_out", "get_in")
     names = set()
     for h in heads:
@@ -588,8 +588,9 @@ def ground_truth_sweep(series, pxmap, counts, sents, sym_by,
                        model_maker=None) -> dict:
     """Re-run episode extraction AND the best learner under each ground
     truth in GT_GRID. Reported per variant: episode count, which themes
-    ever have an episode (the desk asks for gold / meme / semis by
-    name), and the learner's AP/AUROC/capture - so 'did loosening hurt'
+    ever have an episode (the reference episodes - gold, meme stocks,
+    semiconductors - must survive), and the learner's AP/AUROC/capture -
+    so 'did loosening hurt'
     is answered by the same instrument that will be presented."""
     from src.config import EUPHORIA_FA_BUDGET_PER_IY
     if model_maker is None:
@@ -664,7 +665,7 @@ def main(sweep: bool = False) -> int:
                   f"{v['get_in']['ap']}")
         payload["ground_truth_sweep"] = sw
 
-    out_path = os.path.join("docs", "research", "ml_tournament.json")
+    out_path = os.path.join("reference", "research_record", "ml_tournament.json")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(payload, f, indent=1, default=str)

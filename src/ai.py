@@ -1,79 +1,76 @@
-"""
-ai.py — the ONE gateway between retailAPOLLO and the firm's LLM.
-================================================================
+"""Single gateway between retailAPOLLO and its language-model providers.
 
-Every AI feature in this project (the AI Pulse page, the agentic-watch
-digest, the keyword-map auditor, notebook 10's sentiment test) talks to
-the model through this module and nothing else, so the connection details
+Every AI feature in the project (the AI Pulse page, the agentic-watch
+digest, the keyword-map auditor, the AI sentiment scorer) talks to the
+model through this module and nothing else, so the connection details
 live in exactly one place.
 
-TWO PROVIDERS, ONE INTERFACE
-    apollo     the firm gateway, reached through `dimsum_lite`'s
-               Apollo-authenticated OpenAI factory —
+Two providers, one interface:
 
-                   from dimsum_lite.clients.openai import ApolloOpenAI
-                   apollo = ApolloOpenAI(env=ENVIRONMENT)
-                   client = apollo.client()     # a standard OpenAI client
-                   client.chat.completions.create(model=..., messages=[...])
+``apollo``
+    An OpenAI-compatible gateway reached through ``dimsum_lite``'s
+    Apollo-authenticated client factory::
 
-               Auth is handled by dimsum_lite from ENVIRONMENT /
-               APOLLO_AUTH_USERNAME / APOLLO_AUTH_PASSWORD.  It needs the
-               VPN and the JFrog-installed package, so it only resolves on
-               the desk machine.
+        from dimsum_lite.clients.openai import ApolloOpenAI
+        apollo = ApolloOpenAI(env=ENVIRONMENT)
+        client = apollo.client()     # a standard OpenAI client
+        client.chat.completions.create(model=..., messages=[...])
 
-    anthropic  the Claude API direct, on an ANTHROPIC_API_KEY.  Needs
-               nothing but the key and a network route, which is what
-               makes a personal machine a complete environment: the AI
-               Pulse and the agentic digest regenerate off the VPN
-               instead of degrading to PENDING banners.
+    Authentication is handled by dimsum_lite from ENVIRONMENT /
+    APOLLO_AUTH_USERNAME / APOLLO_AUTH_PASSWORD. It needs the privately
+    distributed package and its network route, so it resolves only on a
+    machine that has both.
 
-`AI_PROVIDER` picks between them and defaults to 'auto': try Apollo,
+``anthropic``
+    The Claude API called directly with an ANTHROPIC_API_KEY. It needs
+    nothing but the key and a network route, so any machine with the key is
+    a complete environment: the AI Pulse and the agentic digest regenerate
+    instead of degrading to PENDING banners.
+
+``AI_PROVIDER`` picks between them and defaults to 'auto': try Apollo,
 fall back to Anthropic, and report both reasons if neither resolves.
-Selection happens once per process and is visible via `provider()`, so a
-banner can say which model actually answered.  When neither resolves
-`available()` is False and every caller is expected to degrade politely
-(samples, PENDING banners) instead of crashing.  An Apollo round-trip
-measured ~4.6s, so callers batch: few calls, big payloads.
+Selection happens once per process and is visible via ``provider()``, so
+a banner can say which model actually answered. When neither resolves
+``available()`` is False and every caller is expected to degrade politely
+(samples, PENDING banners) instead of crashing. A gateway round-trip
+takes several seconds, so callers batch: few calls, big payloads.
 
-CONFIG (all optional, all read from .env / the environment):
+Configuration (all optional, read from .env or the environment):
+
     AI_PROVIDER              'auto' (default) | 'apollo' | 'anthropic'.
                              Naming one skips the other entirely, which
                              is how a machine that could reach both is
-                             pinned to the cheaper or the approved one
-    ENVIRONMENT              Apollo environment ('DEV', 'UAT', ...)
-    APOLLO_AUTH_USERNAME     defaults to the OS user
-    APOLLO_AUTH_PASSWORD     prompted by dimsum_lite if absent
-    ANTHROPIC_API_KEY        enables the Anthropic provider; absent means
-                             that provider simply never resolves
-    ANTHROPIC_MODEL          model id, default 'claude-sonnet-5'
-    AI_MODEL                 Apollo deployment name, default 'gpt-4o' —
-                             swap for one your env exposes
-                             (dimsum_lite.constants lists them;
-                             'model-not-found' means this)
+                             pinned to one of them.
+    ENVIRONMENT              Apollo environment ('DEV', 'UAT', ...).
+    APOLLO_AUTH_USERNAME     Defaults to the OS user.
+    APOLLO_AUTH_PASSWORD     Prompted by dimsum_lite if absent.
+    ANTHROPIC_API_KEY        Enables the Anthropic provider; absent means
+                             that provider never resolves.
+    ANTHROPIC_MODEL          Model id, default 'claude-sonnet-5'.
+    AI_MODEL                 Apollo deployment name, default 'gpt-4o';
+                             swap for one the environment exposes
+                             (dimsum_lite.constants lists them; a
+                             'model-not-found' error means this).
     AI_DATA_CLASSIFICATION   'PUBLIC'|'RESTRICTED'|'CONFIDENTIAL'|'MNPI',
                              default 'RESTRICTED' (posts are public text;
-                             RESTRICTED is the conservative default)
-    AI_USER_ID               passed to apollo.client() if set
-    AI_MAX_CALLS             hard per-process budget, default 80 — a
-                             runaway loop hits this, never a provider.
-                             A full update now spends about 40: the
-                             poll's 30 prompts, the pulse's 9 (one
-                             whole-market read, SIX theme-brief batches,
-                             catalysts, agentic) and the weekly keyword
-                             audit. The pulse's batch count is not fixed
-                             — it is ceil(themes / THEMES_PER_CALL), so
-                             halving that constant doubles those calls.
-                             It was halved to 6 when a more verbose model
-                             began truncating 12-theme batches, which
-                             took a run from ~37 calls to exactly 40 and
-                             silently exhausted a 40-call budget on the
-                             LAST call of the pulse. Leave real headroom:
-                             a budget sized to the expected cost fails
-                             the moment one call retries
-    AI_MOCK                  '1' = return deterministic canned output
-                             without any network (tests, cloud dev)
+                             RESTRICTED is the conservative default).
+    AI_USER_ID               Passed to apollo.client() if set.
+    AI_MAX_CALLS             Hard per-process call budget, default 80. A
+                             runaway loop hits this, never a provider. A
+                             full update spends about 40: the poll's 30
+                             prompts, the pulse's 9 (one whole-market
+                             read, six theme-brief batches, catalysts,
+                             agentic) and the weekly keyword audit. The
+                             pulse's batch count is
+                             ceil(themes / THEMES_PER_CALL), so halving
+                             that constant doubles those calls. Leave real
+                             headroom: a budget sized to the expected cost
+                             fails the moment one call retries.
+    AI_MOCK                  '1' returns deterministic canned output
+                             without any network (tests, offline dev).
 
-Self-test:
+Self-test::
+
     python -m src.ai --selftest
 """
 
@@ -84,7 +81,8 @@ import os
 import re
 import time
 
-# the project .env, same loading convention as the fetchers
+# The project .env is loaded with the same convention as the fetchers:
+# existing environment variables win over file values.
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -122,7 +120,7 @@ def _connect_apollo():
         from dimsum_lite.clients.openai import ApolloOpenAI  # noqa: PLC0415
     except Exception as e:                                   # noqa: BLE001
         return None, (f"dimsum_lite not importable ({e}) - the Apollo "
-                      "gateway only exists on the desk machine "
+                      "gateway only exists on the gateway machine "
                       "(JFrog/LEVA install)")
     try:
         apollo = ApolloOpenAI(env=os.environ.get("ENVIRONMENT", "DEV"))
@@ -134,12 +132,12 @@ def _connect_apollo():
         try:
             client = apollo.client(**kwargs)
         except TypeError:
-            # older dimsum_lite: client() takes no kwargs
+            # Older dimsum_lite: client() takes no kwargs.
             client = apollo.client()
     except Exception as e:                                   # noqa: BLE001
         return None, (f"Apollo auth/connection failed "
                       f"({type(e).__name__}: {e}) - check ENVIRONMENT, "
-                      "APOLLO_AUTH_USERNAME/PASSWORD and the VPN")
+                      "APOLLO_AUTH_USERNAME/PASSWORD and the network route")
     return client, None
 
 
@@ -158,17 +156,14 @@ def _connect_anthropic():
         return None, (f"anthropic package not installed ({e}) - "
                       "pip install anthropic")
     try:
-        # HARD TIMEOUT (defect report: a network that silently drops
-        # traffic to the endpoint accepts the connection and then never
-        # answers - the SDK's default 10-minute timeout made every
-        # attempt look like a hang). 60s proved TOO tight: the pulse's
-        # 8000-token generations legitimately run past a minute and
-        # came back APITimeoutError while the poll's small calls
-        # passed. 300s covers the largest real generation with room to
-        # spare and still turns a black-hole network into a clear error
-        # in minutes, not half an hour. max_retries=0: chat() already
-        # does its own retrying, the SDK doubling it quadrupled the
-        # wait.
+        # Hard timeout. A network that silently drops traffic to the
+        # endpoint accepts the connection and never answers, and the
+        # SDK's default 10-minute timeout makes every attempt look like
+        # a hang. 60s is too tight: the pulse's 8000-token generations
+        # legitimately run past a minute. 300s covers the largest real
+        # generation and still turns a black-hole network into a clear
+        # error in minutes. max_retries=0 because chat() does its own
+        # retrying; SDK-level retries would multiply the wait.
         return anthropic.Anthropic(api_key=key, timeout=300.0,
                                    max_retries=0), None
     except Exception as e:                                   # noqa: BLE001
@@ -182,13 +177,13 @@ def _resolution_order() -> list:
     """Providers to try, in order, for the configured preference."""
     if PROVIDER_PREF in _BUILDERS:
         return [PROVIDER_PREF]
-    return ["apollo", "anthropic"]        # 'auto': firm gateway first
+    return ["apollo", "anthropic"]        # 'auto': Apollo gateway first
 
 
 def _connect():
-    """Resolves a provider once. Never raises — records why every
-    candidate failed instead, so a dashboard render or a notebook run
-    far from the VPN stays alive."""
+    """Resolves a provider once. Never raises; records why every
+    candidate failed instead, so a dashboard render or a batch run without
+    a provider stays alive."""
     global _client, _provider, _unavailable_reason
     if _client is not None or _unavailable_reason is not None:
         return _client
@@ -207,9 +202,13 @@ def _connect():
 
 
 def provider() -> str | None:
-    """Which provider answered, once one has resolved ('mock' under
-    AI_MOCK). None when nothing is reachable — for banners that name the
-    model behind a generated block."""
+    """Returns the resolved provider name.
+
+    Returns:
+        'apollo' or 'anthropic' once one has resolved, 'mock' under
+        AI_MOCK, and None when nothing is reachable. Used by banners that
+        name the model behind a generated block.
+    """
     if MOCK:
         return "mock"
     _connect()
@@ -217,7 +216,7 @@ def provider() -> str | None:
 
 
 def active_model() -> str | None:
-    """The model id the resolved provider will be called with."""
+    """Returns the model id the resolved provider is called with, or None."""
     kind = provider()
     if kind == "anthropic":
         return ANTHROPIC_MODEL
@@ -227,14 +226,15 @@ def active_model() -> str | None:
 
 
 def available() -> bool:
-    """True when a call to chat() can be expected to work."""
+    """Returns True when a call to chat() can be expected to work."""
     if MOCK:
         return True
     return _connect() is not None
 
 
 def explain_unavailable() -> str:
-    """One sentence for a PENDING banner."""
+    """Returns one sentence for a PENDING banner explaining why no
+    provider resolved."""
     _connect()
     return _unavailable_reason or "gateway reachable"
 
@@ -242,10 +242,29 @@ def explain_unavailable() -> str:
 def chat(prompt: str, system: str | None = None, *,
          want_json: bool = False, max_tokens: int = 4000,
          temperature: float = 0.0, retries: int = 2):
-    """One completion. Returns str (or parsed object when want_json).
-    Raises RuntimeError when the gateway is unreachable or the per-run
-    call budget (AI_MAX_CALLS) is spent — callers that must not crash
-    check available() first."""
+    """Runs one completion against the resolved provider.
+
+    Every attempt, including retries, counts against the per-process
+    call budget. Failed attempts are retried with a linear back-off.
+
+    Args:
+        prompt: The user message.
+        system: Optional system prompt.
+        want_json: Parse the answer as JSON (see _parse_json) and return
+            the object instead of the text.
+        max_tokens: Generation ceiling passed to the provider.
+        temperature: Sampling temperature; forwarded only where the SDK
+            accepts it.
+        retries: Number of additional attempts after the first failure.
+
+    Returns:
+        The answer text, or the parsed object when want_json is set.
+
+    Raises:
+        RuntimeError: When no provider is reachable, when the AI_MAX_CALLS
+            budget is spent, or when every attempt failed. Callers that
+            must not crash check available() first.
+    """
     global _calls_made
     if _calls_made >= MAX_CALLS:
         raise RuntimeError(f"AI_MAX_CALLS budget ({MAX_CALLS}) spent - "
@@ -272,13 +291,13 @@ def chat(prompt: str, system: str | None = None, *,
                 time.sleep(2 * (attempt + 1))
     _hint = ""
     if type(last).__name__ == "APIConnectionError":
-        # the SDK's str() is often empty here - the real reason (DNS,
-        # proxy, TLS interception) lives in the cause chain
+        # The SDK's str() is often empty here; the real reason (DNS,
+        # proxy, TLS interception) lives in the cause chain.
         _cause = getattr(last, "__cause__", None)
         if _cause is not None:
             _hint += f" | cause: {type(_cause).__name__}: {_cause}"
         _hint += (" | the machine could not reach the endpoint at all: "
-                  "check the network/VPN (a corporate proxy that "
+                  "check the network route (a corporate proxy that "
                   "intercepts TLS needs `pip install pip-system-certs` "
                   "in THIS venv), and that the provider host is "
                   "reachable from this machine")
@@ -287,7 +306,7 @@ def chat(prompt: str, system: str | None = None, *,
 
 
 def _call_openai(client, prompt, system, max_tokens, temperature) -> str:
-    """One Apollo/OpenAI chat completion, returned as text."""
+    """Runs one Apollo/OpenAI chat completion and returns the text."""
     messages = ([{"role": "system", "content": system}] if system else [])
     messages.append({"role": "user", "content": prompt})
     resp = client.chat.completions.create(
@@ -318,7 +337,7 @@ def _anthropic_accepts_temperature(client) -> bool:
 
 
 def _call_anthropic(client, prompt, system, max_tokens, temperature) -> str:
-    """One Anthropic message, returned as text.
+    """Runs one Anthropic message and returns the text.
 
     The Messages API takes the system prompt as a top-level argument
     rather than a leading message, and answers with a list of content
@@ -341,13 +360,12 @@ def _call_anthropic(client, prompt, system, max_tokens, temperature) -> str:
     text = "".join(block.text for block in resp.content
                    if getattr(block, "type", None) == "text")
     if not text.strip():
-        # An empty answer used to be returned as "", which _parse_json
-        # then reported as `Expecting value: line 1 column 1 (char 0)` -
-        # a message that names the symptom and hides every cause. Say
-        # what the API actually reported instead: stop_reason
-        # distinguishes a refusal from a truncation from an empty turn,
-        # and the block types show whether the text simply arrived in a
-        # shape this join does not read.
+        # An empty answer returned as "" would surface from _parse_json
+        # as `Expecting value: line 1 column 1 (char 0)`, which names the
+        # symptom and hides every cause. Report what the API said
+        # instead: stop_reason distinguishes a refusal from a truncation
+        # from an empty turn, and the block types show whether the text
+        # arrived in a shape this join does not read.
         raise RuntimeError(
             "the model returned no text "
             f"(stop_reason={getattr(resp, 'stop_reason', '?')!r}, "
@@ -365,21 +383,24 @@ def _call_anthropic(client, prompt, system, max_tokens, temperature) -> str:
 
 
 def _parse_json(text: str):
-    """The gateway's deployments do not all honour response_format, so
-    JSON is asked for in the prompt and extracted defensively here.
+    """Extracts a JSON object or array from a model answer.
+
+    Not every deployment honours response_format, so JSON is asked for in
+    the prompt and extracted defensively here: a fenced block is unwrapped,
+    leading prose before the first brace or bracket is dropped, and a
+    ragged tail (trailing comma, unterminated ending) is cut back to the
+    last balanced close before giving up.
 
     strict=False is deliberate. A model writing a paragraph into a JSON
-    string value puts REAL newlines and tabs inside the quotes rather
-    than the \\n escapes the spec demands, and strict parsing rejects
-    the whole document for it:
+    string value puts real newlines and tabs inside the quotes rather
+    than the \\n escapes the spec demands, and strict parsing rejects the
+    whole document (``Invalid control character``). That is a formatting
+    nicety, not a corrupt answer, so control characters are accepted.
+    Everything else stays strict: a genuinely malformed object still
+    raises and the caller still retries.
 
-        JSONDecodeError: Invalid control character at: line 21 column 1151
-
-    That is a formatting nicety, not a corrupt answer - the text either
-    side of it is exactly what was asked for - so the control characters
-    are accepted rather than the response thrown away. Everything else
-    about the parse stays strict: a genuinely malformed object still
-    raises, and the caller still retries.
+    Raises:
+        json.JSONDecodeError: When no balanced prefix parses.
     """
     text = text.strip()
     m = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
@@ -391,7 +412,7 @@ def _parse_json(text: str):
     try:
         return json.loads(body, strict=False)
     except json.JSONDecodeError:
-        # LAST RESORT: a trailing comma or an unterminated tail from a
+        # Last resort: a trailing comma or an unterminated tail from a
         # long answer. Walk back to the last balanced close and try that
         # prefix, so one ragged ending does not discard a good object.
         depth, last_ok = 0, None
@@ -408,19 +429,21 @@ def _parse_json(text: str):
 
 
 # ---------------------------------------------------------------------------
-# MOCK — deterministic offline answers so the whole plumbing (pulse
-# generation, dashboard rendering, notebooks, unit tests) runs end to end
-# with no gateway.  Clearly labelled in every output.
+# Mock: deterministic offline answers so the whole plumbing (pulse
+# generation, dashboard rendering, unit tests) runs end to end with no
+# gateway. Every output is labelled [MOCK].
 # ---------------------------------------------------------------------------
 def _mock_answer(prompt: str, want_json: bool):
+    """Returns a canned answer shaped for the caller recognised in the
+    prompt (see the ordering note inside)."""
     if not want_json:
         if "JSON:" in prompt or "retail investor" in prompt.lower():
             return _mock_poll_answer()
         return ("[MOCK - no gateway] A deterministic placeholder "
                 "answer for offline testing.")
-    # Shape-matching mocks for the known JSON consumers. ORDER MATTERS:
+    # Shape-matching mocks for the known JSON consumers. Order matters:
     # the pulse makes four separate JSON calls and each is recognised by
-    # a key that only IT asks for, most specific first.
+    # a key that only it asks for, most specific first.
     if "market_vibe" in prompt:
         return {
             "market_vibe": {
@@ -430,7 +453,7 @@ def _mock_answer(prompt: str, want_json: bool):
             },
             "mood_gauge": {"score": 50, "why": "[MOCK] Placeholder."},
             "market_pulse": "[MOCK] Offline placeholder pulse - run on "
-                            "the desk machine (VPN + dimsum_lite) for "
+                            "a machine with a configured provider for "
                             "the real one.",
             "talk_of_the_town": "[MOCK] Placeholder.",
         }
@@ -465,6 +488,7 @@ def _mock_poll_answer() -> str:
 
 
 def calls_made() -> int:
+    """Returns the number of calls charged against the budget so far."""
     return _calls_made
 
 

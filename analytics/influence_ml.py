@@ -1,125 +1,129 @@
-"""
-influence_ml.py
-===============
-The influential-users MODEL, run on RetailRadar's own live influence
-store: can HIGH-predictive authors be identified from their behaviour and
-their position in the reply graph, BEFORE reading their track record?
+"""Node-classification models for spotting high-predictive authors early.
 
-This module is INFORMATION ONLY. Nothing here feeds the euphoria START /
-END signal; the euphoria engine does not import it. Its output is the
-"who is worth listening to, and what are they saying" panel.
+Asks whether HIGH-predictive authors can be identified from their
+behaviour and their position in the reply graph before their track
+record is read. This module is information only: nothing here feeds the
+euphoria START / END signal, the euphoria engine does not import it, and
+its output is the "who is worth listening to" research exhibit.
 
-THE TASK, AND THE MODEL FAMILY CHOSEN FOR IT
---------------------------------------------
+The task and the model family
+-----------------------------
 The task is semi-supervised transductive node classification on a
 weighted social-interaction graph: unlabelled authors stay in the graph
 as structural context, and only labelled nodes are split and scored. It
-runs on the desk's own store (data/reference/influence - live-only,
-zero-touch, text-free), with the model family deliberately scaled to how
-few positives that store contains:
+runs on the influence store (`data/reference/influence`: live-only,
+text-free), with the model family scaled to how few positives that store
+contains:
 
-  random        Bernoulli scores - the floor. Its AP is the
-                positive-class prevalence, which is why every result below
-                is quoted as AP LIFT OVER RANDOM: that is the only figure
-                that stays comparable across label regimes and across
-                vintages of the store.
-  mlp           feature-only MLP - "behaviour alone".
-  labelprop     structure-only label propagation - "position alone", no
+  random        uniform scores, the floor. Its AP is the positive-class
+                prevalence, which is why every result is quoted as AP
+                lift over random: the only figure that stays comparable
+                across label regimes and across vintages of the store.
+  logit         feature-only logistic regression, the linear control.
+  mlp           feature-only MLP: "behaviour alone".
+  labelprop     structure-only label propagation: "position alone", no
                 features at all.
-  sage_lite     GraphSAGE mean-aggregator, one layer:
+  sage_lite     GraphSAGE mean aggregator, one layer:
                 [self features | mean of neighbours' features].
-  gcn_lite      GCN in its simplified/linear form: two
+  gcn_lite      GCN in its simplified linear form: two
                 symmetric-normalised propagation steps of the features,
-                then a linear classifier (Wu et al.'s SGC identity - a
-                GCN with the non-linearities removed).
-  mixhop_lite   MixHop: CONCATENATE several propagation
-                powers [X | SX | S^2X] instead of composing them, so the
+                then a linear classifier (the SGC identity: a GCN with
+                the non-linearities removed).
+  mixhop_lite   MixHop: concatenate several propagation powers
+                [X | SX | S^2X] instead of composing them, so the
                 classifier can weight hop distances differently.
-  h2gcn_lite    H2GCN: separate the ego features from the
-                1-hop and the 2-hop-excluding-1-hop aggregates. This is
-                the architecture built for HETEROPHILOUS graphs, and our
-                own label analysis (influence_graph.homophily) says the
-                positive class here is extremely heterophilous - so this
-                is a prediction of the network analysis, not a fishing
-                expedition.
+  h2gcn_lite    H2GCN: keep the ego features separate from the 1-hop and
+                the 2-hop-excluding-1-hop aggregates. Built for
+                heterophilous graphs; `influence_graph.homophily` finds
+                the positive class here extremely heterophilous, so this
+                architecture is the network analysis's own prediction.
 
-The "lite" in every graph model means one thing and it is stated
-honestly: the aggregation weights are FIXED (mean / symmetric
-normalisation) rather than learned, and the read-out is a
-class-weighted logistic regression rather than a deep MLP. That is a
-deliberate response to the size of the labelled set - with ~10^2
-positives, a model with learned aggregation weights has more parameters
-than evidence and memorises. GAT is NOT included for the same reason:
-attention IS the learned part, so a fixed-attention GAT would just be
-sage_lite under another name.
+"Lite" means the aggregation weights are fixed (mean / symmetric
+normalisation) rather than learned, and the read-out is a class-weighted
+logistic regression rather than a deep MLP. With ~10^2 positives, a
+model with learned aggregation weights has more parameters than evidence
+and memorises. GAT is excluded for the same reason: attention is the
+learned part, so a fixed-attention GAT would be sage_lite under another
+name.
 
-DISCIPLINE
+Discipline
 ----------
-* LABELS: three pre-stated regimes (see LABEL_REGIMES), because the
-  headline needs a sensitivity check and because the production HIGH
-  tier (composite >= 0.66) marks only ~25 authors, which leaves ~5 test
-  positives - not decision-grade. The headline regime is therefore the
-  SOFTENED cut, the strictest of the three that clears the
-  pre-registered >= 130-positives maturity bar; the strict cut is still
-  reported, labelled under-powered; and a prevalence-matched cut exists
-  so that AP stays numerically comparable as the store's balance shifts
-  over time. The production board tier is NOT redefined by any of this.
-* LEAKAGE GUARD: every column with labelling-pipeline ancestry is banned
-  from the feature bank - not just the score itself but anything computed
-  from forward returns or from call correctness (see LEAKAGE). The model
-  must predict the label, not read it.
-* stratified 60/20/20 train/val/test on labelled nodes, unlabelled nodes
-  stay in the graph as structural context, features z-scored on TRAIN
-  statistics only, class-weighted losses.
-* operating threshold: max positive-class precision s.t. recall >=
-  min_recall, chosen on VALIDATION only.
-* headline metrics: AP + AUROC on TEST (threshold-independent), reported
-  as mean +/- std over seeds and as lift over random.
-* robustness: per-feature and per-category ablation, graph
-  perturbation - random rewiring and DICE - reported on ACCURACY as well
-  as AP, because on a 20:1 problem precision is too noisy to read
-  reliably and accuracy is kept only to show how uninformative it is.
-* ADOPTION RULE: a change is adopted only if `paired_ap_test` shows a
+* Labels: three pre-stated regimes (LABEL_REGIMES). The production HIGH
+  tier (composite >= 0.66) marks only ~25 authors, leaving ~5 test
+  positives, which is not decision-grade. The headline regime is the
+  softened cut, the strictest of the three that clears the MIN_POSITIVES
+  maturity bar; the strict cut is still reported, labelled under-powered;
+  and a prevalence-matched cut keeps AP numerically comparable as the
+  store's balance shifts. The production board tier is not redefined by
+  any of this.
+* Leakage guard: every column with labelling-pipeline ancestry is banned
+  from the feature bank, not just the score itself but anything computed
+  from forward returns or from call correctness (LEAKAGE). The model must
+  predict the label, not read it.
+* Stratified 60/20/20 train/val/test on labelled nodes; unlabelled nodes
+  stay in the graph as structural context; features z-scored on train
+  statistics only; class-weighted losses.
+* Operating threshold: maximum positive-class precision subject to recall
+  >= min_recall, chosen on validation only.
+* Headline metrics: AP and AUROC on test (threshold-independent),
+  reported as mean +/- std over seeds and as lift over random.
+* Robustness: per-feature and per-category ablation, and graph
+  perturbation (random rewiring, DICE, degree-preserving swaps) reported
+  on accuracy as well as AP, because on a 20:1 problem precision is too
+  noisy to read reliably and accuracy is kept only to show how
+  uninformative it is.
+* Adoption rule: a change is adopted only if `paired_ap_test` shows a
   paired per-seed AP improvement whose confidence interval excludes zero
   over ADOPTION_SEEDS. Ranking tables stay on the three house seeds. When
   several candidates are tested in one round the confidence level is
-  Bonferroni-corrected, and the ladder is climbed for ONE re-test round
-  only - a ladder climbed until it stops improving is a ladder climbed
+  Bonferroni-corrected, and the ladder is climbed for one re-test round
+  only; a ladder climbed until it stops improving is a ladder climbed
   into noise.
 
-WHAT THE EVALUATION ACTUALLY FOUND (NB05, 2026-07-27; 12,528 authors,
-38,201 edges, 5,071 labelled, 237 positives under the softened cut)
----------------------------------------------------------------------
-1. THE GRAPH DOES NOT EARN ITS COMPLEXITY. sage_lite tops the leaderboard
-   on mean AP (0.107 vs logit 0.098) but the 10-seed paired test puts the
-   margin at -0.003, CI [-0.010, +0.004]. Every other architecture is at
-   or significantly BELOW the linear model. The parsimony rule ships
-   `logit`. The ordering the graph-learning literature would predict
-   (SAGE > GCN > MLP > LabelProp) does hold - it is the size of the gap
-   that does not survive.
-2. THE FIRST PASS WAS HALF CIRCULAR. `mean_conf` is one of the two
-   multiplicands of the label (see SCORE_ADJACENT) and was worth
-   +0.098 AP, CI [+0.083, +0.113] - roughly half of the apparent
-   performance. Excluding it moves the headline from AP 0.183 to 0.098
-   over a 0.054 random floor: lift 2.87x -> 1.07x.
-3. THE SIGNAL IS SMALL BUT REAL. 200-permutation label-shuffle null:
-   AP 0.124 vs null mean 0.052, p = 0.005 (floor 0.005).
-4. WHY THE GRAPH FAILS IS MEASURABLE, NOT MYSTERIOUS. Positive-class node
-   homophily is 0.095 against 0.963 for the negative class: influential
-   authors do not sit next to each other. DICE perturbation - deliberately
-   rewiring same-label edges ACROSS the label boundary - raises AP from
-   0.183 to 0.378 at 50%: deliberately damaging the graph makes the model
-   BETTER. The reply graph's structure is actively misleading for
-   this label, so a model that leans on it loses.
-5. IT DOES NOT GENERALISE TO NEW AUTHORS. On the tenure split (fit on
-   established voices, graded on authors who arrived later) every model
-   including logit sits at or below the random floor. The standing
-   limitation of a transductive setup is therefore measured here rather
-   than merely acknowledged, and it is why the dashboard ranks authors by
-   their MEASURED record and treats this model as a research exhibit.
+Measured results
+----------------
+The stored run (`reference/research_record/nb05_influence.json`; 12,528
+authors, 38,201 edges, 5,071 labelled, 237 positives under the softened
+cut) found:
 
-The module is import-clean (no side effects): notebook 05 drives it and
-renders the narrative; nothing here writes to the store.
+1. The graph does not earn its complexity. sage_lite tops the
+   leaderboard on mean AP but the 10-seed paired test puts its margin
+   over the linear model at -0.003, CI [-0.010, +0.004]; every other
+   architecture is at or significantly below the linear model. The
+   parsimony rule ships `logit`. The ordering the graph-learning
+   literature predicts (SAGE > GCN > MLP > LabelProp) holds; the size of
+   the gap does not survive.
+2. `mean_conf` is one of the two multiplicands of the label (see
+   SCORE_ADJACENT) and was worth about +0.10 AP with a CI well clear of
+   zero, roughly half of the apparent performance of a bank that
+   includes it (`circularity_audit` in the record). It is excluded from
+   the headline bank.
+3. The signal is small but real: a 200-permutation label-shuffle null
+   puts the headline AP above the null mean at p = 0.005 (the floor for
+   200 draws; `significance` in the record).
+4. Why the graph fails is measurable. Positive-class node homophily is
+   0.095 against 0.963 for the negative class: influential authors do
+   not sit next to each other. DICE perturbation, which rewires
+   same-label edges across the label boundary, raises AP: damaging the
+   graph makes a graph model better, so the reply graph's structure is
+   actively misleading for this label (`homophily` and `perturbation`
+   in the record).
+5. It does not generalise to new authors. On the tenure split (fit on
+   established voices, graded on authors who arrived later) every model
+   including logit sits at or below the random floor
+   (`cohort_generalisation` in the record). This is why the dashboard
+   ranks authors by their measured record and treats this model as a
+   research exhibit.
+
+Typical usage:
+
+    tab = build_node_table(board, calls)        # features + label
+    ctx = make_ctx(tab, edges)                  # graph + cached operators
+    evaluate(ctx)                               # the leaderboard
+    adoption_ladder(ctx)                        # the deciding table
+
+The module is import-clean (no side effects) and never writes to the
+store.
 """
 
 from __future__ import annotations
@@ -195,22 +199,29 @@ HOUSE_SEEDS = (42, 100, 2026)           # ranking tables (house seeds)
 # labels
 # ---------------------------------------------------------------------------
 def label_standard(board: pd.DataFrame) -> pd.Series:
-    """Production HIGH tier: composite >= 0.66 (influence.HIGH_TIER)."""
+    """Production HIGH tier: composite >= influence.HIGH_TIER, as 0/1."""
     return (board["composite"] >= HIGH_TIER).astype(int)
 
 
 def label_softened(board: pd.DataFrame) -> pd.Series:
-    """Softened criterion: a lower composite cut, chosen a priori as the
-    round half-way point of the score scale - not tuned to any result."""
+    """Softened criterion: composite >= SOFT_TIER, as 0/1.
+
+    The cut is the round half-way point of the score scale, chosen a
+    priori and not tuned to any result."""
     return (board["composite"] >= SOFT_TIER).astype(int)
 
 
 def label_prevalence(board: pd.DataFrame) -> pd.Series:
-    """Prevalence-matched: the top REFERENCE_PREVALENCE of LABELLED authors
-    by composite. This regime exists for one reason only - random AP
-    equals prevalence, so pinning the reference prevalence pins the
-    floor, which is what keeps AP numbers directly comparable across
-    vintages of the store rather than merely ordinally comparable."""
+    """Prevalence-matched label: the top REFERENCE_PREVALENCE of labelled authors.
+
+    Random AP equals prevalence, so pinning the reference prevalence pins
+    the floor, which keeps AP numbers directly comparable across vintages
+    of the store rather than merely ordinally comparable. The cut is
+    taken over authors with at least one judged call.
+
+    Returns:
+        0/1 label per row of `board`.
+    """
     lab = board[board["n_judged"].fillna(0) > 0]
     if not len(lab):
         return pd.Series(0, index=board.index, dtype=int)
@@ -233,28 +244,32 @@ def _entropy(p: np.ndarray) -> float:
 
 
 def call_features(calls: pd.DataFrame) -> pd.DataFrame:
-    """The FORECAST bank, computed per author from the calls table.
+    """The FORECAST bank (plus the score-adjacent columns), per author.
 
-    HOW each one is derived, and why it is not leakage:
-      frac_bearish        share of calls that are short. Which side you
-                          take is a style, not an outcome.
-      dir_entropy         binary entropy of that share: 0 = always the
-                          same side (a permabull or a permabear), ln 2 =
-                          perfectly two-sided.
-      n_tickers           how many distinct names they talk about.
-      ticker_entropy      entropy of their name mix, normalised by
-                          ln(n_tickers) so it reads as "spread out"
-                          (1) vs "one-name obsessive" (0), independent of
-                          how many calls they made.
-      active_days         distinct calendar days with at least one call.
-      calls_per_active_day intensity when they do show up.
-      comment_call_frac   share of calls made in comments rather than
-                          posts - where an author does their talking is
-                          a style, and the ablation prices whether it
-                          helps.
-      stance_sd           dispersion of signed conviction - does this
-                          author shout the same amplitude every time?
-      span_days           first-to-last call gap: tenure.
+    How each column is derived, and why it is not leakage:
+      frac_bearish          share of calls that are short. Which side an
+                            author takes is a style, not an outcome.
+      dir_entropy           binary entropy of that share: 0 = always the
+                            same side, ln 2 = perfectly two-sided.
+      n_tickers             distinct names the author talks about.
+      ticker_entropy        entropy of the name mix, normalised by
+                            ln(n_tickers) so it reads as spread out (1)
+                            vs one-name obsessive (0), independent of
+                            how many calls were made.
+      active_days           distinct calendar days with at least one call.
+      calls_per_active_day  intensity when the author does show up.
+      comment_call_frac     share of calls made in comments rather than
+                            posts.
+      span_days             first-to-last call gap: tenure.
+      stance_sd, mean_conf  dispersion and mean of conviction; SCORE_ADJACENT,
+                            computed here but excluded from FULL_BANK.
+
+    Args:
+        calls: The store's calls table.
+
+    Returns:
+        Frame indexed by author; empty with the FORECAST columns when
+        `calls` is empty.
     """
     if not len(calls):
         return pd.DataFrame(columns=FORECAST)
@@ -289,12 +304,25 @@ def call_features(calls: pd.DataFrame) -> pd.DataFrame:
 def build_node_table(board: pd.DataFrame, calls: pd.DataFrame,
                      regime: str = HEADLINE_REGIME,
                      feats: list | None = None) -> pd.DataFrame:
-    """One row per author: features + label.
+    """One row per author: features plus label.
 
-    `board` is author_scores.parquet, `calls` is calls.parquet. Only
-    authors with at least one JUDGED call carry a label; everyone else
-    stays in the table (and therefore in the graph) as unlabelled
-    structural context - that is what makes the setup transductive.
+    Only authors with at least one judged call carry a label; everyone
+    else stays in the table (and therefore in the graph) as unlabelled
+    structural context, which is what makes the setup transductive.
+
+    Args:
+        board: The author-scores table (author_scores.parquet).
+        calls: The calls table (calls.parquet).
+        regime: Key into LABEL_REGIMES.
+        feats: Feature columns to keep; FULL_BANK when None. Missing
+            columns are added as zeros; NaN and inf become 0.
+
+    Returns:
+        Frame indexed by author with the feature columns, `labelled`
+        (bool) and `y` (0/1, always 0 for unlabelled rows).
+
+    Raises:
+        AssertionError: If a LEAKAGE column is in the feature list.
     """
     tab = board.set_index("author").copy()
     cf = call_features(calls)
@@ -579,12 +607,13 @@ MODELS = {"random": model_random, "logit": model_logit, "mlp": model_mlp,
 TOURNAMENT = ["random", "logit", "mlp", "labelprop", "sage_lite",
               "gcn_lite", "mixhop_lite", "h2gcn_lite"]
 
-# SHIPPED MODEL. sage_lite tops the leaderboard on mean AP, but the
-# 10-seed paired test (adoption_ladder, NB05) puts its margin over the
+# Shipped model. sage_lite tops the leaderboard on mean AP, but the
+# 10-seed paired test (`adoption_ladder`; stored in
+# reference/research_record/nb05_influence.json) puts its margin over the
 # plain linear model at -0.003 with CI [-0.010, +0.004] - the graph does
 # not earn its complexity here. The parsimony rule therefore ships the
-# linear model, and the fact that it is the SIMPLEST member of the
-# tournament is the finding, not a shortcut.
+# linear model; that it is the simplest member of the tournament is the
+# finding, not a shortcut.
 BEST_MODEL = "logit"
 # The best structure-USING model. Only relevant to exhibits that ask what
 # the graph is doing (perturbation, DICE): corrupting the graph under a
@@ -729,11 +758,11 @@ def paired_ap_test(ctx: Ctx, name_a: str, name_b: str,
             "adopt": bool(n > 1 and lo > 0)}
 
 
-# the complexity ladder: each rung is (incumbent, challenger). Rung 0 asks
-# whether the FEATURES carry any signal at all; every later rung asks a
+# The complexity ladder: each rung is (baseline, challenger). Rung 0 asks
+# whether the features carry any signal at all; every later rung asks a
 # single question - does this extra machinery beat the plain linear model
-# on the same splits? Written down before it is run, so the shipped model
-# is decided by the rule and not by whichever row happened to top the
+# on the same splits? Fixed before it is run, so the shipped model is
+# decided by the rule and not by whichever row happened to top the
 # leaderboard.
 LADDER = [("random", "logit"),
           ("logit", "mlp"),
