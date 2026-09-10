@@ -2391,10 +2391,13 @@ class TestDataFreshnessIsVisible:
         with local controls names the command, because there the reader
         is the person who can run it."""
         src = self._src()
-        assert "Contact the dashboard owner to refresh it or check" in src
-        assert "for issues." in src
+        assert "Sorry! Working on updates right now" in src
         assert "update_data.py</code> on this machine" in src
         assert "LOCAL_CONTROLS else" in src
+        # the viewer sentence is what the hosted copy shows in BOTH
+        # behind states; the diagnosis is gated on the controls
+        assert "if _deploy_behind and not LOCAL_CONTROLS:" in src
+        assert src.count("_VIEWER_NOTICE}") == 2
 
     def test_a_half_applied_deploy_is_diagnosed_separately(self):
         """A second failure has the same symptom: the pipeline DID run
@@ -2409,7 +2412,7 @@ class TestDataFreshnessIsVisible:
         assert "This page is not drawing the newest published data." in src
         # the deploy branch is tested FIRST - it must win over the age
         # branch, not be shadowed by it
-        _i_dep = src.index("if _deploy_behind:")
+        _i_dep = src.index("if _deploy_behind and not LOCAL_CONTROLS:")
         _i_age = src.index("elif _fresh_lvl == _FRESH_OK:")
         assert _i_dep < _i_age
 
@@ -2813,6 +2816,21 @@ class TestNothingCanDangle:
         from pathlib import Path
         return Path(__file__).resolve().parents[1]
 
+    # Folders that are not the project's own code: environments and
+    # third-party packages (which may legitimately contain non-UTF-8
+    # fixtures), scratch folders, and the optional research tree.
+    _SKIP_PARTS = (".venv", "venv", "env", "site-packages", "node_modules",
+                   "_to_delete", ".ipynb_checkpoints", "__pycache__",
+                   "research", "presentations", ".git")
+
+    @classmethod
+    def _project_py_files(cls):
+        for p in cls._root().rglob("*.py"):
+            rel = p.relative_to(cls._root()).parts
+            if any(part in cls._SKIP_PARTS for part in rel[:-1]):
+                continue
+            yield p
+
     def test_no_cited_path_is_missing(self):
         """verify_deps exits 0.  If this fails, something references a
         file that is not there - fix the reference, or say in the same
@@ -2849,12 +2867,10 @@ class TestNothingCanDangle:
         so the test suite would not otherwise exercise them."""
         import ast
         bad = []
-        for p in self._root().rglob("*.py"):
-            if "_to_delete" in str(p) or ".ipynb_checkpoints" in str(p):
-                continue
+        for p in self._project_py_files():
             try:
                 ast.parse(p.read_text(encoding="utf-8"))
-            except SyntaxError as e:
+            except (SyntaxError, UnicodeDecodeError) as e:
                 bad.append(f"{p.relative_to(self._root())}: {e}")
         assert not bad, "files will not parse:\n" + "\n".join(bad)
 
@@ -2864,12 +2880,10 @@ class TestNothingCanDangle:
         import ast
         import src.config as C
         missing = []
-        for p in self._root().rglob("*.py"):
-            if "_to_delete" in str(p):
-                continue
+        for p in self._project_py_files():
             try:
                 tree = ast.parse(p.read_text(encoding="utf-8"))
-            except SyntaxError:
+            except (SyntaxError, UnicodeDecodeError):
                 continue
             for node in ast.walk(tree):
                 if (isinstance(node, ast.ImportFrom)
@@ -3397,7 +3411,10 @@ class TestBackDatedHarvest:
         got = max(r["day"] for r in back)
         assert got <= f"{target:%Y-%m-%d}", "posts leaked past the as-of"
         gap = (target - pd.Timestamp(got)).days
-        assert gap <= 3, (
+        # A hole shorter than one fetch window (FETCH_LOOKBACK_DAYS) is a
+        # cadence gap between two crawls, not data loss; a longer one is.
+        from src.config import FETCH_LOOKBACK_DAYS
+        assert gap <= FETCH_LOOKBACK_DAYS, (
             f"newest back-dated post is {gap} days before the target - "
             "the model would be reading a different week")
 

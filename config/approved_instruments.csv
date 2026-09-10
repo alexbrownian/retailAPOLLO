@@ -29,7 +29,7 @@ KWEB,KWEB US Equity,,,pre-existing approved anchor/fallback
 LIT,LIT US Equity,,,pre-existing approved anchor/fallback
 LQD,LQD US Equity,,,pre-existing approved anchor/fallback
 MOO,MOO UP Equity,,VanEck Agribusiness ETF,added 2026-07-31
-MTUM,MTUM TF Equity,,iShares MSCI USA Momentum Factor ETF,"added 2026-07-31; exchange code as provided (TF) - Cboe BZX is usually UF on Bloomberg, verify on the Terminal"
+MTUM,MTUM US Equity,,iShares MSCI USA Momentum Factor ETF,"MTUM TF Equity returned no data on the Terminal; the composite US ticker resolves"
 OIH,OIH US Equity,,,pre-existing approved anchor/fallback
 QQQ,QQQ US Equity,,,pre-existing approved anchor/fallback
 RSP,RSP US Equity,,Invesco S&P 500 Equal Weight ETF,added 2026-07-31

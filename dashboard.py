@@ -2330,11 +2330,20 @@ if isinstance(_pub, dict):
 _deploy_behind = (_pub_through is not None and pd.notna(data_max)
                   and _pub_through > pd.Timestamp(data_max))
 
+# What a VIEWER sees when anything is behind: one plain sentence. The
+# diagnosis (age, half-applied deploy, which command) is for the person
+# running the pipeline, so it is shown only where the controls are.
+_VIEWER_NOTICE = ("Sorry! Working on updates right now - Website may not "
+                  "be updated")
 _fresh_fix = ("Restart the Streamlit server on this machine."
               if LOCAL_CONTROLS else
               "Contact the dashboard owner to refresh it or check "
               "for issues.")
-if _deploy_behind:
+if _deploy_behind and not LOCAL_CONTROLS:
+    _fresh_slot.markdown(
+        f'<div class="rf-stale" style="color:{OCHRE};border-color:{OCHRE}">'
+        f'<b>{_VIEWER_NOTICE}</b></div>', unsafe_allow_html=True)
+elif _deploy_behind:
     _fresh_slot.markdown(
         f'<div class="rf-stale" style="color:{BEAR};border-color:{BEAR}">'
         f'<b>This page is not drawing the newest published data.</b> '
@@ -2373,13 +2382,20 @@ else:
                   if LOCAL_CONTROLS else
                   "Contact the dashboard owner to refresh it or check "
                   "for issues.")
-    _fresh_slot.markdown(
-        f'<div class="rf-stale" style="color:{_fresh_col};'
-        f'border-color:{_fresh_col}">'
-        f'<b>{_fresh_lead}.</b> The newest reading is '
-        f'{pd.Timestamp(data_max):%d %b %Y} &mdash; {_fresh_age}. '
-        f'{_fresh_run}</div>',
-        unsafe_allow_html=True)
+    if LOCAL_CONTROLS:
+        _fresh_slot.markdown(
+            f'<div class="rf-stale" style="color:{_fresh_col};'
+            f'border-color:{_fresh_col}">'
+            f'<b>{_fresh_lead}.</b> The newest reading is '
+            f'{pd.Timestamp(data_max):%d %b %Y} &mdash; {_fresh_age}. '
+            f'{_fresh_run}</div>',
+            unsafe_allow_html=True)
+    else:
+        _fresh_slot.markdown(
+            f'<div class="rf-stale" style="color:{_fresh_col};'
+            f'border-color:{_fresh_col}">'
+            f'<b>{_VIEWER_NOTICE}</b></div>',
+            unsafe_allow_html=True)
 # default view: 1 Jan 2026 onwards (the start of dense backfilled
 # coverage); falls back to trailing-365d if the data ends before that
 _default_lo = pd.Timestamp("2026-01-01")
@@ -3289,6 +3305,321 @@ def _state_of(name, starting, ending):
     if e is not None:
         return "ENDING"
     return None
+
+
+# ---------------------------------------------------------------------------
+# ETF LOOKUP (beta): any ETF, assembled on demand from the aggregates.
+#
+# A configured theme is tickers + words counted at ingestion. This panel
+# builds the same two sets for an ETF that is NOT configured (holdings
+# from Yahoo Finance, words from the ETF's and holdings' names), reads
+# its attention and sentiment history from the text-free aggregates,
+# pulls its price, and shows the rule-based euphoria level with the
+# frozen gauge bands. The walk-forward model is NOT applied: the ETF is
+# outside the validated universe, so "% of the way to a signal" would
+# be a number with no record behind it. src/lookup.py does the work;
+# this function only draws.
+# ---------------------------------------------------------------------------
+LOOKUP_TITLE = _app_settings.get("lookup_section_title")
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _lk_search(query):
+    from src import lookup as _L
+    status = {}
+    cands = [(c.symbol, c.name, c.origin)
+             for c in _L.search(query, status=status)]
+    return cands, status.get("remote_error")
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def _lk_holdings(symbol, present_key):
+    from src import lookup as _L
+    present = set(load(TICKER_COUNTS)["ticker"].unique())
+    status = {}
+    rows = [(h.ticker, h.name, h.weight, h.known)
+            for h in _L.holdings(symbol, present=present, status=status)]
+    return rows, status.get("remote_error")
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def _lk_price(symbol, start, end):
+    from src import lookup as _L
+    return _L.price(symbol, start, end)
+
+
+@st.cache_resource(show_spinner=False)
+def _lk_bundle(mtime_key):
+    """The persisted production model (fitted ensemble + live
+    population + frozen cuts), loaded once per process per file
+    version. Read-only: nothing here fits or re-thresholds."""
+    from analytics.ml_detector import load_desk_bundle
+    from src.lookup import model_bundle_path
+    return load_desk_bundle(model_bundle_path())
+
+
+def _lk_build(symbol, name, holds, words):
+    """Assemble + score; small enough to run on every rerun."""
+    from src import lookup as _L
+    spec = _L.LookupSpec(symbol, name,
+                         holdings=[_L.Holding(*h) for h in holds],
+                         words=list(words))
+    tc, ts = load(TICKER_COUNTS), load("daily_ticker_sentiment.parquet")
+    thc, ths = load(THEME_COUNTS), load("daily_theme_sentiment.parquet")
+    term = load("daily_term_counts.parquet")
+    for _d in (tc, ts, thc, ths, term):
+        if _d is not None:
+            _d["date"] = pd.to_datetime(_d["date"])
+    frame = _L.assemble(spec, tc, ts, term)
+    es = _L.euphoria_series(spec, frame, thc, ths) if len(frame) else None
+    share = _L.discussion_share(frame, thc)
+    return spec, frame, es, share
+
+
+def render_etf_lookup(key_prefix):
+    st.markdown(f"#### {LOOKUP_TITLE}")
+    _c1, _c2 = st.columns([2, 3])
+    q = _c1.text_input("ETF name or ticker", key=f"{key_prefix}_lk_q",
+                       placeholder="brazil etf, uranium, EWZ ...",
+                       help="Searches the configured instruments first, "
+                            "then Yahoo Finance. Pick a result to build "
+                            "its crowd history from the aggregates.")
+    if not q.strip():
+        st.caption("Beta. Builds an on-demand theme for any ETF from its "
+                   "holdings and name, scores it with the rule-based "
+                   "euphoria level, and never touches the configured "
+                   "universe.")
+        return
+    with st.spinner("searching ..."):
+        cands, _search_err = _lk_search(q.strip())
+    if _search_err:
+        st.caption(f"Yahoo Finance search unavailable ({_search_err[:80]}) "
+                   "- showing configured instruments and the local ETF "
+                   "catalogue only. A ticker typed exactly always works.")
+    if not cands:
+        st.info("No ETF matched. Type the ticker exactly (e.g. INDA), or a "
+                "single word (\"uranium\", \"brazil\").")
+        return
+    _origin_tag = {"approved": "  (configured)", "catalogue": "",
+                   "ticker": "  (as typed)", "search": ""}
+    labels = [f"{s}  ·  {n}{_origin_tag.get(o, '')}" for s, n, o in cands]
+    pick = _c2.selectbox("result", labels, key=f"{key_prefix}_lk_pick")
+    symbol, name, origin = cands[labels.index(pick)]
+
+    with st.spinner(f"reading {symbol}'s holdings ..."):
+        holds, _hold_err = _lk_holdings(symbol, _mtime(os.path.join(
+            PROCESSED_DIR, TICKER_COUNTS)))
+    from src import lookup as _L
+    if not holds:
+        if _hold_err:
+            st.caption(f"Holdings could not be fetched from Yahoo Finance "
+                       f"({_hold_err[:80]}). Type the main holdings "
+                       "yourself to keep going.")
+        else:
+            st.caption("Yahoo Finance lists no equity holdings for this "
+                       "symbol (a commodity or bond fund, or an unknown "
+                       "ticker). You can type holdings yourself.")
+        _manual = st.text_input(
+            "holdings (tickers, comma-separated)",
+            key=f"{key_prefix}_lk_manual_{symbol}",
+            placeholder="INFY, HDB, IBN, WIT, RDY ...")
+        if _manual.strip():
+            present = set(load(TICKER_COUNTS)["ticker"].unique())
+            holds = [(h.ticker, h.name, h.weight, h.known)
+                     for h in _L.manual_holdings(_manual, present=present)]
+    base_words = _L.words(name, [_L.Holding(*h) for h in holds])
+    _w_key = f"{key_prefix}_lk_words_{symbol}"
+    words_txt = st.text_input(
+        "words (edit freely, comma-separated)",
+        value=", ".join(base_words), key=_w_key,
+        help="Counted against the vocabulary table (rolling year). Words "
+             "are the second half of a theme; the first half is the "
+             "holdings below.")
+    words = [w.strip().lower() for w in words_txt.split(",") if w.strip()]
+    try:
+        from src import ai as _ai
+        _ai_ok = _ai.available()
+    except Exception:                                      # noqa: BLE001
+        _ai_ok = False
+    if _ai_ok and st.button("suggest more words (AI)",
+                            key=f"{key_prefix}_lk_ai_{symbol}"):
+        st.session_state[_w_key] = ", ".join(
+            _L.expand_words_with_ai(name, words))
+        st.rerun()
+
+    spec, frame, es, share = _lk_build(symbol, name, holds, words)
+    known = spec.known_tickers
+    unknown = [h.ticker for h in spec.holdings if not h.known]
+
+    # ---- the facts, before any chart
+    z = gauge_zones()
+    lvl_now = lvl_lbl = None
+    if es is not None:
+        _lv = es.level.rolling(7, min_periods=1).mean().dropna()
+        if len(_lv):
+            lvl_now = float(_lv.iloc[-1])
+            _, lvl_lbl, _col = gauge_state(lvl_now, False, z)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("euphoria level (7d)",
+              f"{lvl_now:.0f} / 100" if lvl_now is not None else "n/a",
+              lvl_lbl or "not enough history")
+    m2.metric("share of theme discussion (7d)",
+              f"{share:.2f}%" if share is not None else "n/a")
+    m3.metric("holdings the crowd can be counted on",
+              f"{len(known)} of {len(spec.holdings)}")
+    _cov = (bool(es.coverage_ok.dropna().iloc[-1])
+            if es is not None and len(es.coverage_ok.dropna()) else False)
+    m4.metric("coverage gate (100 posts / 28d)", "met" if _cov else "not met")
+
+    if not known and not words:
+        st.warning("Nothing to count: none of the holdings is a symbol "
+                   "the extractor knows and no words are set.")
+        return
+
+    # ---- price + attention + level, the same window as the page
+    _start = pd.Timestamp("2017-01-01").strftime("%Y%m%d")
+    _end = pd.Timestamp.today().strftime("%Y%m%d")
+    with st.spinner(f"pulling {symbol} prices ..."):
+        px = _lk_price(symbol, _start, _end)
+
+    # ---- the production model, read-only, at the frozen cut
+    _bp = _L.model_bundle_path()
+    _bundle = _lk_bundle(_mtime(_bp)) if os.path.exists(_bp) else None
+    with st.spinner("scoring with the production model ..."):
+        _ms = _L.model_score(spec, es, frame, px, load(THEME_COUNTS),
+                             load("daily_theme_sentiment.parquet"),
+                             bundle=_bundle)
+    if _ms["status"] == "ok":
+        _now = _ms["now"]
+        _tone = BEAR if _now["side"] == "CUT EXPOSURE" else BULL
+        st.markdown(
+            f'<div style="font-size:1.15rem;margin:.4rem 0 .2rem 0">'
+            f'<b style="color:{_tone}">{min(_now["pct"], 100):.0f}% of the way '
+            f'to {_now["side"]}</b>'
+            f'<span style="color:{INK_LABEL};font-size:.85rem"> &nbsp;·&nbsp; '
+            f'model score {_now["score"]:.3f} vs frozen cut {_now["cut"]:.3f} '
+            f'&nbsp;·&nbsp; as of {_now["date"]:%d %b %Y} &nbsp;·&nbsp; '
+            f'{"after" if _now["boomed"] else "before"} the 120d boom bar, so '
+            f'{"CUT" if _now["boomed"] else "INCREASE"} is the side that can fire'
+            f'</span></div>', unsafe_allow_html=True)
+        if _now["pct"] >= 100:
+            st.markdown(f'<div style="color:{_tone};font-weight:600">'
+                        '● at or above the cut - this would be a call '
+                        'today on a configured theme</div>',
+                        unsafe_allow_html=True)
+    elif _ms["status"] == "no_model":
+        st.caption("Model score unavailable: " + _ms["why"] + ". The "
+                   "rule-based level below still shows.")
+    else:
+        st.caption(f"Model score: not eligible ({_ms['why']}). A configured "
+                   "theme in the same state would show no score either.")
+    _lo = lo
+    _hi = hi if hi is not None else frame["date"].max()
+    f = frame[(frame["date"] >= _lo) & (frame["date"] <= _hi)]
+    _has_model = _ms["status"] == "ok"
+    fig = make_subplots(rows=4 if _has_model else 3, cols=1, shared_xaxes=True,
+                        vertical_spacing=0.06,
+                        row_heights=([0.32, 0.18, 0.25, 0.25] if _has_model
+                                     else [0.4, 0.25, 0.35]),
+                        subplot_titles=((f"{symbol} price",
+                                         "mentions per day (7d mean)",
+                                         "euphoria level (rule-based, 0-100)")
+                                        + (("production model score vs frozen cut",)
+                                           if _has_model else ())))
+    if px is not None and len(px):
+        px = px.copy()
+        px["date"] = pd.to_datetime(px["date"])
+        pw = px[(px["date"] >= _lo) & (px["date"] <= _hi)]
+        fig.add_trace(go.Scatter(x=pw["date"], y=pw["px_last"], mode="lines",
+                                 line=dict(color=SLATE, width=1.4),
+                                 name="price",
+                                 hovertemplate="%{x|%d %b %Y}  %{y:.2f}<extra></extra>"),
+                      row=1, col=1)
+    else:
+        fig.add_annotation(text="no price available for this symbol",
+                           xref="x domain", yref="y domain", x=0.5, y=0.5,
+                           showarrow=False, font=dict(color=INK_LABEL),
+                           row=1, col=1)
+    _m = f.set_index("date")[["ticker_mentions", "term_mentions"]].asfreq("D").fillna(0)
+    _m7 = _m.rolling(7, min_periods=1).mean()
+    fig.add_trace(go.Scatter(x=_m7.index, y=_m7["ticker_mentions"], mode="lines",
+                             stackgroup="m", line=dict(width=0.8, color=TEAL),
+                             name="via holdings",
+                             hovertemplate="%{x|%d %b %Y}  %{y:.1f}<extra>via holdings</extra>"),
+                  row=2, col=1)
+    fig.add_trace(go.Scatter(x=_m7.index, y=_m7["term_mentions"], mode="lines",
+                             stackgroup="m", line=dict(width=0.8, color=OCHRE),
+                             name="via words",
+                             hovertemplate="%{x|%d %b %Y}  %{y:.1f}<extra>via words</extra>"),
+                  row=2, col=1)
+    if es is not None:
+        _lv = es.level.rolling(7, min_periods=1).mean()
+        _lv = _lv[(_lv.index >= _lo) & (_lv.index <= _hi)]
+        fig.add_trace(go.Scatter(x=_lv.index, y=_lv.values, mode="lines",
+                                 line=dict(color=ACCENT, width=1.6),
+                                 name="level",
+                                 hovertemplate="%{x|%d %b %Y}  %{y:.0f}<extra>level</extra>"),
+                      row=3, col=1)
+        for _edge, _col, _lab in ((z.get("amber_edge"), OCHRE, "warming"),
+                                  (z.get("red_edge"), BEAR, "red zone")):
+            if _edge is not None:
+                fig.add_hline(y=_edge, line=dict(color=_col, width=1, dash="dot"),
+                              annotation_text=_lab, annotation_position="top left",
+                              annotation_font=dict(size=10, color=_col),
+                              row=3, col=1)
+        fig.update_yaxes(range=[0, 100], row=3, col=1)
+    if _has_model:
+        _d = _ms["days"]
+        _d = _d[(_d["date"] >= _lo) & (_d["date"] <= _hi)]
+        fig.add_trace(go.Scatter(x=_d["date"], y=_d["in_score"], mode="lines",
+                                 line=dict(color=BULL, width=1.4),
+                                 name="INCREASE score",
+                                 hovertemplate="%{x|%d %b %Y}  %{y:.3f}<extra>INCREASE</extra>"),
+                      row=4, col=1)
+        fig.add_trace(go.Scatter(x=_d["date"], y=_d["out_score"], mode="lines",
+                                 line=dict(color=BEAR, width=1.4),
+                                 name="CUT score",
+                                 hovertemplate="%{x|%d %b %Y}  %{y:.3f}<extra>CUT</extra>"),
+                      row=4, col=1)
+        fig.add_hline(y=_ms["thresholds"]["in"], line=dict(color=BULL, width=1, dash="dot"),
+                      annotation_text="INCREASE cut", annotation_position="top left",
+                      annotation_font=dict(size=10, color=BULL), row=4, col=1)
+        fig.add_hline(y=_ms["thresholds"]["out"], line=dict(color=BEAR, width=1, dash="dot"),
+                      annotation_text="CUT cut", annotation_position="bottom left",
+                      annotation_font=dict(size=10, color=BEAR), row=4, col=1)
+        fig.update_yaxes(range=[0, 1], row=4, col=1)
+    fig.update_layout(height=780 if _has_model else 620,
+                      margin=dict(l=48, r=16, t=40, b=24),
+                      showlegend=True, legend=dict(orientation="h", y=1.06))
+    st.plotly_chart(_theme(fig), width="stretch",
+                    key=f"{key_prefix}_lk_fig_{symbol}")
+
+    # ---- what went into it
+    with st.expander("what this is built from", expanded=False):
+        _h = pd.DataFrame([{"ticker": h.ticker, "company": h.name,
+                            "weight": f"{100 * h.weight:.1f}%",
+                            "counted": "yes" if h.known else "no (not a symbol the extractor tracks)"}
+                           for h in spec.holdings])
+        if len(_h):
+            st.dataframe(_h, hide_index=True, width="stretch")
+        else:
+            st.caption("No holdings returned for this symbol.")
+        st.caption(f"Words counted: {', '.join(words) or 'none'}. "
+                   "Mentions via holdings reach back to 2017; mentions via "
+                   "words only as far as the vocabulary table keeps "
+                   "(rolling year). Sentiment comes from the holdings.")
+        if unknown:
+            st.caption(f"Not counted (foreign lines or unknown symbols): "
+                       f"{', '.join(unknown)}.")
+    st.caption("Beta. The level and its bands are the same rule-based "
+               "measures as the gauge (frozen record: gauge_zones). The "
+               "model score is the production INCREASE / CUT EXPOSURE "
+               "ensemble applied read-only at its frozen cuts (nothing is "
+               "fitted or re-thresholded for a lookup). This ETF is not in "
+               "the validated universe: the walk-forward INCREASE / CUT "
+               "EXPOSURE model is not applied to it in training, so no "
+               "capture rate or lead time is claimed for it. To track it "
+               "properly, add it as a theme (docs/CONFIGURATION.md).")
 
 
 def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
@@ -5478,6 +5809,11 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                  "signalled.")
         if _lk and _lk != "(none)":
             draw_chart(_lk, "", f"{key_prefix}_act_lookup_chart")
+            st.markdown('<div class="rf-rule"></div>',
+                        unsafe_allow_html=True)
+        if kind == "theme":
+            with st.expander(LOOKUP_TITLE, expanded=False):
+                render_etf_lookup(key_prefix)
             st.markdown('<div class="rf-rule"></div>',
                         unsafe_allow_html=True)
 

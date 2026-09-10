@@ -60,6 +60,7 @@ were fitted on the universe as it stood.
 | `bot_screen_threshold` | 0.6 | Score at or above which a post is excluded. |
 | `bot_screen_duplicate_jaccard` | 0.85 | Near-duplicate similarity cut. |
 | `bot_screen_burst_posts_per_day` | 12 | Author posts per day that count as a burst. |
+| `lookup_section_title` | `Search any ETF (beta)` | Heading of the on-demand ETF lookup panel on the landing page. |
 
 Missing keys fall back to the defaults in `src/settings.py`, so deleting
 a row is safe. `config/settings.local.csv` (git-ignored) overrides any

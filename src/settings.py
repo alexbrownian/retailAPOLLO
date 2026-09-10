@@ -63,6 +63,7 @@ DEFAULTS: Dict[str, str] = {
                     "building, and where it is ending."),
     "app_credit": "",
     "show_pipeline_controls": "false",
+    "lookup_section_title": "Search any ETF (beta)",
     "price_provider": "auto",
     "single_name_top_n": "25",
     "single_name_window_days": "365",

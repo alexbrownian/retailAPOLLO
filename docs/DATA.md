@@ -72,6 +72,7 @@ plus:
 | `signal_snapshots/<date>_trade_signals.parquet` | as above | one snapshot per run; the forward out-of-sample record. Never rewritten. |
 | `euphoria_desk_report.json` | model, selection rule, tournament table, per-year thresholds, headline metrics | the frozen production record the dashboard quotes |
 | `euphoria_report.json`, `euphoria_onset_report.json`, `desk_model_insight.json` | supporting records | analytics |
+| `euphoria_desk_model.joblib` | the fitted production ensemble, the live population it scored and the frozen cuts | analytics; read-only by the dashboard's ETF lookup |
 | `readiness_alerts.json`, `ai_pulse.json`, `publish_manifest.json` | dashboard panels and the publish stamp | analytics, `src/ai.py`, `tools/publish_dashboard.py` |
 
 `euphoria_desk.parquet` and `euphoria_desk_report.json` keep their file

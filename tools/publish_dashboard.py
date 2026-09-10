@@ -77,6 +77,7 @@ PROCESSED_FILES = [
     "euphoria_desk_report.json",
     "euphoria_onset_report.json",
     "desk_model_insight.json",
+    "euphoria_desk_model.joblib",     # fitted ensemble + frozen cuts, for the ETF lookup
     "readiness_alerts.json",
     "ai_pulse.json",
 ]

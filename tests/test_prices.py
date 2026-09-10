@@ -184,6 +184,31 @@ class TestProviderChain:
         assert used == "yfinance" and len(df) == 1
         assert any("falling back to yfinance" in l for l in log.lines)
 
+    def test_an_empty_answer_is_not_a_failure(self):
+        """A symbol that did not trade over the span comes back with no
+        rows from a provider that connected fine. That must not abort the
+        pull or fall through to the next provider (which would splice
+        sources): the empty frame is returned under the same provider."""
+        calls = []
+
+        class Empty:
+            name = "bloomberg"
+
+            def fetch(self, symbols, start, end, log=print):
+                calls.append("bloomberg")
+                return pd.DataFrame(columns=P.COLUMNS)
+
+        class Never:
+            name = "yfinance"
+
+            def fetch(self, *a, **k):
+                calls.append("yfinance")
+                raise AssertionError("fallback must not be consulted")
+        df, used = P.fetch_with_fallback([Empty(), Never()], ["NEWCO"],
+                                         "20210101", "20210111", log=_Quiet())
+        assert used == "bloomberg" and df.empty and calls == ["bloomberg"]
+        assert list(df.columns) == P.COLUMNS
+
     def test_every_provider_failing_raises(self):
         class Boom:
             name = "x"
@@ -240,3 +265,125 @@ class TestOneSymbolOneSource:
         src = (ROOT / "update_data.py").read_text(encoding="utf-8")
         assert '"--provider"' in src
         assert '"pull_prices.py", "--provider", _prov' in src
+
+
+# ---------------------------------------------------------------------------
+# end to end: fill from the fallback, then keep extending from it
+# ---------------------------------------------------------------------------
+class TestFillFromFallback:
+    """A symbol the primary has no data for is filled in full from the
+    fallback and stored under that source; on the next run its new days
+    are fetched from the fallback, not asked of the primary again."""
+
+    @staticmethod
+    def _rows(symbols, start, end, source):
+        idx = pd.date_range(pd.Timestamp(start), pd.Timestamp(end), freq="B")
+        out = []
+        for s in symbols:
+            out.append(pd.DataFrame({"date": idx, "symbol": s,
+                                     "px_last": 1.0, "source": source}))
+        return (pd.concat(out, ignore_index=True) if out
+                else pd.DataFrame(columns=P.COLUMNS))
+
+    def _run(self, monkeypatch, tmp_path, window, calls):
+        import pull_prices as pp
+        rows = self._rows
+
+        class BBG:
+            name = "bloomberg"
+
+            def fetch(self, symbols, start, end, log=print):
+                calls.append(("bloomberg", tuple(symbols), start, end))
+                return rows([s for s in symbols if s == "AAA"], start, end,
+                            "bloomberg")
+
+        class YF:
+            name = "yfinance"
+
+            def fetch(self, symbols, start, end, log=print):
+                calls.append(("yfinance", tuple(symbols), start, end))
+                return rows(symbols, start, end, "yfinance")
+        monkeypatch.setattr(pp, "provider_chain", lambda *a, **k: [BBG(), YF()])
+        monkeypatch.setattr(pp, "build_symbol_universe", lambda: ["AAA", "BBB"])
+        monkeypatch.setattr(pp, "window_dates", lambda: window)
+        monkeypatch.setattr(pp, "OUT_PATH", str(tmp_path / "prices.parquet"))
+        monkeypatch.setattr(pp, "PRICES_DIR", str(tmp_path))
+        monkeypatch.setattr(sys, "argv", ["pull_prices.py", "--provider", "auto"])
+        assert pp.main() == 0
+        return pd.read_parquet(tmp_path / "prices.parquet")
+
+    def test_no_data_symbol_is_filled_then_extended(self, monkeypatch, tmp_path):
+        calls = []
+        store = self._run(monkeypatch, tmp_path, ("20260105", "20260109"), calls)
+        src = store.groupby("symbol")["source"].agg(lambda s: set(s))
+        assert src["AAA"] == {"bloomberg"} and src["BBB"] == {"yfinance"}
+        # the fill asked yfinance for BBB over the FULL window
+        assert ("yfinance", ("BBB",), "20260105", "20260109") in calls
+
+        calls.clear()
+        store = self._run(monkeypatch, tmp_path, ("20260105", "20260116"), calls)
+        # BBB's new days came from yfinance; bloomberg was never asked for BBB
+        assert not any(c[0] == "bloomberg" and "BBB" in c[1] for c in calls)
+        assert any(c[0] == "yfinance" and c[1] == ("BBB",) for c in calls)
+        src = store.groupby("symbol")["source"].agg(lambda s: set(s))
+        assert src["AAA"] == {"bloomberg"} and src["BBB"] == {"yfinance"}
+        assert store[store.symbol == "BBB"]["date"].max() == pd.Timestamp("2026-01-16")
+        assert store[store.symbol == "AAA"]["date"].max() == pd.Timestamp("2026-01-16")
+
+
+class TestSelfTest:
+    def test_selftest_reports_per_symbol_and_writes_nothing(self, monkeypatch,
+                                                            tmp_path):
+        def fake_download(tickers, start, end, **kw):
+            return _multi_ticker_frame(list(tickers))
+        monkeypatch.setitem(sys.modules, "yfinance",
+                            types.SimpleNamespace(download=fake_download))
+        log = _Quiet()
+        rc = P.selftest("yfinance", ["SPY", "GLD"], days=5, log=log)
+        assert rc == 0
+        text = "\n".join(log.lines)
+        assert "SPY" in text and "GLD" in text and "nothing written" in text
+
+    def test_selftest_fails_loudly_when_nothing_comes_back(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "yfinance", types.SimpleNamespace(
+            download=lambda *a, **k: pd.DataFrame()))
+        log = _Quiet()
+        assert P.selftest("yfinance", ["SPY"], days=5, log=log) == 1
+        assert any("no rows" in l for l in log.lines)
+
+
+class TestRateLimit:
+    def test_rate_limit_retries_then_raises(self, monkeypatch):
+        """Yahoo answers 'Too Many Requests' on stderr with an empty
+        frame; the provider must wait and retry, then raise (so the
+        caller's fallback logic sees a failure, not silent emptiness)."""
+        calls = []
+
+        def limited(tickers, start, end, **kw):
+            calls.append(1)
+            sys.stderr.write("['SPY']: YFRateLimitError('Too Many Requests. "
+                             "Rate limited. Try after a while.')\n")
+            return pd.DataFrame()
+        monkeypatch.setitem(sys.modules, "yfinance",
+                            types.SimpleNamespace(download=limited))
+        monkeypatch.setattr(P.YFinanceProvider, "RETRY_WAIT_S", (0, 0))
+        with pytest.raises(RuntimeError, match="rate-limited"):
+            P.YFinanceProvider().fetch(["SPY"], "20260901", "20260905",
+                                       log=_Quiet())
+        assert len(calls) == 3
+
+    def test_rate_limit_that_clears_returns_rows(self, monkeypatch):
+        n = {"k": 0}
+
+        def flaky(tickers, start, end, **kw):
+            n["k"] += 1
+            if n["k"] == 1:
+                sys.stderr.write("Rate limited\n")
+                return pd.DataFrame()
+            return _multi_ticker_frame(list(tickers))
+        monkeypatch.setitem(sys.modules, "yfinance",
+                            types.SimpleNamespace(download=flaky))
+        monkeypatch.setattr(P.YFinanceProvider, "RETRY_WAIT_S", (0,))
+        out = P.YFinanceProvider().fetch(["SPY"], "20260901", "20260905",
+                                         log=_Quiet())
+        assert len(out) and n["k"] == 2

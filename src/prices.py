@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import os
+import time
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import pandas as pd
@@ -148,6 +149,38 @@ class YFinanceProvider:
             return False, "yfinance is not installed (pip install yfinance)"
         return True, "yfinance installed"
 
+    # Yahoo rate-limits by IP and answers "Too Many Requests" for every
+    # symbol at once; yfinance reports it per symbol and returns an
+    # empty frame rather than raising. Retrying after a pause is the
+    # only remedy, and a shared corporate address may stay limited.
+    RETRY_WAIT_S = (20, 60, 120)
+
+    def _download(self, yf, chunk, start_d, end_d, log):
+        import io
+        import contextlib
+        for attempt, wait in enumerate((0,) + self.RETRY_WAIT_S):
+            if wait:
+                log(f"  yfinance rate-limited; waiting {wait}s before "
+                    f"retry {attempt}/{len(self.RETRY_WAIT_S)}")
+                time.sleep(wait)
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                raw = yf.download(chunk, start=start_d.isoformat(),
+                                  end=end_d.isoformat(), auto_adjust=True,
+                                  progress=False, threads=True,
+                                  group_by="column")
+            limited = "Rate limited" in err.getvalue() or \
+                "Too Many Requests" in err.getvalue()
+            if raw is not None and len(raw) and not raw.dropna(how="all").empty:
+                return raw
+            if not limited:
+                if err.getvalue().strip():
+                    log("  " + err.getvalue().strip().splitlines()[-1][:160])
+                return raw
+        raise RuntimeError("yfinance: rate-limited by Yahoo on every "
+                           "attempt (shared IP or too many requests); "
+                           "try again later")
+
     @staticmethod
     def _to_long(raw: pd.DataFrame, requested: List[str],
                  back: Dict[str, str]) -> pd.DataFrame:
@@ -209,10 +242,7 @@ class YFinanceProvider:
         ys = list(back)
         for i in range(0, len(ys), self.CHUNK):
             chunk = ys[i:i + self.CHUNK]
-            raw = yf.download(chunk, start=start_d.isoformat(),
-                              end=end_d.isoformat(), auto_adjust=True,
-                              progress=False, threads=True,
-                              group_by="column")
+            raw = self._download(yf, chunk, start_d, end_d, log)
             parts.append(self._to_long(raw, chunk, back))
         out = pd.concat(parts, ignore_index=True) if parts else \
             pd.DataFrame(columns=COLUMNS)
@@ -270,14 +300,19 @@ def provider_chain(preference: str, fallback: bool = True,
 def fetch_with_fallback(chain: List[object], symbols: List[str],
                         start: str, end: str, log=print
                         ) -> Tuple[pd.DataFrame, str]:
-    """Try each provider in ``chain`` until one returns rows.
+    """Try each provider in ``chain`` until one answers.
+
+    An empty answer is an answer: a provider that connected and returned
+    no rows (a symbol that did not trade yet, a span of holidays) is not
+    a failure, and falling through to the next provider on it would
+    splice sources. Only an exception - no session, no network, a
+    request error - moves on to the next provider.
 
     Returns:
-        ``(frame, provider_name)``. A provider that raises or returns no
-        rows is logged and the next one is tried.
+        ``(frame, provider_name)``; the frame may be empty.
 
     Raises:
-        ProviderUnavailable: When every provider failed.
+        ProviderUnavailable: When every provider raised.
     """
     last_err = None
     for prov in chain:
@@ -285,13 +320,82 @@ def fetch_with_fallback(chain: List[object], symbols: List[str],
             log(f"  pulling {len(symbols)} symbol(s) {start} -> {end} "
                 f"via {prov.name}")
             df = prov.fetch(symbols, start, end, log=log)
-            if df is not None and len(df):
-                return df, prov.name
-            log(f"  {prov.name} returned no rows")
-            last_err = f"{prov.name} returned no rows"
+            if df is None:
+                df = pd.DataFrame(columns=COLUMNS)
+            if not len(df):
+                log(f"  {prov.name}: no rows for this span "
+                    "(not listed yet, or no trading days)")
+            return df, prov.name
         except Exception as exc:                           # noqa: BLE001
             last_err = f"{prov.name}: {type(exc).__name__}: {exc}"
             log(f"  {prov.name} FAILED - {last_err}")
         if prov is not chain[-1]:
             log(f"  falling back to {chain[chain.index(prov) + 1].name}")
     raise ProviderUnavailable(f"every price provider failed ({last_err})")
+
+
+# ---------------------------------------------------------------------------
+# self-test: exercise one provider end to end, write nothing
+# ---------------------------------------------------------------------------
+def selftest(provider: str = "yfinance", symbols: Iterable[str] = None,
+             days: int = 14, log=print) -> int:
+    """Pull a few symbols over the last ``days`` days from one provider
+    and print what came back. Touches no store. Returns 0 when every
+    requested symbol produced rows, 1 otherwise.
+
+    Usage::
+
+        python -m src.prices --provider yfinance
+        python -m src.prices --provider bloomberg --symbols SPY,GLD
+    """
+    symbols = list(symbols or ["SPY", "GLD", "NVDA", "BRK.B", "1622 JT"])
+    end = pd.Timestamp.today().normalize()
+    start = end - pd.Timedelta(days=days)
+    a, b = start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+    log(f"price provider self-test: {provider} | {', '.join(symbols)} | "
+        f"{a} -> {b}")
+    prov = {"yfinance": YFinanceProvider, "bloomberg": BloombergProvider}.get(
+        provider)
+    if prov is None:
+        log(f"unknown provider {provider!r}; use yfinance or bloomberg")
+        return 1
+    prov = prov()
+    ok, why = prov.available()
+    log(f"  available: {ok} ({why})")
+    if not ok:
+        return 1
+    try:
+        df = prov.fetch(symbols, a, b, log=log)
+    except Exception as exc:                               # noqa: BLE001
+        log(f"  FAILED: {type(exc).__name__}: {exc}")
+        return 1
+    if df is None or not len(df):
+        log("  no rows returned")
+        return 1
+    df = df.copy()
+    df["date"] = pd.to_datetime(df["date"])
+    got = df.groupby("symbol").agg(rows=("px_last", "size"),
+                                   first=("date", "min"), last=("date", "max"),
+                                   last_close=("px_last", "last"))
+    log(got.to_string())
+    missing = [s for s in symbols if s not in got.index]
+    if missing:
+        log(f"  no rows for: {', '.join(missing)}")
+    log(f"  {len(df)} rows via {prov.name}; nothing written")
+    return 0 if not missing else 1
+
+
+if __name__ == "__main__":
+    import argparse
+    _p = argparse.ArgumentParser(description="Price provider self-test "
+                                             "(writes nothing).")
+    _p.add_argument("--provider", default="yfinance",
+                    choices=("yfinance", "bloomberg"))
+    _p.add_argument("--symbols", default="",
+                    help="comma-separated pipeline symbols (default: a "
+                         "small mixed set incl. a dotted class and a "
+                         "foreign line)")
+    _p.add_argument("--days", type=int, default=14)
+    _a = _p.parse_args()
+    _syms = [s.strip() for s in _a.symbols.split(",") if s.strip()] or None
+    raise SystemExit(selftest(_a.provider, _syms, _a.days))

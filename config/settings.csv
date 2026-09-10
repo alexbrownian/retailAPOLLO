@@ -10,3 +10,4 @@ bot_screen_enabled,true,Screen posts for automated/duplicate content before aggr
 bot_screen_threshold,0.6,Posts with bot_score at or above this value are excluded from the aggregates (kept in the raw store).
 bot_screen_duplicate_jaccard,0.85,MinHash Jaccard similarity above which two posts count as near-duplicates.
 bot_screen_burst_posts_per_day,12,An author posting at least this many times in one day is flagged as a burst poster.
+lookup_section_title,Search any ETF (beta),Heading of the on-demand ETF lookup panel on the landing page (any ETF outside the configured universe).

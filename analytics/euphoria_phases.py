@@ -1553,10 +1553,32 @@ def rebuild_phase_files(verbose: bool = True,
         live_cand = mld.attach_price_features(
             mld.candidate_frame(fpx_live), series, pxmap)
         maker = mld.ML_FITS[model_name]
+        _fit_top, _fit_onset = maker("y_top"), maker("y_onset")
         end_scored = live_cand.assign(
-            dscore=maker("y_top")(train, live_cand, mld.DESK_ML_BANK))
+            dscore=_fit_top(train, live_cand, mld.DESK_ML_BANK))
         onset_scored = live_cand.assign(
-            dscore=maker("y_onset")(train, live_cand, mld.DESK_ML_BANK))
+            dscore=_fit_onset(train, live_cand, mld.DESK_ML_BANK))
+        # Persist THIS fit and the population it scored, so the
+        # dashboard can score a name outside the universe (the ETF
+        # lookup) with the same model at the same frozen cut. Read-only
+        # from here on; a research pass rewrites it. Never fatal.
+        try:
+            _bundle_path = _os.path.join(PROCESSED_DIR, mld.DESK_BUNDLE)
+            mld.save_desk_bundle(
+                _bundle_path, {"y_top": _fit_top, "y_onset": _fit_onset},
+                mld.DESK_ML_BANK,
+                {"model": model_name, "data_max_year": int(data_max_year),
+                 "thr_in": float(thr_in), "thr_out": float(thr_out),
+                 "thr_in_strict": thr_in_strict,
+                 "thr_out_strict": thr_out_strict, "rearm_in": rearm_in,
+                 "live_rows": int(len(live_cand)),
+                 "train_rows": int(len(train))})
+            if verbose:
+                print(f"  saved {mld.DESK_BUNDLE} (fitted {model_name} + "
+                      f"live population, for the ETF lookup)")
+        except Exception as _bd_e:                       # noqa: BLE001
+            if verbose:
+                print(f"  (model bundle skipped: {_bd_e})")
         # The inflection head - a third, independent score on
         # the same candidate frame, price-free bank, fitted the same way
         # and on the same train years. It reads nothing the other two

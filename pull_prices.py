@@ -261,6 +261,12 @@ def plan_requests(symbols, start, end, existing):
     they batch into shared requests. A 3-day tolerance absorbs weekends
     and holidays at the span edges.
 
+    Only the TRAILING gap is planned for a symbol already in the store.
+    A leading gap (the store starts after the window start) is the
+    listing date, which does not move: re-asking for it every run cost
+    one request per late-listed symbol per run and returned nothing.
+    ``--force`` re-pulls whole windows when a leading gap is real.
+
     Args:
         symbols: Plain symbols to price.
         start: Window start, ``YYYYMMDD``.
@@ -289,8 +295,6 @@ def plan_requests(symbols, start, end, existing):
         else:
             lo, hi = coverage[sym]
             spans = []
-            if start_ts < lo - tol:
-                spans.append((start_ts, lo - pd.Timedelta(days=1)))
             if end_ts > hi + tol:
                 spans.append((hi + pd.Timedelta(days=1), end_ts))
         for a, b in spans:
@@ -324,8 +328,9 @@ def main():
                    help="price source (default: price_provider in "
                         "config/settings.csv)")
     p.add_argument("--no-fallback", action="store_true",
-                   help="with --provider bloomberg, do not fall back to "
-                        "yfinance on failure")
+                   help="with --provider bloomberg or auto, do not fall "
+                        "back to yfinance: neither when Bloomberg fails, "
+                        "nor for symbols Bloomberg has no data for")
     p.add_argument("--dry-run", action="store_true",
                    help="show the symbol universe + request window; do NOT connect")
     p.add_argument("--force", action="store_true",
@@ -365,9 +370,15 @@ def main():
               f"({existing['date'].min().date()} -> {existing['date'].max().date()})")
 
     # ONE SYMBOL, ONE SOURCE: a symbol whose stored rows came from a
-    # different provider is re-pulled in full and its old rows dropped.
+    # provider that is not in this run's chain is re-pulled in full and
+    # its old rows dropped. A symbol stored from the FALLBACK provider is
+    # kept when the fallback is still in the chain (it was filled from
+    # there because the primary had nothing); `--provider bloomberg
+    # --no-fallback` or `--force` moves such symbols back.
     sources = _current_sources(existing)
-    switching = sorted(s for s in symbols if s in sources and sources[s] != active)
+    chain_names = {c.name for c in chain}
+    switching = sorted(s for s in symbols
+                       if s in sources and sources[s] not in chain_names)
     if switching and existing is not None:
         print(f"provider changed for {len(switching)} symbol(s) "
               f"(stored as {sorted({sources[s] for s in switching})}, now "
@@ -375,17 +386,38 @@ def main():
               f"{', '.join(switching[:10])}{' ...' if len(switching) > 10 else ''}")
         existing = existing[~existing["symbol"].isin(switching)]
 
-    buckets = plan_requests(symbols, start, end, existing)
-    if not buckets:
+    # Symbols already stored from the fallback provider keep being
+    # extended from it (asking the primary would return nothing and
+    # leave their series frozen).
+    fb_syms = sorted(s for s in symbols
+                     if sources.get(s) in chain_names and sources[s] != active)
+    primary_syms = [s for s in symbols if s not in fb_syms]
+    buckets = plan_requests(primary_syms, start, end, existing)
+    buckets_fb = (plan_requests(fb_syms, start, end, existing)
+                  if fb_syms else {})
+    if not buckets and not buckets_fb:
         print("everything in this window is already in prices.parquet - "
               "nothing to fetch (use --force to re-download).")
         return 0
     n_req = sum(len(v) for v in buckets.values())
     print(f"incremental plan: {len(buckets)} span(s), {n_req} symbol-requests "
-          f"(fully-covered symbols skipped)")
+          f"(fully-covered symbols skipped)"
+          + (f"; {len(fb_syms)} symbol(s) stay on {chain[-1].name}"
+             if fb_syms else ""))
 
     parts = [] if existing is None else [existing]
     used = None
+    for (span_a, span_b), syms in sorted(buckets_fb.items()):
+        print(f"  span {span_a} -> {span_b}: {len(syms)} symbols via "
+              f"{chain[-1].name} (fallback-stored)")
+        try:
+            got_fb = chain[-1].fetch(syms, span_a, span_b)
+        except Exception as exc:                           # noqa: BLE001
+            print(f"  {chain[-1].name} FAILED - {type(exc).__name__}: {exc}")
+            continue
+        if len(got_fb):
+            got_fb["date"] = pd.to_datetime(got_fb["date"])
+            parts.append(got_fb)
     for (span_a, span_b), syms in sorted(buckets.items()):
         print(f"  span {span_a} -> {span_b}: {len(syms)} symbols")
         got, used_now = fetch_with_fallback(chain, syms, span_a, span_b)
@@ -399,6 +431,8 @@ def main():
             got["date"] = pd.to_datetime(got["date"])
             parts.append(got)
 
+    if used is None:                       # only fallback-stored spans ran
+        used = chain[-1].name
     prices = pd.concat(parts, ignore_index=True)
     if prices.empty:
         print("no price rows returned - check the provider (Terminal logged in, "
@@ -427,6 +461,36 @@ def main():
               "(delisted, non-US listing, younger than the window, or no "
               "Yahoo mapping):")
         print("  " + ", ".join(missing))
+
+    # FILL FROM THE FALLBACK - a symbol with NO rows at all from the
+    # active provider (an OTC line the Terminal is not entitled to, a
+    # delisted name it no longer serves) is pulled in full from the next
+    # provider in the chain. Whole symbol, one source: the one-symbol-
+    # one-source rule holds, nothing is spliced.
+    if missing and len(chain) > 1:
+        filler = chain[-1]
+        print(f"filling {len(missing)} symbol(s) with no {used} data from "
+              f"{filler.name} (full window)")
+        try:
+            extra = filler.fetch(missing, start, end)
+        except Exception as exc:                           # noqa: BLE001
+            extra = pd.DataFrame(columns=["date", "symbol", "px_last", "source"])
+            print(f"  {filler.name} FAILED - {type(exc).__name__}: {exc}")
+        if len(extra):
+            extra["date"] = pd.to_datetime(extra["date"])
+            prices = (pd.concat([prices, extra], ignore_index=True)
+                      .drop_duplicates(subset=["symbol", "date"], keep="last")
+                      .sort_values(["symbol", "date"]).reset_index(drop=True))
+            prices.to_parquet(tmp, index=False)
+            os.replace(tmp, OUT_PATH)
+            filled = sorted(set(extra["symbol"]))
+            print(f"  filled {len(filled)}: {', '.join(filled)} "
+                  f"(stored as source={filler.name})")
+            still = [s for s in missing if s not in filled]
+            if still:
+                print(f"  still no data: {', '.join(still)}")
+        else:
+            print(f"  {filler.name} had nothing for them either")
     return 0
 
 

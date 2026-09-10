@@ -51,6 +51,16 @@ DELISTED_TICKERS: frozenset[str] = frozenset({
     "SDC",   # SmileDirectClub - bankrupt 2023
     "APRN",  # Blue Apron - acquired 2023
     "FSR",   # Fisker - bankrupt 2024
+    # Dropped from the exchange directories by 2026-09 (taken private,
+    # merged or delisted) while still mapped to a theme in
+    # config/theme_tickers.csv: their historical mentions must keep
+    # counting, and the mapping test needs them reachable as tickers.
+    "EA",    # Electronic Arts - taken private
+    "APGE",  # Apogee Therapeutics
+    "WBS",   # Webster Financial
+    "ORLA",  # Orla Mining
+    "AVB",   # AvalonBay Communities
+    "EQR",   # Equity Residential
 })
 
 

@@ -186,7 +186,12 @@ def make_logit_fit(label: str):
             return np.zeros(len(apply))
         m = LogisticRegression(class_weight="balanced", max_iter=2000)
         m.fit(train[feats], y)
-        return m.predict_proba(apply[feats])[:, 1]
+        p = m.predict_proba(apply[feats])[:, 1]
+        # kept on the closure so the fitted model and the population it
+        # scored can be persisted (save_desk_bundle) and reused to score
+        # a name that was not in `apply` - an on-demand lookup
+        fit.model, fit.last_probs, fit.feats = m, p, list(feats)
+        return p
     fit.__name__ = f"logit_{label}"
     return fit
 
@@ -203,7 +208,9 @@ def make_gbm_fit(label: str):
             monotonic_cst=[1] * len(feats),   # more heat -> more risk, only
             random_state=RANDOM_STATE)
         m.fit(train[feats], y, sample_weight=_balanced_weights(y))
-        return m.predict_proba(apply[feats])[:, 1]
+        p = m.predict_proba(apply[feats])[:, 1]
+        fit.model, fit.last_probs, fit.feats = m, p, list(feats)
+        return p
     fit.__name__ = f"gbm_{label}"
     return fit
 
@@ -219,7 +226,88 @@ def make_ens_fit(label: str):
         b = pd.Series(gb(train, apply, feats)).rank(pct=True)
         return ((a + b) / 2).values
     fit.__name__ = f"ens_{label}"
+    fit.parts = (lg, gb)
     return fit
+
+
+# ---------------------------------------------------------------------------
+# persisting the live fit, so a name outside the universe can be scored
+# by the SAME model at the SAME frozen cut (the dashboard's ETF lookup)
+# ---------------------------------------------------------------------------
+DESK_BUNDLE = "euphoria_desk_model.joblib"
+
+
+def save_desk_bundle(path: str, fits: dict, feats: list, meta: dict) -> dict:
+    """Write the fitted ensemble parts and the population they scored.
+
+    Args:
+        path: Destination ``.joblib``.
+        fits: ``{"y_onset": ens_fit, "y_top": ens_fit}`` - the closures
+            returned by :func:`make_ens_fit` AFTER they have been called
+            on the live frame (their ``parts`` then carry fitted models
+            and the live population's probabilities).
+        feats: The feature bank the fits used.
+        meta: Anything worth keeping beside the models (thresholds, the
+            data year, the model family).
+
+    The ensemble score is a RANK within the scored population, so a new
+    row is scored by ranking its probabilities against the stored
+    population - which is what makes the lookup's number comparable to
+    the configured names' numbers and to the frozen cut.
+    """
+    import joblib
+    heads = {}
+    for label, fit in fits.items():
+        parts = getattr(fit, "parts", None)
+        if not parts or any(getattr(pt, "model", None) is None for pt in parts):
+            raise ValueError(f"{label}: fit has no persisted parts (not an "
+                             "ensemble, or not yet called)")
+        heads[label] = {
+            "logit": parts[0].model,
+            "gbm": parts[1].model,
+            "pop_logit": np.sort(np.asarray(parts[0].last_probs, dtype=float)),
+            "pop_gbm": np.sort(np.asarray(parts[1].last_probs, dtype=float)),
+        }
+    bundle = {"version": 1, "model": "ens", "feats": list(feats),
+              "heads": heads, "meta": dict(meta),
+              "built": pd.Timestamp.now("UTC").strftime("%Y-%m-%dT%H:%M:%SZ")}
+    tmp = path + ".tmp"
+    joblib.dump(bundle, tmp)
+    os.replace(tmp, path)
+    return bundle
+
+
+def load_desk_bundle(path: str) -> dict | None:
+    import joblib
+    if not os.path.exists(path):
+        return None
+    return joblib.load(path)
+
+
+def _rank_within(pop_sorted: np.ndarray, p: np.ndarray) -> np.ndarray:
+    """Percentile rank of each ``p`` within ``pop_sorted`` (ascending),
+    matching ``Series.rank(pct=True)``'s average-rank convention for a
+    value inserted into that population."""
+    n = len(pop_sorted)
+    if n == 0:
+        return np.full(len(p), np.nan)
+    lo = np.searchsorted(pop_sorted, p, side="left")
+    hi = np.searchsorted(pop_sorted, p, side="right")
+    # average rank of the inserted value among n+1 values
+    return ((lo + 1 + hi + 1) / 2.0) / (n + 1)
+
+
+def score_with_bundle(bundle: dict, label: str, X: pd.DataFrame) -> np.ndarray:
+    """Ensemble score for rows ``X`` under head ``label`` (``y_onset`` or
+    ``y_top``), on the same rank scale as the stored live scores."""
+    head = bundle["heads"][label]
+    feats = bundle["feats"]
+    if X.empty:
+        return np.zeros(0)
+    pl = head["logit"].predict_proba(X[feats])[:, 1]
+    pg = head["gbm"].predict_proba(X[feats])[:, 1]
+    return (_rank_within(head["pop_logit"], pl)
+            + _rank_within(head["pop_gbm"], pg)) / 2.0
 
 
 def make_mlp_fit(label: str):

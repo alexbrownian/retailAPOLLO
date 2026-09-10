@@ -1,0 +1,9 @@
+{
+ "enabled": true,
+ "threshold": 0.6,
+ "rows_in": 1425,
+ "rows_excluded": 0,
+ "exclusion_rate": 0.0,
+ "top_reasons": {},
+ "checked_utc": "2026-09-10T01:00:21Z"
+}

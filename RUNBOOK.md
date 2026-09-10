@@ -120,8 +120,26 @@ in the environment does the same for one process.
 
 **Freshness line.** The masthead shows how many business days old the
 data is and, on a hosted copy, whether the deployed bundle is behind the
-one last published (`publish_manifest.json`). The remedy for either is a
-refresh and a push (section 4).
+one last published (`publish_manifest.json`). A viewer sees one plain
+sentence; the machine with the pipeline controls sees the diagnosis and
+the command. The remedy for either is a refresh and a push (section 4).
+
+**ETF lookup (beta).** The landing page has a search box for any ETF,
+configured or not. It resolves the text (configured themes, the local
+`config/etf_catalogue.csv`, then the Terminal's security lookup when one
+answers, else Yahoo Finance), reads the ETF's top holdings (Bloomberg
+first, Yahoo as the fallback, or typed by hand), derives a word list
+from the names, assembles attention and sentiment from the aggregates,
+pulls the price (store first, then the price provider, cached under
+`data/prices/lookups/`), and scores the result two ways: the rule-based
+euphoria level with the frozen gauge bands, and the production
+INCREASE / CUT EXPOSURE model applied read-only at its frozen cuts. The
+model comes from `data/processed/euphoria_desk_model.joblib`, written by
+every analytics pass (the fitted ensemble plus the population it
+scored, so a new name is ranked on the same scale); nothing is fitted or
+re-thresholded for a lookup, and no capture rate is claimed for it.
+Self-test: `python -m src.lookup india` (add `--yahoo-only` to skip the
+Terminal). Heading text: `config/settings.csv → lookup_section_title`.
 
 ## 4. Hosted dashboard
 

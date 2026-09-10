@@ -1,0 +1,197 @@
+symbol,name,keywords
+SPY,SPDR S&P 500 ETF Trust,s&p 500|large cap|us equity
+VOO,Vanguard S&P 500 ETF,s&p 500|large cap|us equity
+IVV,iShares Core S&P 500 ETF,s&p 500|large cap|us equity
+QQQ,Invesco QQQ Trust,nasdaq 100|tech|growth
+VTI,Vanguard Total Stock Market ETF,total market|us equity
+IWM,iShares Russell 2000 ETF,small cap|russell 2000
+DIA,SPDR Dow Jones Industrial Average ETF,dow|blue chip
+RSP,Invesco S&P 500 Equal Weight ETF,equal weight|s&p 500
+VXUS,Vanguard Total International Stock ETF,international|ex-us
+VEA,Vanguard FTSE Developed Markets ETF,developed|international
+VWO,Vanguard FTSE Emerging Markets ETF,emerging markets
+EEM,iShares MSCI Emerging Markets ETF,emerging markets
+IEMG,iShares Core MSCI Emerging Markets ETF,emerging markets
+EFA,iShares MSCI EAFE ETF,developed|europe|japan
+INDA,iShares MSCI India ETF,india
+INDY,iShares India 50 ETF,india|nifty
+EPI,WisdomTree India Earnings Fund,india
+SMIN,iShares MSCI India Small-Cap ETF,india|small cap
+EWZ,iShares MSCI Brazil ETF,brazil|latin america
+BRZU,Direxion Daily MSCI Brazil Bull 2X Shares,brazil|leveraged
+FLBR,Franklin FTSE Brazil ETF,brazil
+ILF,iShares Latin America 40 ETF,latin america|brazil|mexico
+EWW,iShares MSCI Mexico ETF,mexico
+ARGT,Global X MSCI Argentina ETF,argentina
+ECH,iShares MSCI Chile ETF,chile|copper
+FXI,iShares China Large-Cap ETF,china
+MCHI,iShares MSCI China ETF,china
+KWEB,KraneShares CSI China Internet ETF,china|internet|tech
+ASHR,Xtrackers Harvest CSI 300 China A-Shares ETF,china|a-shares
+CQQQ,Invesco China Technology ETF,china|tech
+YINN,Direxion Daily FTSE China Bull 3X Shares,china|leveraged
+EWJ,iShares MSCI Japan ETF,japan
+DXJ,WisdomTree Japan Hedged Equity Fund,japan|hedged
+EWY,iShares MSCI South Korea ETF,korea|south korea
+EWT,iShares MSCI Taiwan ETF,taiwan|semiconductors
+VNM,VanEck Vietnam ETF,vietnam
+EIDO,iShares MSCI Indonesia ETF,indonesia
+THD,iShares MSCI Thailand ETF,thailand
+EPHE,iShares MSCI Philippines ETF,philippines
+EWM,iShares MSCI Malaysia ETF,malaysia
+EWS,iShares MSCI Singapore ETF,singapore
+EWA,iShares MSCI Australia ETF,australia
+EWC,iShares MSCI Canada ETF,canada
+EWU,iShares MSCI United Kingdom ETF,uk|united kingdom|britain
+EWG,iShares MSCI Germany ETF,germany
+EWQ,iShares MSCI France ETF,france
+EWI,iShares MSCI Italy ETF,italy
+EWP,iShares MSCI Spain ETF,spain
+EWL,iShares MSCI Switzerland ETF,switzerland
+EWD,iShares MSCI Sweden ETF,sweden
+EWN,iShares MSCI Netherlands ETF,netherlands
+EPOL,iShares MSCI Poland ETF,poland
+TUR,iShares MSCI Turkey ETF,turkey
+GREK,Global X MSCI Greece ETF,greece
+EZA,iShares MSCI South Africa ETF,south africa
+KSA,iShares MSCI Saudi Arabia ETF,saudi arabia|middle east
+UAE,iShares MSCI UAE ETF,uae|dubai|middle east
+EIS,iShares MSCI Israel ETF,israel
+VGK,Vanguard FTSE Europe ETF,europe
+EZU,iShares MSCI Eurozone ETF,europe|eurozone
+FEZ,SPDR EURO STOXX 50 ETF,europe|euro stoxx
+XLK,Technology Select Sector SPDR Fund,technology|tech
+VGT,Vanguard Information Technology ETF,technology|tech
+XLF,Financial Select Sector SPDR Fund,financials|banks
+KRE,SPDR S&P Regional Banking ETF,regional banks|banks
+KBE,SPDR S&P Bank ETF,banks
+XLE,Energy Select Sector SPDR Fund,energy|oil
+XOP,SPDR S&P Oil & Gas Exploration & Production ETF,oil|gas|exploration
+OIH,VanEck Oil Services ETF,oil services
+USO,United States Oil Fund,oil|crude|wti
+UNG,United States Natural Gas Fund,natural gas
+XLV,Health Care Select Sector SPDR Fund,healthcare|health care
+XBI,SPDR S&P Biotech ETF,biotech
+IBB,iShares Biotechnology ETF,biotech
+XLI,Industrial Select Sector SPDR Fund,industrials
+XLB,Materials Select Sector SPDR Fund,materials
+XLU,Utilities Select Sector SPDR Fund,utilities
+XLP,Consumer Staples Select Sector SPDR Fund,consumer staples
+XLY,Consumer Discretionary Select Sector SPDR Fund,consumer discretionary|retail
+XLRE,Real Estate Select Sector SPDR Fund,real estate|reits
+VNQ,Vanguard Real Estate ETF,real estate|reits
+XLC,Communication Services Select Sector SPDR Fund,communication|media
+SMH,VanEck Semiconductor ETF,semiconductors|chips
+SOXX,iShares Semiconductor ETF,semiconductors|chips
+SOXL,Direxion Daily Semiconductor Bull 3X Shares,semiconductors|leveraged
+IGV,iShares Expanded Tech-Software Sector ETF,software|saas
+CIBR,First Trust NASDAQ Cybersecurity ETF,cybersecurity
+HACK,Amplify Cybersecurity ETF,cybersecurity
+CLOU,Global X Cloud Computing ETF,cloud|saas
+SKYY,First Trust Cloud Computing ETF,cloud
+BOTZ,Global X Robotics & Artificial Intelligence ETF,robotics|ai|artificial intelligence
+AIQ,Global X Artificial Intelligence & Technology ETF,ai|artificial intelligence
+ARKK,ARK Innovation ETF,innovation|disruptive|growth
+ARKG,ARK Genomic Revolution ETF,genomics|biotech
+ARKW,ARK Next Generation Internet ETF,internet|fintech
+ARKF,ARK Fintech Innovation ETF,fintech|payments
+FINX,Global X FinTech ETF,fintech|payments
+IPAY,Amplify Mobile Payments ETF,payments|fintech
+BLOK,Amplify Transformational Data Sharing ETF,blockchain|crypto
+BITO,ProShares Bitcoin Strategy ETF,bitcoin|crypto
+IBIT,iShares Bitcoin Trust ETF,bitcoin|crypto
+GBTC,Grayscale Bitcoin Trust ETF,bitcoin|crypto
+ETHA,iShares Ethereum Trust ETF,ethereum|crypto
+GLD,SPDR Gold Shares,gold
+IAU,iShares Gold Trust,gold
+GDX,VanEck Gold Miners ETF,gold miners
+GDXJ,VanEck Junior Gold Miners ETF,gold miners|junior
+SLV,iShares Silver Trust,silver
+SIL,Global X Silver Miners ETF,silver miners
+COPX,Global X Copper Miners ETF,copper|miners
+CPER,United States Copper Index Fund,copper
+URA,Global X Uranium ETF,uranium|nuclear
+URNM,Sprott Uranium Miners ETF,uranium|nuclear|miners
+NLR,VanEck Uranium and Nuclear ETF,nuclear|uranium
+LIT,Global X Lithium & Battery Tech ETF,lithium|battery|ev
+REMX,VanEck Rare Earth and Strategic Metals ETF,rare earth|metals
+PICK,iShares MSCI Global Metals & Mining Producers ETF,mining|metals
+XME,SPDR S&P Metals & Mining ETF,metals|mining|steel
+SLX,VanEck Steel ETF,steel
+DBA,Invesco DB Agriculture Fund,agriculture|commodities
+MOO,VanEck Agribusiness ETF,agriculture|agribusiness
+DBC,Invesco DB Commodity Index Tracking Fund,commodities
+PDBC,Invesco Optimum Yield Diversified Commodity Strategy,commodities
+TAN,Invesco Solar ETF,solar|clean energy
+ICLN,iShares Global Clean Energy ETF,clean energy|renewables
+QCLN,First Trust NASDAQ Clean Edge Green Energy ETF,clean energy
+FAN,First Trust Global Wind Energy ETF,wind|clean energy
+HYDR,Global X Hydrogen ETF,hydrogen
+DRIV,Global X Autonomous & Electric Vehicles ETF,ev|electric vehicles|autonomous
+IDRV,iShares Self-Driving EV and Tech ETF,ev|electric vehicles
+KARS,KraneShares Electric Vehicles & Future Mobility ETF,ev|electric vehicles
+JETS,U.S. Global Jets ETF,airlines|travel
+PEJ,Invesco Leisure and Entertainment ETF,leisure|travel|entertainment
+ITA,iShares U.S. Aerospace & Defense ETF,defense|aerospace
+PPA,Invesco Aerospace & Defense ETF,defense|aerospace
+XAR,SPDR S&P Aerospace & Defense ETF,defense|aerospace
+UFO,Procure Space ETF,space
+ARKX,ARK Space Exploration & Innovation ETF,space
+ROKT,SPDR S&P Kensho Final Frontiers ETF,space
+ESPO,VanEck Video Gaming and eSports ETF,gaming|esports
+HERO,Global X Video Games & Esports ETF,gaming|esports
+BETZ,Roundhill Sports Betting & iGaming ETF,betting|gambling
+BJK,VanEck Gaming ETF,casinos|gambling
+MSOS,AdvisorShares Pure US Cannabis ETF,cannabis|marijuana
+MJ,Amplify Alternative Harvest ETF,cannabis|marijuana
+XHB,SPDR S&P Homebuilders ETF,homebuilders|housing
+ITB,iShares U.S. Home Construction ETF,homebuilders|housing
+XRT,SPDR S&P Retail ETF,retail
+IHI,iShares U.S. Medical Devices ETF,medical devices
+XPH,SPDR S&P Pharmaceuticals ETF,pharma
+PJP,Invesco Pharmaceuticals ETF,pharma
+FDN,First Trust Dow Jones Internet Index Fund,internet
+SOCL,Global X Social Media ETF,social media
+PBW,Invesco WilderHill Clean Energy ETF,clean energy
+TLT,iShares 20+ Year Treasury Bond ETF,treasuries|bonds|rates
+IEF,iShares 7-10 Year Treasury Bond ETF,treasuries|bonds
+SHY,iShares 1-3 Year Treasury Bond ETF,treasuries|short duration
+TMF,Direxion Daily 20+ Year Treasury Bull 3X Shares,treasuries|leveraged
+HYG,iShares iBoxx High Yield Corporate Bond ETF,high yield|junk bonds
+JNK,SPDR Bloomberg High Yield Bond ETF,high yield|junk bonds
+LQD,iShares iBoxx Investment Grade Corporate Bond ETF,investment grade|bonds
+BND,Vanguard Total Bond Market ETF,bonds
+AGG,iShares Core U.S. Aggregate Bond ETF,bonds
+TIP,iShares TIPS Bond ETF,inflation|tips
+EMB,iShares J.P. Morgan USD Emerging Markets Bond ETF,emerging markets bonds
+UUP,Invesco DB US Dollar Index Bullish Fund,dollar|dxy
+FXE,Invesco CurrencyShares Euro Trust,euro
+FXY,Invesco CurrencyShares Japanese Yen Trust,yen
+VIXY,ProShares VIX Short-Term Futures ETF,vix|volatility
+UVXY,ProShares Ultra VIX Short-Term Futures ETF,vix|volatility|leveraged
+SVXY,ProShares Short VIX Short-Term Futures ETF,vix|short volatility
+SQQQ,ProShares UltraPro Short QQQ,nasdaq|inverse|leveraged
+TQQQ,ProShares UltraPro QQQ,nasdaq|leveraged
+UPRO,ProShares UltraPro S&P 500,s&p 500|leveraged
+SPXU,ProShares UltraPro Short S&P 500,s&p 500|inverse
+SDS,ProShares UltraShort S&P 500,s&p 500|inverse
+TNA,Direxion Daily Small Cap Bull 3X Shares,small cap|leveraged
+LABU,Direxion Daily S&P Biotech Bull 3X Shares,biotech|leveraged
+NUGT,Direxion Daily Gold Miners Index Bull 2X Shares,gold miners|leveraged
+JNUG,Direxion Daily Junior Gold Miners Index Bull 2X Shares,gold miners|leveraged
+FAS,Direxion Daily Financial Bull 3X Shares,financials|leveraged
+TSLL,Direxion Daily TSLA Bull 2X Shares,tesla|leveraged
+NVDL,GraniteShares 2x Long NVDA Daily ETF,nvidia|leveraged
+MSTU,T-Rex 2X Long MSTR Daily Target ETF,microstrategy|bitcoin|leveraged
+SCHD,Schwab U.S. Dividend Equity ETF,dividend
+VYM,Vanguard High Dividend Yield ETF,dividend
+JEPI,JPMorgan Equity Premium Income ETF,income|covered call
+JEPQ,JPMorgan Nasdaq Equity Premium Income ETF,income|covered call
+MTUM,iShares MSCI USA Momentum Factor ETF,momentum|factor
+QUAL,iShares MSCI USA Quality Factor ETF,quality|factor
+VTV,Vanguard Value ETF,value
+VUG,Vanguard Growth ETF,growth
+IWF,iShares Russell 1000 Growth ETF,growth
+IWD,iShares Russell 1000 Value ETF,value
+AVUV,Avantis U.S. Small Cap Value ETF,small cap|value
+MAGS,Roundhill Magnificent Seven ETF,magnificent seven|mega cap tech

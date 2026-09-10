@@ -65,7 +65,8 @@ def _shipped_text_files():
             continue
         for p in base.rglob("*"):
             if p.suffix in (".py", ".md", ".txt", ".csv", ".env") and \
-                    "__pycache__" not in p.parts:
+                    "__pycache__" not in p.parts and \
+                    not p.name.endswith(".local.csv"):  # git-ignored, per machine
                 yield p
     for name in SHIPPED_ROOT_FILES:
         p = ROOT / name

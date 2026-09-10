@@ -27,6 +27,7 @@ Changes take effect on the next pipeline run or dashboard restart.
 | Stop a word being read as a ticker (e.g. "DD", "YOLO") | `ticker_stoplist.csv` |
 | Make a short ticker recognisable without a `$` (e.g. "MU") | `ticker_allowlist.csv` |
 | Tune the bot screen | `settings.csv` → `bot_screen_*` |
+| Rename the on-demand ETF lookup panel | `settings.csv` → `lookup_section_title` |
 | Change the AI poll questions | `ai_poll_prompts.csv` |
 | Change what counts as an "asked an AI" post | `agentic_terms.csv` |
 
@@ -49,6 +50,7 @@ One row per setting. Missing keys fall back to the defaults in
 | `bot_screen_threshold` | 0–1 | Posts with `bot_score` at or above this are excluded from aggregates. |
 | `bot_screen_duplicate_jaccard` | 0–1 | Near-duplicate similarity cut for the MinHash step. |
 | `bot_screen_burst_posts_per_day` | integer | Author posts-per-day at or above which the burst flag fires. |
+| `lookup_section_title` | text | Heading of the on-demand ETF lookup panel (beta) on the landing page. |
 
 ### `forums.csv` — `forum,source,tier,enabled,added,note`
 
@@ -135,6 +137,13 @@ prefix (`MU`, `AMD`). Counted when they appear as bare capitals.
 
 Holdings of the anchor ETFs, used to explain which single names sit
 inside a theme. Informational; refreshed by hand.
+
+### `etf_catalogue.csv` — `symbol,name,keywords`
+
+A convenience list of common ETFs for the dashboard's on-demand ETF
+lookup, so a search by name or theme word works without the Yahoo
+Finance search service. `keywords` is `|`-separated. Add rows freely;
+nothing else reads this file.
 
 ### `agentic_terms.csv` — `category,pattern,note`
 
