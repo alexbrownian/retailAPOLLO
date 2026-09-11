@@ -1,0 +1,462 @@
+"""Live Reddit ingestion via the Arctic Shift public API.
+
+This is the default Reddit source; FetchLayer stays for X, and
+``fetch_reddit_live.py`` remains as a manual fallback. Arctic Shift gives:
+
+* complete coverage: every post in every tracked subreddit, not a
+  top-engagement sample;
+* near-real-time archiving: posts are available within minutes of being
+  written;
+* no key and no credits (requests are paced to stay polite);
+* records in the official/Pushshift shape, so the existing normaliser
+  (``src/reddit_live_data.py``, ``"_backend": "official"``) handles them
+  as-is.
+
+Usage::
+
+    python Code/ingestion/fetch_reddit_arctic.py                  # fetch_all calls this
+    python Code/ingestion/fetch_reddit_arctic.py --lookback-days 14
+    python Code/ingestion/fetch_reddit_arctic.py --test           # one page, writes nothing
+    python Code/ingestion/fetch_reddit_arctic.py --backfill 2023-04-01 2023-07-01
+                                                           # fill a historical gap
+
+Output: ``Data/raw/RedditLive/reddit_live_arctic_<timestamp>.jsonl.zst``,
+one line per post holding the raw JSON plus ``"_backend": "official"``.
+The same merge/fold machinery consumes it (``merge_live.py`` and
+``append_live_abstracted.py`` glob ``RedditLive/*.jsonl.zst``) and dedups
+by id, so overlap with FetchLayer pulls or previous runs is harmless. Raw
+files accumulate forever (nothing is ever re-pulled) and the fold ledgers
+guarantee each post enters the pipeline exactly once.
+
+The watermark: Arctic Shift archives by creation time with complete
+coverage, so once a subreddit has been fetched through time T, posts
+created before T can never appear later and re-fetching them is pure
+waste. A per-subreddit watermark (newest ``created_utc`` seen, kept in
+``Data/reference/reddit_arctic_watermark.json``) lets every run after the
+first fetch only what is new, minus a one-day safety overlap for posts
+that reach the archive late. A watermark only advances when the
+subreddit's pagination completed; a run that gave up mid-subreddit
+re-covers the window next time. On the first run, or when
+``--lookback-days`` reaches farther back than the watermark, the full
+lookback window is fetched. A daily run's Reddit pass therefore takes
+about a minute instead of many minutes.
+"""
+
+import argparse
+import datetime
+import json
+import os
+import sys
+import threading
+import time
+
+import requests
+import zstandard
+
+THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(THIS_DIR)
+sys.path.insert(0, PROJECT_ROOT)
+from src.config import DATA_DIR  # noqa: E402
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
+OUT_DIR = os.path.join(DATA_DIR, "raw", "RedditLive")
+SEEN_FILE = os.path.join(DATA_DIR, "reference",
+                         "reddit_arctic_seen.json")
+# Forum panel: config/forums.csv via src.settings.load_forums().
+WATERMARK_FILE = os.path.join(DATA_DIR, "reference",
+                              "reddit_arctic_watermark.json")
+OVERLAP_S = 86400          # 1-day overlap behind the watermark (late arrivals)
+API = "https://arctic-shift.photon-reddit.com/api/posts/search"
+PAGE = 100
+PAUSE_S = 1.0
+MAX_SEEN = 50_000     # rolling window of recently-written ids
+
+# ---------------------------------------------------------------------
+# Fast mode (the default for --backfill; the daily live path opts in
+# with --fast). Four request-level optimisations, each lossless:
+#   1. limit="auto": Arctic Shift returns 100-1000 rows per page
+#      depending on server capacity, versus a fixed 100.
+#   2. fields=: only the eight fields the pipeline reads are requested
+#      (see KEEP_FIELDS); the full Reddit object is otherwise
+#      downloaded and discarded.
+#   3. Rate-limit pacing from the X-RateLimit-Remaining header instead
+#      of a fixed per-page sleep.
+#   4. 4xx classification (below) so a malformed-request response
+#      cannot consume a long retry ladder.
+# ---------------------------------------------------------------------
+
+# The only fields anything downstream reads. Keep in step with
+# src/reddit_live_data.py::OUTPUT_COLUMNS and src.clean_data.normalise.
+KEEP_FIELDS = ("id,created_utc,author,score,subreddit,title,selftext,"
+               "num_comments")
+
+RATELIMIT_FLOOR = 5       # start waiting when this few requests remain
+FAST_PAUSE_S = 0.0        # pacing comes from the rate-limit header instead
+
+# 4xx handling, split by confidence in the cause. 400/404 are
+# unambiguous (malformed request; retrying is pointless). 403/422 have
+# been observed transiently from the archive under load and receive a
+# short retry with the response body logged, so the cause is recorded
+# rather than guessed.
+HARD_4XX = {400, 404}         # the request is malformed; stop
+SOFT_4XX = {403, 422}         # might be transient; a couple of quick tries
+SOFT_4XX_TRIES = 3
+SOFT_4XX_BACKOFF = (2, 5, 10)
+
+
+def read_subreddits():
+    """Return the enabled forums from ``config/forums.csv``, in file order."""
+    from src.settings import load_forums
+    return list(load_forums())
+
+
+def load_seen():
+    """Return the rolling list of recently written post ids (may be empty)."""
+    if os.path.exists(SEEN_FILE):
+        try:
+            return list(json.load(open(SEEN_FILE, encoding="utf-8")))
+        except Exception:
+            return []
+    return []
+
+
+def save_seen(seen_list):
+    """Atomically write the newest ``MAX_SEEN`` ids of ``seen_list``."""
+    os.makedirs(os.path.dirname(SEEN_FILE), exist_ok=True)
+    with open(SEEN_FILE + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(seen_list[-MAX_SEEN:], f)
+    os.replace(SEEN_FILE + ".tmp", SEEN_FILE)
+
+
+def load_watermarks():
+    """Return the per-subreddit watermark dict (subreddit -> epoch seconds)."""
+    if os.path.exists(WATERMARK_FILE):
+        try:
+            return json.load(open(WATERMARK_FILE, encoding="utf-8"))
+        except (ValueError, OSError):
+            return {}
+    return {}
+
+
+def save_watermarks(marks):
+    """Atomically write the per-subreddit watermark dict."""
+    os.makedirs(os.path.dirname(WATERMARK_FILE), exist_ok=True)
+    with open(WATERMARK_FILE + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(marks, f)
+    os.replace(WATERMARK_FILE + ".tmp", WATERMARK_FILE)
+
+
+class Stop(Exception):
+    """The server refused the request itself; retrying cannot help."""
+
+
+def fetch_page(sub, after, before, retries=4, session=None, fast=False):
+    """Fetch one page of posts for a subreddit.
+
+    Args:
+        sub: Subreddit name.
+        after: Window start, ``YYYY-MM-DD`` or epoch seconds as a string.
+        before: Window end (exclusive), same formats.
+        retries: Attempts before giving up on transient failures.
+        session: Optional ``requests.Session`` to reuse connections.
+        fast: Use ``limit=auto``, minimal fields and header-driven pacing.
+
+    Returns:
+        The list of post records, which may be empty when the window is
+        genuinely empty; ``None`` when the window was not covered (retries
+        exhausted), so the caller must not advance its watermark.
+
+    Raises:
+        Stop: On a 4xx that means the request itself is wrong, so the
+            caller ends this subreddit cleanly instead of spending the
+            retry ladder re-asking a question the server has already
+            rejected.
+    """
+    get = (session or requests).get
+    params = {"subreddit": sub, "after": after, "before": before,
+              "limit": "auto" if fast else PAGE}
+    if fast:
+        params["fields"] = KEEP_FIELDS
+    soft = 0
+    for attempt in range(retries):
+        try:
+            r = get(API, params=params, timeout=(10, 120))
+            if r.status_code == 200:
+                _pace(r, fast)
+                return r.json().get("data", [])
+            if r.status_code == 429:
+                # the one 4xx that IS about the moment
+                wait = float(r.headers.get("Retry-After") or 30)
+                print(f"    rate limited - waiting {wait:.0f}s", flush=True)
+                time.sleep(wait)
+                continue
+            if r.status_code in HARD_4XX:
+                raise Stop(f"HTTP {r.status_code}: {r.text[:300]}")
+            if r.status_code in SOFT_4XX:
+                soft += 1
+                body = r.text[:300].replace("\n", " ")
+                print(f"    HTTP {r.status_code} from r/{sub} "
+                      f"(try {soft}/{SOFT_4XX_TRIES}) - server said: "
+                      f"{body}", flush=True)
+                if soft >= SOFT_4XX_TRIES:
+                    raise Stop(f"HTTP {r.status_code} {soft}x: {body}")
+                time.sleep(SOFT_4XX_BACKOFF[min(soft - 1,
+                                                len(SOFT_4XX_BACKOFF) - 1)])
+                continue
+            print(f"    HTTP {r.status_code} - backing off "
+                  f"{20 * (attempt + 1)}s...", flush=True)
+        except requests.RequestException as e:
+            print(f"    network hiccup ({e}) - retrying...", flush=True)
+        time.sleep(20 * (attempt + 1))
+    print(f"    r/{sub}: giving up this run (next run re-covers the window)")
+    return None                    # None = FAILED (vs [] = genuinely empty)
+
+
+def _pace(resp, fast):
+    """In fast mode, sleep only when the rate-limit headers say to."""
+    if not fast:
+        return
+    try:
+        remaining = int(resp.headers.get("X-RateLimit-Remaining", "999"))
+    except ValueError:
+        remaining = 999
+    if remaining <= RATELIMIT_FLOOR:
+        try:
+            reset = float(resp.headers.get("X-RateLimit-Reset", "5"))
+        except ValueError:
+            reset = 5.0
+        time.sleep(max(0.5, min(reset, 60.0)))
+    elif FAST_PAUSE_S:
+        time.sleep(FAST_PAUSE_S)
+
+
+def main():
+    """Fetch every configured subreddit and write one raw file.
+
+    Returns:
+        ``0`` on success, including when nothing new was found.
+    """
+    p = argparse.ArgumentParser(description="Live Reddit via Arctic Shift.")
+    p.add_argument("--lookback-days", type=int, default=7,
+                   help="fetch posts from the last N days (overlap dedups)")
+    p.add_argument("--max-credits", type=int, default=0,
+                   help="ignored - Arctic Shift is free (accepted so the "
+                        "shared fetch knobs don't error)")
+    p.add_argument("--test", action="store_true",
+                   help="one page from one subreddit, print, write nothing")
+    p.add_argument("--backfill", nargs=2, metavar=("START", "END"),
+                   help="fetch an explicit PAST window (YYYY-MM-DD "
+                        "YYYY-MM-DD) and IGNORE the watermark - the only "
+                        "way to fill a historical gap, because the "
+                        "incremental window is max(lookback, watermark) "
+                        "and therefore cannot walk backwards. The "
+                        "watermark is left untouched by a backfill, so "
+                        "the next ordinary run still resumes from the "
+                        "present. Dedup is by post id, so overlapping "
+                        "an already-fetched span is harmless.")
+    p.add_argument("--fast", dest="fast", action="store_true", default=None,
+                   help="limit=auto + minimal fields + rate-limit pacing. "
+                        "ON by default for --backfill; the daily live run "
+                        "keeps the old conservative behaviour unless you "
+                        "ask for it here.")
+    p.add_argument("--no-fast", dest="fast", action="store_false",
+                   help="force the old one-page-at-a-time behaviour")
+    p.add_argument("--subreddits", default="",
+                   help="comma-separated subset to fetch instead of all of "
+                        "config/forums.csv. Coverage measured on the "
+                        "healthy 2026 window: wallstreetbets alone keeps "
+                        "24%% of covered name-days, +valueinvesting+stocks "
+                        "59%%, +dividends+bogleheads 76%%.")
+    p.add_argument("--workers", type=int, default=1,
+                   help="fetch this many subreddits concurrently. "
+                        "Subreddits are independent, so this is the one "
+                        "safe axis to parallelise; pages within a "
+                        "subreddit stay strictly sequential because each "
+                        "page's cursor comes from the one before it.")
+    args = p.parse_args()
+
+    subs = read_subreddits()
+    if args.subreddits:
+        want = {x.strip().lower() for x in args.subreddits.split(",")
+                if x.strip()}
+        missing = want - {s.lower() for s in subs}
+        subs = [s for s in subs if s.lower() in want]
+        if missing:
+            print(f"NOTE: not in config/forums.csv, fetching anyway: "
+                  f"{sorted(missing)}")
+            subs += sorted(missing)
+        if not subs:
+            p.error("--subreddits matched nothing")
+
+    # fast is the default for a backfill and only for a backfill
+    fast = args.fast if args.fast is not None else bool(args.backfill)
+    today = datetime.date.today()
+    if args.backfill:
+        after, before = args.backfill
+        try:
+            datetime.date.fromisoformat(after)
+            datetime.date.fromisoformat(before)
+        except ValueError:
+            p.error("--backfill dates must be YYYY-MM-DD")
+        print(f"BACKFILL {after} -> {before} across {len(subs)} "
+              "subreddits (watermark ignored and left unchanged)")
+    else:
+        after = (today
+                 - datetime.timedelta(days=args.lookback_days)).isoformat()
+        before = (today + datetime.timedelta(days=1)).isoformat()
+
+    if args.test:
+        rows = fetch_page(subs[0], after, before, fast=fast) or []
+        print(f"TEST: r/{subs[0]} returned {len(rows)} posts "
+              f"({after} -> {before}); first titles:")
+        for rec in rows[:3]:
+            print("  -", str(rec.get("title", ""))[:70])
+        return 0
+
+    seen_list = load_seen()
+    seen = set(seen_list)
+    os.makedirs(OUT_DIR, exist_ok=True)
+    stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    out_path = os.path.join(OUT_DIR, f"reddit_live_arctic_{stamp}.jsonl.zst")
+
+    marks = load_watermarks()
+    lookback_epoch = int(time.time()) - args.lookback_days * 86400
+    total = 0
+    writer = zstandard.ZstdCompressor().stream_writer(
+        open(out_path + ".tmp", "wb"))
+    wlock = threading.Lock()          # writer + seen are shared across workers
+
+    def _epoch(v):
+        """Accept 'YYYY-MM-DD' or an epoch string; return int seconds."""
+        try:
+            return int(float(v))
+        except (TypeError, ValueError):
+            return int(datetime.datetime.fromisoformat(
+                str(v)).replace(tzinfo=datetime.timezone.utc).timestamp())
+
+    before_epoch = _epoch(before)
+
+    def do_sub(sub, session):
+        """Paginate one subreddit backwards through its window.
+
+        Returns the number of new posts written. Advances the watermark
+        only on a clean finish outside a backfill.
+        """
+        # INCREMENTAL WINDOW: never before the requested lookback, but if a
+        # watermark exists, start just behind it - everything older was
+        # already fetched (Arctic archives by creation time, complete).
+        sub_after = after
+        wm = marks.get(sub)
+        if wm and not args.backfill:
+            sub_after = str(max(lookback_epoch, int(wm) - OVERLAP_S))
+        after_epoch = _epoch(sub_after)
+        got = 0
+        pages = 0
+        newest_seen = int(wm) if wm else 0
+        completed = True                      # pagination reached the end?
+        cursor = before_epoch
+        while True:
+            # The cursor walks BACKWARDS (each page's oldest post becomes
+            # the next page's `before`). Once it reaches the start of the
+            # window, `before` <= `after` is an empty, invalid range that
+            # Arctic answers with 422. That is not a fault but the end of
+            # the window, so the loop stops here instead of sending the
+            # request and spending the retry ladder on it.
+            if cursor <= after_epoch:
+                break
+            try:
+                rows = fetch_page(sub, sub_after, str(cursor),
+                                  session=session, fast=fast)
+            except Stop as e:
+                print(f"    r/{sub}: server refused the request ({e}) - "
+                      f"ending this subreddit", flush=True)
+                completed = False
+                break
+            if rows is None:               # gave up after retries: the
+                completed = False          # window was NOT fully covered,
+                break                      # so the watermark must not move
+            if not rows:
+                break                      # clean end: no more posts
+            pages += 1
+            batch = []
+            oldest = cursor
+            for rec in rows:
+                pid = str(rec.get("id", ""))
+                created = int(rec.get("created_utc", 0) or 0)
+                if created:
+                    oldest = min(oldest, created)
+                newest_seen = max(newest_seen, created)
+                if not pid:
+                    continue
+                rec["_backend"] = "official"      # Pushshift/official shape
+                batch.append((pid, rec))
+            with wlock:
+                for pid, rec in batch:
+                    if pid in seen:
+                        continue
+                    seen.add(pid)
+                    seen_list.append(pid)
+                    writer.write((json.dumps(rec) + "\n").encode("utf-8"))
+                    got += 1
+            # No-progress guard: if every row on a page shares the oldest
+            # timestamp, `oldest` never moves and the loop would ask for
+            # the same page forever. Step one second past it.
+            nxt = oldest if oldest < cursor else cursor - 1
+            if nxt >= cursor:
+                break
+            cursor = nxt
+            if not fast:
+                time.sleep(PAUSE_S)
+        wm_note = " (incremental)" if wm else ""
+        print(f"  r/{sub:<24} {got:>5} new posts  [{pages} page(s)]{wm_note}",
+              flush=True)
+        # advance the watermark only on a clean finish with data seen -
+        # and NEVER on a backfill: the watermark is "how far forward we
+        # have come", and a historical window would drag it backwards
+        if completed and newest_seen and not args.backfill:
+            marks[sub] = newest_seen
+        return got
+
+    workers = max(1, int(args.workers))
+    if workers == 1:
+        with requests.Session() as sess:
+            for sub in subs:
+                total += do_sub(sub, sess)
+                if not fast:
+                    time.sleep(PAUSE_S)
+    else:
+        # One Session PER WORKER: a Session is not documented as thread
+        # safe, and sharing one is the classic source of "connection pool
+        # is full" warnings and cross-talk between requests.
+        from concurrent.futures import ThreadPoolExecutor
+        print(f"  fetching {len(subs)} subreddits with {workers} workers",
+              flush=True)
+        local = threading.local()
+
+        def _run(sub):
+            if not hasattr(local, "sess"):
+                local.sess = requests.Session()
+            return do_sub(sub, local.sess)
+
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            for n in ex.map(_run, subs):
+                total += n
+    writer.close()
+    save_watermarks(marks)
+
+    if total == 0:
+        os.remove(out_path + ".tmp")
+        print("no new posts this run (all already seen) - nothing written")
+        return 0
+    os.replace(out_path + ".tmp", out_path)
+    save_seen(seen_list)
+    print(f"arctic reddit: {total:,} new posts -> {os.path.basename(out_path)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -5,10 +5,10 @@
 # at another name. So it carries only what a machine needs to RUN the
 # pipeline and draw the dashboard - nothing that exists for notebooks,
 # tests, or a Windows corporate network. Research and workstation extras
-# live in requirements-dev.txt.
+# live in tools/requirements-dev.txt.
 #
 # Workstation (both machines):
-#   pip install -r requirements.txt -r requirements-dev.txt --user
+#   pip install -r requirements.txt -r tools/requirements-dev.txt --user
 #
 # Hosted dashboard: installs this file only, automatically.
 #
@@ -48,14 +48,14 @@ joblib             # Parallel scoring; also scikit-learn's parallel backend.
                    # Install and upgrade together with scikit-learn: a
                    # mismatched pair emits high-volume UserWarnings from
                    # sklearn's fit paths (cosmetic, filtered narrowly in
-                   # analytics/retail_flow.py).
+                   # src/analytics/retail_flow.py).
 
 # Extraction.
 wordfreq           # Word-vs-ticker screening fallback.
 
 # Modelling. A live-pipeline dependency: the GET IN / GET OUT pair
-# (analytics/ml_detector.py) and the retail-flow dial
-# (analytics/retail_flow.py) run inside `--what phases`. All sklearn
+# (src/analytics/ml_detector.py) and the retail-flow dial
+# (src/analytics/retail_flow.py) run inside `--what phases`. All sklearn
 # imports are function-level, so a dashboard-only host never loads it,
 # but the module tree imports cleanly either way.
 scikit-learn
@@ -70,5 +70,4 @@ anthropic
 # Dashboard.
 streamlit
 plotly
-yfinance>=0.2.40      # daily closes when no Bloomberg Terminal is available
 datasketch>=1.6.0    # MinHash LSH for the bot screen (ingestion/bot_screen.py)

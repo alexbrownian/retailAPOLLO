@@ -1,0 +1,61 @@
+symbol,bloomberg,tiingo,name,note
+159915 CS,159915 CS Equity,,E Fund ChiNext ETF,added 2026-07-31
+1622 JT,1622 JT Equity,,,pre-existing approved anchor/fallback
+588000 CH,588000 CH Equity,,ChinaAMC SSE STAR 50 ETF,"added 2026-07-31 (Huatai-PineBridge is 588090, not this one)"
+ARKK,ARKK US Equity,,,pre-existing approved anchor/fallback
+ASHR,ASHR US Equity,,,pre-existing approved anchor/fallback
+BBH,BBH UQ Equity,,VanEck Biotech ETF,added 2026-07-31
+CIBR,CIBR US Equity,,,pre-existing approved anchor/fallback
+COPX,COPX US Equity,,,pre-existing approved anchor/fallback
+CQQQ,CQQQ US Equity,,,pre-existing approved anchor/fallback
+CSIN0852,CSIN0852 Index,000852.SS,CSI 1000 Index (index code 000852),"added 2026-07-31; an INDEX, not a tradable fund - priced for reference only"
+DTCR,DTCR US Equity,,Global X Data Center & Digital Infrastructure ETF,renamed from VPN in late 2024
+EUAD,EUAD US Equity,,Select STOXX Europe Aerospace & Defense ETF,europe_defense anchor - confirm approval
+FXI,FXI US Equity,,,pre-existing approved anchor/fallback
+GDX,GDX US Equity,,,pre-existing approved anchor/fallback
+GLD,GLD US Equity,,,pre-existing approved anchor/fallback
+HYG,HYG US Equity,,,pre-existing approved anchor/fallback
+IGV,IGV US Equity,,,pre-existing approved anchor/fallback
+ITA,ITA US Equity,,,pre-existing approved anchor/fallback
+ITB,ITB US Equity,,,pre-existing approved anchor/fallback
+IVE,IVE UP Equity,,iShares S&P 500 Value ETF,added 2026-07-31
+IVW,IVW UP Equity,,iShares S&P 500 Growth ETF,added 2026-07-31
+IYT,IYT US Equity,,,pre-existing approved anchor/fallback
+IYW,IYW US Equity,,,pre-existing approved anchor/fallback
+JETS,JETS US Equity,,,pre-existing approved anchor/fallback
+KBE,KBE US Equity,,,pre-existing approved anchor/fallback
+KRE,KRE UP Equity,,SPDR S&P Regional Banking ETF,added 2026-07-31
+KWEB,KWEB US Equity,,,pre-existing approved anchor/fallback
+LIT,LIT US Equity,,,pre-existing approved anchor/fallback
+LQD,LQD US Equity,,,pre-existing approved anchor/fallback
+MOO,MOO UP Equity,,VanEck Agribusiness ETF,added 2026-07-31
+MTUM,MTUM US Equity,,iShares MSCI USA Momentum Factor ETF,"MTUM TF Equity returned no data on the Terminal; the composite US ticker resolves"
+OIH,OIH US Equity,,,pre-existing approved anchor/fallback
+QQQ,QQQ US Equity,,,pre-existing approved anchor/fallback
+RSP,RSP US Equity,,Invesco S&P 500 Equal Weight ETF,added 2026-07-31
+SIL,SIL US Equity,,,pre-existing approved anchor/fallback
+SLV,SLV US Equity,,,pre-existing approved anchor/fallback
+SMH,SMH US Equity,,,pre-existing approved anchor/fallback
+SOCL,SOCL US Equity,,,pre-existing approved anchor/fallback
+SOXX,SOXX US Equity,,,pre-existing approved anchor/fallback
+TIP,TIP US Equity,,,pre-existing approved anchor/fallback
+TLT,TLT US Equity,,,pre-existing approved anchor/fallback
+UNG,UNG US Equity,,,pre-existing approved anchor/fallback
+URA,URA US Equity,,,pre-existing approved anchor/fallback
+USO,USO US Equity,,,pre-existing approved anchor/fallback
+VTV,VTV UP Equity,,Vanguard Value ETF,added 2026-07-31
+VUG,VUG UP Equity,,Vanguard Growth ETF,added 2026-07-31
+XBI,XBI US Equity,,,pre-existing approved anchor/fallback
+XLB,XLB US Equity,,,pre-existing approved anchor/fallback
+XLC,XLC US Equity,,,pre-existing approved anchor/fallback
+XLE,XLE US Equity,,,pre-existing approved anchor/fallback
+XLF,XLF US Equity,,,pre-existing approved anchor/fallback
+XLI,XLI US Equity,,,pre-existing approved anchor/fallback
+XLK,XLK US Equity,,,pre-existing approved anchor/fallback
+XLP,XLP US Equity,,,pre-existing approved anchor/fallback
+XLRE,XLRE US Equity,,,pre-existing approved anchor/fallback
+XLU,XLU US Equity,,,pre-existing approved anchor/fallback
+XLV,XLV US Equity,,,pre-existing approved anchor/fallback
+XLY,XLY US Equity,,,pre-existing approved anchor/fallback
+XOP,XOP US Equity,,,pre-existing approved anchor/fallback
+XRT,XRT UP Equity,,SPDR S&P Retail ETF,added 2026-07-31

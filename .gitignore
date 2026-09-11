@@ -8,9 +8,9 @@
 #
 # RULE OF THUMB used below: ignore anything a COMMAND can regenerate from
 # committed inputs, and never ignore anything a command cannot.  That is why
-# ABSTRACTED_DATA/ is absent from this file - it is the committed, text-free
-# transfer folder (src/abstracted_data.py export/hydrate), i.e. an INPUT on a
-# fresh machine, not an artefact.
+# Data/abstracted/, Data/dashboard/ and Data/research_record/ are absent
+# from this file - they are committed inputs (the text-free aggregates, the
+# display bundle a hosted copy renders, and the frozen research record).
 # ---------------------------------------------------------------------------
 
 # ---- Python bytecode / tooling caches (regenerated on next run) ----
@@ -45,12 +45,14 @@ env/
 
 # ---- raw / private data --------------------------------------------------
 # The raw store holds post TEXT and author handles, so it must never be
-# committed.  data/processed/ is derived (rebuildable from a hydrate) and
-# large, so it stays local too; ABSTRACTED_DATA/ is the committed form.
-data/raw/
-data/processed/
-data/cache/
-logs/
+# committed.  Data/processed/ is derived (rebuildable from a hydrate) and
+# large, so it stays local too; Data/abstracted/ is the committed form.
+Data/raw/
+Data/processed/
+Data/cache/
+# run logs and the small pipeline reports (Reports/) are machine-local
+Reports/*
+!Reports/.gitkeep
 
 # ---- OS noise ----
 .DS_Store
@@ -66,22 +68,22 @@ desktop.ini
 # a bootstrap prior in src/config.py and re-measures itself within one run,
 # so a fresh clone loses nothing but one run's worth of precision.
 # See src/pipeline_budget.py.
-data/reference/pipeline_stage_times.json
-data/reference/reddit_comments_cost.json
+Data/reference/pipeline_stage_times.json
+Data/reference/reddit_comments_cost.json
 
 # Backfill progress ledger (tools/backfill_reddit.py): which historical
 # chunks THIS machine has already pulled. Local operational state - the
 # data it describes lands in data/raw, which is never committed either.
-data/reference/reddit_backfill_progress.json
+Data/reference/reddit_backfill_progress.json
 
 # AI layer: local-only text + operational state (never committed - the
 # same text-free boundary as data/raw)
-data/reference/agentic_samples.jsonl
-data/reference/agentic_scan_ledger.json
-data/reference/nb10_sample_texts.jsonl
+Data/reference/agentic_samples.jsonl
+Data/reference/agentic_scan_ledger.json
+Data/reference/nb10_sample_texts.jsonl
 # Ledger snapshots are machine-local recovery state and contain copies of
 # the text files above; they never belong in a commit.
-data/reference/_backups/
+Data/reference/_backups/
 
 # ---- .env is NOT tracked (supersedes the earlier decision) ----
 # It was previously committed so that credentials travelled with the
@@ -113,15 +115,18 @@ _to_delete/
 # spends API credit, or calls a Bloomberg Terminal. Created by
 # tools/publish_dashboard.py; see LOCAL_CONTROLS in dashboard.py.
 
-# DASHBOARD_DATA/ is deliberately ABSENT from this file. Like
-# ABSTRACTED_DATA/, it is a committed INPUT: the finished display frames the
+# Data/dashboard/ is deliberately ABSENT from this file. Like
+# Data/abstracted/, it is a committed INPUT: the finished display frames the
 # hosted dashboard reads, staged by tools/publish_dashboard.py, which refuses
 # to publish anything carrying FORBIDDEN_COLS.
 
-# ---- research material (not needed to run the pipeline) -------------------
-research/
+# ---- material that is not needed to run the pipeline ---------------------
+# Reference Materials/archive/ holds the long-form docs, old research
+# notebooks and the old parameter reference. Reference Materials/research.ipynb
+# is the one committed write-up.
+Reference Materials/archive/
 # generated proposals from the keyword auditor (review, then apply)
-data/reference/keyword_suggestions/
-data/reference/subreddit_panel.json
+Data/reference/keyword_suggestions/
+Data/reference/subreddit_panel.json
 # per-copy settings overrides (pipeline controls etc.)
-config/settings.local.csv
+Code/config/settings.local.csv
