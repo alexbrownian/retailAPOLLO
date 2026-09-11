@@ -71,7 +71,7 @@ Configuration (all optional, read from .env or the environment):
 
 Self-test::
 
-    python -m src.ai --selftest
+    cd Code && python -m src.ai --selftest
 """
 
 from __future__ import annotations
@@ -299,7 +299,7 @@ def chat(prompt: str, system: str | None = None, *,
         _hint += (" | the machine could not reach the endpoint at all: "
                   "check the network route (a corporate proxy that "
                   "intercepts TLS needs `pip install pip-system-certs` "
-                  "in THIS venv), and that the provider host is "
+                  "in this Python environment), and that the provider host is "
                   "reachable from this machine")
     raise RuntimeError(f"LLM call failed after {retries + 1} tries: "
                        f"{type(last).__name__}: {last}{_hint}")

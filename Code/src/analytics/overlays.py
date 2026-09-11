@@ -1,21 +1,20 @@
 """
 overlays.py
 ===========
-Price-overlay analytics - the computations behind the overlay
-notebooks 11-16, reduced to pure functions that return DATA (series and
+Price-overlay analytics - pure functions that return DATA (series and
 frames). The dashboard renders them as interactive Plotly; nothing here
 draws anything, which is exactly why it is fast enough to recompute live
 on every dashboard interaction.
 
-WHAT EACH FUNCTION REPLACES
-  mention_share_series()      nb 11 - mention share vs price
-  chatter_change_series()     nb 12/13 - attention first derivative
-  gradient_analysis()         nb 12 - chatter change -> forward price move
+WHAT EACH FUNCTION COMPUTES
+  mention_share_series()      mention share vs price
+  chatter_change_series()     attention first derivative
+  gradient_analysis()         chatter change -> forward price move
                               (scatter/deciles) + lead/lag correlation scan
-  direction_flips()           nb 12 evidence view - chatter turning points
-  conviction_crossings()      nb 14 - conviction z crossings of +/-1.5
-  signal_scorecard()          nb 15/16 - the report card: hold every
-                              signal HOLD_DAYS and tally the P&L
+  direction_flips()           chatter turning points
+  conviction_crossings()      conviction z crossings of +/-1.5
+  signal_scorecard()          the report card: hold every signal
+                              HOLD_DAYS and tally the P&L
 
 THE NORMALISATION RULE (applies to every mention series here)
 -------------------------------------------------------------
@@ -46,16 +45,16 @@ def mention_share_series(counts: pd.DataFrame, entity_col: str, name: str,
 
     normalise=True  -> coverage-robust share of chatter (%) - the
                        ratio-of-sums / stratified / shrunk estimator in
-                       src/analytics/robust_share.py (2026-08-07 fix: the old
-                       mean-of-daily-ratios printed fake zeros on thin
-                       pull days and diluted every share when a big
-                       StockTwits/X pull landed)
+                       src/analytics/robust_share.py (a plain
+                       mean-of-daily-ratios would print fake zeros on
+                       thin pull days and dilute every share when a big
+                       StockTwits/X pull lands)
     normalise=False -> raw 7d rolling mean of mention counts
 
     Masking moves with the estimator: a value is masked only when the
     whole trailing window carries under MIN_TOTAL posts (there is
     genuinely nothing to estimate from) - not when one thin DAY does,
-    because a thin day inside a healthy week is now handled by the
+    because a thin day inside a healthy week is handled by the
     weighting, not by a hole in the chart.
     """
     c = clip_window(counts, "date", lo, hi)
@@ -82,8 +81,8 @@ def sentiment_series(sent: pd.DataFrame, entity_col: str, name: str,
     family as the robust mention share - a 3-post day contributes 3
     posts of evidence, not a full day's vote). Range -1..+1; NaN where
     the window holds no scored posts ("no posts" = no opinion, never a
-    neutral one). Built for the Top/Emerging trends charts (2026-08-07:
-    price + attention + sentiment on one graph, none of them noisy)."""
+    neutral one). Built for the Top/Emerging trends charts (price +
+    attention + sentiment on one graph, none of them noisy)."""
     d = clip_window(sent, "date", lo, hi)
     one = d[d[entity_col] == name]
     if one.empty:
@@ -103,8 +102,8 @@ def sentiment_baseline(sent: pd.DataFrame, entity_col: str, lo, hi,
     share over EVERY tracked entity, same trailing window and same
     ratio-of-sums estimator as `sentiment_series`.
 
-    WHY THIS EXISTS (design question 2026-08-10: "how come net bullishness
-    is always positive?"): retail social finance is structurally long -
+    WHY THIS EXISTS ("how come net bullishness is always positive?"):
+    retail social finance is structurally long -
     measured on this store, 46% of posts score bullish against 24%
     bearish, so net-bullish is positive on 82% of theme-days and only
     1 theme in 42 has a negative median. Part of that is real (people
@@ -237,7 +236,7 @@ def direction_flips(chg: pd.Series, px: pd.Series, lead_days: int,
 
 
 # ---------------------------------------------------------------------------
-# conviction crossings (nb 14) - marked on the price line
+# conviction crossings - marked on the price line
 # ---------------------------------------------------------------------------
 def spaced(idx, gap: int) -> list:
     """First-in-a-burst wins: drop dates closer than `gap` days to the

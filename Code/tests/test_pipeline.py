@@ -1216,7 +1216,7 @@ class TestDeskConfiguration:
 
     def test_smoothing_is_trailing_and_kills_blips(self):
         """The 7d smoothing must (a) shrink a one-day spike below the
-        raw trigger it used to fire, and (b) use PAST days only - the
+        raw trigger it would otherwise fire, and (b) use PAST days only - the
         smoothed value on day t may not change when the future does."""
         from src.analytics.euphoria_phases import _smooth_by_name
         names = pd.Series(["A"] * 10)
@@ -3099,8 +3099,7 @@ class TestBackfillRunner:
     """`tools/backfill_reddit.py` streams a child process's output.
 
     A wrapper that hides the child's progress is worse than no wrapper:
-    the operator cannot tell a 26-minute chunk from a hang, which is
-    exactly what happened on 2026-08-12 ("its paused at [1/30] - why?")."""
+    the operator cannot tell a 26-minute chunk from a hang."""
 
     @staticmethod
     def _src():
@@ -3206,14 +3205,14 @@ class TestInflectionMarker:
         src = self._src("dashboard.py")
         assert "possible inflection" in src
         # the caveat that MUST survive: the marker has no direction.
-        # (The hit-rate sentence was removed from the hover on desk
-        # instruction 2026-08-12 - it lives in the RUNBOOK and the
-        # parameter register instead, which is where a number that
-        # changes on every research pass belongs.)
+        # (No hit-rate sentence in the hover: a number that changes on
+        # every research pass belongs in the research record, not in
+        # display text.)
         assert "Direction NOT implied" in src
-        # a store written before 2026-08-12 has no inflection columns; the
-        # page must SAY so rather than silently drawing nothing, which
-        # reads identically to "this name has no inflections"
+        # a store written without the inflection head has no inflection
+        # columns; the page must SAY so rather than silently drawing
+        # nothing, which reads identically to "this name has no
+        # inflections"
         assert "predates them" in src
         # The inflection head appears in the watchlist as a THIRD SIDE
         # ("closest to an INFLECTION" ordering). What must remain true is
@@ -3221,8 +3220,8 @@ class TestInflectionMarker:
         # labelled context wherever it is rendered and that it still
         # cannot fire, gate or re-score a call.
         # In the watchlist the inflection appears as a COLUMN, not as a
-        # competing sort (desk 2026-08-12: the two "closest to..."
-        # orderings asked one question two ways). What must hold is
+        # competing sort (two "closest to..." orderings would ask one
+        # question two ways). What must hold is
         # that it is labelled context and that it cannot out-rank a
         # real call.
         assert "INFLECTION (context)" in src
@@ -3267,12 +3266,11 @@ class TestInflectionMarker:
 class TestMoodGauge:
     """The mood/bullishness SCORES are gone, and must stay gone.
 
-    Requirement: "on AI pulse remove the bullish score number
-    and all the associated code". Two numbers existed - the LLM's
-    'retail mood gauge X/100' and the slider-driven bullishness
-    percentile - and both were removed. These tests are the tripwire
-    against either quietly coming back (e.g. via a revert of the pulse
-    prompt spec, which used to REQUEST a mood_gauge from the model)."""
+    The AI Pulse tab prints no bullishness score: neither an LLM
+    'retail mood gauge X/100' nor a slider-driven bullishness
+    percentile. These tests are the tripwire against either quietly
+    appearing (e.g. via a pulse prompt spec that asks the model for a
+    mood_gauge)."""
 
     @staticmethod
     def _src():
@@ -3281,12 +3279,12 @@ class TestMoodGauge:
                 / "dashboard.py").read_text(encoding="utf-8")
 
     def test_the_slider_bullishness_score_is_gone(self):
-        """The percentile-ranked 0-100 bullishness number the mood
-        slider used to print."""
+        """No percentile-ranked 0-100 bullishness number beside the
+        mood slider."""
         src = self._src()
         assert "(wk <= nb).mean()" not in src, (
-            "the slider bullishness percentile is back - it was "
-            "for the score number and its code to be removed")
+            "the slider bullishness percentile is back - the score "
+            "number and its code must stay out")
         assert "bullishness (0-100)" not in src
 
     def test_the_llm_mood_gauge_is_gone_everywhere(self):
@@ -3344,10 +3342,10 @@ class TestWeeklySnapshot:
             assert part in body, f"snapshot omits {part}"
 
     def test_breadth_reads_wide_or_narrow_not_loud_or_quiet(self):
-        """Breadth is an absolute share of themes, and with the
-        intensity score removed (see research.ipynb) it is the ONLY axis
+        """Breadth is an absolute share of themes, and with no
+        intensity score (see research.ipynb) it is the ONLY axis
         the sentence may speak to - wide vs carried-by-a-few, never a
-        loudness claim it no longer measures."""
+        loudness claim it does not measure."""
         src = self._src()
         assert "def _breadth_clause(" in src
         assert "carried by a few" in src
@@ -3418,8 +3416,8 @@ class TestBackDatedHarvest:
 
 
 class TestRobustShare:
-    """src/analytics/robust_share.py - the 2026-08-07 coverage fix. These
-    are the invariants the estimator was built to provide; if any of
+    """src/analytics/robust_share.py - the coverage-robust share. These
+    are the invariants the estimator exists to provide; if any of
     them fails, the fake-zero / dilution defects are back."""
 
     @staticmethod
@@ -3492,7 +3490,7 @@ class TestRobustShare:
 
 
 class TestMLDetector:
-    """src/analytics/ml_detector.py - the learned desk detectors (2026-08)."""
+    """src/analytics/ml_detector.py - the learned production detectors."""
 
     def test_winner_is_picked_on_lift_not_raw_ap(self):
         """The rule-based baseline's gated frame gives it a base rate of
@@ -3583,9 +3581,8 @@ class TestMLDetector:
 
 
 class TestPriceBlindTrigger:
-    """The EXPERIMENTAL price-blind trigger (desk 2026-08-14: "i want
-    only the post factors to predict the price, not price predicting
-    price").
+    """The EXPERIMENTAL price-blind trigger: only the post factors
+    predict the price, never price predicting price.
 
     The design promise is total: price appears NOWHERE between a post
     and an experimental call - not as a feature, not as the phase gate
@@ -3630,18 +3627,16 @@ class TestPriceBlindTrigger:
         src = self._src("dashboard.py")
         assert 'IN_SCORE = f"in_score{_XP_PART}"' in src
         assert 'OUT_SCORE = f"out_score{_XP_PART}"' in src
-        # 2026-08-17: sig_col grew the GET IN gate routing; the fence
-        # follows - the column is still built through the SAME
-        # trigger-aware parts, never assembled ad hoc at a call site.
+        # sig_col also carries the get_in gate routing; the column is
+        # still built through the SAME trigger-aware parts, never
+        # assembled ad hoc at a call site.
         assert '_c = f"{base}{_XP_PART}{_gate_part}{_SIG_SUFFIX}"' in src
         assert "experimental_price_blind" in src
         # The trigger SELECTOR is not exposed - the dashboard is hardwired
-        # to the shipped pair, so
-        # the "your store predates the experimental columns" warning it
-        # used to show has no way to fire and was removed with it. The
-        # fence therefore changes shape: instead of asserting the
-        # warning exists, assert the experimental path CANNOT BE
-        # SELECTED, which is a strictly stronger guarantee.
+        # to the shipped pair, so no "your store predates the
+        # experimental columns" warning is needed. The fence asserts
+        # that the experimental path CANNOT BE SELECTED, which is a
+        # strictly stronger guarantee than a warning.
         assert "XP_TRIGGER = False" in src
         _sel = [ln for ln in src.splitlines()
                 if "st.sidebar" in ln and "trigger" in ln.lower()]
@@ -3653,19 +3648,18 @@ class TestPriceBlindTrigger:
         # the watchlist keeps both sides eligible in xp mode (no gate)
         assert "_boomed or XP_TRIGGER" in src
         assert "(not _boomed) or XP_TRIGGER" in src
-        # The mode is never the default. This used to be checked by
-        # reading index=0 off the radio; with the radio gone the same
-        # guarantee is now structural - XP_TRIGGER is a literal False
-        # and nothing in the file assigns it True.
+        # The mode is never the default. The guarantee is structural -
+        # XP_TRIGGER is a literal False and nothing in the file assigns
+        # it True.
         _true = [ln.strip() for ln in src.splitlines()
                  if ln.strip().startswith("XP_TRIGGER")
                  and ln.strip().endswith("True")]
         assert not _true, f"XP_TRIGGER is set True somewhere: {_true}"
 
     def test_store_columns_when_present(self):
-        """On a machine whose store has been rebuilt since 2026-08-14:
-        the xp columns exist together, the booleans are bool, and the
-        end-stage suppression held."""
+        """On a machine whose store carries the experimental columns:
+        they exist together, the booleans are bool, and the end-stage
+        suppression held."""
         import os
         import pandas as pd
         p = os.path.join(DATA_DIR, "processed", "euphoria_desk.parquet")
@@ -3686,16 +3680,15 @@ class TestPriceBlindTrigger:
 
 
 class TestSignedReadinessAndUngatedGetIn:
-    """The adoptions (notebook 08 §10, record
-    Data/research_record/nb08_single_dial.json): the ungated GET IN, the one
-    SIGNED readiness, and the retirement of the Relaxed setting.
+    """The ungated GET IN and the one SIGNED readiness (record
+    Data/research_record/nb08_single_dial.json).
 
-    The contradiction these changes killed - a name reading 100% of the
-    way to GET IN and to GET OUT at once - came from displaying two
-    heads whose scores correlate at +0.75. The fences below hold the
-    two structural promises: GET OUT never loses its phase gate (§10.4:
-    ungated its false alarms double), and the signed readiness is
-    routed so exactly ONE side exists per name-day."""
+    The contradiction these avoid - a name reading 100% of the way to
+    GET IN and to GET OUT at once - comes from displaying two heads
+    whose scores correlate at +0.75. The fences below hold the two
+    structural promises: GET OUT never loses its phase gate (ungated,
+    its false alarms double), and the signed readiness is routed so
+    exactly ONE side exists per name-day."""
 
     @staticmethod
     def _src(name):
@@ -3704,19 +3697,17 @@ class TestSignedReadinessAndUngatedGetIn:
                 / name).read_text(encoding="utf-8")
 
     def test_no_ungated_get_out_anywhere(self):
-        """§10.4's asymmetry is the whole safety case: the gate IS the
+        """The asymmetry is the whole safety case: the gate IS the
         OUT side's direction knowledge. An ungated GET OUT column or
         code path is a one-line change away and must never appear."""
         for fname in ("src/analytics/euphoria_phases.py", "dashboard.py"):
             assert "get_out_nogate" not in self._src(fname), (
-                f"{fname} references an ungated GET OUT - §10.4 refutes "
-                "that variant (false alarms double)")
+                f"{fname} references an ungated GET OUT - the research "
+                "record refutes that variant (false alarms double)")
 
     def test_dashboard_reroutes_only_get_in(self):
-        """The gate routing may touch GET IN and nothing else. The
-        checkbox that briefly exposed the gated variant was removed
-        2026-08-17 (GET IN is ungated, full stop) - the one-sided
-        routing it guarded still has to hold."""
+        """The gate routing may touch GET IN and nothing else (GET IN
+        is ungated in production; the one-sided routing has to hold)."""
         src = self._src("dashboard.py")
         i = src.index("def sig_col(")
         body = src[i:i + 1200]
@@ -3753,7 +3744,7 @@ class TestSignedReadinessAndUngatedGetIn:
                     f"GET OUT ({d.date()})")
 
     def test_signed_readiness_is_one_sided_by_construction(self):
-        """Recompute the §10.5 signed readiness from the store exactly
+        """Recompute the signed readiness from the store exactly
         as the dashboard does: the phase routing must give every scored
         name-day exactly one live side, so the both-at-100% state is
         impossible, not just unobserved."""
@@ -3782,9 +3773,10 @@ class TestSignedReadinessAndUngatedGetIn:
 
 
 class TestRetailFlowDial:
-    """The continuous retail-flow dial (adoption, notebook 08
-    §9). Adopted as the trend/context layer on the same explicit
-    condition as the inflection marker: it is FURNITURE. It never
+    """The continuous retail-flow dial (record
+    Data/research_record/nb08_retail_flow.json). It is the trend/context
+    layer on the same explicit condition as the inflection marker: it is
+    FURNITURE. It never
     fires, gates, filters or re-scores a call, and its smoothness comes
     from model structure (state-space filter, slow features), never
     from a lookout into the future."""

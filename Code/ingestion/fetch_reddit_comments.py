@@ -642,7 +642,7 @@ def main():
         _save(WM_FILE, marks)
     print(f"comments: {total:,} new -> {os.path.basename(out_path)}",
           flush=True)
-    print("next:  python -m src.analytics.influence --update", flush=True)
+    print("next:  cd Code && python -m src.analytics.influence --update", flush=True)
     return 130 if interrupted else 0
 
 

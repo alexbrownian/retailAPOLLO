@@ -70,7 +70,8 @@ RAW_ROOT = os.path.join(DATA_DIR, "raw")
 META_PATH = os.path.join(DATA_DIR, "reference",
                          "abstracted_live_meta.json")
 LEGACY_META = os.path.join(DATA_DIR, "reference",
-                           "gic_live_meta.json")   # pre-rename ledger location
+                           "gic_live_meta.json")   # older ledger file name,
+                                                   # read if present
 MAX_SEEN = 300_000            # legacy cap on the JSON seen_ids array; the
                               # parquet set (SEEN_PATH) is uncapped. Kept
                               # only so an old ledger can still be read.
@@ -513,7 +514,7 @@ def main():
         abstracted_data.hydrate()
 
     print("\ndone. next: recompute the analytics "
-          "(update_data.py does this: python -m src.analytics.run_analytics)")
+          "(update_data.py does this: cd Code && python -m src.analytics.run_analytics)")
     return 0
 
 

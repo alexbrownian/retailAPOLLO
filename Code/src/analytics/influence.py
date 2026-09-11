@@ -94,6 +94,7 @@ already in hand, so the output is never silently partial, only less
 fresh.
 
 Manual forms:
+    cd Code
     python -m src.analytics.influence --top 20         # print the leaderboard
     python -m src.analytics.influence --update         # what the pipeline runs
     python -m src.analytics.influence --build          # force full re-parse
@@ -465,7 +466,7 @@ def build_author_scores(scored: pd.DataFrame,
     """Build the usefulness board, one row per author.
 
     Combines the three shrunk scores, the composite and tier, the
-    legacy shrunk hit rate, participation style, audience, the
+    shrunk hit rate, participation style, audience, the
     bot-filtered interaction-graph metrics, the loud-but-wrong flag,
     the boom/bust record and each author's latest calls.
 

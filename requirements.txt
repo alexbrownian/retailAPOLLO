@@ -53,16 +53,16 @@ joblib             # Parallel scoring; also scikit-learn's parallel backend.
 # Extraction.
 wordfreq           # Word-vs-ticker screening fallback.
 
-# Modelling. A live-pipeline dependency: the GET IN / GET OUT pair
+# Modelling. A live-pipeline dependency: the INCREASE / CUT EXPOSURE pair
 # (src/analytics/ml_detector.py) and the retail-flow dial
 # (src/analytics/retail_flow.py) run inside `--what phases`. All sklearn
 # imports are function-level, so a dashboard-only host never loads it,
 # but the module tree imports cleanly either way.
 scikit-learn
 
-# AI layer fallback. The Apollo gateway arrives through the firm's own
-# channel (dimsum_lite, JFrog/LEVA) and is not installable from PyPI;
-# this is the second provider, used when Apollo does not resolve. Only
+# AI layer fallback. The apollo gateway client (dimsum_lite) is not
+# installable from PyPI; this is the second provider, used when the
+# gateway does not resolve. Only
 # needed on a machine that regenerates the AI Pulse - src/ai.py imports
 # it lazily and reports the provider as unavailable when it is absent.
 anthropic

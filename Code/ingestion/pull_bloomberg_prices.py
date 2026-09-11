@@ -1,7 +1,6 @@
 #!/usr/bin/env python
-"""Compatibility entry point. The price pull now lives in ``pull_prices.py``
-and supports Bloomberg and Tiingo; this name runs it with
-``--provider bloomberg``."""
+"""Alias entry point: runs ``pull_prices.py`` (Bloomberg and Tiingo) with
+``--provider bloomberg`` unless a provider is given."""
 import runpy
 import sys
 

@@ -12,22 +12,22 @@ reading a chart between meetings.  The rule is therefore:
 * every LABEL a human reads is translated into the words that human would
   use;
 * the translation lives in exactly ONE file, imported by the dashboard and by
-  every notebook, so the screen and the research record can never drift apart
-  and start calling the same quantity two different things.
+  the research notebook, so the screen and the research record can never
+  drift apart and start calling the same quantity two different things.
 
 WHY NOT JUST RENAME THE COLUMNS
 -------------------------------
 Because the stored parquet column names are an interface.  Renaming ``e1`` to
 ``attention_vs_its_own_year`` inside ``Data/`` would invalidate every cached
-frame, every test that asserts on a schema, and every notebook output already
-saved - for a purely cosmetic gain.  Translation belongs at the display layer,
+frame, every test that asserts on a schema, and every research record
+already saved - for a purely cosmetic gain.  Translation belongs at the display layer,
 which is here.
 
 WHY A DICT AND NOT f-STRINGS AT EACH SITE
 -----------------------------------------
-There were 30-odd places where these names reach a human.  Spelled out inline,
-a wording change means 30 edits and a guaranteed miss, and the two that get
-missed are the ones a reader trips over.
+These names reach a human in 30-odd places.  Spelled out inline, a wording
+change means 30 edits and a guaranteed miss, and the two that get missed are
+the ones a reader trips over.
 
 USAGE
 -----
@@ -57,7 +57,7 @@ PLAIN: dict[str, str] = {
     "e3": "rate of new people arriving",
     "e5": "attention going near-vertical",
     "hype_ok": "crowd big enough to signal",
-    # --- onset bank (notebook 02) ------------------------------------------
+    # --- onset bank -------------------------------------------------------
     "attention_accel": "this week busier than this month",
     "hype_ratio": "crowd size vs its own normal",
     "bull_inflection": "mood turning up",
@@ -104,7 +104,7 @@ PLAIN: dict[str, str] = {
     "ci_lo": "worst case of the confidence interval",
     "ci_hi": "best case of the confidence interval",
     "p_value": "chance of seeing this by luck alone",
-    # --- episode ground truth (notebook 01) --------------------------------
+    # --- episode ground truth ---------------------------------------------
     "episode": "one boom-then-bust arc",
     "trough": "the measured low the run-up started from",
     "peak": "the confirmed top",
@@ -119,8 +119,8 @@ PLAIN: dict[str, str] = {
 # THE DEFINITIONS
 #
 # One or two sentences each, written to answer "what IS that" for a reader who
-# has never seen the notebooks.  The notebooks print this; the dashboard uses the
-# short PLAIN form in help= tooltips.  Anything a defence panel could ask
+# has never seen the research.  The research notebook prints this; the
+# dashboard uses the short PLAIN form in help= tooltips.  Anything a defence panel could ask
 # "define that" about should have an entry.
 # ---------------------------------------------------------------------------
 DEFINITIONS: dict[str, str] = {
@@ -288,9 +288,9 @@ def glossary_md(keys: list[str] | None = None) -> str:
 # WHY THIS IS HERE AND NOT IN THE STORE
 # -------------------------------------
 # The influence board is built from real Reddit handles, and a meaningful
-# minority of them are unprintable.  The requirement (2026-07-28) was to
-# "censor the innapropriate stuff with **".  That is a DISPLAY concern, so it
-# belongs in this module for exactly the reason the module docstring gives: the
+# minority of them are unprintable, so they are masked with asterisks on
+# screen.  That is a DISPLAY concern, so it belongs in this module for
+# exactly the reason the module docstring gives: the
 # stored parquet is an interface.  Rewriting handles inside
 # `Data/reference/influence/` would (a) silently change the join key that
 # `calls.parquet`, `reply_edges.parquet` and `author_scores.parquet` share,

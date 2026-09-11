@@ -176,8 +176,8 @@ CATEGORIES = {"behavioural": BEHAVIOURAL, "structural": STRUCTURAL,
 # `mean_conf` was by a wide margin the single most useful feature in the
 # bank (-0.077 AP when removed, three times the next one). A feature that
 # is an arithmetic factor of its own target does not belong in the
-# headline bank; it is kept here, out of the default, so the notebook can
-# price exactly what excluding it costs instead of quietly benefiting.
+# headline bank; it is kept here, out of the default, so the research pass
+# can price exactly what excluding it costs instead of quietly benefiting.
 SCORE_ADJACENT = ["mean_conf", "stance_sd"]
 FULL_BANK = BEHAVIOURAL + STRUCTURAL + FORECAST
 WIDE_BANK = FULL_BANK + SCORE_ADJACENT      # reported, never shipped
@@ -798,9 +798,10 @@ def choose_model(ladder: pd.DataFrame, floor: str = "logit") -> str:
     Climb off `floor` only for a challenger whose paired CI clears zero;
     if several do, take the largest improvement; if none does, the extra
     machinery has not earned its place and the linear model ships. This is
-    the same rule the euphoria side used to reject GBM ("rules over
-    learners") - reused rather than reinvented so the project has one
-    standard of proof, not two.
+    the same standard the euphoria tournament applies (a criterion stated
+    before the numbers, a challenger adopted only on evidence) - reused
+    rather than reinvented so the project has one standard of proof, not
+    two.
     """
     won = ladder[(ladder["baseline"] == floor) & ladder["adopt"]]
     if not len(won):

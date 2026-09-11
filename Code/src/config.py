@@ -32,6 +32,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CODE_DIR = ROOT
 PROJECT_DIR = os.path.dirname(ROOT)
 DATA_DIR = os.path.join(PROJECT_DIR, "Data")
+# A clone made from a case-insensitive checkout can carry the folder as
+# "data"; on a case-sensitive host that is a different name, so accept
+# it rather than start with no data.
+if not os.path.isdir(DATA_DIR) and os.path.isdir(os.path.join(PROJECT_DIR, "data")):
+    DATA_DIR = os.path.join(PROJECT_DIR, "data")
 REPORTS_DIR = os.path.join(PROJECT_DIR, "Reports")       # run logs, small reports
 ABSTRACTED_DIR = os.path.join(DATA_DIR, "abstracted")     # committed, text-free
 PROCESSED_DIR = os.path.join(DATA_DIR, "processed")      # working aggregates
@@ -139,7 +144,7 @@ EUPHORIA_BOOM_MIN_SINGLE = 0.40  # Single names must boom harder to count.
 # The 54d live gate is the walk-forward sweep's max-capture setting
 # inside the false-alarm budget. Changing it invalidates the frozen
 # thresholds: re-fit with
-# `python -m src.analytics.run_analytics --what phases --research`.
+# `cd Code && python -m src.analytics.run_analytics --what phases --research`.
 EUPHORIA_BOOM_WINDOW_D = 54     # Live gate window (boom_state_frame only).
 EUPHORIA_BOOM_WINDOW_MIN_D = 27  # min_periods: half the window.
 

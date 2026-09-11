@@ -1,26 +1,26 @@
 """
 robust_share.py
 ===============
-Coverage-robust SHARE-OF-CHATTER estimation - the August 2026 data-quality
-fix behind every attention series (charts AND signal features).
+Coverage-robust SHARE-OF-CHATTER estimation - the estimator behind every
+attention series (charts AND signal features).
 
-THE DEFECT THIS FIXES (diagnosed 2026-08-07, from the stores themselves)
-------------------------------------------------------------------------
-"Share of the forum" was computed per DAY as mentions / that day's total,
-then 7d-averaged. Two facts about the live archive break that estimator:
+WHY A PLAIN DAILY RATIO DOES NOT WORK
+-------------------------------------
+The naive estimator computes "share of the forum" per DAY as mentions /
+that day's total, then 7d-averages it. Two facts about the live archive
+break that estimator:
 
 1. THE PULL CADENCE IS UNEVEN. `update_data` runs ~2x/week, and a catch-up
-   pull lands several days of posts at once: daily totals swing 246 ->
-   4,033 posts between adjacent days (2026-08-02 vs -08-04). On a thin
-   day a real name reads a fake zero - SMCI printed 0% on 11 of 36 days
-   in July while genuinely being discussed - and on a fat day every
-   share is diluted at once. Averaging the daily RATIOS weights a
+   pull lands several days of posts at once, so daily totals can swing
+   by more than 10x between adjacent days. On a thin day a real name
+   reads a fake zero while genuinely being discussed, and on a fat day
+   every share is diluted at once. Averaging the daily RATIOS weights a
    10-post day exactly as much as a 4,000-post day.
 
 2. THE SOURCE MIX IS A REGIME, NOT A CONSTANT. Reddit runs back to 2017,
-   StockTwits only ramps from Feb-2026, X only exists from Jul-2026. The
-   old denominator pooled all sources, so a Reddit-heavy name's share
-   collapsed the day a big StockTwits pull landed - a composition
+   StockTwits only ramps from Feb-2026, X only exists from Jul-2026. A
+   denominator that pools all sources makes a Reddit-heavy name's share
+   collapse the day a big StockTwits pull lands - a composition
    artifact, not a crowd movement.
 
 THE ESTIMATOR (three standard techniques, one line each)
@@ -35,7 +35,7 @@ THE ESTIMATOR (three standard techniques, one line each)
   exists): the share is computed WITHIN each source, then combined with
   weights equal to each source's own trailing-90d volume share,
   renormalised over the sources actually present in the window. A
-  missing StockTwits pull now just means "use the sources we do have"
+  missing StockTwits pull then just means "use the sources we do have"
   instead of "halve everyone's share".
 * EMPIRICAL-BAYES SHRINKAGE toward the name's own trailing-120d share:
   posterior = (k + tau * p0) / (N + tau), with prior strength

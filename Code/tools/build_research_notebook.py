@@ -356,8 +356,8 @@ from price.
 | `price_runup` | how far the price has run off its recent low |
 | `price_ret21` | the one-month price return |
 
-Price does not enter any crowd feature; the two price features were added
-in a separate step and are reported separately below, because "the crowd
+Price does not enter any crowd feature; the two price features form a
+separate step and are reported separately below, because "the crowd
 alone" and "the crowd plus where the price already is" are different
 claims.
 
@@ -548,7 +548,7 @@ the rest.
 One feature was dropped by this kind of check: `source_breadth` (how many
 of the platforms mentioned the name in the last week) looked skilful,
 but StockTwits and X exist in the archive only from 2026, so the feature
-mostly encoded *which year it is*. It was removed from the bank.
+mostly encodes *which year it is*. It is not in the bank.
 """)
 
 # ---------------------------------------------------------------------------
@@ -733,7 +733,7 @@ tour
 md(r"""
 The ensemble wins on the pre-stated criterion, and it is also the family
 with the fewest false alarms per name-year on both heads. The
-"rules" row is the original hand-set gate stack it replaced: its raw AP
+"rules" row is the hand-set gate stack it is judged against: its raw AP
 looks high because it only scores days that already passed its gates,
 but its ranking quality (AUROC ≈ 0.55) is a coin flip.
 

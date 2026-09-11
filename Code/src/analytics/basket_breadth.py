@@ -1,15 +1,14 @@
 """Read an index or factor basket through its CONSTITUENTS.
 
-The whole design in one sentence:
-*"you should be MAPPING stuff to these indices and not just looking for
-mentions of the ETF"* — with the worked example, *"sk hynix would map to
-SMH"*, and the framing that followed: *"momentum is basically the same as
-retail bullishness, S&P 500 is just all the names and their individual
-bullishness/attention"*.
+The whole design in one sentence: map names to the indices they belong
+to instead of looking for mentions of the ETF itself - SK Hynix maps to
+SMH; the S&P 500 is all of its names and their individual bullishness
+and attention; a momentum factor is the retail bullishness of what it
+holds.
 
 WHY THE ETF TICKER IS THE WRONG THING TO COUNT
 ----------------------------------------------
-Measured over 176,126 archived comments (2025-07-25 → 2026-07-26):
+Measured over a year of archived comments (176k, 2025-07 to 2026-07):
 
     MTUM      0 mentions        VTV   0        IVW   0
     VUG       2                 IVE   4 CAPS — against 82 lowercase,
@@ -70,9 +69,9 @@ CONSTITUENTS_CSV = os.path.join(ROOT, "config", "etf_constituents.csv")
 
 # A basket needs enough live names before its breadth means anything.
 # Below this the "share bullish" figure is one or two names wearing a
-# percentage sign - notebook 07 hit the same wall on its own composite
-# and answered it the same way, with a floor and a printed sensitivity
-# rather than a silent minimum.
+# percentage sign - the index-composite study in the research record
+# hits the same wall and answers it the same way, with a floor and a
+# printed sensitivity rather than a silent minimum.
 MIN_LIVE_NAMES = 3
 
 

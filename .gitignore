@@ -1,10 +1,5 @@
 # ---------------------------------------------------------------------------
-# .gitignore  -  RetailAPOLLO
-#
-# WHY THIS FILE EXISTS: the repo had none, which is the reason six
-# __pycache__ directories, a .pytest_cache and twelve LaTeX intermediates
-# had accumulated and needed a manual sweep.  Deleting them once fixes the
-# symptom; ignoring them fixes the cause.
+# .gitignore  -  retailAPOLLO
 #
 # RULE OF THUMB used below: ignore anything a COMMAND can regenerate from
 # committed inputs, and never ignore anything a command cannot.  That is why
@@ -85,35 +80,16 @@ Data/reference/nb10_sample_texts.jsonl
 # the text files above; they never belong in a commit.
 Data/reference/_backups/
 
-# ---- .env is NOT tracked (supersedes the earlier decision) ----
-# It was previously committed so that credentials travelled with the
-# repository to the second machine. Hosting the dashboard ends that: a
-# deploy clones the repository onto third-party infrastructure, and the
-# file holds the FetchLayer key, the Reddit account password, the X
-# bearer token, and the gateway credentials. Distribution now has to be
-# manual - copy .env between machines out of band; a fresh clone starts
-# from example.env.
-#
-# The superseded values remain readable in the history that already
-# exists, so treat every key that has ever appeared here as burned until
-# it is rotated.
+# ---- .env is NOT tracked ----
+# A deploy clones the repository onto third-party infrastructure, and the
+# file holds every API key and account credential the fetchers use. Copy
+# .env between machines out of band; a fresh clone starts from
+# Code/example.env.
 .env
 
-# Only the evaluation notebook is tracked. The delivery itself is
-# multi-GB unaggregated raw post text: oversized for git history, and
-# raw text is exactly what the text-free commit rule exists to keep out
-# of the repository. Both case spellings are listed because gitignore
-# matching follows core.ignorecase (true on Windows, false on Linux);
-# a single-case rule would stop protecting the folder on a Linux clone.
-
-# Staging area for files retired from the project (review, then delete).
+# Staging area for files on their way out of the project (review, then
+# delete).
 _to_delete/
-
-# ---- workstation marker (never committed, by design) ---------------------
-# Its presence enables the dashboard's pipeline-run controls. A hosted clone
-# cannot have it, so a public viewer is never offered a button that fetches,
-# spends API credit, or calls a Bloomberg Terminal. Created by
-# tools/publish_dashboard.py; see LOCAL_CONTROLS in dashboard.py.
 
 # Data/dashboard/ is deliberately ABSENT from this file. Like
 # Data/abstracted/, it is a committed INPUT: the finished display frames the
@@ -121,12 +97,16 @@ _to_delete/
 # to publish anything carrying FORBIDDEN_COLS.
 
 # ---- material that is not needed to run the pipeline ---------------------
-# Reference Materials/archive/ holds the long-form docs, old research
-# notebooks and the old parameter reference. Reference Materials/research.ipynb
-# is the one committed write-up.
+# Reference Materials/archive/ holds long-form notes and research
+# notebooks. Reference Materials/research.ipynb is the one committed
+# write-up.
 Reference Materials/archive/
 # generated proposals from the keyword auditor (review, then apply)
 Data/reference/keyword_suggestions/
 Data/reference/subreddit_panel.json
-# per-copy settings overrides (pipeline controls etc.)
+# per-copy settings overrides (pipeline controls etc.). Its presence on a
+# workstation enables the dashboard's pipeline-run controls; a hosted
+# clone cannot have it, so a public viewer is never offered a button that
+# fetches, spends API credit, or calls a Bloomberg Terminal. Written by
+# Code/tools/publish_dashboard.py; see LOCAL_CONTROLS in Code/dashboard.py.
 Code/config/settings.local.csv

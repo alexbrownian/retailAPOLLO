@@ -127,7 +127,7 @@ def main():
     by_src = posts["source"].value_counts().to_dict()
     print(f"by source: {by_src} | dates {posts['date'].min()} -> {posts['date'].max()}")
 
-    print("aggregating (tickers + themes + sentiment - same code as the notebooks)...")
+    print("aggregating (tickers + themes + sentiment - same code as the full build)...")
     new_aggs = abstracted_data.aggregate_posts(posts)
 
     for name, (kind, keys) in abstracted_data.MERGE_RULES.items():
@@ -153,7 +153,7 @@ def main():
         return 0
 
     print("done. next: the analytics stage "
-          "(update_data.py runs it: python -m src.analytics.run_analytics)")
+          "(update_data.py runs it: cd Code && python -m src.analytics.run_analytics)")
     return 0
 
 

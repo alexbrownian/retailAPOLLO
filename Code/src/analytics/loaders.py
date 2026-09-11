@@ -17,8 +17,8 @@ means:
   * missing days become explicit zeros (a quiet day is data, not a gap -
     skipping it would corrupt every rolling window and derivative);
   * one vectorised pandas call processes every entity at once (this is the
-    core reason the .py analytics finish in seconds where the notebook
-    chain took minutes: no per-entity Python loops, no chart rendering).
+    core reason the analytics finish in seconds: no per-entity Python
+    loops, no chart rendering).
 
 CACHING
 -------

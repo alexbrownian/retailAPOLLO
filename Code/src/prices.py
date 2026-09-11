@@ -22,9 +22,9 @@ The pipeline needs daily closes for every priced instrument in
     The provider paces itself and stops with a clear error when the
     account's request quota is hit (HTTP 429).
 
-Why an API and not a free site: Yahoo Finance rate-limits by address
-and Stooq fronts its CSV endpoint with a JavaScript bot challenge; both
-refuse programs from a shared office network. A key is the permission.
+Why an API and not a free site: free price sites rate-limit by address
+or front their endpoints with a bot challenge, and refuse scripted
+access from shared networks. A key is the permission.
 
 Selection and fallback
 ----------------------
@@ -361,6 +361,7 @@ def selftest(provider: str = "tiingo", symbols: Iterable[str] = None,
 
     Usage::
 
+        cd Code
         python -m src.prices --provider tiingo
         python -m src.prices --provider bloomberg --symbols SPY,GLD
     """

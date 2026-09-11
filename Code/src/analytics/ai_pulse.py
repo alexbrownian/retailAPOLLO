@@ -2,21 +2,21 @@
 ai_pulse.py — the LLM writes the qualitative read of the market.
 ================================================================
 
-The AI Pulse tab carried hand-written SAMPLE text since it shipped; this
-module produces the real thing.  It runs at the end of every update_data
-pass (and on demand from the dashboard), hands the freshest raw posts -
-and ONLY those - to the firm's LLM through `src/ai.py` (the Apollo
-gateway), and saves one JSON the dashboard renders verbatim:
+This module writes the text the AI Pulse tab shows (the tab falls back
+to hand-written SAMPLE text until a pulse exists).  It runs at the end
+of every update_data pass (and on demand from the dashboard), hands the
+freshest raw posts - and ONLY those - to the configured LLM through
+`src/ai.py`, and saves one JSON the dashboard renders verbatim:
 
     Data/processed/ai_pulse.json
         as_of, generated_at, model,
-        evidence (the week's measured numbers, recorded here for the
-                  desk to check the read against - NOT shown to the
+        evidence (the week's measured numbers, recorded here so the
+                  read can be checked against them - NOT shown to the
                   model, see DESIGN RULES),
         market_vibe, market_pulse, talk_of_the_town,
         theme_briefs[], catalyst_watch[],
-        divergences[] (contradictions INSIDE the crowd since
-                       2026-08-12, not story-vs-our-numbers),
+        divergences[] (contradictions INSIDE the crowd, not
+                       story-vs-our-numbers),
         agentic{digest, asks[], actions[], risk_note}
 
 DESIGN RULES
@@ -51,6 +51,7 @@ DESIGN RULES
     with an honest banner.
 
 CLI:
+    cd Code
     python -m src.analytics.ai_pulse           # generate now
     python -m src.analytics.ai_pulse --dry     # print the evidence pack only
 """
@@ -152,7 +153,7 @@ def _evidence() -> dict:
         share = (cur / cur.sum()).sort_values(ascending=False)
         ev["as_of"] = str(hi.date())
         # every theme with a MATERIAL share, not just the top 10: the page
-        # now offers a per-theme dropdown, so the model has to be able to
+        # offers a per-theme dropdown, so the model has to be able to
         # speak about anything selectable in the dashboard
         share = share[share >= THEME_BRIEF_MIN_SHARE].head(MAX_THEME_BRIEFS)
         ev["theme_mention_share_7d"] = {
@@ -531,8 +532,8 @@ def _market_prompt(posts: list[dict]) -> str:
         # reveals it ("everyone is posting their gains") rather than as
         # an adjective ("sentiment is bullish"). An adjective is the
         # model's conclusion; the behaviour is the evidence, and a desk
-        # can judge evidence. With the numbers gone this is now the
-        # ONLY grounding the section has, so it matters more, not less.
+        # can judge evidence. Since the model sees no numbers this is
+        # the ONLY grounding the section has, so it matters more, not less.
         "market_pulse": "4-5 substantial paragraphs (450-550 words). "
                         "REGISTER, and follow it closely: write the way "
                         "a colleague who reads these boards all day "
@@ -777,10 +778,9 @@ def generate(log=print, as_of=None) -> tuple[bool, str]:
     if AS_OF is not None:
         log(f"AI PULSE: BACK-DATED to {AS_OF:%Y-%m-%d} - every store and "
             "every post is clipped to that day")
-    # THE EVIDENCE PACK IS STILL BUILT AND STILL SAVED - it is the
-    # week's measured record and the dashboard orders the theme dropdown
-    # from it - but from 2026-08-12 it is NOT sent to the model. See the
-    # note above _PULSE_SYSTEM.
+    # THE EVIDENCE PACK IS BUILT AND SAVED - it is the week's measured
+    # record and the dashboard orders the theme dropdown from it - but
+    # it is NOT sent to the model. See the note above _PULSE_SYSTEM.
     log("AI PULSE: building evidence pack (for the record - the model "
         "reads posts only)")
     ev = _evidence()
@@ -829,10 +829,9 @@ def generate(log=print, as_of=None) -> tuple[bool, str]:
         log("AI PULSE: call 3 - catalysts (posts) and divergences "
             "(posts vs the measured numbers)")
         # 8000, not 4000: on busy days this answer legitimately runs
-        # past 4k tokens and the truncation guard failed the whole
-        # pulse three tries in a row (2026-08-28, 21:14-21:17) before
-        # a shorter draw squeaked under the bar at 21:18. Same ceiling
-        # as calls 1-2; costs tokens on this call only, never calls.
+        # past 4k tokens, and a 4k ceiling would trip the truncation
+        # guard and fail the whole pulse. Same ceiling as calls 1-2;
+        # costs tokens on this call only, never calls.
         watch = ai.chat(_watch_prompt(ev, posts), system=_WATCH_SYSTEM,
                         want_json=True, max_tokens=8000)
         from src.agentic_watch import recent_samples

@@ -1,9 +1,8 @@
 """
 signals.py
 ==========
-The BUY/SELL decision engine - the direct replacement for the legacy notebook engine.
-notebook 10, with identical rules, thresholds and output schema. Pure
-computation: a full rerun over nine years of aggregates takes ~2 seconds.
+The BUY/SELL decision engine. Pure computation: a full rerun over nine
+years of aggregates takes ~2 seconds.
 
 THE PHILOSOPHY: FEWER TRADES, MORE CONVICTION
 ---------------------------------------------
@@ -53,7 +52,7 @@ TWO LEVELS, ONE ENGINE
   * individual TICKERS (for backtest purposes; noisier by construction,
     hence the higher volume floor).
 
-OUTPUT FILES (identical schema to notebook 10)
+OUTPUT FILES
   trade_signals.parquet          themes:  signal_date, action_date, action,
                                  theme, etf, score, att_z, conv_z,
                                  sent_5d_chg, reason
@@ -367,13 +366,12 @@ def rebuild_signal_files(start=None, end=None, verbose: bool = True) -> dict:
     """The pipeline entry point: recompute both signal files on disk
     (atomic writes). Returns {filename: n_signals}.
 
-    start/end ('YYYY-MM-DD', end exclusive) clip the input window, exactly
-    like notebook 10's START_DATE/END_DATE params did. Left None (the
-    default, and what live runs use) the engine sees the whole aggregate
-    history. NOTE the volume floors are MEANS over the input window, so a
-    ticker that is loud recently but quiet for years passes a windowed run
-    yet fails a full-history one - windowed runs are how the old ticker
-    backtests were produced."""
+    start/end ('YYYY-MM-DD', end exclusive) clip the input window. Left
+    None (the default, and what live runs use) the engine sees the whole
+    aggregate history. NOTE the volume floors are MEANS over the input
+    window, so a ticker that is loud recently but quiet for years passes
+    a windowed run yet fails a full-history one - windowed runs are how
+    ticker backtests are produced."""
     from src.abstracted_data import _safe_write
 
     written = {}

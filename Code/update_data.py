@@ -43,9 +43,9 @@ model every time, so a run is one predictable job. The only exception is
 a copy with no frozen record at all, which derives one once before it can
 score (the bootstrap). To re-open the research question deliberately::
 
-    python -m src.analytics.run_analytics --what phases --research
-    python Code/update_data.py --full     # a backfill rewrites the history the
-                                     # thresholds were chosen on
+    cd Code && python -m src.analytics.run_analytics --what phases --research
+    python Code/update_data.py --full     # a backfill rewrites the history
+                                          # the thresholds were chosen on
 
 If the frozen record stops at an earlier year than the data, the run
 prints one notice and keeps scoring with it; that is out-of-sample use,
@@ -375,7 +375,7 @@ def main():
 
     end_label = args.end if args.end else "LIVE (newest)"
     log("=" * 60, fh)
-    log("UPDATE DATA (retailAPOLLO - notebook-free pipeline)", fh)
+    log("UPDATE DATA (retailAPOLLO)", fh)
     log(f"  window : {args.start} -> {end_label}", fh)
     log(f"  mode: {'aggregates (text-free aggregates only)' if aggregates_only else 'full (raw post store)'} "
         f"(posts.parquet {'present' if os.path.exists(POSTS_PATH) else 'absent'})", fh)
@@ -463,11 +463,11 @@ def main():
             "stores already on disk", fh)
     elif aggregates_only:
         log("folding live raw -> Data/abstracted + hydrate", fh)
-        # The fold's exit code was discarded, so a crashed fold
-        # produced a green run: analytics recomputed on unchanged
-        # aggregates, the bundle published, "safety check: PASS",
-        # exit 0. Worse, a fold that dies after writing some of the
-        # six aggregate files but before recording the seen-ids will
+        # The fold's exit code must be checked: ignoring it would turn
+        # a crashed fold into a green run (analytics recomputed on
+        # unchanged aggregates, the bundle published, "safety check:
+        # PASS", exit 0). Worse, a fold that dies after writing some of
+        # the six aggregate files but before recording the seen-ids will
         # DOUBLE COUNT on the next run - so a silent failure here is
         # the one that corrupts the store. Record it loudly.
         fold_rc = run([py, "ingestion/append_live_abstracted.py"], fh,
@@ -536,7 +536,7 @@ def main():
         check_window_coverage(fh, args.start, args.end)
         pipeline_budget.record_stage("coverage", time.time() - _t)
 
-    # ---- 3. COMPUTE - the notebook-free analytics.
+    # ---- 3. COMPUTE - the analytics.
     # live -> always recompute (new data just folded in); --full -> rebuild
     # the aggregates from raw text first, then recompute; backtest ->
     # recompute only when the aggregates are NEWER than the derived outputs
@@ -727,10 +727,9 @@ def main():
         except Exception as e:                           # noqa: BLE001
             ai_pulse_msg = f"FAILED - {type(e).__name__}: {e}"
             log(f"AI PULSE: skipped - {type(e).__name__}: {e}", fh)
-        # the keyword-map auditor, WEEKLY (design question 2026-08-04
-        # "does it run every once in a while?" - it does now): if the
-        # newest suggestions file is older than 7 days and the gateway
-        # is up, a fresh audit is written for review. NEVER auto-applied
+        # the keyword-map auditor, WEEKLY: if the newest suggestions
+        # file is older than 7 days and the gateway is up, a fresh audit
+        # is written for review. NEVER auto-applied
         # - apply is a human step (tools/ai_keyword_audit.py --apply).
         try:
             import glob as _glob

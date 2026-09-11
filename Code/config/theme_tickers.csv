@@ -1382,6 +1382,6 @@ weight_loss_glp1,TVTX,XBI constituent
 weight_loss_glp1,TWST,XBI constituent
 weight_loss_glp1,VKTX,curated
 datacenters,KEEL,curated
-biotech_pharma,NVO,keyword cleanup 2026-08-23
-defense_aerospace,LDOS,keyword cleanup 2026-08-23
-travel_airlines,IAG,keyword cleanup 2026-08-23
+biotech_pharma,NVO,curated
+defense_aerospace,LDOS,curated
+travel_airlines,IAG,curated

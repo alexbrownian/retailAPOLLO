@@ -410,7 +410,7 @@ def main():
     if total:
         print("\nNEXT: a fold rewrites the history the thresholds were "
               "chosen on, so re-open research once:\n"
-              "  python -m src.analytics.run_analytics --what phases --research")
+              "  cd Code && python -m src.analytics.run_analytics --what phases --research")
     return 0
 
 

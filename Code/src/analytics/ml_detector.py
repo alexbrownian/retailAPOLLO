@@ -1,23 +1,22 @@
 """
 ml_detector.py
 ==============
-The LEARNED euphoria detectors (August 2026) - one shared crowd-only
-feature bank, two heads (GET IN / GET OUT), three model families, judged
-by the SAME walk-forward discipline as everything else in this project.
+The LEARNED euphoria detectors - one shared feature bank, two heads
+(get_in / get_out), three model families, judged by the SAME
+walk-forward discipline as everything else in this project.
 
 WHY A LEARNED MODEL
 -------------------
 The rule-based baseline is a stack of hand-set gates, each carrying a
 constant that has to be justified on its own (2.0x hype, 1.10x onset
 floor, 0.90 attention percentile, 75% persistence, a 0.23 false-alarm
-budget, a 0.5 false-alarm penalty). The learned model replaces that
-stack with something that is at least as accurate, needs only a handful
-of explainable numbers, and learns the interactions the rules had to
-hard-code. No prior false-alarm budget is imposed on it: the operating
-point is chosen for accuracy alone.
+budget, a 0.5 false-alarm penalty). The learned model is at least as
+accurate, needs only a handful of explainable numbers, and learns the
+interactions the rules hard-code. No prior false-alarm budget is
+imposed on it: the operating point is chosen for accuracy alone.
 
-WHAT SURVIVES OF THE OLD SYSTEM (three numbers, each one sentence)
-------------------------------------------------------------------
+WHAT THE RULE STACK STILL CONTRIBUTES (three numbers, each one sentence)
+------------------------------------------------------------------------
 1. COVERAGE FLOOR - a name must carry >= EUPHORIA_MIN_COVERAGE scored
    posts in the last 28d before anything can fire ("we do not diagnose a
    crowd we cannot see").
@@ -29,9 +28,9 @@ Everything else - the hype gates, the boom gates, the persistence gate,
 the end-stage exclusion - is handed to the model as FEATURES, so the
 data decides how much each matters instead of a hard-coded constant.
 
-THE FEATURE BANK (9 features, all crowd-only, all trailing, all
-percentile-ranked against the SAME name's own history - no embedded
-gate constants)
+THE CROWD FEATURE BANK (9 features, all trailing, all percentile-ranked
+against the SAME name's own history - no embedded gate constants; the
+production bank adds the two PRICE_FEATURES below)
 ----------------------------------------------------------------
   attention_level      how loud is the name vs its own last year (E1)
   attention_change     is the crowd bigger than a month ago (E3)
@@ -71,8 +70,10 @@ two heads. Lift rather than raw AP because the rule-based baseline only
 scores days that already passed its gates, which inflates its raw AP by
 construction. Ties break by combined AUROC, then by fewer false alarms.
 
-Price NEVER enters any feature (crowd-only rule unchanged) - price
-appears only in the ground truth and the scoring, exactly as before.
+Price enters the production bank only through the two PRICE_FEATURES
+(DESK_ML_BANK); the crowd-only variant (ML_BANK) is fitted and reported
+alongside so the "crowd alone" claim keeps its own record. Price also
+defines the ground truth and the scoring.
 """
 
 from __future__ import annotations
@@ -107,9 +108,9 @@ ML_BANK = ["attention_accel", "hype_ratio", "bull_inflection",
 # The rule-based baseline expressed price as a hard boom gate (a fixed
 # run-up above the 54-day low - two more constants); the learned bank
 # expresses it as two continuous features and lets the model find the
-# cut. Measured walk-forward, the pair moves GET OUT AUROC from 0.63 to
-# 0.74 and GET IN from 0.58 to 0.77. The crowd-only variant is still run
-# and reported alongside, so the "crowd alone" claim keeps its own record.
+# cut. Measured walk-forward, the pair moves get_out AUROC from 0.63 to
+# 0.74 and get_in from 0.58 to 0.77. The crowd-only variant is run and
+# reported alongside, so the "crowd alone" claim keeps its own record.
 PRICE_FEATURES = ["price_runup", "price_ret21"]
 DESK_ML_BANK = ML_BANK + PRICE_FEATURES
 
@@ -405,17 +406,16 @@ def choose_threshold_strict(train_scored: pd.DataFrame,
 
 
 # ---------------------------------------------------------------------------
-# WITHDRAWN 2026-08-10 - the "Max Performance" operating point.
-# A cut chosen purely for outcome was evaluated (most negative
-# forward move after a GET OUT). It was built and measured walk-forward
-# against the DATE-MATCHED EXCESS move - the name's forward return minus
-# what the whole tracked universe did that day, because the universe
-# itself drifts ~+1% per 21d and a RAW median can never go negative in
-# a bull run. Verdict: the edge it found on the train years did not
-# survive out of sample (GET OUT +0.1%, GET IN 0.0% excess), while the
-# plain precision-weighted STRICT cut delivered -1.4% / +0.7%. Removed
-# from the production path; the measurement stays in
-# Data/research_record/max_performance.json as the record of a tested null.
+# NOT SHIPPED - the "Max Performance" operating point (a tested null).
+# A cut chosen purely for outcome (most negative forward move after a
+# get_out) is measured walk-forward against the DATE-MATCHED EXCESS move
+# - the name's forward return minus what the whole tracked universe did
+# that day, because the universe itself drifts ~+1% per 21d and a RAW
+# median can never go negative in a bull run. Verdict: the edge it finds
+# on the train years does not survive out of sample (get_out +0.1%,
+# get_in 0.0% excess), while the plain precision-weighted STRICT cut
+# delivers -1.4% / +0.7%. Not on the production path; the measurement is
+# in Data/research_record/max_performance.json.
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
@@ -428,8 +428,8 @@ FWD_HORIZONS = (5, 21, 84)
 def forward_returns(alerts_by_name: dict, sym_by: dict, pxmap: dict,
                     horizons=FWD_HORIZONS) -> dict:
     """Median % price move after each alert, per horizon (calendar days),
-    with the count of judgeable alerts. GET OUT alerts done well should
-    show flat-to-negative medians; GET IN alerts positive ones."""
+    with the count of judgeable alerts. get_out alerts done well should
+    show flat-to-negative medians; get_in alerts positive ones."""
     moves = {h: [] for h in horizons}
     for name, alerts in alerts_by_name.items():
         sym = sym_by.get(name)
@@ -611,11 +611,10 @@ def _summarise_entry(wf: dict, sym_by: dict, pxmap: dict,
 
 
 def pick_winner(results: dict) -> str:
-    """The pre-stated criterion (stated 2026-08-07 BEFORE the numbers
-    were computed):
+    """The pre-stated criterion (fixed BEFORE the numbers were computed):
 
     * ONE model family serves both heads - two different learners for
-      GET IN and GET OUT would double the explanation burden for a
+      get_in and get_out would double the explanation burden for a
       marginal gain, and the point of this exercise is fewer moving
       parts, not more.
     * The family with the highest COMBINED AP LIFT (test-year AP divided
@@ -653,11 +652,11 @@ def pick_winner(results: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# ground-truth sweep (task: "consider lowering the 25%/50% boom bars")
+# ground-truth sweep: how the episode size bars were chosen
 # ---------------------------------------------------------------------------
-# explicit values, never {}: the config defaults MOVED on 2026-08-07 (to
-# the 20/40, 12/25 row this sweep selected), and a grid entry that means
-# "whatever the defaults are today" would silently re-label itself
+# explicit values, never {}: the config defaults are the 20/40, 12/25 row
+# this sweep selected, and a grid entry that means "whatever the defaults
+# are today" would silently re-label itself if they moved
 GT_GRID = {
     "GT-old (25/50, 15/30)": {"boom_theme": 0.25, "boom_single": 0.50,
                               "crash_theme": 0.15, "crash_single": 0.30},
@@ -773,7 +772,7 @@ if __name__ == "__main__":
 # explainability sidecar: which measurements the live model leans on.
 # Written by the pipeline (euphoria_phases.rebuild_phase_files) whenever a
 # learned model ships, read by the dashboard's "what drives the calls"
-# expander and by notebook 03 §SS2 - one computation, every surface.
+# expander and by research.ipynb - one computation, every surface.
 # ---------------------------------------------------------------------------
 def model_insight(cand: pd.DataFrame, eval_year: int | None = None,
                   max_eval_rows: int = 4000) -> dict:

@@ -323,7 +323,7 @@ def main():
         print("!" * 68)
         return 1
     print("swapped in:", args.posts)
-    print("next: re-run the notebook chain (update_data.py does this).")
+    print("next: re-run the analytics (update_data.py does this).")
     return 0
 
 

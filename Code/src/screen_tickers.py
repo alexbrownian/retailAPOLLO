@@ -29,11 +29,10 @@ Output: Data/reference/ticker_classification.csv
   counting, $CASHTAG mentions still count ("demote, don't delete").
 
 Run standalone (samples the corpus itself, ~1 min):
-    python -m src.screen_tickers
-or from a notebook with posts already loaded: see notebook 01, section
-"Screen word-tickers".
+    cd Code && python -m src.screen_tickers
+or call ``screen_tickers`` with posts already loaded.
 
-Known limitations (see README "Screening word-tickers"):
+Known limitations:
   - Caps-typed jargon (HODL) passes the case test; the manual
     BARE_PROSE_STOP list in extract_tickers.py still covers those.
   - Brand-name tickers people type lowercase (SOFI, HOOD, COIN) get

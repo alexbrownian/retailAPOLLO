@@ -1,30 +1,30 @@
 """
 retail_flow.py
 ==============
-The continuous retail-flow dial (desk adoption 2026-08-17; research
-record notebook 08 §9, Data/research_record/nb08_retail_flow.json). One smooth
-number per name per day in [-1, +1]:
+The continuous retail-flow dial (research record:
+Data/research_record/nb08_retail_flow.json). One smooth number per name
+per day in [-1, +1]:
 
     retail_flow      the walk-forward gauge itself (state-space filtered)
     retail_flow_disp the display scaling: trailing 365d per-name rank
                      mapped to [-1, +1] - "bullish for THIS name" means
                      bullish against its own recent range
 
-Construction, exactly as §9.4 froze it:
+Construction, exactly as the record froze it:
 
   * ANCHORED HALF - posts-only P(onset) and P(top) (logit + monotone
     GBM, each calibrated through its TRAIN-year score ECDF),
-    subtracted. The anchors are the production GET IN / GET OUT
+    subtracted. The anchors are the production get_in / get_out
     definitions made continuous; nothing about them changes here.
   * SLOW HALF - ridge + GBM regression of 63-day forward EXCESS return
     on the slowest crowd measures (attention age/saturation, breadth,
     cross-name rotation), tanh-squashed. Price appears in the TARGET at
     training time only; every feature is price-free. This half is where
-    the measured 1-3 week lead over price lives (§9.6).
+    the measured 1-3 week lead over price lives.
   * FILTER - steady-state Kalman (a local-level state-space model),
     gain chosen per fold from {0.05, 0.1, 0.2} by train-year IC against
     42-day forward excess. No lookahead, no lockout rule: smoothness is
-    model structure, not a bolt-on average (§9.7).
+    model structure, not a bolt-on average.
 
 Walk-forward discipline throughout: every year is scored by models
 fitted strictly on earlier years, including the current partial year.
@@ -33,9 +33,9 @@ the same stores produce identical columns.
 
 WHAT THIS IS NOT. Not a trigger: nothing fires from these columns, and
 the fence tests hold the line. The dial is the trend/context layer -
-IC ~+0.01-0.02 pooled (a tide, not a ticket) - while GET IN / GET OUT
+IC ~+0.01-0.02 pooled (a tide, not a ticket) - while get_in / get_out
 remain the calls. And it deliberately does NOT hard-flip inside boom
-regimes: the §10.6 sweep showed the flip helps tops only by hurting
+regimes: the record's sweep shows the flip helps tops only by hurting
 starts more, with the winner unstable across eras.
 """
 
@@ -64,7 +64,7 @@ KALMAN_GAINS = (0.05, 0.1, 0.2)
 SLOW_FEATURES = ["e1", "bull_level", "bull_persist", "att_age", "att_sat",
                  "att_fade60", "bull_age", "xname_rank", "breadth_level",
                  "e2", "att_vol_21"]
-# the §9.1 additions on top of the 13-feature price-blind bank
+# the slow-half additions on top of the 13-feature price-blind bank
 EXTRA_FEATURES = ["att_age", "att_sat", "att_fade60", "mood_slope10",
                   "bull_age", "xname_rank", "xname_rank_chg21",
                   "breadth_level"]
@@ -79,7 +79,7 @@ def _run_age(s: pd.Series) -> pd.Series:
 
 
 def add_flow_features(df: pd.DataFrame) -> pd.DataFrame:
-    """The §9.1 price-free additions: HOW LONG the crowd has been hot
+    """The slow-half price-free additions: HOW LONG the crowd has been hot
     (age, saturation), whether it is off its own peak, and where the
     name sits across the whole universe (rotation). Every threshold is
     a trailing per-name quantile shifted one day - day t is graded only
@@ -119,7 +119,7 @@ def add_flow_features(df: pd.DataFrame) -> pd.DataFrame:
 def _forward_excess(df: pd.DataFrame, prices: pd.DataFrame,
                     sym_by: dict, horizons=(42, 63)) -> pd.DataFrame:
     """Excess-of-market forward returns on each symbol's OWN trading
-    calendar (the §7 union-index lesson), calendar days mapped to the
+    calendar (never a union index), calendar days mapped to the
     next trading day. Used as TRAIN targets only."""
     fw = {}
     for sym, gp in prices.groupby("symbol"):

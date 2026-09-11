@@ -1,32 +1,26 @@
 """
 run_analytics.py
 ================
-Recompute every derived output in one command - the .py replacement for
-executing notebooks 08, 09 and 10 through nbconvert.
+Recompute every derived output in one command.
 
+    cd Code
     python -m src.analytics.run_analytics            # conviction + signals
     python -m src.analytics.run_analytics --what conviction
     python -m src.analytics.run_analytics --what signals
 
-WHY THIS IS FAST WHERE THE NOTEBOOKS WERE SLOW
-----------------------------------------------
-The notebook chain paid three separate taxes on every run:
-  1. process startup x N notebooks (a fresh Jupyter kernel each, ~5-10s a
-     time before any work starts);
-  2. matplotlib rendering of every chart into the .ipynb file (hundreds of
-     static images nobody looks at until they open the notebook - and the
-     reason the .ipynb files grew to 1-4 MB each);
-  3. JSON-serialising the whole notebook back to disk, with the atomic
-     tmp-file dance to survive interruption.
-Here the same mathematics runs once, in one process, with zero rendering -
-the dashboard draws charts interactively from the saved parquet outputs
-instead. Full recompute over nine years of aggregates: a few seconds.
+(``python Code/src/analytics/run_analytics.py`` from the project root
+works as well.)
 
-WHAT GETS WRITTEN (identical filenames/schemas to the notebooks)
-  daily_ticker_conviction.parquet    (was notebook 08's output)
-  daily_theme_conviction.parquet     (was notebook 09's output)
-  trade_signals.parquet              (was notebook 10's theme output)
-  trade_signals_tickers.parquet      (was notebook 10's ticker output)
+The mathematics runs once, in one process, with no chart rendering; the
+dashboard draws its charts interactively from the saved parquet outputs.
+A full recompute over nine years of aggregates takes a few seconds.
+
+WHAT GETS WRITTEN
+  daily_theme_conviction.parquet     per-theme conviction (ticker
+                                     conviction is computed live by the
+                                     dashboard; no file)
+  trade_signals.parquet              theme signals
+  trade_signals_tickers.parquet      ticker signals
 
 The two stages are independent (conviction files are a dashboard input,
 the signal engine builds its own ingredients from the raw aggregates), so
@@ -60,15 +54,15 @@ def run_euphoria(research=None):
     """The top-detector. LIVE mode (default): score today's data at the
     FROZEN walk-forward threshold - seconds; the validation record
     (walk-forward + ablation + ML challenger) is a research artifact,
-    refreshed only by --research runs or auto-triggered when the data
-    rolls into an uncovered year (intra-year recompute is a no-op by the
-    walk-forward convention - thresholds train on strictly earlier
-    years). Needs prices; skips gracefully when absent."""
+    refreshed only by --research runs or when no usable record exists
+    yet (the bootstrap case). A record that lags the data is reported,
+    never refitted as a side effect. Needs prices; skips gracefully
+    when absent."""
     import os
     from src.config import PRICES_PATH
     if not os.path.exists(PRICES_PATH):
         print("  (euphoria skipped - no prices.parquet; run "
-              "pull_bloomberg_prices.py first)")
+              "Code/ingestion/pull_prices.py first)")
         return {}
     from src.analytics.euphoria import main as euphoria_main
     return euphoria_main(research=research)
@@ -83,16 +77,16 @@ def run_influence():
 
 
 def run_phases(research=None):
-    """The euphoria ONSET detector (the July-2026 phases study winner).
+    """The euphoria ONSET detector (the phases-study winner).
     LIVE mode (default): today's scores/alerts at the frozen threshold;
-    RESEARCH (--research or auto on year rollover): re-run the winner's
-    walk-forward scorecard + threshold selection. Needs prices; skips
-    gracefully when they are absent, like euphoria."""
+    RESEARCH (--research, or automatically when no record exists yet):
+    re-run the winner's walk-forward scorecard + threshold selection.
+    Needs prices; skips gracefully when they are absent, like euphoria."""
     import os
     from src.config import PRICES_PATH
     if not os.path.exists(PRICES_PATH):
         print("  (phases skipped - no prices.parquet; run "
-              "pull_bloomberg_prices.py first)")
+              "Code/ingestion/pull_prices.py first)")
         return {}
     from src.analytics.euphoria_phases import rebuild_phase_files
     return rebuild_phase_files(research=research)
@@ -110,7 +104,7 @@ def main(argv=None) -> int:
                         "whole aggregate history - the live behaviour)")
     p.add_argument("--end", default=None,
                    help="signal engine window end, exclusive (windowed runs "
-                        "are how the old ticker backtests were produced)")
+                        "are how ticker backtests are produced)")
     p.add_argument("--serial", action="store_true",
                    help="run the stages one after another (clearer output "
                         "when debugging)")
@@ -119,22 +113,22 @@ def main(argv=None) -> int:
                         "phases (walk-forward + ablation + ML challenger, "
                         "threshold re-selection). Without it, live runs "
                         "score at the frozen thresholds in seconds; a "
-                        "research pass also auto-triggers when the data "
-                        "rolls into a year the stored record does not "
-                        "cover, or when a report is missing. Run after "
-                        "backfills or rule changes (research decides "
-                        "once, live scores)")
+                        "research pass also runs automatically when a "
+                        "report is missing (the bootstrap case). A record "
+                        "that lags the data is reported, not refitted. "
+                        "Run after backfills or rule changes (research "
+                        "decides once, live scores)")
     args = p.parse_args(argv)
 
     t0 = time.time()
     jobs = []
     if args.what in ("all", "conviction"):
-        jobs.append(("conviction (was nb 08+09)", run_conviction))
+        jobs.append(("conviction (ticker + theme)", run_conviction))
     if args.what in ("all", "signals"):
         # functools.partial (not a lambda): partials of module-level
         # functions can be pickled into the process-pool workers below.
         import functools
-        jobs.append(("signals (was nb 10)",
+        jobs.append(("signals (theme + ticker)",
                      functools.partial(run_signals, args.start, args.end)))
     import functools as _ft
     research = True if args.research else None      # None = auto-decide

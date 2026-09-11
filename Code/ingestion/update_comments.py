@@ -150,7 +150,7 @@ def main() -> int:
     influence_update()
     print(f"influence update finished in {time.time()-t1:.0f}s",
           flush=True)
-    print("done. Board: python -m src.analytics.influence --top 20 | "
+    print("done. Board: cd Code && python -m src.analytics.influence --top 20 | "
           "dashboard: Influence tracker tab", flush=True)
     return code
 

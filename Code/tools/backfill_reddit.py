@@ -31,12 +31,12 @@ After it finishes, the right follow-up depends on the mode of this copy.
 Aggregates mode (no ``Data/processed/posts.parquet``)::
 
     python Code/tools/fold_historical.py --arctic
-    python -m src.analytics.run_analytics --what phases --research
+    cd Code && python -m src.analytics.run_analytics --what phases --research
 
 Full mode (``posts.parquet`` present)::
 
     python Code/update_data.py --skip-fetch
-    python -m src.analytics.run_analytics --what phases --research
+    cd Code && python -m src.analytics.run_analytics --what phases --research
 
 Do not run ``update_data.py --skip-fetch`` in aggregates mode after a
 backfill: ``ingestion/append_live_abstracted.py`` keeps only posts dated
@@ -245,14 +245,14 @@ def print_next_steps(header: str) -> None:
     print(header)
     if internal:
         print("  python Code/tools/fold_historical.py --arctic")
-        print("  python -m src.analytics.run_analytics --what phases --research")
+        print("  cd Code && python -m src.analytics.run_analytics --what phases --research")
         print("\n  (aggregates mode - no posts.parquet. fold_historical is")
         print("   the door for historical posts. `update_data.py --skip-fetch`")
         print("   would drop every one of them: append_live_abstracted keeps")
         print("   only dates >= LIVE_START. See research.ipynb.)")
     else:
         print("  python Code/update_data.py --skip-fetch")
-        print("  python -m src.analytics.run_analytics --what phases --research")
+        print("  cd Code && python -m src.analytics.run_analytics --what phases --research")
         print("\n  (full mode - posts.parquet present, so the ordinary")
         print("   rebuild path sees the backfilled posts.)")
 
@@ -289,9 +289,9 @@ def main() -> int:
                         "Fewer subreddits is the single biggest lever if "
                         "you want SOME history rather than all of it.")
     p.add_argument("--no-fast", action="store_true",
-                   help="disable limit=auto + minimal fields (the 2026-08-21 "
-                        "speed work). Only for comparing against the old "
-                        "behaviour - it is strictly slower and returns "
+                   help="disable limit=auto + minimal fields (fast mode). "
+                        "Only for comparing against the conservative "
+                        "path - it is strictly slower and returns "
                         "identical posts.")
     p.add_argument("--estimate", action="store_true",
                    help="pull ONE probe day, measure it, and print a "

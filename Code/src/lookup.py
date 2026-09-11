@@ -692,7 +692,7 @@ def model_score(spec: LookupSpec, es, frame: pd.DataFrame, px: pd.DataFrame,
     if bundle is None:
         return {"status": "no_model",
                 "why": "no fitted model on disk yet - run "
-                       "`python -m src.analytics.run_analytics --what phases`"}
+                       "`cd Code && python -m src.analytics.run_analytics --what phases`"}
     if es is None or frame.empty:
         return {"status": "not_eligible", "why": "not enough crowd history"}
     if px is None or not len(px):

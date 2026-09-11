@@ -53,7 +53,7 @@ stay because their proxy (GME) is tradeable.
 
 Command line (Signal 2 only)::
 
-    python -m src.themes --in daily_ticker_counts.parquet --out daily_theme_counts.parquet
+    cd Code && python -m src.themes --in daily_ticker_counts.parquet --out daily_theme_counts.parquet
 """
 
 import argparse

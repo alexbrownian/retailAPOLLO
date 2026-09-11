@@ -1,4 +1,4 @@
-# Streamlit theme for RetailRadar.
+# Streamlit theme for retailAPOLLO.
 #
 # WHY THIS FILE EXISTS
 # --------------------
@@ -8,7 +8,7 @@
 # reach.  With no theme set, Streamlit paints all of that in its default
 # signal red (#FF4B4B), which is the single most off-brief colour that can
 # appear on the page: the design language is "never vibrant", and red already
-# carries a specific meaning in this product (GET OUT).
+# carries a specific meaning in this product (CUT EXPOSURE).
 #
 # So the palette is declared here, at the supported interface, and the CSS in
 # dashboard.py handles only what the theme cannot express.  Setting it in one

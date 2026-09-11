@@ -216,7 +216,9 @@ degrades to a banner instead of failing the run. Model ids: `AI_MODEL`
 | Rebuild `research.ipynb` from the current data | `python Code/tools/build_research_notebook.py` |
 
 Research re-opens in exactly three ways: `--research`, `--full`, or
-automatically on year rollover or a missing record. **Any backfill or
+automatically when a frozen record is missing (a fresh copy). A record
+that lags the data is reported in the run log, never refitted as a side
+effect of a refresh. **Any backfill or
 historical fold must be followed by `--what phases --research`**: a fold
 rewrites the history the thresholds were fitted on, and scoring new
 history against thresholds fitted on the old one is a silent lookahead.

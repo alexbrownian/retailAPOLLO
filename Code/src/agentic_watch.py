@@ -2,10 +2,11 @@
 agentic_watch.py — how much of the crowd is trading WITH an AI?
 ===============================================================
 
-Purpose: surface what retail traders are
-prompting AI, and what the AI is spitting out / auto-trading for these
-guys" — and whether that chatter leads or lags our GET IN / GET OUT flags
-and the boom/bust episodes (notebook 09 runs that test).
+Purpose: surface what retail traders are prompting AI with, and what
+the AI is recommending or auto-trading for them — and whether that
+chatter leads or lags the INCREASE / CUT EXPOSURE flags and the
+boom/bust episodes (the research record, nb09_agentic_watch.json, runs
+that test).
 
 WHAT THIS MODULE DOES
   Scan the raw post archives for AI-TRADING LANGUAGE and build a daily,
@@ -30,7 +31,7 @@ WHAT THIS MODULE DOES
 
   A small rolling sample of MATCHED post texts is kept LOCALLY in
   Data/reference/agentic_samples.jsonl (git-ignored, like every raw
-  file) so the LLM digest and notebook 09 can quote-paraphrase; nothing
+  file) so the LLM digest and the research pass can quote-paraphrase; nothing
   with text ever reaches a committed store — the same boundary the rest
   of the pipeline enforces.
 
@@ -39,6 +40,7 @@ WHAT THIS MODULE DOES
   update_data hook costs seconds after the first backfill.
 
 CLI:
+    cd Code
     python -m src.agentic_watch            # scan new archives, update store
     python -m src.agentic_watch --rebuild  # ignore the ledger, full rescan
 """
@@ -195,7 +197,7 @@ def scan(rebuild: bool = False, log=print) -> pd.DataFrame:
                     # WORDS REMOVED: "asked ChatGPT about uranium" must
                     # attribute to uranium_nuclear, not to the `ai` theme
                     # via its own "ChatGPT" keyword - otherwise every row
-                    # in this store would read theme=ai and the notebook's
+                    # in this store would read theme=ai and the record's
                     # lead/lag test would be measuring the keyword list.
                     found = themes_in_text(_ENTITY_RE.sub(" ", text))                         or {""}
                     for th in found:

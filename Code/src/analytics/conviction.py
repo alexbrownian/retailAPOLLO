@@ -2,10 +2,8 @@
 conviction.py
 =============
 Conviction = mentions x sentiment combined, per TICKER and per THEME.
-This module is the direct replacement for the legacy notebook chain -
-identical mathematics, but pure vectorised pandas with no chart rendering,
-so a full recompute over nine years of aggregates takes ~1 second instead
-of minutes of notebook execution.
+Pure vectorised pandas with no chart rendering, so a full recompute over
+nine years of aggregates takes ~1 second.
 
 THE IDEA (read this once and the rest of the file is obvious)
 -------------------------------------------------------------
@@ -50,19 +48,20 @@ divergence flags and the dashboard):
   * swarm          - attention z > 1 while the mood improves: a confirmed
                      crowd arriving.
 
-THE BASELINE (validated July 2026 - see ewm_z's docstring)
+THE BASELINE (see ewm_z's docstring for the validation evidence)
   The default z uses an EWM (exponentially-weighted) baseline rather than
-  the fixed rolling-84 window of notebooks 08/09. Both are strictly
-  trailing; the EWM version lets one-off volume shocks (like the
-  backfill->live coverage cliff) decay smoothly instead of poisoning the
-  baseline for 84 days - and it backtested best on real prices with
-  per-year cross-validation. `baseline="rolling"` restores the old
-  behaviour; `normalise=True` (share-of-day's-posts inputs) remains as a
-  research option.
+  a fixed rolling-84 window. Both are strictly trailing; the EWM version
+  lets one-off volume shocks (like the backfill->live coverage cliff)
+  decay smoothly instead of poisoning the baseline for 84 days - and it
+  backtests best on real prices with per-year cross-validation.
+  `baseline="rolling"` selects the fixed window; `normalise=True`
+  (share-of-day's-posts inputs) is a research option.
 
-OUTPUT FILES (identical schema to the notebooks they replace)
-  daily_ticker_conviction.parquet   date, ticker, conviction_z
+OUTPUT FILES
   daily_theme_conviction.parquet    date, theme,  conviction_z
+  (ticker conviction is computed live by the dashboard from the
+  sentiment store; no ticker file is written - see
+  rebuild_conviction_files)
 """
 
 from __future__ import annotations
@@ -86,8 +85,8 @@ def ewm_z(frame: pd.DataFrame, roll: int = ROLL,
     """Trailing z with an EXPONENTIALLY-WEIGHTED baseline: mean and std are
     EWM (halflife days) instead of a fixed rolling window.
 
-    Why this replaced the rolling-84 baseline as the default (July-2026
-    conviction study, real prices, per-year cross-validation):
+    Why this is the default rather than a rolling-84 baseline (conviction
+    study, real prices, per-year cross-validation):
       * A one-off volume shock sits inside a rolling window at FULL weight
         for 84 days and then falls off a cliff - which is exactly why every
         theme read negative for weeks after the backfill->live coverage
@@ -160,8 +159,8 @@ def compute_conviction(sent_df: pd.DataFrame, entity_col: str,
                  daily_theme_sentiment.parquet.
     entity_col : "ticker" or "theme".
     baseline   : "ewm" (default) = EWM mean/std baseline - see ewm_z's
-                 docstring for the validation evidence. "rolling" = the
-                 fixed 84-day window of the legacy notebook chain.
+                 docstring for the validation evidence. "rolling" = a
+                 fixed 84-day window.
     normalise  : False (default). True = COVERAGE-INVARIANT z: bull
                  pressure and attention are divided by the day's TOTAL
                  scored posts before the z (each expressed as % of the
@@ -230,16 +229,15 @@ def compute_conviction(sent_df: pd.DataFrame, entity_col: str,
 
 
 # ---------------------------------------------------------------------------
-# Extra read-outs for the dashboard (the visual summaries of notebooks
-# 08/09 - here they return DATA, and the dashboard renders them as
-# interactive Plotly).
+# Extra read-outs for the dashboard (they return DATA, and the dashboard
+# renders them as interactive Plotly).
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # The pipeline entry point: recompute both conviction files on disk.
 # ---------------------------------------------------------------------------
 def rebuild_conviction_files(verbose: bool = True) -> dict:
-    """Read the two sentiment aggregates, compute conviction, write the two
-    conviction parquets (atomic write). Returns {filename: n_rows}."""
+    """Read the theme sentiment aggregate, compute conviction, write the
+    theme conviction parquet (atomic write). Returns {filename: n_rows}."""
     from src.abstracted_data import _safe_write   # atomic parquet swap
 
     # ONLY THE THEME CONVICTION FILE IS WRITTEN; no ticker file.
@@ -247,14 +245,14 @@ def rebuild_conviction_files(verbose: bool = True) -> dict:
     # A ticker conviction parquet would be ~164 MB, rebuilt in full on
     # every run, and read by NOTHING: the dashboard computes ticker
     # conviction live from the sentiment store (that path is cached on the
-    # store's mtime and takes under a second), and no notebook, test or
-    # analytics stage opens such a parquet. A write of that size per run
+    # store's mtime and takes under a second), and no test or analytics
+    # stage opens such a parquet. A write of that size per run
     # on a laptop with a finite disk is a failure waiting for a quiet
     # week - and when a disk fills mid-run the symptom is a half-written
     # store, not a clear error.
     #
-    # The THEME file is read by `src/analytics/signals.py` and the
-    # notebooks, and is three orders of magnitude smaller.
+    # The THEME file is read by `src/analytics/signals.py` and is three
+    # orders of magnitude smaller.
     #
     # To write the ticker file, add the TICKER pair to the list below -
     # the computation is entity-agnostic and exercised by the theme path.

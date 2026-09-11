@@ -19,6 +19,7 @@ line) for maximum precision at lower recall.
 The command-line entry point reads a posts parquet and emits long-format
 rows (post_id, date, ticker, source)::
 
+    cd Code
     python -m src.extract_tickers \\
       --in Data/raw/wsb_posts_2021-01.parquet \\
       --out Data/processed/wsb_ticker_mentions_2021-01.parquet
@@ -372,7 +373,7 @@ WORD_BARE = re.compile(r"\b([A-Z]{4,5})\b")
 # Data-driven word-ticker screening (see src/screen_tickers.py): tickers
 # classified 'cashtag_only' there are English words in disguise (EDGE,
 # LOAN, RENT ...). Their bare-caps mentions are ignored; $CASHTAG mentions
-# still count. Regenerate the CSV with `python -m src.screen_tickers`.
+# still count. Regenerate the CSV with `cd Code && python -m src.screen_tickers`.
 from src.config import DATA_DIR  # noqa: E402
 CLASSIFICATION_CSV = Path(DATA_DIR) / "reference" / "ticker_classification.csv"
 

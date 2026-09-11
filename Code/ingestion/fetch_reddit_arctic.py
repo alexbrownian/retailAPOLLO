@@ -261,10 +261,10 @@ def main():
     p.add_argument("--fast", dest="fast", action="store_true", default=None,
                    help="limit=auto + minimal fields + rate-limit pacing. "
                         "ON by default for --backfill; the daily live run "
-                        "keeps the old conservative behaviour unless you "
+                        "keeps the conservative behaviour unless you "
                         "ask for it here.")
     p.add_argument("--no-fast", dest="fast", action="store_false",
-                   help="force the old one-page-at-a-time behaviour")
+                   help="force the conservative one-page-at-a-time behaviour")
     p.add_argument("--subreddits", default="",
                    help="comma-separated subset to fetch instead of all of "
                         "config/forums.csv. Coverage measured on the "

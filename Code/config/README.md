@@ -2,12 +2,12 @@
 
 Everything a user is expected to change without touching Python lives in
 this folder as CSV. Edit the files in any spreadsheet program (a UTF-8 BOM
-from Excel is handled), then run:
+from Excel is handled), then, from the project root, run:
 
-    python tools/validate_config.py
+    python Code/tools/validate_config.py
 
 The validator checks every file's columns and the references between
-files, and the test suite and `tools/preflight.py` run the same checks.
+files, and the test suite and `Code/tools/preflight.py` run the same checks.
 Changes take effect on the next pipeline run or dashboard restart.
 
 ## Which file to edit

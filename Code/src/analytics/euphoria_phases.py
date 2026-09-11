@@ -1691,9 +1691,9 @@ def rebuild_phase_files(verbose: bool = True,
     # routinely arrives while the name is still past the boom bar and
     # the IN side is dark. These columns are the SAME scores at the SAME
     # frozen cuts with the SAME shaped trigger - only the phase gate is
-    # dropped. The dashboard shows them by DEFAULT; its "stricter
-    # threshold (price gate)" checkbox switches back to the gated columns
-    # above. GET OUT keeps its gate everywhere: removing it doubles false
+    # dropped. The dashboard shows them (GATED_GET_IN is False in
+    # production; the gated columns above remain as the fallback for the
+    # experimental trigger). GET OUT keeps its gate everywhere: removing it doubles false
     # alarms for a handful of captures, so no ungated OUT variant exists
     # on purpose.
     def _alert_dates_nogate(scored, thr, rearm):
@@ -1932,7 +1932,7 @@ def rebuild_phase_files(verbose: bool = True,
     try:
         from src.analytics.retail_flow import attach_retail_flow
         if verbose:
-            print("  retail-flow dial (notebook 08 §9, ~2-4 min):",
+            print("  retail-flow dial (~2-4 min):",
                   flush=True)
         ds = attach_retail_flow(ds, fpx_live, prices, sym_by,
                                 verbose=verbose)

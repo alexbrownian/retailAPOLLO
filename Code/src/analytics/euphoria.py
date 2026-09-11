@@ -1001,9 +1001,8 @@ def needs_research(stored: dict | None, data_max_year: int) -> bool:
 
       PRACTICAL. `update_data` is the data-refresh job. A refresh that
       sometimes takes seconds and sometimes re-selects the model is not
-      a job anyone can schedule or reason about (requirement,
-      2026-07-28: "update_data should simply be to just update the data
-      and run the model on these new data downloaded").
+      a job anyone can schedule or reason about: update_data should
+      simply update the data and run the model on it.
 
       METHODOLOGICAL, and this is the stronger one. Scoring new data at
       the newest frozen threshold IS the out-of-sample use the
@@ -1044,8 +1043,8 @@ def main(research: bool | None = None):
       record at all - see `needs_research`. If the record lags the data
       the run says so in one line and still scores; it never re-selects
       the model as a side effect.
-    research=True (run_analytics --research / the notebooks): always run
-      the full validation and refresh euphoria_report.json.
+    research=True (run_analytics --research): always run the full
+      validation and refresh euphoria_report.json.
     """
     from src.config import PRICES_PATH
     prices = pd.read_parquet(PRICES_PATH)

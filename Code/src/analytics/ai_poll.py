@@ -13,14 +13,13 @@ into the crowd.  This module runs that poll at the end of every
 update_data pass:
 
   * the PROMPT PANEL lives in config/ai_poll_prompts.csv (editable, one
-    retail-style question per row).  History: 12 -> 30 on 2026-08-04
-    (copying the scaffolds retail actually runs - hedge-fund-PM and
-    Warren-Buffett personas from the most-starred AI-investing repos,
-    the JSON-decision agent loop, the copy-paste screens); +6 balance
-    prompts on 2026-08-28; then CUT BACK to 12 the same day ("its too
-    much now") - one prompt per family kept, chosen so the panel is
+    retail-style question per row).  It holds 12 prompts, one per
+    family: the plain questions retail types, the scaffolds retail
+    actually runs (hedge-fund-manager and Warren-Buffett personas from
+    the most-starred AI-investing repos, the JSON-decision agent loop,
+    the copy-paste screens), and balance prompts chosen so the panel is
     not read as purely a tech chase (gold, dividends, value screen and
-    the boring-portfolio ask sit beside the single AI ask). A retired
+    the boring-portfolio ask sit beside the single AI ask). A removed
     prompt_id's history stays in the store and its series simply ends;
     re-adding the same id later resumes it.
     The `family` column tags each one (plain,
@@ -46,10 +45,12 @@ update_data pass:
 
 THE SERIES STARTS THE DAY YOU START POLLING.  There is no backfill —
 nobody can ask 2024's model what it recommended — so the correlation
-test against our flags is a FORWARD test, pre-registered in notebook
-09 §2b: it activates itself once >=60 distinct poll days exist.
+test against our flags is a FORWARD test, pre-registered in the
+research record (Data/research_record/nb09_agentic_watch.json): it
+activates itself once >=60 distinct poll days exist.
 
 CLI:
+    cd Code
     python -m src.analytics.ai_poll          # run the poll now
     python -m src.analytics.ai_poll --show   # print the latest run
 """
