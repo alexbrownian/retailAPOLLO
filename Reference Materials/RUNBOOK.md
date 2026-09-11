@@ -43,7 +43,7 @@ Tiingo, which needs `TIINGO_API_KEY` in `.env` (a free key from tiingo.com).
 | Task | Command |
 |---|---|
 | Refresh everything | `python Code/update_data.py` |
-| Open the dashboard | `python -m streamlit run Code/dashboard.py` |
+| Open the dashboard | `python -m streamlit run dashboard.py` (the root file runs `Code/dashboard.py`) |
 | Recompute without any network call | `python Code/update_data.py --skip-fetch --skip-prices` |
 | Analytics only (seconds) | `python Code/src/analytics/run_analytics.py` |
 | Read-only health report | `python Code/tools/data_health.py` |
@@ -177,7 +177,8 @@ routine refresh needs no second command, only a commit:
 | Include the author-level influence board | `python Code/tools/publish_dashboard.py --with-influence` |
 
 The push is the deployment. Deployment settings: main file
-`dashboard.py`, branch `main`, Python 3.12. No secrets are needed on the
+`dashboard.py` (the root entry point, which runs `Code/dashboard.py`),
+branch `main`, Python 3.12. No secrets are needed on the
 host: nothing there reads a credential.
 
 Two safeguards are automatic. `publish_dashboard.py` refuses to stage any

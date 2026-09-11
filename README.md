@@ -10,7 +10,9 @@ dashboard bundle and writes a log to `Reports/logs/`. It takes about ten
 minutes. Then commit and push (`git add -A`, `git commit`, `git push`)
 and the hosted dashboard updates itself.
 
-To look at the dashboard locally: `python -m streamlit run Code/dashboard.py`.
+To look at the dashboard locally: `python -m streamlit run dashboard.py`
+(the root `dashboard.py` is the entry point the hosted app also uses; it
+runs `Code/dashboard.py`).
 
 ## What it is
 

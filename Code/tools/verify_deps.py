@@ -72,7 +72,11 @@ def _walk(root):
             allf.add(p)
             if p.startswith("Code/"):
                 allf.add(p[len("Code/"):])
-            if n.endswith(".py"):
+            # the Python tree is Code/; a top-level .py (the hosting
+            # entry point that runs Code/dashboard.py) is not a module
+            # anything imports
+            if n.endswith(".py") and ("/" in p or not
+                                      os.path.isdir(os.path.join(root, "Code"))):
                 py.append(p)
     return py, allf
 
