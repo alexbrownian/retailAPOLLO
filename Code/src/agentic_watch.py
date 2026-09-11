@@ -57,7 +57,7 @@ import pandas as pd
 
 from src.config import PROCESSED_DIR, REFERENCE_DIR
 from src.themes import themes_in_text
-from src.config import DATA_DIR  # noqa: E402
+from src.config import DATA_DIR, PROJECT_DIR  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_DIRS = {
@@ -138,12 +138,27 @@ def _archives() -> list[str]:
     return out
 
 
+def _ledger_key(rel: str) -> str:
+    """Ledger keys are project-relative, forward-slash paths under
+    ``Data/`` (``Data/raw/RedditComments/x.jsonl.zst``). Keys written
+    relative to the code folder or with a lower-case ``data/`` prefix
+    are read as the same archive, so a moved working copy does not
+    rescan everything it has already seen."""
+    k = rel.replace("\\", "/")
+    while k.startswith("../"):
+        k = k[3:]
+    if k.startswith("data/"):
+        k = "Data/" + k[5:]
+    return k
+
+
 def scan(rebuild: bool = False, log=print) -> pd.DataFrame:
     """Scan new (or all) archives; merge into the daily store."""
     pats = load_patterns()
     ledger = {}
     if os.path.exists(LEDGER) and not rebuild:
-        ledger = json.load(open(LEDGER, encoding="utf-8"))
+        ledger = {_ledger_key(k): v for k, v in
+                  json.load(open(LEDGER, encoding="utf-8")).items()}
     old = (pd.read_parquet(OUT_PATH)
            if os.path.exists(OUT_PATH) and not rebuild else None)
 
@@ -153,7 +168,7 @@ def scan(rebuild: bool = False, log=print) -> pd.DataFrame:
     seen_files, new_files = [], []
     for path in _archives():
         st = os.stat(path)
-        key = os.path.relpath(path, ROOT).replace("\\", "/")
+        key = _ledger_key(os.path.relpath(path, PROJECT_DIR))
         sig = [st.st_size, int(st.st_mtime)]
         if ledger.get(key) == sig:
             seen_files.append(key)

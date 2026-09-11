@@ -3597,7 +3597,8 @@ class TestPriceBlindTrigger:
     @staticmethod
     def _src(name):
         from pathlib import Path
-        return Path(name).read_text(encoding="utf-8")
+        return (Path(__file__).resolve().parents[1] / name).read_text(
+            encoding="utf-8")
 
     def test_the_bank_is_price_free(self):
         import src.analytics.euphoria_phases as eph

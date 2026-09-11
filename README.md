@@ -1,13 +1,25 @@
 # retailAPOLLO
 
+**To refresh everything:** open a terminal in this folder and run
+
+    python Code/update_data.py
+
+That one command fetches the week's posts, screens bots, folds the new
+days into the tables, re-scores every name, pulls prices, stages the
+dashboard bundle and writes a log to `Reports/logs/`. It takes about ten
+minutes. Then commit and push (`git add -A`, `git commit`, `git push`)
+and the hosted dashboard updates itself.
+
+To look at the dashboard locally: `python -m streamlit run Code/dashboard.py`.
+
+## What it is
+
 Retail-attention and sentiment monitoring for tradeable themes and single
 names. Public finance forums are reduced to text-free daily counts and
 sentiment, scored against a frozen, walk-forward-validated model, and
 shown on a Streamlit dashboard as INCREASE / CUT EXPOSURE calls.
 
-    pip install -r requirements.txt
-    python Code/update_data.py                 # fetch, fold, score, pull prices
-    python -m streamlit run Code/dashboard.py
+## Folders
 
 | Folder | Contents |
 |---|---|
@@ -16,3 +28,6 @@ shown on a Streamlit dashboard as INCREASE / CUT EXPOSURE calls.
 | `Reports/` | Run logs and the small per-run reports (machine-local). |
 | `Reference Materials/` | `RUNBOOK.md` (how to run, publish and maintain it) and `research.ipynb` (how it works and how it was validated). |
 | `Presentations/` | Decks and demo material. |
+
+First-time setup, scheduling, recovery and every other command are in
+`Reference Materials/RUNBOOK.md`.
