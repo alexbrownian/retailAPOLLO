@@ -121,18 +121,27 @@ The dashboard has no mode selectors: the production configuration is
 fixed in code and read from the frozen record. Branding and the
 pipeline buttons come from `Code/config/settings.csv`.
 
-**A code or config edit is not showing.** Restart the server. The file watcher is off
-by design (`.streamlit/config.toml` at the repository root) so a pipeline rewriting parquet in
-place cannot trigger a mid-read reload. Stop every running Streamlit
-first, or the new one silently takes the next port (8501 → 8502) and a
-pinned browser tab keeps serving the old process. On Windows PowerShell:
+**An edit should appear on its own.** The file watcher is on
+(`.streamlit/config.toml` at the repository root), and it is the thing
+that clears Streamlit's compiled-script cache: with it off, a running
+server keeps executing the build it started with, so every local edit
+needs a restart and every push to the hosted copy needs its Reboot
+button. It is fenced with `folderWatchBlacklist` rather than disabled, so
+the parquet stores the pipeline rewrites in place are not watched and a
+refresh cannot trigger a mid-read reload. Save a file under `Code/` and
+the page reloads by itself; push, and the hosted app follows within a
+minute or two.
+
+If an edit still does not appear, a second `streamlit run` has probably
+taken the next port (8501 → 8502) while the pinned tab keeps serving the
+first process. Stop them all and start one:
 
     Get-NetTCPConnection -LocalPort 8501,8502,8503 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
     python -m streamlit run Code/dashboard.py
 
-The sidebar shows the build time and the serving port.
-`Code/config/theme_etfs.csv` is re-read on its own mtime, so a rerun is
-enough for it.
+The sidebar shows the build time and the serving port. A copy that turns
+the watcher off keeps the stale-build banner, which says so in the
+sidebar and on the page.
 
 **Sidebar pipeline controls.** `show_pipeline_controls` in
 `Code/config/settings.csv` is `false` in the committed file so a hosted copy

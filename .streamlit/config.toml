@@ -27,9 +27,26 @@ textColor = "#111111"                # INK
 font = "sans serif"
 
 [server]
-# The dashboard reads parquet stores that the pipeline rewrites in place; the
-# watcher restarting mid-read is a source of spurious errors, not a feature.
-fileWatcherType = "none"
+# WHY THE WATCHER IS ON, AND WHY IT IS FENCED
+#
+# Streamlit caches the compiled script and clears that cache in exactly one
+# place: the callback the FILE WATCHER fires. With the watcher off, nothing
+# ever clears it - a running server keeps executing the bytecode it compiled
+# at start-up, so an edited dashboard.py needs a restart, and a hosted copy
+# needs its Reboot button after every push even though the new file is
+# already in the container. The watcher is therefore what makes "push and
+# it appears" work at all.
+#
+# Left to itself the watcher watches every file under the working directory,
+# including the parquet stores the pipeline rewrites IN PLACE while the
+# dashboard reads them - a reload mid-read is a source of spurious errors,
+# and that is the reason the watcher was ever switched off. The blacklist
+# fences the data instead of disabling the mechanism: code is watched, data
+# is not. Paths are relative to the folder the server is started in, which
+# is the project root.
+fileWatcherType = "auto"
+folderWatchBlacklist = ["Data", "Reports", "_to_delete", ".venv", ".git",
+                        "Reference Materials", "Presentations"]
 
 [browser]
 gatherUsageStats = false

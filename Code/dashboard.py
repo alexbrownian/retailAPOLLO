@@ -2108,31 +2108,34 @@ except OSError:
 
 # ---- ... AND IS IT THE BUILD ON DISK?
 #
-# The caption above is not enough on its own: an edit to dashboard.py or
-# config/theme_etfs.csv can fail to appear through three separate
-# mechanisms, each of which is invisible by itself:
+# A safety net for the one configuration in which an edit cannot land: the
+# watcher turned off. Streamlit clears its compiled-script cache only from
+# the watcher's own callback, so with `fileWatcherType = "none"` a running
+# server executes the bytecode it compiled at start-up for ever - an edited
+# dashboard.py is invisible until the server is restarted, and a second
+# `streamlit run` against a busy port quietly takes the next one while the
+# pinned tab keeps serving the original process. Both look exactly like
+# "the change did not land".
 #
-#   1. the watcher is OFF (see .streamlit/config.toml), so an edited
-#      dashboard.py is never picked up by a running server;
-#   2. `src/themes.py` builds the anchor map at IMPORT, and a Streamlit
-#      rerun does not re-import a module that is already in sys.modules
-#      (handled separately - see `_theme_etf_maps`);
-#   3. a second `streamlit run` against a busy port quietly takes the next
-#      one, so the pinned tab keeps serving the ORIGINAL process forever.
-#
-# The user-visible symptom of all three is identical and misleading: "the
-# change did not land".
+# With the watcher ON (the shipped setting) neither can happen: a changed
+# file clears the cache, re-runs the script, and - for an imported module -
+# is evicted from sys.modules so the next run re-imports it. The check is
+# therefore skipped, because the reference it compares against is
+# per-process and would flag a build the watcher had already reloaded.
 #
 # `st.cache_resource` is per-PROCESS and survives reruns, so the mtime it
-# returns is the one this process saw when it started.  Comparing that to
-# the file on disk right now detects every case above, including the pinned
-# stale tab - the old process still answers, and says so.
+# returns is the one this process saw when it started.
 @st.cache_resource(show_spinner=False)
 def _mtime_at_process_start(path):
     return _mtime(path)
 
 
-if _bs is not None:
+try:
+    _WATCHER_OFF = str(st.get_option("server.fileWatcherType")).lower() == "none"
+except Exception:                                          # noqa: BLE001
+    _WATCHER_OFF = True          # unknown: warn rather than stay silent
+
+if _bs is not None and _WATCHER_OFF:
     _started_with = _mtime_at_process_start(__file__)
     if _mtime(__file__) > _started_with + 1:      # 1s: mtime granularity
         _edited = (pd.Timestamp(_mtime(__file__), unit="s", tz="UTC")
@@ -2140,7 +2143,7 @@ if _bs is not None:
         st.sidebar.error(f"**Stale tab.** This server started on the "
                          f"{_bt} UTC build; dashboard.py on disk was "
                          f"edited at {_edited} UTC. The file watcher is "
-                         f"off by design, so **restart the server** - "
+                         f"off on this copy, so **restart the server** - "
                          f"stop every running `streamlit` first, or the "
                          f"new one takes the next port and this tab keeps "
                          f"serving the old build.")

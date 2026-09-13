@@ -2460,30 +2460,50 @@ class TestDataFreshnessIsVisible:
 class TestStaleTabIsVisible:
     """A running dashboard must be able to say that it is out of date.
 
-    `.streamlit/config.toml` turns the file watcher OFF on purpose: the
-    pipeline rewrites parquet in place and a watcher reloading mid-read
-    is a source of spurious errors.  The cost is that an edited
-    dashboard.py is never picked up by a live server, and a second
-    `streamlit run` takes the next port while the pinned tab keeps
-    serving the original process.  Both look exactly like "the fix did
-    not work", so the page must detect and announce a stale process."""
+    The file watcher is what clears Streamlit's compiled-script cache, so
+    it is ON: without it a running server - local or hosted - keeps
+    serving the build it started with, and a push or an edit needs a
+    restart to appear. It is fenced with `folderWatchBlacklist` instead,
+    because the pipeline rewrites parquet in place and a reload mid-read
+    is a source of spurious errors.
+
+    The stale-build banner remains for the copy that turns the watcher
+    off anyway: there, an edited dashboard.py is never picked up, and a
+    second `streamlit run` takes the next port while the pinned tab keeps
+    serving the original process."""
 
     @staticmethod
     def _src():
         from pathlib import Path
         return Path(__file__).resolve().parents[1] / "dashboard.py"
 
-    def test_the_watcher_is_still_off_and_still_explains_itself(self):
-        """The watcher setting is off and its reason sits next to it."""
+    def test_the_watcher_is_on_and_the_data_folders_are_fenced(self):
+        """The watcher is what makes an edit or a push appear without a
+        restart; the blacklist is what keeps it off the parquet stores."""
         from pathlib import Path
         cfg = (Path(__file__).resolve().parents[2]
                / ".streamlit" / "config.toml")
         text = cfg.read_text(encoding="utf-8")
-        assert 'fileWatcherType = "none"' in text, (
-            "the watcher was turned back on - if that is deliberate, the "
-            "stale-build banner and the RUNBOOK row should go with it")
-        assert "rewrites in place" in text, (
+        assert 'fileWatcherType = "none"' not in text, (
+            "the watcher is off again - a running server then keeps "
+            "serving the build it started with, and every push needs a "
+            "Reboot click")
+        assert 'fileWatcherType = "auto"' in text
+        assert "folderWatchBlacklist" in text and '"Data"' in text, (
+            "the watcher must not watch the stores the pipeline rewrites "
+            "in place")
+        assert "rewrites" in text, (
             "the setting must keep its reason next to it")
+
+    def test_the_stale_banner_is_skipped_when_the_watcher_is_on(self):
+        """With the watcher on, the reference mtime is per-process and
+        the file has already been reloaded - warning then is a false
+        alarm."""
+        src = self._src().read_text(encoding="utf-8")
+        assert "_WATCHER_OFF" in src
+        i = src.index("if _bs is not None")
+        assert "_WATCHER_OFF" in src[i:i + 80], (
+            "the stale check must be gated on the watcher being off")
 
     def test_the_build_stamp_is_pinned_per_process(self):
         """The start-up mtime is held in a cache_resource, which survives
