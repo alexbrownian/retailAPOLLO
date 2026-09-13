@@ -235,6 +235,97 @@ class TestProviderChain:
 # ---------------------------------------------------------------------------
 # one symbol, one source
 # ---------------------------------------------------------------------------
+class TestTerminalIsNotRetriedAfterItFails:
+    """A session can start while //blp/refdata cannot be opened, and
+    openService only discovers that by blocking for about two minutes. A
+    multi-span pull must pay that once, not once per span."""
+
+    @staticmethod
+    def _always_fails(monkeypatch):
+        monkeypatch.setattr(
+            "ingestion.pull_prices.bloomberg_request",
+            lambda *a, **k: (_ for _ in ()).throw(
+                RuntimeError("could not open //blp/refdata service")))
+
+    def test_the_terminal_is_dropped_after_the_allowed_failures(
+            self, monkeypatch):
+        import src.prices as P
+        P.reset_bloomberg_failure()
+        monkeypatch.setattr(P, "bloomberg_max_failures", lambda: 2)
+        self._always_fails(monkeypatch)
+        bbg = P.BloombergProvider()
+        assert P.bloomberg_failed_this_process() == ""
+        with pytest.raises(RuntimeError):                  # first failure
+            bbg.fetch(["SPY"], "20260101", "20260201", log=lambda *_: None)
+        assert P.bloomberg_failed_this_process() == "", \
+            "one failure is a blip, not a verdict"
+        with pytest.raises(RuntimeError):                  # second failure
+            bbg.fetch(["SPY"], "20260101", "20260201", log=lambda *_: None)
+        assert "refdata" in P.bloomberg_failed_this_process()
+        ok, why = bbg.available()
+        assert ok is False and "not retried" in why
+        P.reset_bloomberg_failure()
+
+    def test_the_allowance_comes_from_settings(self, monkeypatch):
+        import src.prices as P
+        P.reset_bloomberg_failure()
+        monkeypatch.setattr("src.settings.get_int", lambda k: 1)
+        assert P.bloomberg_max_failures() == 1
+        self._always_fails(monkeypatch)
+        with pytest.raises(RuntimeError):
+            P.BloombergProvider().fetch(["SPY"], "20260101", "20260201",
+                                        log=lambda *_: None)
+        assert P.bloomberg_failed_this_process() != "", \
+            "with an allowance of 1 the first failure is the last"
+        P.reset_bloomberg_failure()
+
+    def test_a_reused_chain_skips_the_dropped_provider(self, monkeypatch):
+        """pull_prices builds the chain ONCE and reuses it for every span,
+        so the skip has to happen inside fetch_with_fallback."""
+        import src.prices as P
+        P.reset_bloomberg_failure()
+        monkeypatch.setattr(P, "bloomberg_max_failures", lambda: 2)
+        self._always_fails(monkeypatch)
+        monkeypatch.setattr(P.TiingoProvider, "fetch",
+                            lambda self, s, a, b, log=print: pd.DataFrame(
+                                {"date": pd.to_datetime(["2026-01-02"]),
+                                 "symbol": list(s)[:1], "px_last": [1.0],
+                                 "source": ["tiingo"]}))
+        chain = [P.BloombergProvider(), P.TiingoProvider()]
+        lines = []
+        for _ in range(3):            # three spans, as a real pull has
+            df, used = P.fetch_with_fallback(chain, ["SPY"], "20260101",
+                                             "20260201", log=lines.append)
+            assert used == "tiingo" and len(df) == 1
+        tried = sum(1 for line in lines if "via bloomberg" in line)
+        skipped = sum(1 for line in lines if "skipping bloomberg" in line)
+        assert (tried, skipped) == (2, 1), (tried, skipped, lines)
+        P.reset_bloomberg_failure()
+
+    def test_the_chain_drops_the_terminal_after_that(self, monkeypatch):
+        import src.prices as P
+        P.reset_bloomberg_failure()
+        monkeypatch.setattr(P.TiingoProvider, "available",
+                            lambda self: (True, "key present"))
+        monkeypatch.setattr(P.BloombergProvider, "available",
+                            lambda self: (True, "Terminal reachable"))
+        chain = P.provider_chain("auto", log=lambda *_: None)
+        assert [p.name for p in chain] == ["bloomberg", "tiingo"]
+        # once a fetch has failed, availability is False and auto skips it
+        monkeypatch.undo()
+        monkeypatch.setattr(P.TiingoProvider, "available",
+                            lambda self: (True, "key present"))
+        monkeypatch.setattr(
+            "ingestion.pull_prices.bloomberg_request",
+            lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no refdata")))
+        with pytest.raises(RuntimeError):
+            P.BloombergProvider().fetch(["SPY"], "20260101", "20260201",
+                                        log=lambda *_: None)
+        chain = P.provider_chain("auto", log=lambda *_: None)
+        assert [p.name for p in chain] == ["tiingo"]
+        P.reset_bloomberg_failure()
+
+
 class TestOneSymbolOneSource:
     def test_source_map_defaults_to_bloomberg_for_legacy_stores(self):
         import ingestion.pull_prices as pp

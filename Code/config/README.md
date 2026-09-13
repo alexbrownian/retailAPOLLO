@@ -43,6 +43,7 @@ One row per setting. Missing keys fall back to the defaults in
 | `app_title` | text | Name in the masthead and sidebar. |
 | `app_tagline` | text | One line under the title. |
 | `app_credit` | text | Credit line under the tagline. Empty shows nothing. |
+| `bloomberg_max_failures` | int | Terminal failures tolerated in one run before the price pull gives up on it for that run. |
 | `app_thanks` | text | Acknowledgement at the bottom of the sidebar. Empty shows nothing. |
 | `show_pipeline_controls` | yes/no | Show fetch / price-pull / rebuild buttons in the sidebar. Keep **no** on a hosted copy: those buttons call paid APIs. `RETAILAPOLLO_CONTROLS=1` in the environment forces **yes**. |
 | `single_name_top_n` | integer | How many single names the detector tracks. |

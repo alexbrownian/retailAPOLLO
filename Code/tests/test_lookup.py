@@ -342,6 +342,50 @@ class TestPriceCacheFreshness:
         L.price("ZZZZ", "20260901", "20260910", fetch=fetch_through("x"), now=now)
         assert len(calls) == 2
 
+    def test_no_price_provider_returns_nothing_rather_than_raising(
+            self, tmp_path, monkeypatch):
+        """A copy with no Terminal and no API key is the normal hosted
+        state. The lookup must degrade to an unpriced panel; a raise here
+        takes the whole page down."""
+        from src.prices import ProviderUnavailable
+        monkeypatch.setattr(L, "LOOKUP_PRICE_DIR", str(tmp_path / "lookups"))
+
+        def boom(sym, a, b):
+            raise ProviderUnavailable("no price provider is usable")
+
+        out = L.price("ZZZZ", "20260901", "20260910", fetch=boom)
+        assert out.empty
+        assert list(out.columns) == ["date", "symbol", "px_last", "source"]
+
+    def test_provider_status_reports_instead_of_raising(self, monkeypatch):
+        from src import prices as P
+        monkeypatch.setattr(P.BloombergProvider, "available",
+                            lambda self: (False, "no Terminal"))
+        monkeypatch.setattr(P.TiingoProvider, "available",
+                            lambda self: (False, "no key"))
+        ok, why = P.provider_status()
+        assert ok is False and "TIINGO_API_KEY" in why
+        monkeypatch.setattr(P.TiingoProvider, "available",
+                            lambda self: (True, "key present"))
+        ok, why = P.provider_status()
+        assert ok is True and "tiingo" in why
+
+    def test_the_panel_cannot_take_the_page_down(self):
+        """Streamlit gives a script ONE error boundary: an exception
+        anywhere ends the whole page. The lookup reaches outside the
+        committed stores (a typed symbol, a Terminal, a price provider),
+        so its call site keeps its own guard."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1]
+               / "dashboard.py").read_text(encoding="utf-8")
+        i = src.rindex("render_etf_lookup(key_prefix)")   # the CALL, not the def
+        assert "def render_etf_lookup" not in src[i - 40:i]
+        block = src[i - 500:i + 500]
+        assert "try:" in block and "except Exception" in block, (
+            "the ETF lookup call site lost its guard - one failure there "
+            "would take the landing page with it")
+        assert "st.error(" in block
+
     def test_last_trading_day_skips_weekends(self):
         assert L.last_trading_day(pd.Timestamp("2026-09-14 09:00")) == pd.Timestamp("2026-09-11")  # Mon -> Fri
         assert L.last_trading_day(pd.Timestamp("2026-09-10 09:00")) == pd.Timestamp("2026-09-09")  # Wed -> Tue

@@ -55,9 +55,10 @@ Tiingo, which needs `TIINGO_API_KEY` in `.env` (a free key from tiingo.com).
 | Test suite | `python -m pytest Code/tests -q` (`pip install -r Code/tools/requirements-dev.txt` once) |
 
 One refresh does, in order: fetch (all sources in parallel), bot screen,
-fold into the aggregates, coverage check, analytics at the frozen
-thresholds, price pull, AI layer (if configured), text-free safety
-check, publish bundle, summary. `--dry-run` prints the plan without
+fold into the aggregates, coverage check, price pull, analytics at the
+frozen thresholds (a name is scored up to its newest close, so the
+scores run one trading day behind the posts), AI layer (if configured),
+text-free safety check, publish bundle, summary. `--dry-run` prints the plan without
 running anything.
 
 Run cadence: twice a week is the design point. The comment fetch is
@@ -89,6 +90,13 @@ overrides it for one run, on `update_data.py` and on
 | `auto` (default) | Bloomberg if a Terminal answers, otherwise Tiingo. |
 | `bloomberg` | Bloomberg; falls back to Tiingo if the Terminal fails mid-run unless `--no-fallback` is given. |
 | `tiingo` | Tiingo only: an authenticated daily-price API, `TIINGO_API_KEY` in `.env` (free key at tiingo.com), one request per symbol. Split-adjusted closes, same convention as `PX_LAST`. |
+
+A Terminal that fails repeatedly is dropped for the rest of a run:
+`bloomberg_max_failures` in `Code/config/settings.csv` (default 2) is how
+many failed attempts are tolerated first. Each attempt can block for
+about two minutes while `//blp/refdata` times out, so the pull stops
+paying that wait once the Terminal has proved unreachable; the next run
+tries it again from scratch.
 
 Each symbol is stored from one source at a time (`source` column in
 `prices.parquet`). Switching provider re-pulls a symbol's full window

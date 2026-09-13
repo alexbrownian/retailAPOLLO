@@ -536,6 +536,37 @@ def main():
         check_window_coverage(fh, args.start, args.end)
         pipeline_budget.record_stage("coverage", time.time() - _t)
 
+    # ---- 2c. PRICES: pull daily closes for the window through the
+    #          configured provider (Bloomberg or Tiingo; see
+    #          src/prices.py). Before the analytics, because the scores
+    #          need the closes: the boom state and the two price features
+    #          are read from the store, and a name is scored only up to
+    #          its newest close. Non-fatal: on failure the run continues
+    #          on the prices already on disk and the summary says so. ----
+    prices_rc = None
+    if not dry and not args.skip_prices:
+        from src import settings as _settings
+        _prov = args.provider or _settings.get("price_provider")
+        log(f"pulling prices (provider: {_prov})", fh)
+        prices_rc = run([py, "ingestion/pull_prices.py", "--provider", _prov], fh,
+                        dry, show=True, stage="prices")
+        if prices_rc != 0:
+            # NOT fatal, but it must not pass silently either: the rest
+            # of the run is valid on the prices already on disk, and the
+            # RUN SUMMARY says how stale they now are.
+            log("PRICE PULL FAILED - continuing on the prices already "
+                "on disk. With provider=bloomberg this usually means no "
+                "Terminal is logged in AND the Tiingo fallback could "
+                "not reach api.tiingo.com; with provider=tiingo it is a network "
+                "or symbol-mapping problem (see the pull log above). "
+                "Re-run with `--provider tiingo`, or "
+                "`--skip-prices` to stop trying. Everything else in "
+                "this run is unaffected.", fh)
+        if not os.path.exists(PRICES_PATH):
+            log("no Data/prices/prices.parquet - price overlays will be "
+                "empty. Open the Bloomberg Terminal (and pip install "
+                "blpapi), then re-run or use the dashboard button.", fh)
+
     # ---- 3. COMPUTE - the analytics.
     # live -> always recompute (new data just folded in); --full -> rebuild
     # the aggregates from raw text first, then recompute; backtest ->
@@ -633,34 +664,6 @@ def main():
             if not dry and not os.path.exists(dest):
                 shutil.copy2(src_path, dest)
             log(f"snapshot -> {dest}", fh)
-
-    # ---- 4b. PRICES: pull daily closes for the window through the
-    #          configured provider (Bloomberg or Tiingo; see
-    #          src/prices.py). Non-fatal: on failure the run continues
-    #          on the prices already on disk and the summary says so. ----
-    prices_rc = None
-    if not dry and not args.skip_prices:
-        from src import settings as _settings
-        _prov = args.provider or _settings.get("price_provider")
-        log(f"pulling prices (provider: {_prov})", fh)
-        prices_rc = run([py, "ingestion/pull_prices.py", "--provider", _prov], fh,
-                        dry, show=True, stage="prices")
-        if prices_rc != 0:
-            # NOT fatal, but it must not pass silently either: the rest
-            # of the run is valid on the prices already on disk, and the
-            # RUN SUMMARY says how stale they now are.
-            log("PRICE PULL FAILED - continuing on the prices already "
-                "on disk. With provider=bloomberg this usually means no "
-                "Terminal is logged in AND the Tiingo fallback could "
-                "not reach api.tiingo.com; with provider=tiingo it is a network "
-                "or symbol-mapping problem (see the pull log above). "
-                "Re-run with `--provider tiingo`, or "
-                "`--skip-prices` to stop trying. Everything else in "
-                "this run is unaffected.", fh)
-        if not os.path.exists(PRICES_PATH):
-            log("no Data/prices/prices.parquet - price overlays will be "
-                "empty. Open the Bloomberg Terminal (and pip install "
-                "blpapi), then re-run or use the dashboard button.", fh)
 
     # ---- 5. PUBLISH aggregates to Data/abstracted (full mode, in
     #         live or --full runs; a backtest changes nothing to publish) ----

@@ -611,7 +611,15 @@ def price(symbol: str, start: str, end: str, provider: str = "auto",
             chain = provider_chain(provider, log=lambda *_: None)
             df, _ = fetch_with_fallback(chain, [sym], a, b, log=lambda *_: None)
             return df
-    df = fetch(symbol, start, end)
+    try:
+        df = fetch(symbol, start, end)
+    except Exception:                                      # noqa: BLE001
+        # No usable provider (no Terminal, no API key - the normal state
+        # of a hosted copy), or the provider failed outright. A lookup is
+        # a display path: return nothing priced and let the caller say so,
+        # rather than take the page down. src.prices.provider_status()
+        # supplies the reason.
+        return pd.DataFrame(columns=["date", "symbol", "px_last", "source"])
     if df is None or not len(df):
         return pd.DataFrame(columns=["date", "symbol", "px_last", "source"])
     df = df.copy()

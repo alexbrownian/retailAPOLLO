@@ -4,6 +4,7 @@ app_tagline,"A real-time read on where retail attention is building, and where i
 app_credit,Alex Brown - Intern 2026 Project,Credit line under the tagline. Leave empty to show none.
 app_thanks,"Special thanks to Shawn, Wang Han, Jonathan, Henry, and everyone that helped with this project.",Acknowledgement shown at the bottom of the sidebar. Leave empty to show none.
 show_pipeline_controls,false,true shows the fetch/price/rebuild buttons in the sidebar. Keep false on a hosted copy: those buttons spend API credit. Environment variable RETAILAPOLLO_CONTROLS=1 overrides to true.
+bloomberg_max_failures,2,"Terminal failures tolerated in one run before the price pull stops trying it and uses the fallback. Each failed attempt can block for about two minutes, so a low number is cheap; a new run always tries the Terminal again."
 price_provider,auto,"Daily-close source: auto (Bloomberg if a Terminal is reachable, else Tiingo), bloomberg (falls back to Tiingo on failure), or tiingo."
 single_name_top_n,25,How many single names the detector tracks: the most-mentioned priced tickers over the trailing window.
 single_name_window_days,365,"Trailing window, in days, used to rank single names for inclusion."

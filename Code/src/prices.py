@@ -126,13 +126,62 @@ def tiingo_key() -> str:
 # ---------------------------------------------------------------------------
 # providers
 # ---------------------------------------------------------------------------
+# Repeated Terminal failures take the Terminal out of the chain for the
+# rest of the process. A session can START while //blp/refdata cannot be
+# OPENED - the Terminal is running but not entitled, not logged in, or
+# unreachable through the network - and openService only discovers that by
+# blocking until it times out, which is about two minutes. A price pull
+# asks for one span after another, so without this tally every span pays
+# that wait again before falling back to the same place it fell back to
+# last time.
+#
+# The allowance is a setting rather than 1 because a single failure can be
+# a blip - a request that raced a Terminal restart - and giving up on the
+# first one would send a healthy Terminal to the fallback for the whole
+# run. It is counted per PROCESS: the next run tries again, which is the
+# right granularity, since a Terminal that comes back deserves a fresh
+# chance at the next run rather than mid-run.
+_BLOOMBERG_FAILURES: List[str] = []
+
+
+def bloomberg_max_failures() -> int:
+    """How many Terminal failures this process tolerates before it stops
+    trying (``bloomberg_max_failures`` in ``config/settings.csv``)."""
+    try:
+        from src import settings
+        return max(1, settings.get_int("bloomberg_max_failures"))
+    except Exception:                                      # noqa: BLE001
+        return 2
+
+
+def bloomberg_failed_this_process() -> str:
+    """Why the Terminal is being skipped, or ``""`` while it is still
+    inside its allowance of failures."""
+    n, allowed = len(_BLOOMBERG_FAILURES), bloomberg_max_failures()
+    if n < allowed:
+        return ""
+    return f"{n} failed attempt(s) this run, last: {_BLOOMBERG_FAILURES[-1]}"
+
+
+def reset_bloomberg_failure() -> None:
+    """Forget the failures (tests, and a caller that has fixed the Terminal)."""
+    _BLOOMBERG_FAILURES.clear()
+
+
 class BloombergProvider:
     """Daily closes from a running Bloomberg Terminal via ``blpapi``."""
 
     name = "bloomberg"
 
+    def down_reason(self) -> str:
+        """Why this provider is being skipped, or ``""``."""
+        return bloomberg_failed_this_process()
+
     def available(self) -> Tuple[bool, str]:
         """Whether ``blpapi`` imports and a session can start."""
+        down = self.down_reason()
+        if down:
+            return False, f"{down} - not retried this run"
         try:
             import blpapi                                  # noqa: F401
         except ImportError:
@@ -145,6 +194,9 @@ class BloombergProvider:
             session.stop()
         except Exception as exc:                           # noqa: BLE001
             return False, f"blpapi session failed: {type(exc).__name__}: {exc}"
+        # A session that starts is NOT a Terminal that answers: opening
+        # //blp/refdata is the real test, and it is left to the first
+        # fetch rather than paid here, because it is the slow half.
         return True, "Terminal reachable"
 
     def fetch(self, symbols: Iterable[str], start: str, end: str,
@@ -153,7 +205,18 @@ class BloombergProvider:
         (``YYYYMMDD``, inclusive). Delegates to the request loop in
         ``pull_prices.py``."""
         from ingestion.pull_prices import bloomberg_request
-        df = bloomberg_request(list(symbols), start, end, log=log)
+        try:
+            df = bloomberg_request(list(symbols), start, end, log=log)
+        except Exception as exc:                           # noqa: BLE001
+            _BLOOMBERG_FAILURES.append(f"{type(exc).__name__}: {exc}")
+            n, allowed = len(_BLOOMBERG_FAILURES), bloomberg_max_failures()
+            if n >= allowed:
+                log(f"  bloomberg: {n} failure(s) this run - the Terminal is "
+                    f"now skipped for the rest of it")
+            else:
+                log(f"  bloomberg: failure {n} of {allowed} before the "
+                    f"Terminal is skipped for this run")
+            raise
         if df is None or df.empty:
             return pd.DataFrame(columns=COLUMNS)
         df = df.copy()
@@ -168,6 +231,11 @@ class TiingoProvider:
     URL = "https://api.tiingo.com/tiingo/daily/{sym}/prices"
     PAUSE_S = 0.15                 # polite pacing between requests
     TIMEOUT_S = 30
+
+    def down_reason(self) -> str:
+        """Tiingo is stateless across spans: one failed request says
+        nothing about the next."""
+        return ""
 
     def available(self) -> Tuple[bool, str]:
         try:
@@ -307,10 +375,30 @@ def provider_chain(preference: str, fallback: bool = True,
             log(f"  price provider {prov.name}: unavailable - {why}")
     if not usable:
         raise ProviderUnavailable(
-            "no price provider is usable on this machine: install "
-            "set TIINGO_API_KEY in .env (free key at tiingo.com) or run "
-            "with a Bloomberg Terminal open")
+            "no price provider is usable on this copy: set TIINGO_API_KEY "
+            "in .env (a free key from tiingo.com), or run with a Bloomberg "
+            "Terminal open and blpapi installed")
     return usable
+
+
+def provider_status(preference: str = "auto", fallback: bool = True):
+    """``(usable, one-line reason)`` for the configured chain.
+
+    The question :func:`provider_chain` answers by raising, for callers
+    that need to explain the situation rather than stop: a display panel
+    on a copy with no Terminal and no key wants the sentence, not the
+    traceback.
+
+    Returns:
+        ``(True, "bloomberg, tiingo")`` naming the providers that would be
+        tried, or ``(False, why)``.
+    """
+    try:
+        chain = provider_chain(preference, fallback=fallback,
+                               log=lambda *_: None)
+    except (ProviderUnavailable, ValueError) as e:
+        return False, str(e)
+    return True, ", ".join(p.name for p in chain)
 
 
 def fetch_with_fallback(chain: List[object], symbols: List[str],
@@ -332,6 +420,17 @@ def fetch_with_fallback(chain: List[object], symbols: List[str],
     """
     last_err = None
     for prov in chain:
+        # The chain is built once per run and reused for every span, so a
+        # provider that has since been taken out of service is skipped
+        # here rather than tried again. Without this the tally in
+        # BloombergProvider would be written and never read.
+        down = getattr(prov, "down_reason", lambda: "")()
+        if down:
+            log(f"  skipping {prov.name} - {down}")
+            last_err = f"{prov.name}: {down}"
+            if prov is not chain[-1]:
+                log(f"  falling back to {chain[chain.index(prov) + 1].name}")
+            continue
         try:
             log(f"  pulling {len(symbols)} symbol(s) {start} -> {end} "
                 f"via {prov.name}")

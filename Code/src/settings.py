@@ -62,6 +62,7 @@ DEFAULTS: Dict[str, str] = {
     "app_tagline": ("A real-time read on where retail attention is "
                     "building, and where it is ending."),
     "app_credit": "",
+    "bloomberg_max_failures": "2",
     "app_thanks": "",
     "show_pipeline_controls": "false",
     "lookup_section_title": "Search any ETF (beta)",

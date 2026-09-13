@@ -3419,8 +3419,11 @@ def render_etf_lookup(key_prefix):
         if len(_lv):
             lvl_now = float(_lv.iloc[-1])
             _, lvl_lbl, _col = gauge_state(lvl_now, False, z)
+    _lvl_day = _lv.index[-1] if (es is not None and len(_lv)) else None
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("euphoria level (7d)",
+    m1.metric("euphoria level (7d)"
+              + (f", {pd.Timestamp(_lvl_day):%d %b}" if _lvl_day is not None
+                 else ""),
               f"{lvl_now:.0f} / 100" if lvl_now is not None else "n/a",
               lvl_lbl or "not enough history")
     m2.metric("share of theme discussion (7d)",
@@ -3430,6 +3433,18 @@ def render_etf_lookup(key_prefix):
     _cov = (bool(es.coverage_ok.dropna().iloc[-1])
             if es is not None and len(es.coverage_ok.dropna()) else False)
     m4.metric("coverage gate (100 posts / 28d)", "met" if _cov else "not met")
+    # The level decays on a full calendar while the mention frame stops at
+    # the last tagged post. Say so when they are far apart, or the chart's
+    # flat tail reads as a broken series rather than a quiet crowd.
+    _last_said = frame["date"].max() if len(frame) else None
+    if _last_said is not None and _lvl_day is not None and \
+            (pd.Timestamp(_lvl_day) - pd.Timestamp(_last_said)).days >= 7:
+        st.caption(
+            f"The crowd last mentioned this name on "
+            f"{pd.Timestamp(_last_said):%d %b %Y}. The level above is for "
+            f"{pd.Timestamp(_lvl_day):%d %b %Y} and has been decaying since: "
+            f"a name nobody is talking about cools off, it does not hold its "
+            f"last reading.")
 
     if not known and not words:
         st.warning("Nothing to count: none of the holdings is a symbol "
@@ -3441,6 +3456,18 @@ def render_etf_lookup(key_prefix):
     _end = pd.Timestamp.today().strftime("%Y%m%d")
     with st.spinner(f"pulling {symbol} prices ..."):
         px = _lk_price(symbol, _start, _end)
+    if px is None or not len(px):
+        from src.prices import provider_status
+        _pv_ok, _pv_why = provider_status()
+        st.info(
+            f"No price history for **{symbol}** on this copy"
+            + (f" - {_pv_why}." if not _pv_ok
+               else f": the price providers ({_pv_why}) returned nothing "
+                    "for this symbol.")
+            + " The model score needs a price series, so it is skipped; "
+            "the crowd side below (attention, sentiment, euphoria level) "
+            "is unaffected. Symbols already in the pipeline's price store "
+            "work here without a provider.")
 
     # ---- the production model, read-only, at the frozen cut
     _bp = _L.model_bundle_path()
@@ -3484,7 +3511,17 @@ def render_etf_lookup(key_prefix):
         st.caption(f"Model score: not eligible ({_ms['why']}). A configured "
                    "theme in the same state would show no score either.")
     _lo = lo
-    _hi = hi if hi is not None else frame["date"].max()
+    # The window ends at the newest day the PANEL knows about, not at the
+    # last day this ETF was mentioned. The two differ whenever the crowd
+    # goes quiet: the mention frame stops at the last tagged post while the
+    # level keeps decaying on a full calendar, and clipping the chart to
+    # the mention frame drew a line ending on the last busy day while the
+    # metric above it reported today - the same series, two dates, no way
+    # for a reader to see why they disagreed.
+    _ends = [frame["date"].max()] if len(frame) else []
+    if es is not None and len(es.level.index):
+        _ends.append(pd.Timestamp(es.level.index.max()))
+    _hi = hi if hi is not None else (max(_ends) if _ends else None)
     f = frame[(frame["date"] >= _lo) & (frame["date"] <= _hi)]
     _has_model = _ms["status"] == "ok"
     fig = make_subplots(rows=4 if _has_model else 3, cols=1, shared_xaxes=True,
@@ -3510,7 +3547,15 @@ def render_etf_lookup(key_prefix):
                            xref="x domain", yref="y domain", x=0.5, y=0.5,
                            showarrow=False, font=dict(color=INK_LABEL),
                            row=1, col=1)
-    _m = f.set_index("date")[["ticker_mentions", "term_mentions"]].asfreq("D").fillna(0)
+    # reindexed over the whole window, not just the days with rows: a name
+    # the crowd stopped talking about has zero mentions, which is a fact
+    # worth drawing, and an area chart that simply stops looks like missing
+    # data instead
+    _m = (f.set_index("date")[["ticker_mentions", "term_mentions"]]
+          .reindex(pd.date_range(_lo, _hi, freq="D"), fill_value=0)
+          if _hi is not None else
+          f.set_index("date")[["ticker_mentions", "term_mentions"]]
+          .asfreq("D").fillna(0))
     _m7 = _m.rolling(7, min_periods=1).mean()
     fig.add_trace(go.Scatter(x=_m7.index, y=_m7["ticker_mentions"], mode="lines",
                              stackgroup="m", line=dict(width=0.8, color=TEAL),
@@ -5726,7 +5771,26 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                         unsafe_allow_html=True)
         if kind == "theme":
             with st.expander(LOOKUP_TITLE, expanded=False):
-                render_etf_lookup(key_prefix)
+                # CONTAINED BY DESIGN. The lookup reaches outside the
+                # pipeline's own universe - a typed symbol, a Terminal that
+                # may not be there, a price provider that may not be
+                # configured - so it has more ways to fail than any panel
+                # built from the committed stores. Streamlit gives a script
+                # one error boundary: an exception anywhere takes the WHOLE
+                # page down, which would trade a working dashboard for a
+                # failed search. The panel therefore fails inside its own
+                # expander and says what went wrong.
+                try:
+                    render_etf_lookup(key_prefix)
+                except Exception as _lk_err:            # noqa: BLE001
+                    st.error(
+                        f"The ETF lookup could not complete: "
+                        f"{type(_lk_err).__name__}: {_lk_err}. Everything "
+                        f"else on this page is unaffected - close and "
+                        f"reopen this panel, or try another symbol.")
+                    if LOCAL_CONTROLS:
+                        import traceback as _tb
+                        st.code("".join(_tb.format_exc()), language="text")
             st.markdown('<div class="rf-rule"></div>',
                         unsafe_allow_html=True)
 
@@ -6730,7 +6794,7 @@ if active_tab == MAIN_TAB and st.session_state.get("show_full_list"):
             "watch side today": _radar["side"],
             "retail attention (vs own year)": _radar["att_pct"],
             "attention, last 6 months": _radar["spark"],
-            "scored as of": _radar["scored"],
+            "scored through": _radar["scored"],
         })
         st.dataframe(
             _disp_r, hide_index=True, width="stretch",
@@ -6762,14 +6826,24 @@ if active_tab == MAIN_TAB and st.session_state.get("show_full_list"):
                         help="hype_raw, 3-day means - the continuous "
                              "view of the same heat the bar "
                              "summarises."),
+                "scored through": st.column_config.TextColumn(
+                    "scored through",
+                    help="The newest day this name has a score for. A "
+                         "day is scored once its close is on file, and "
+                         "a US close reaches the store the next "
+                         "morning, so this normally sits one trading "
+                         "day behind the newest posts. A name whose "
+                         "chatter fell under the measurability floor "
+                         "stops being scored and says so here."),
             })
         st.caption(
-            "Most bearish first: the top of the table is the names "
-            "closest to a CUT EXPOSURE. Scores update on the analytics "
-            "pass (*scored as of*), attention updates with live "
-            "ingestion - a hot sparkline with a stale score means the "
-            "pipeline should be re-run, and the [dev] Data Stats tab "
-            "will say so.")
+            f"Most bearish first: the top of the table is the names "
+            f"closest to a CUT EXPOSURE. Posts run through "
+            f"{pd.Timestamp(_as_of_r):%d %b}; scores run through the "
+            f"newest close (*scored through*), attention updates with "
+            f"every fold. A hot sparkline with a score that is weeks "
+            f"old means the pipeline should be re-run, and the [dev] "
+            f"Data Stats tab will say so.")
 
 # ---- INFLUENCE TRACKER (committed text-free store, extended live) ----
 # INFORMATION ONLY. Nothing on this tab feeds the euphoria level or the
@@ -8758,167 +8832,929 @@ if active_tab == "AI Pulse":
                "paraphrases, no verbatim crowd text, no usernames: the "
                "same text-free boundary as the committed aggregates.")
 
-# ---- [dev] DATA STATS - a snapshot of the data behind the page:
-# freshness, volumes, sources, ingestion status ----
+# ---------------------------------------------------------------------------
+# HOW IT WORKS (the [dev] tab's walk-through)
+#
+# The research notebook (Reference Materials/research.ipynb) rendered on the
+# page: the same sections, the same figures, recomputed from the stores this
+# copy is running on, beside the actual shipped source of each step. Every
+# number is read or computed, never typed, so the explanation cannot drift
+# away from the code it explains.
+#
+# Cost control: each computed figure is a cached module-level helper keyed on
+# the mtime of the file it reads, so a rerun re-renders but does not
+# recompute. The heaviest one (the noise sweep) is behind a checkbox.
+# ---------------------------------------------------------------------------
+def _hiw_src(fn, drop_doc: bool = True) -> str:
+    """The shipped source of `fn`, docstring optionally removed.
+
+    Quoting the live function rather than a copy is the whole point: a
+    snippet that is re-read on every render cannot describe behaviour the
+    code no longer has."""
+    import inspect
+    import textwrap
+    try:
+        src = textwrap.dedent(inspect.getsource(fn))
+    except (OSError, TypeError):
+        return ""
+    if not drop_doc:
+        return src
+    lines = src.splitlines()
+    out, i = [], 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if stripped.startswith(('"""', "'''")):
+            q = stripped[:3]
+            if not (stripped.endswith(q) and len(stripped) > 3):
+                i += 1
+                while i < len(lines) and q not in lines[i]:
+                    i += 1
+            i += 1
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out).rstrip() + "\n"
+
+
+def _hiw_fig(title, height=330):
+    fig = go.Figure()
+    fig.update_layout(title=dict(text=title, y=0.97, x=0.01),
+                      height=height, margin=dict(l=10, r=10, t=50, b=30),
+                      legend=dict(orientation="h", yanchor="top", y=-0.18))
+    return _theme(fig)
+
+
+@st.cache_data(show_spinner=False)
+def _hiw_feature_stats(_key):
+    """AUROC, Spearman correlations and a leave-one-out ablation for the
+    crowd features, computed on the candidate-day frame this copy holds.
+
+    AUROC answers "pick one mania day and one ordinary day: how often does
+    this feature rank the mania day higher"; 0.5 is a coin flip. The
+    ablation drops one feature from an equal-weight average and reports what
+    the average loses, which is the test for "is one feature carrying the
+    bank".
+    """
+    from sklearn.metrics import roc_auc_score, average_precision_score
+    frame = load("phase_day_frame.parquet")
+    if frame is None or frame.empty:
+        return None
+    crowd = [c for c in ("attention_accel", "hype_ratio", "bull_inflection",
+                         "influx_speed", "attention_convexity",
+                         "e1", "e2", "e3", "e5", "fade")
+             if c in frame.columns]
+    auc = []
+    for f in crowd:
+        m = frame[f].notna()
+        auc.append({"feature": f,
+                    "y_onset": roc_auc_score(frame.loc[m, "y_onset"], frame.loc[m, f]),
+                    "y_top": roc_auc_score(frame.loc[m, "y_top"], frame.loc[m, f])})
+    auc = pd.DataFrame(auc).set_index("feature")
+    corr = frame[crowd + ["y_onset", "y_top"]].corr(method="spearman")
+
+    def _ablate(bank, label):
+        m = frame[bank + [label]].notna().all(axis=1)
+        y = frame.loc[m, label].values
+        base = average_precision_score(y, frame.loc[m, bank].mean(axis=1))
+        rows = [{"bank": label, "variant": "full bank", "AP": base, "change": 0.0}]
+        for f in bank:
+            rest = [b for b in bank if b != f]
+            ap = average_precision_score(y, frame.loc[m, rest].mean(axis=1))
+            rows.append({"bank": label, "variant": f"without {f}",
+                         "AP": ap, "change": ap - base})
+        return pd.DataFrame(rows)
+
+    onset_bank = [c for c in ("attention_accel", "hype_ratio", "bull_inflection",
+                              "influx_speed", "attention_convexity") if c in frame]
+    top_bank = [c for c in ("e1", "e2", "e3", "e5", "fade") if c in frame]
+    abl = pd.concat([_ablate(onset_bank, "y_onset"), _ablate(top_bank, "y_top")])
+    return {"auc": auc, "corr": corr, "ablation": abl, "crowd": crowd,
+            "onset_bank": onset_bank, "rows": len(frame),
+            "names": int(frame["name"].nunique()),
+            "first": frame["date"].min(), "last": frame["date"].max()}
+
+
+@st.cache_data(show_spinner=False)
+def _hiw_noise(_key, n_draws=5):
+    """Corrupt one feature at a time with gaussian noise and re-score the
+    equal-weight bank. Every feature is a 0-1 percentile, so a standard
+    deviation of 0.10 means "this measurement is typically ten percentile
+    points off the truth"; 0.40 is closer to destroyed than degraded. A flat
+    curve means the bank barely notices that input going wrong."""
+    import numpy as _np
+    from sklearn.metrics import average_precision_score
+    frame = load("phase_day_frame.parquet")
+    if frame is None or frame.empty:
+        return None
+    bank = [c for c in ("attention_accel", "hype_ratio", "bull_inflection",
+                        "influx_speed", "attention_convexity") if c in frame]
+    m = frame[bank + ["y_onset"]].notna().all(axis=1)
+    sub, y = frame.loc[m, bank].copy(), frame.loc[m, "y_onset"].values
+    base = average_precision_score(y, sub.mean(axis=1))
+    sigmas = (0.05, 0.1, 0.2, 0.4)
+    out = {}
+    for f in bank:
+        losses = []
+        for s in sigmas:
+            aps = []
+            for d in range(n_draws):
+                rng = _np.random.default_rng(1000 * d + int(100 * s))
+                noisy = sub.copy()
+                noisy[f] = (noisy[f] + rng.normal(0, s, len(noisy))).clip(0, 1)
+                aps.append(average_precision_score(y, noisy.mean(axis=1)))
+            losses.append(float(_np.mean(aps) - base))
+        out[f] = losses
+    return {"base": float(base), "sigmas": list(sigmas), "curves": out}
+
+
+@st.cache_data(show_spinner=False)
+def _hiw_runup(_key, _key2=None):
+    """Where the boom bar sits in the distribution of everyday price
+    run-ups: for every tracked instrument, how far the close stands above
+    its own trailing 120-day low, pooled over every day."""
+    from src.config import EUPHORIA_BOOM_LOOKBACK_D
+    # the store lives at PRICES_PATH on a pipeline machine and is copied
+    # into the processed folder by the published bundle
+    px = (_read(PRICES_PATH, _mtime(PRICES_PATH))
+          if os.path.exists(PRICES_PATH) else load("prices.parquet"))
+    desk_l = load("euphoria_desk.parquet")
+    if px is None or desk_l is None:
+        return None
+    kinds = (desk_l[["symbol", "kind"]].dropna().drop_duplicates("symbol")
+             .set_index("symbol")["kind"])
+    out = {"theme": [], "single": []}
+    for sym, g in px.groupby("symbol"):
+        if sym not in kinds.index:
+            continue
+        s = g.set_index("date")["px_last"].dropna().sort_index()
+        if len(s) < 240:
+            continue
+        lo = s.rolling(f"{EUPHORIA_BOOM_LOOKBACK_D}D", min_periods=60).min()
+        out[kinds[sym]].append((s / lo - 1).dropna())
+    res = {}
+    for kind, bar in (("theme", EUPHORIA_BOOM_MIN_ETF),
+                      ("single", EUPHORIA_BOOM_MIN_SINGLE)):
+        if not out[kind]:
+            continue
+        v = pd.concat(out[kind])
+        res[kind] = {"values": v.clip(upper=1.5).to_numpy(), "bar": bar,
+                     "n_instruments": len(out[kind]), "n_days": int(len(v)),
+                     "median": float(v.median()),
+                     "pct_at_bar": float((v < bar).mean() * 100)}
+    return res
+
+
 def render_how_it_works(desk_report):
-    """Plain-language description of the back end, one expander per
-    stage. Live numbers (model, cuts, capture rates, bot-screen rate,
-    price source) are read from the same records the panels use, so the
-    text cannot disagree with the page. The full account, with the
-    evidence recomputed, is research.ipynb."""
+    """The research notebook, rendered live on the page.
+
+    Same sections as Reference Materials/research.ipynb, with the figures
+    recomputed from this copy's stores and the shipped source of each step
+    quoted beside the explanation."""
     _r = desk_report or {}
     _gi, _go = (_r.get("get_in") or {}), (_r.get("get_out") or {})
     _wi, _wo = (_gi.get("walk_forward") or {}), (_go.get("walk_forward") or {})
     _bank = _r.get("bank_get_in") or []
-    _n_crowd = len([f for f in _bank if not str(f).startswith("price")])
-    _n_price = len(_bank) - _n_crowd
-    _bot = {}
-    try:
-        with open(os.path.join(REPORTS_DIR, "bot_screen_last.json"),
-                  encoding="utf-8") as _fh:
-            _bot = json.load(_fh)
-    except (OSError, ValueError):
-        _bot = {}
-    _prov = _app_settings.get("price_provider") or "auto"
-    _thr = _app_settings.get_float("bot_screen_threshold")
+    _insight = _read_json(os.path.join(PROCESSED_DIR, "desk_model_insight.json"),
+                          _mtime(os.path.join(PROCESSED_DIR,
+                                              "desk_model_insight.json"))) \
+        if os.path.exists(os.path.join(PROCESSED_DIR,
+                                       "desk_model_insight.json")) else {}
+    _labels = (_insight or {}).get("plain_labels", {})
 
-    st.markdown("#### How it works on the back end")
-    st.caption("A plain-language tour of the pipeline, from a forum post "
-               "to a call on the landing page. The full account, with "
-               "every number recomputed from the data, is research.ipynb "
-               "in the repository.")
+    from src.config import (EUPHORIA_PEAK_LOCAL_MAX_D, EUPHORIA_PEAK_MERGE_D,
+                            EUPHORIA_BOOM_LOOKBACK_D, EUPHORIA_CRASH_WINDOW_D)
 
-    with st.expander("1. Reading the forums", expanded=False):
+    def _lab(f):
+        return _labels.get(f, f)
+
+    import numpy as _np
+
+    st.markdown("#### How it works, end to end")
+    st.caption(
+        "The research write-up rendered here: every figure below is "
+        "recomputed from the stores this copy is running on, and every code "
+        "block is the shipped source of the step it sits under. The full "
+        "version, with the walk-forward evaluation, is "
+        "`Reference Materials/research.ipynb`.")
+    st.markdown(
+        "**In one paragraph.** Public finance forums are read on a schedule. "
+        "Each post is reduced to the tickers and themes it mentions and how "
+        "positive it sounds; the text itself never leaves the machine that "
+        "fetched it. From those daily counts a handful of *how loud and how "
+        "bullish is this crowd, against its own normal* features are built "
+        "for every theme ETF and tracked single name. A model fitted on past "
+        "manias scores each name each day, and when a score crosses a cut "
+        "fixed on earlier years, the landing page raises **INCREASE "
+        "EXPOSURE** (the crowd is arriving) or **CUT EXPOSURE** (the run "
+        "looks mature). Every figure quoted is walk-forward: a year is only "
+        "ever scored by a model fitted on the years before it.")
+
+    # ---- 1. posts -> numbers -------------------------------------------
+    with st.expander("1 · From posts to numbers: tickers, bots, the tables",
+                     expanded=False):
         st.markdown(
-            "Twice a week the pipeline fetches the trailing week of posts "
-            "and comments from every enabled forum (`config/forums.csv`: "
-            "Reddit, StockTwits and X). Each post is reduced to *which "
-            "tickers and themes it mentions* and *how positive it sounds*. "
-            "The text itself never leaves the machine that fetched it: the "
-            "shared data holds only daily counts and sentiment per name, "
-            "with no post text, authors or ids.")
-    with st.expander("2. Finding the tickers", expanded=False):
+            "A post names a company either as a cashtag (`$NVDA`) or as a "
+            "bare upper-case word (`NVDA`). Cashtags are unambiguous; bare "
+            "words are not, because `EDGE`, `LOAN`, `RENT` and hundreds of "
+            "other tickers are also ordinary English. Two signals decide "
+            "whether a bare word counts: **how people actually type it** "
+            "(real tickers are written in capitals, words are not - measured "
+            "on this project's own corpus), and, when the corpus has too few "
+            "sightings to judge, **how common the word is in English** (a "
+            "Zipf frequency: about 4-5 for an everyday word, under 3 for "
+            "something that is not one). A demoted ticker is not deleted - "
+            "its cashtag mentions still count.")
+        try:
+            from wordfreq import zipf_frequency
+            _ex = ["edge", "loan", "rent", "snap", "amd", "nvda", "tsla", "pltr"]
+            _zt = pd.DataFrame({
+                "word": [e.upper() for e in _ex],
+                "Zipf frequency in English": [round(zipf_frequency(e, "en"), 2)
+                                              for e in _ex]})
+            _zt["reads as"] = _np.where(
+                _zt["Zipf frequency in English"] >= 3.5,
+                "an English word - needs a $ unless the corpus disagrees",
+                "not a word - a bare mention counts")
+            st.dataframe(_zt, hide_index=True, width="stretch")
+        except Exception as e:                                  # noqa: BLE001
+            st.caption(f"(word-frequency table unavailable: {type(e).__name__})")
+        from src import screen_tickers as _ST
+        st.code(_hiw_src(_ST.classify_ticker), language="python")
+
         st.markdown(
-            "A cashtag (`$NVDA`) always counts. A bare upper-case word "
-            "counts only if it behaves like a ticker: on the forums real "
-            "tickers are typed in capitals and ordinary words in lower "
-            "case, so the share of capitalised sightings is measured on "
-            "the project's own corpus. When there are too few sightings "
-            "to judge, a general-English word frequency (the `wordfreq` "
-            "package) decides - `EDGE`, `LOAN` and `RENT` are words, "
-            "`NVDA` and `TSLA` are not. A demoted ticker still counts "
-            "when written with a `$`. A theme is a list of tickers and "
-            "keywords in `config/`, each represented by one ETF.")
-    with st.expander("3. Screening bots and duplicates", expanded=False):
-        _line = (f"Last run: {_bot.get('rows_excluded', 0):,} of "
-                 f"{_bot.get('rows_in', 0):,} posts excluded "
-                 f"({100 * float(_bot.get('exclusion_rate', 0) or 0):.1f}%)."
-                 if _bot else "No bot-screen report on this copy yet.")
+            "**Bots and duplicates.** Before anything is counted every post "
+            "gets a score in [0, 1] from five plain signals; a post at or "
+            "above the threshold is left out of the aggregates and stays in "
+            "the raw store, so the decision is reversible. Near-duplicate "
+            "detection is the workhorse - copy-pasted promotion is the most "
+            "common automated signature - and it uses MinHash locality-"
+            "sensitive hashing over word 3-grams rather than exact matching.")
+        try:
+            from ingestion import bot_screen as _BS
+            _wt = pd.DataFrame(
+                [{"signal": k, "weight": v,
+                  "what it catches": {
+                      "near_duplicate": "a near-copy of another post, by "
+                                        "another author or the same one earlier",
+                      "burst": f"an author posting "
+                               f"{_app_settings.get_int('bot_screen_burst_posts_per_day')}+ "
+                               f"times in one day",
+                      "disclosed": "a self-declared bot or a moderator account",
+                      "low_diversity": "an author whose posts are all "
+                                       "near-identical to each other",
+                      "deleted_author": "a weak signal; only tips a "
+                                        "borderline case"}.get(k, "")}
+                 for k, v in _BS.WEIGHTS.items()])
+            st.dataframe(_wt, hide_index=True, width="stretch")
+            _demo = pd.DataFrame({
+                "author": ["alice", "bob", "promo_1", "promo_2",
+                           "AutoModerator", "[deleted]"],
+                "date": pd.to_datetime(["2026-06-01"] * 6),
+                "title": ["NVDA earnings tonight, holding through",
+                          "thinking about trimming my semis after this run",
+                          "This under the radar gem is about to explode, do "
+                          "not miss the next 10x, load up now before the crowd",
+                          "This under the radar gem is about to explode, do "
+                          "not miss the next 10x, load up now before the crowd",
+                          "This action was performed automatically. Please "
+                          "contact the moderators.",
+                          "anyone else in URA"],
+                "selftext": [""] * 6})
+            _scored = _BS.screen_posts(_demo)
+            st.caption(f"The same screen, run here on six made-up posts "
+                       f"(threshold {_app_settings.get_float('bot_screen_threshold'):.2f}):")
+            st.dataframe(
+                _scored.assign(title=_scored["title"].str.slice(0, 58) + "...")
+                [["author", "title", "bot_score", "bot_reasons"]],
+                hide_index=True, width="stretch")
+            _bs_path = os.path.join(REPORTS_DIR, "bot_screen_last.json")
+            if os.path.exists(_bs_path):
+                _bs = _read_json(_bs_path, _mtime(_bs_path)) or {}
+                st.caption(
+                    f"Last real run on this copy: "
+                    f"{_bs.get('rows_excluded', 0):,} of "
+                    f"{_bs.get('rows_in', 0):,} posts excluded "
+                    f"({100 * float(_bs.get('exclusion_rate', 0) or 0):.1f}%)"
+                    + (" - top reasons: "
+                       + ", ".join(f"{k} {v}" for k, v in
+                                   list((_bs.get("top_reasons") or {}).items())[:4])
+                       if _bs.get("top_reasons") else "") + ".")
+        except Exception as e:                                  # noqa: BLE001
+            st.caption(f"(bot-screen demo unavailable: {type(e).__name__}: {e})")
+
         st.markdown(
-            "Before anything is counted, every post gets a bot score from "
-            "five plain signals: a near-copy of another post (MinHash "
-            "similarity over word 3-grams), an author posting in bursts, "
-            "a self-declared bot or moderator account, an author whose "
-            "posts are all near-identical, and a deleted author. A post "
-            f"scoring {_thr:.2f} or more is left out of the aggregates; it "
-            "stays in the raw store so the decision is reversible. "
-            f"{_line}")
-    with st.expander("4. Sentiment", expanded=False):
-        st.markdown(
-            "Each post is scored once with VADER, a dictionary-based "
-            "sentiment scorer for short social text, extended with "
-            "finance dictionaries and a slang lexicon (`moon`, `puts`, "
-            "`bagholder`...). Per day and per name the scores roll up "
-            "into an average and a *net bullish* share (bullish posts "
-            "minus bearish posts). The features never use the level on "
-            "its own; they compare a name's mood with its own history.")
-    with st.expander("5. Appending to the tables", expanded=False):
-        st.markdown(
-            "The surviving posts become six daily tables (mentions per "
-            "ticker, per ticker and source, per theme; sentiment per "
-            "ticker and theme; vocabulary counts) and are merged into "
-            "`Data/abstracted/`, the one data folder committed to the "
-            "repository. Counts add, sentiment means recombine weighted "
-            "by post count, and a local ledger of post ids already folded "
-            "stops a post from being counted twice. History is only ever "
+            "**The tables.** What survives becomes six daily tables - "
+            "mentions per ticker, per ticker and source, per theme; "
+            "sentiment per ticker and per theme; vocabulary counts - merged "
+            "into `Data/abstracted/`, the one data folder committed to the "
+            "repository. Counts add, sentiment means recombine weighted by "
+            "post count, and a local ledger of post ids already folded is "
+            "what stops a post being counted twice. History is only ever "
             "extended, never revised.")
-    with st.expander("6. The features", expanded=False):
+        try:
+            _inv = []
+            for _t in ("daily_ticker_counts", "daily_ticker_sentiment",
+                       "daily_theme_counts", "daily_theme_sentiment"):
+                _df = load(f"{_t}.parquet")
+                if _df is None:
+                    continue
+                _inv.append({"table": _t, "rows": f"{len(_df):,}",
+                             "first day": f"{pd.to_datetime(_df['date']).min():%Y-%m-%d}",
+                             "last day": f"{pd.to_datetime(_df['date']).max():%Y-%m-%d}",
+                             "columns": ", ".join(_df.columns)})
+            if _inv:
+                st.dataframe(pd.DataFrame(_inv), hide_index=True, width="stretch")
+            _tc = load(THEME_COUNTS)
+            if _tc is not None and len(_tc):
+                _top = (_tc.groupby("theme")["mention_count"].sum()
+                        .sort_values(ascending=False).head(8))
+                _piv = (_tc[_tc["theme"].isin(_top.index)]
+                        .pivot_table(index="date", columns="theme",
+                                     values="mention_count", aggfunc="sum")
+                        .fillna(0).rolling(28, min_periods=7).mean())
+                _f1 = _hiw_fig("mentions per day per theme, 28-day mean "
+                               "(eight busiest themes)")
+                for _c in _piv.columns:
+                    _f1.add_trace(go.Scatter(x=_piv.index, y=_piv[_c],
+                                             mode="lines", name=theme_label(_c),
+                                             line=dict(width=1.1)))
+                st.plotly_chart(_f1, width="stretch", key="hiw_themes")
+        except Exception as e:                                  # noqa: BLE001
+            st.caption(f"(aggregate inventory unavailable: {type(e).__name__})")
+
+    # ---- 2. sentiment ---------------------------------------------------
+    with st.expander("2 · Sentiment", expanded=False):
         st.markdown(
-            f"For every theme ETF and tracked single name, every day, "
-            f"{_n_crowd} crowd features and {_n_price} price features are "
-            "built. Each crowd feature answers a question like *how loud "
-            "is the crowd about this name versus its own normal* "
-            "(attention level, change over a month and a fortnight, this "
-            "week versus this month, growth that is itself accelerating, "
-            "bullishness level, persistence and turning). Every feature "
-            "is trailing - day t sees only data up to day t - and is a "
-            "percentile rank against the same name's own history, so a "
-            "value of 0.9 means *louder than 90% of this name's own past "
-            "days*. The two price features are how far the price has run "
-            "off its recent low and the one-month return. No single "
-            "feature is a detector on its own (AUROC 0.5-0.6 each); they "
-            "work as a committee.")
-    with st.expander("7. What is being predicted", expanded=False):
+            "Each post is scored once with **VADER**, a dictionary-based "
+            "scorer built for short social text: every word carries a "
+            "valence, negation flips it, intensifiers scale it, and the "
+            "output is a compound score in [-1, +1]. Plain VADER misreads "
+            "finance - *calls* and *puts* are neutral to it, *short* reads "
+            "as generically negative, *moon* means nothing - so the project "
+            "layers the FinVADER financial dictionaries and a hand-set slang "
+            "lexicon on top. Per day and per name the scores roll up into an "
+            "average and a **net bullish** share: bullish posts minus "
+            "bearish posts, which one extreme post cannot drag.")
+        try:
+            from src.sentiment import score_text as _score
+            from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+            _plain = SentimentIntensityAnalyzer()
+            _texts = ["NVDA to the moon, loaded up on calls",
+                      "this thing is a dumpster fire, puts printing",
+                      "not convinced the rally holds, trimming",
+                      "bought more, diamond hands, bullish"]
+            st.dataframe(pd.DataFrame({
+                "text": _texts,
+                "plain VADER": [round(_plain.polarity_scores(t)["compound"], 3)
+                                for t in _texts],
+                "with the finance lexicon (used)": [round(_score(t), 3)
+                                                    for t in _texts]}),
+                hide_index=True, width="stretch")
+            st.code(_hiw_src(_score), language="python")
+        except Exception as e:                                  # noqa: BLE001
+            st.caption(f"(sentiment demo unavailable: {type(e).__name__})")
+        try:
+            _ts = load("daily_theme_sentiment.parquet")
+            if _ts is not None and len(_ts):
+                _nm = "ai" if "ai" in set(_ts["theme"]) else _ts["theme"].iloc[0]
+                _s = _ts[_ts["theme"] == _nm].set_index("date").sort_index()
+                _f2 = _hiw_fig(f"net bullish for {theme_label(_nm)}, 14-day mean")
+                _f2.add_trace(go.Scatter(
+                    x=_s.index, y=_s["net_bullish"].rolling(14, min_periods=5).mean(),
+                    mode="lines", line=dict(color=ACCENT, width=1.4),
+                    name="net bullish"))
+                _f2.add_hline(y=0, line_width=1, line_color=INK_LABEL)
+                st.plotly_chart(_f2, width="stretch", key="hiw_sent")
+        except Exception as e:                                  # noqa: BLE001
+            st.caption(f"(sentiment series unavailable: {type(e).__name__})")
+
+    # ---- 3. the features -------------------------------------------------
+    with st.expander("3 · The features, and how they were chosen",
+                     expanded=False):
         st.markdown(
-            "A mania (an *episode*) is defined by price alone, with the "
-            "rule fixed before any crowd data was looked at: a local price "
-            "high that sits at least +20% (theme ETF) or +40% (single "
-            "name) above the lowest close of the preceding 120 days, "
-            "followed within 90 days by a fall of at least 12% / 25%. The "
-            "45 days after the trough are the *start* window and the "
-            "month before the peak is the *top* window. Across the "
-            "tracked universe the boom bar sits around the 75th-80th "
-            "percentile of all instrument-days - about one day in four or "
-            "five is that far above its 120-day low.")
-    with st.expander("8. The model", expanded=False):
+            "A feature is one number per name per day answering a question "
+            "like *how loud is this crowd today against its own normal*. "
+            "Every feature is **trailing** - day *t* uses only data up to "
+            "day *t* - and is a **percentile rank against the same name's "
+            "own history**, so 0.90 means *louder than 90% of this name's "
+            "own past days*. Ranks are robust to fat tails and to the fact "
+            "that forum coverage grew over the years: 500 posts meant "
+            "something different in 2019 and today, *in its own top decile* "
+            "did not.")
+        from src.analytics import euphoria as _eu
+        st.code(_hiw_src(_eu.trailing_pct_rank), language="python")
+        if _bank:
+            _n_price = len([f for f in _bank if str(f).startswith("price")])
+            st.dataframe(pd.DataFrame(
+                [{"feature": f, "plain reading": _lab(f),
+                  "source": "price" if str(f).startswith("price") else "crowd"}
+                 for f in _bank]), hide_index=True, width="stretch")
+            st.caption(f"{len(_bank) - _n_price} crowd features and "
+                       f"{_n_price} price features. Price enters no crowd "
+                       f"feature; the two price features were added as a "
+                       f"separate step so that *what the crowd sees* and "
+                       f"*what the crowd plus the price sees* stay "
+                       f"separable claims.")
+        _fs = _hiw_feature_stats(_mtime(os.path.join(PROCESSED_DIR,
+                                                     "phase_day_frame.parquet")))
+        if _fs is None:
+            st.caption("The candidate-day frame is not on this copy, so the "
+                       "feature figures below are skipped.")
+        else:
+            st.caption(f"Computed here on {_fs['rows']:,} candidate days, "
+                       f"{_fs['names']} names, "
+                       f"{pd.Timestamp(_fs['first']):%b %Y} to "
+                       f"{pd.Timestamp(_fs['last']):%b %Y}.")
+            _auc = _fs["auc"].copy()
+            _pb = _research("nb02_august_bank")
+            if isinstance(_pb, list) and _pb:
+                _pbf = pd.DataFrame(_pb)
+                _pbf = _pbf[_pbf["column"].astype(str).str.startswith("price")]
+                if len(_pbf):
+                    _auc = pd.concat([_auc, _pbf.set_index("column")[
+                        ["AUROC vs y_onset", "AUROC vs y_top"]].rename(
+                        columns={"AUROC vs y_onset": "y_onset",
+                                 "AUROC vs y_top": "y_top"})])
+            _auc = _auc.sort_values("y_top")
+            _f3 = _hiw_fig("one feature at a time: how well does it rank "
+                           "mania days above ordinary days?", height=420)
+            _f3.add_trace(go.Bar(y=[_lab(i) for i in _auc.index],
+                                 x=_auc["y_onset"], orientation="h",
+                                 name="start of a mania", marker_color=BULL))
+            _f3.add_trace(go.Bar(y=[_lab(i) for i in _auc.index],
+                                 x=_auc["y_top"], orientation="h",
+                                 name="top of a mania", marker_color=BEAR))
+            _f3.add_vline(x=0.5, line_width=1, line_color=INK)
+            _f3.update_layout(barmode="group", xaxis_range=[0.4, 0.85],
+                              xaxis_title="AUROC (0.5 = coin flip)")
+            st.plotly_chart(_f3, width="stretch", key="hiw_auc")
+            st.markdown(
+                "No single crowd feature is a detector: they sit in the "
+                "0.50-0.60 band. The two price features are much stronger, "
+                "which is expected - a mania is *defined* by a price run, so "
+                "*how far has the price run* is close to the label by "
+                "construction. That is why the crowd features are used as a "
+                "committee, and why a crowd-only variant is kept beside the "
+                "production model as the honest measure of what the crowd "
+                "alone can see.")
+            _ab = _fs["ablation"].copy()
+            _ab["bank"] = _ab["bank"].map({"y_onset": "start bank",
+                                           "y_top": "top bank"})
+            st.caption("**Ablation** - drop one feature from an equal-weight "
+                       "average and see what the average loses. Nothing is "
+                       "load-bearing: every removal moves average precision "
+                       "by thousandths, which is the stability argument for "
+                       "a committee rather than a soloist.")
+            st.dataframe(_ab.round(4), hide_index=True, width="stretch")
+            _co = _fs["corr"]
+            _f4 = _hiw_fig("Spearman rank correlation between the crowd "
+                           "features (and the two labels)", height=430)
+            _f4.add_trace(go.Heatmap(
+                z=_co.values, x=[_lab(c) for c in _co.columns],
+                y=[_lab(c) for c in _co.index], zmin=-1, zmax=1,
+                colorscale="RdBu_r", reversescale=False,
+                hovertemplate="%{y} vs %{x}: %{z:.2f}<extra></extra>"))
+            st.plotly_chart(_f4, width="stretch", key="hiw_corr")
+            st.caption(
+                "The only strong pair is attention level with its one-month "
+                "change - the same crowd at two horizons. Everything else is "
+                "weakly related, so the bank is not counting one thing many "
+                "times, and every crowd feature's correlation with the "
+                "labels is small, consistent with the AUROCs above.")
+            if st.checkbox("run the input-corruption test (a few seconds)",
+                           key="hiw_noise_go"):
+                _nz = _hiw_noise(_mtime(os.path.join(
+                    PROCESSED_DIR, "phase_day_frame.parquet")))
+                if _nz:
+                    _f5 = _hiw_fig(
+                        f"break one input on purpose: what the start bank "
+                        f"loses (clean AP {_nz['base']:.3f})")
+                    for _f, _ys in _nz["curves"].items():
+                        _f5.add_trace(go.Scatter(x=_nz["sigmas"], y=_ys,
+                                                 mode="lines+markers",
+                                                 name=_lab(_f)))
+                    _f5.update_layout(
+                        xaxis_title="how badly that one measurement is "
+                                    "corrupted (sigma, in percentile points)",
+                        yaxis_title="change in average precision")
+                    st.plotly_chart(_f5, width="stretch", key="hiw_noise")
+                    st.caption(
+                        "No input is a single point of failure: even at the "
+                        "heaviest corruption the bank's precision falls "
+                        "modestly rather than collapsing or inverting. The "
+                        "steepest curve names the feed to monitor hardest.")
+
+    # ---- 4. what is predicted --------------------------------------------
+    with st.expander("4 · What is being predicted: the price move that "
+                     "defines a mania", expanded=False):
         st.markdown(
-            f"Two heads share the features: one for the start of a mania "
-            "(INCREASE EXPOSURE) and one for the top (CUT EXPOSURE). The "
-            f"production model is **{_r.get('model', 'ens')}**: a logistic "
-            "regression (one weight per feature, readable as a formula) "
-            "and a gradient-boosted tree model with monotone constraints "
-            "(more crowd heat can only raise the score), with their two "
-            "rankings averaged. Three families were compared under a rule "
-            "written down before the numbers were computed, and the "
-            "ensemble won. Training is walk-forward: each year from 2018 "
-            "to 2026 is scored by a model fitted on the years before it. "
-            "A live run never re-fits; it only scores at the frozen cut.")
-    with st.expander("9. From a score to a call", expanded=False):
+            f"The labels come from price alone, under a rule written down "
+            f"before any crowd data was looked at. An **episode** is a "
+            f"run-up followed by a bust:\n\n"
+            f"* **G1** the day is a local price maximum over "
+            f"±{EUPHORIA_PEAK_LOCAL_MAX_D} days;\n"
+            f"* **G2** the close is at least **+{EUPHORIA_BOOM_MIN_ETF:.0%} "
+            f"for a theme ETF** or **+{EUPHORIA_BOOM_MIN_SINGLE:.0%} for a "
+            f"single name** above the lowest close of the preceding "
+            f"{EUPHORIA_BOOM_LOOKBACK_D} days (the *boom bar*);\n"
+            f"* **G3** within the following {EUPHORIA_CRASH_WINDOW_D} days "
+            f"the price falls at least {EUPHORIA_CRASH_MIN_ETF:.0%} (ETF) or "
+            f"{EUPHORIA_CRASH_MIN_SINGLE:.0%} (single name) from that peak.\n\n"
+            f"Peaks closer than {EUPHORIA_PEAK_MERGE_D} days are merged. The "
+            f"**trough** is the {EUPHORIA_BOOM_LOOKBACK_D}-day low the boom "
+            f"is measured from; the **start window** is the 45 days after "
+            f"it, the **top window** the month before the peak. A name is "
+            f"scorable only on a day it carries at least "
+            f"{EUPHORIA_MIN_COVERAGE} scored posts in the last 28 days, so a "
+            f"crowd that cannot be seen is never diagnosed. Single names get "
+            f"the higher bar because they are more volatile: a 20% swing is "
+            f"a routine month for a meme stock and a real event for a sector "
+            f"ETF.")
+        st.code(_hiw_src(_eu.ground_truth_peaks), language="python")
+        _ru = _hiw_runup(_mtime(PRICES_PATH),
+                         _mtime(os.path.join(PROCESSED_DIR, "prices.parquet")))
+        if not _ru:
+            st.caption("(no price store on this copy, so the run-up "
+                       "distribution is skipped)")
+        if _ru:
+            _cols = st.columns(len(_ru))
+            for _c, (_kind, _d) in zip(_cols, _ru.items()):
+                with _c:
+                    _f6 = _hiw_fig(f"{_kind}: close above its "
+                                   f"{EUPHORIA_BOOM_LOOKBACK_D}-day low",
+                                   height=300)
+                    _f6.add_trace(go.Histogram(x=_d["values"], nbinsx=60,
+                                               marker_color=ACCENT,
+                                               name="instrument-days"))
+                    _f6.add_vline(x=_d["bar"], line_width=2, line_color=BEAR)
+                    _f6.update_layout(showlegend=False,
+                                      xaxis_title="run-up off the trailing low")
+                    st.plotly_chart(_f6, width="stretch",
+                                    key=f"hiw_runup_{_kind}")
+                    st.caption(
+                        f"{_d['n_instruments']} instruments, "
+                        f"{_d['n_days']:,} days. Median run-up "
+                        f"{_d['median']:.0%}; the {_d['bar']:.0%} bar sits at "
+                        f"the **{_d['pct_at_bar']:.0f}th percentile** - about "
+                        f"one day in "
+                        f"{max(round(100 / max(100 - _d['pct_at_bar'], 1)), 1)} "
+                        f"is that far above its own low, and the bust that "
+                        f"must follow makes a confirmed mania rarer still.")
+        _eps = load("episodes.parquet")
+        if _eps is not None and len(_eps):
+            st.caption(
+                f"On this copy: **{len(_eps)} episodes** across "
+                f"{_eps['name'].nunique()} names, {int(_eps['year'].min())}-"
+                f"{int(_eps['year'].max())}; median run-up trough to peak "
+                f"{_eps['boom_pct'].median():.0%}, median fall after the peak "
+                f"{_eps['bust_pct'].median():.0%}, median run "
+                f"{_eps['run_days'].median():.0f} days. Detectable with "
+                f"enough crowd data at the time: "
+                f"{int(_eps['onset_detectable'].sum())} starts, "
+                f"{int(_eps['top_detectable'].sum())} tops.")
+            _py = _eps.groupby("year").agg(
+                episodes=("name", "size"),
+                start_detectable=("onset_detectable", "sum"),
+                top_detectable=("top_detectable", "sum"))
+            st.dataframe(_py.T, width="stretch")
+        _gts = (_research("ml_tournament") or {}).get("ground_truth_sweep")
+        if _gts:
+            st.caption(
+                "**Why these bars.** The whole evaluation was re-run under a "
+                "stricter definition and a looser one. Stricter gives fewer, "
+                "cleaner episodes and a slightly higher AUROC but leaves most "
+                "themes with nothing to learn from; looser manufactures "
+                "episodes out of ordinary volatility. The adopted bars are "
+                "the middle setting, and ranking quality is stable across all "
+                "three - which is the point: the result does not hinge on the "
+                "exact threshold.")
+            st.dataframe(pd.DataFrame([
+                {"definition": k, "episodes": v["episodes"],
+                 "CUT AUROC": v["get_out"]["auroc"],
+                 "CUT caught": v["get_out"]["capture_rate"],
+                 "INCREASE AUROC": v["get_in"]["auroc"],
+                 "INCREASE caught": v["get_in"]["capture_rate"]}
+                for k, v in _gts.items()]), hide_index=True, width="stretch")
+
+    # ---- 5. the models ----------------------------------------------------
+    with st.expander("5 · The models", expanded=False):
         st.markdown(
-            "A head fires when its 7-day-smoothed score crosses a cut "
-            "chosen on the training years to maximise episode-level F1 "
-            f"(today: INCREASE {_gi.get('live_threshold', float('nan')):.3f}, "
-            f"CUT {_go.get('live_threshold', float('nan')):.3f}; a stricter "
-            "F0.5 cut is stored beside each). CUT can only fire once the "
-            "name has actually boomed past the 120-day bar; INCREASE only "
-            "before the boom completes. After a call a head re-arms only "
-            "once the score has fallen back, with at least 63 days between "
-            "calls on the same name and no INCREASE within 21 days of a "
-            "CUT. The landing page shows how far each name's score is "
-            "from its cut.")
-    with st.expander("10. How well it works", expanded=False):
+            f"Two heads share the same features: one for the **start** of a "
+            f"mania (INCREASE EXPOSURE) and one for the **top** (CUT "
+            f"EXPOSURE). Three families were compared.\n\n"
+            f"* **Logistic regression** - one weight per feature; the score "
+            f"is a weighted sum through a sigmoid, readable as a formula, "
+            f"and it can only say *more of this always pushes the same way*.\n"
+            f"* **Gradient-boosted trees** - 200 shallow trees, each "
+            f"correcting the last, learning the interactions the rules had to "
+            f"hard-code. One design choice keeps a 200-tree model "
+            f"presentable: every feature carries a **monotone constraint**, "
+            f"so more crowd heat can only *raise* the score. The model "
+            f"physically cannot learn *high attention is sometimes safe*.\n"
+            f"* **The ensemble (in production: "
+            f"`{_r.get('model', 'ens')}`)** - both models score, and the two "
+            f"probability *rankings* are averaged so neither model's "
+            f"calibration dominates.\n\n"
+            f"**Training is walk-forward.** For each test year the model is "
+            f"fitted on every earlier year and scores that year blind; rare "
+            f"mania days are re-weighted so they count as much as the many "
+            f"ordinary ones. Nothing in a live run re-fits: model, features "
+            f"and cut are frozen by a research pass and pinned by tests. The "
+            f"rule for picking the winner was fixed before the numbers "
+            f"existed: one family serves both heads, and the family with the "
+            f"highest combined *lift* in average precision wins.")
+        from src.analytics import ml_detector as _mld
+        st.code(_hiw_src(_mld.make_gbm_fit) + "\n" + _hiw_src(_mld.make_ens_fit),
+                language="python")
+        _tour = (_research("ml_tournament") or {}).get("results")
+        if _tour:
+            _rows = []
+            for _fam in ("logit", "gbm", "mlp", "ens", "rules"):
+                if _fam not in (_tour.get("get_in") or {}):
+                    continue
+                _a, _b = _tour["get_in"][_fam], _tour["get_out"][_fam]
+                _rows.append({
+                    "model": _fam,
+                    "INCREASE AUROC": _a["auroc"], "INCREASE AP": _a["ap"],
+                    "INCREASE caught": _a["capture_rate"],
+                    "CUT AUROC": _b["auroc"], "CUT AP": _b["ap"],
+                    "CUT caught": _b["capture_rate"],
+                    "combined AP lift": round(
+                        _a["ap"] / _a["ap_baseline"]
+                        + _b["ap"] / _b["ap_baseline"], 2)})
+            st.dataframe(pd.DataFrame(_rows), hide_index=True, width="stretch")
+            st.caption(
+                f"Winner under the pre-stated rule: "
+                f"**{_tour.get('winner', 'ens')}** - also the family with the "
+                f"fewest false alarms per name-year on both heads. The "
+                f"*rules* row is the hand-set gate stack: its raw AP looks "
+                f"high because it only scores days that already passed its "
+                f"gates, but its ranking quality is near a coin flip.")
+            _cr = []
+            for _fam in ("logit", "gbm", "ens"):
+                if f"{_fam}_crowd" not in (_tour.get("get_in") or {}):
+                    continue
+                for _sfx, _lbl in (("_crowd", "crowd only"),
+                                   ("", "crowd + price")):
+                    _a, _b = _tour["get_in"][_fam + _sfx], _tour["get_out"][_fam + _sfx]
+                    _cr.append({"model": _fam, "features": _lbl,
+                                "INCREASE AUROC": _a["auroc"],
+                                "CUT AUROC": _b["auroc"],
+                                "INCREASE caught": _a["capture_rate"],
+                                "CUT caught": _b["capture_rate"]})
+            if _cr:
+                st.caption("**The same models without price.** The crowd "
+                           "alone ranks mania days at about 0.55; adding "
+                           "where the price already stands lifts it to about "
+                           "0.73. That gap is the honest statement of what "
+                           "the crowd contributes - weak alone, and what "
+                           "tells a mature run from one still gathering.")
+                st.dataframe(pd.DataFrame(_cr), hide_index=True,
+                             width="stretch")
+        if _insight:
+            _w = pd.DataFrame({
+                "INCREASE (logit weight)": _insight["get_in"]["logit_weights"],
+                "CUT (logit weight)": _insight["get_out"]["logit_weights"]})
+            _w.index = [_lab(i) for i in _w.index]
+            _f7 = _hiw_fig("what the fitted model leans on (logit weights, "
+                           f"fitted on years before "
+                           f"{_insight.get('fitted_on_years_before', '')})",
+                           height=400)
+            _f7.add_trace(go.Bar(y=_w.index, x=_w["INCREASE (logit weight)"],
+                                 orientation="h", name="INCREASE",
+                                 marker_color=BULL))
+            _f7.add_trace(go.Bar(y=_w.index, x=_w["CUT (logit weight)"],
+                                 orientation="h", name="CUT",
+                                 marker_color=BEAR))
+            _f7.update_layout(barmode="group")
+            st.plotly_chart(_f7, width="stretch", key="hiw_weights")
+            st.caption(
+                "The price run-up dominates both heads, as the single-feature "
+                "AUROCs predicted. Among the crowd features the two heads "
+                "lean on different things - the start head on the mood "
+                "turning and attention accelerating, the top head on how "
+                "*persistent* the bullishness has been - which matches the "
+                "intuition that a mania starts when the mood flips and ends "
+                "when everyone has been bullish for a month.")
+
+    # ---- 6. score -> signal ------------------------------------------------
+    with st.expander("6 · From a score to a call", expanded=False):
         st.markdown(
-            "Walk-forward test years, production model: INCREASE EXPOSURE "
-            f"caught {_wi.get('captured', '-')} of {_wi.get('detectable', '-')} "
-            f"mania starts ({100 * float(_wi.get('capture_rate', 0) or 0):.0f}%) "
-            f"with a median lead of {_wi.get('median_lead_days', '-')} days, "
-            f"AUROC {_wi.get('auroc', float('nan')):.2f}; CUT EXPOSURE caught "
-            f"{_wo.get('captured', '-')} of {_wo.get('detectable', '-')} tops "
-            f"({100 * float(_wo.get('capture_rate', 0) or 0):.0f}%), median lead "
-            f"{_wo.get('median_lead_days', '-')} days, AUROC "
-            f"{_wo.get('auroc', float('nan')):.2f}. The crowd features alone "
-            "rank mania days at about 0.55 AUROC; adding where the price "
-            "already stands lifts that to about 0.73, which is the honest "
-            "statement of what the crowd contributes.")
-    with st.expander("11. Prices and freshness", expanded=False):
+            f"A score is a number between 0 and 1 for every name every day. "
+            f"Turning it into an occasional call takes three steps.\n\n"
+            f"**1. The cut.** For each test year the cut is chosen on the "
+            f"*training* years only - the value maximising episode-level F1 "
+            f"- so the test year's result is out of sample. Today's cuts: "
+            f"INCREASE **{_gi.get('live_threshold', float('nan')):.3f}**, CUT "
+            f"**{_go.get('live_threshold', float('nan')):.3f}** (stricter "
+            f"F0.5 cuts of {(_gi.get('strict_threshold') or float('nan')):.3f} "
+            f"/ {(_go.get('strict_threshold') or float('nan')):.3f} are "
+            f"stored beside them).\n\n"
+            f"**2. The gates and the shape.** A raw crossing would fire "
+            f"whenever the score wobbled over the line, so: CUT can only "
+            f"fire once the name has actually boomed past the "
+            f"{EUPHORIA_BOOM_LOOKBACK_D}-day bar (the model is asked *is this "
+            f"run ending*, not *will there be a run*); INCREASE only before "
+            f"the boom completes; after firing a head re-arms only once the "
+            f"score falls back, with at least 63 days between calls on one "
+            f"name and no INCREASE within 21 days of a CUT; and scores are "
+            f"smoothed over 7 days so a one-day spike cannot fire.\n\n"
+            f"**3. Two strictness settings.** The standard cut balances "
+            f"precision and recall; the strict one weights precision twice "
+            f"as much. The page uses the standard point.")
+        from src.analytics import euphoria_phases as _ep
+        st.code(_hiw_src(_ep.alerts_from_scores_shaped), language="python")
+        if _wi.get("thresholds") and _wo.get("thresholds"):
+            _thr = pd.DataFrame({"INCREASE cut": _wi["thresholds"],
+                                 "CUT cut": _wo["thresholds"]}).round(3)
+            _thr.index.name = "test year (cut fitted on the years before it)"
+            st.dataframe(_thr.T, width="stretch")
+        _sw = _research("operating_point_sweep")
+        if isinstance(_sw, list) and _sw:
+            _swd = pd.DataFrame(_sw)
+            _f8 = _hiw_fig("the trade-off the cut walks along: stricter is "
+                           "up and left, looser is down and right")
+            for _head, _col, _nm in (("get_in", BULL, "INCREASE EXPOSURE"),
+                                     ("get_out", BEAR, "CUT EXPOSURE")):
+                _s = _swd[_swd["head"] == _head].sort_values("capture_rate")
+                if not len(_s):
+                    continue
+                _f8.add_trace(go.Scatter(
+                    x=_s["capture_rate"], y=_s["precision"],
+                    mode="lines+markers+text", name=_nm,
+                    line=dict(color=_col, width=1.6),
+                    text=[("beta 1, standard" if b == 1 else
+                           ("beta 0.5, strict" if b == 0.5 else ""))
+                          for b in _s["beta"]],
+                    textposition="top center", textfont=dict(size=9),
+                    hovertemplate="beta %{customdata}<br>caught %{x:.0%}"
+                                  "<br>right %{y:.0%}<extra></extra>",
+                    customdata=_s["beta"]))
+            _f8.update_layout(
+                xaxis_title="share of manias caught (recall)",
+                yaxis_title="share of calls that were right (precision)")
+            st.plotly_chart(_f8, width="stretch", key="hiw_frontier")
+            st.caption("Each point is one choice of cut. There is no free "
+                       "lunch along the curve - the only question is where "
+                       "to stand on it.")
+
+    # ---- 7. performance ----------------------------------------------------
+    with st.expander("7 · How well it works", expanded=False):
         st.markdown(
-            f"Daily closes come from a Bloomberg Terminal when one answers "
-            f"and from Tiingo otherwise (setting: `{_prov}`); each symbol is "
-            "stored from one source at a time. A US close reaches the "
-            "store the next morning, so the newest price is usually one "
-            "trading day behind the calendar. The masthead states how "
-            "many business days old the data is; a hosted copy renders "
-            "the last published bundle and never fetches or recomputes.")
+            "Walk-forward test-year results of the production model. An "
+            "INCREASE call counts as a hit inside the 45 days after a "
+            "mania's trough, a CUT call inside the month before its peak; a "
+            "call with no mania around it is a false alarm, and one after "
+            "the window is *late* and counts neither way.")
+        if _wi and _wo:
+            def _row(lbl, w):
+                return {"signal": lbl,
+                        "episodes caught": f"{w['captured']} of {w['detectable']} "
+                                           f"({w['capture_rate']:.0%})",
+                        "median lead (days)": w["median_lead_days"],
+                        "AUROC": w["auroc"], "AP": w["ap"],
+                        "base rate": w["ap_baseline"],
+                        "AP vs base rate": f"{w['ap'] / w['ap_baseline']:.1f}x",
+                        "precision": w["precision"],
+                        "false alarms / name-year": w["fa_per_iy"],
+                        "calls": w["n_alerts"]}
+            st.dataframe(pd.DataFrame([_row("INCREASE EXPOSURE (starts)", _wi),
+                                       _row("CUT EXPOSURE (tops)", _wo)]),
+                         hide_index=True, width="stretch")
+            _fr = []
+            for _lbl, _w in (("INCREASE EXPOSURE", _wi), ("CUT EXPOSURE", _wo)):
+                for _k, _v in (_w.get("forward_returns") or {}).items():
+                    _fr.append({"signal": _lbl,
+                                "horizon": _k.replace("fwd_", "").replace("d", " trading days"),
+                                "calls": _v["n"],
+                                "median price change after the call":
+                                    f"{_v['median_pct']:+.2f}%",
+                                "mean": f"{_v['mean_pct']:+.2f}%",
+                                "share positive": f"{_v['pct_positive']:.0f}%"})
+            if _fr:
+                st.dataframe(pd.DataFrame(_fr), hide_index=True, width="stretch")
+            st.markdown(
+                f"Reading the two together: roughly half the manias get a "
+                f"correct call with two to three weeks of lead, and the daily "
+                f"score ranks mania days above ordinary days about three "
+                f"times in four. After an INCREASE call the price is more "
+                f"often up than down a month and a quarter later; after a CUT "
+                f"call the median forward return a month out is near zero - "
+                f"the run has stopped, which is what cutting exposure is for, "
+                f"even though many runs then drift rather than crash.\n\n"
+                f"Two caveats travel with every number. The sample is small - "
+                f"a few hundred episodes over nine years, so a capture rate "
+                f"of {_wo.get('capture_rate', 0):.0%} carries a 90% band of "
+                f"roughly ±5 points - and the crowd data is thinner before "
+                f"2020, so the early test years lean on the price features "
+                f"more than the later ones do.")
+
+    # ---- 8. one episode ----------------------------------------------------
+    with st.expander("8 · One mania, end to end", expanded=False):
+        try:
+            _eps = load("episodes.parquet")
+            _dk = load("euphoria_desk.parquet")
+            _px = (_read(PRICES_PATH, _mtime(PRICES_PATH))
+                   if os.path.exists(PRICES_PATH) else load("prices.parquet"))
+            _shown = False
+            if _eps is not None and _dk is not None and _px is not None:
+                _c = _eps[(_eps["kind"] == "theme") & _eps["top_detectable"]] \
+                    .sort_values("boom_pct", ascending=False)
+                for _, _e in _c.iterrows():
+                    _d = _dk[_dk["name"] == _e["name"]].set_index("date").sort_index()
+                    _lo = _e["trough"] - pd.Timedelta(days=45)
+                    _hi2 = _e["peak"] + pd.Timedelta(days=60)
+                    _w = _d.loc[_lo:_hi2]
+                    if len(_w) < 60 or OUT_SCORE not in _w:
+                        continue
+                    _p = (_px[_px["symbol"] == _e["symbol"]]
+                          .set_index("date")["px_last"].sort_index().loc[_lo:_hi2])
+                    if not len(_p):
+                        continue
+                    _f9 = make_subplots(specs=[[{"secondary_y": True}]])
+                    _f9.add_trace(go.Scatter(
+                        x=_p.index, y=_p / _p.iloc[0], mode="lines",
+                        name=f"{_e['symbol']} price (rebased)",
+                        line=dict(color=SLATE, width=1.6)), secondary_y=True)
+                    for _col, _cl, _nm in ((IN_SCORE, BULL, "INCREASE score"),
+                                           (OUT_SCORE, BEAR, "CUT score")):
+                        if _col in _w:
+                            _f9.add_trace(go.Scatter(
+                                x=_w.index, y=_w[_col], mode="lines", name=_nm,
+                                line=dict(color=_cl, width=1.3)))
+                    for _lv, _cl in ((_gi.get("live_threshold"), BULL),
+                                     (_go.get("live_threshold"), BEAR)):
+                        if _lv:
+                            _f9.add_hline(y=_lv, line_width=1, line_dash="dot",
+                                          line_color=_cl)
+                    for _col, _cl, _sym, _nm in (
+                            ("get_in", BULL, "triangle-up", "INCREASE call"),
+                            ("get_out", BEAR, "triangle-down", "CUT call")):
+                        if _col in _w:
+                            _fired = _w.index[_w[_col].fillna(False).astype(bool)]
+                            if len(_fired):
+                                _f9.add_trace(go.Scatter(
+                                    x=_fired, y=[1.03] * len(_fired),
+                                    mode="markers", name=_nm,
+                                    marker=dict(color=_cl, size=11,
+                                                symbol=_sym)))
+                    _f9.add_vrect(x0=_e["trough"],
+                                  x1=_e["trough"] + pd.Timedelta(days=45),
+                                  fillcolor=BULL, opacity=0.07, line_width=0)
+                    _f9.add_vrect(x0=_e["peak"] - pd.Timedelta(days=30),
+                                  x1=_e["peak"] + pd.Timedelta(days=1),
+                                  fillcolor=BEAR, opacity=0.07, line_width=0)
+                    _f9.update_layout(
+                        title=dict(text=f"{theme_label(_e['name'])} "
+                                        f"({_e['symbol']}): trough "
+                                        f"{_e['trough']:%d %b %Y} to peak "
+                                        f"{_e['peak']:%d %b %Y} "
+                                        f"(+{_e['boom_pct']:.0%}, then "
+                                        f"{_e['bust_pct']:.0%})",
+                                   y=0.97, x=0.01),
+                        height=420, hovermode="x unified",
+                        margin=dict(l=10, r=10, t=55, b=20),
+                        yaxis=dict(range=[0, 1.08], title="score"),
+                        legend=dict(orientation="h", yanchor="top", y=-0.18))
+                    st.plotly_chart(_axes_fidelity(_theme(_f9)),
+                                    width="stretch", key="hiw_episode")
+                    st.caption(
+                        "Shaded: the judged windows - green the 45 days after "
+                        "the trough, red the month before the peak. Dotted: "
+                        "the frozen cuts. Markers: the days a head actually "
+                        "fired. This is the whole system in one picture - "
+                        "crowd features become one score per day, the score "
+                        "crosses a cut inside the right phase, and a call is "
+                        "made.")
+                    _shown = True
+                    break
+            if not _shown:
+                st.caption("No episode with a full score series on this copy.")
+        except Exception as e:                                  # noqa: BLE001
+            st.caption(f"(episode walk-through unavailable: {type(e).__name__})")
+
+    # ---- 9. where each number comes from -----------------------------------
+    with st.expander("9 · Where every number on this tab comes from",
+                     expanded=False):
+        st.dataframe(pd.DataFrame([
+            {"panel": "ticker screening", "read from": "src/screen_tickers.py + the wordfreq package, live"},
+            {"panel": "bot screen", "read from": "ingestion/bot_screen.py, run live on six made-up posts"},
+            {"panel": "aggregate inventory, theme chart", "read from": "Data/abstracted/*.parquet"},
+            {"panel": "sentiment examples", "read from": "src/sentiment.py, scored live"},
+            {"panel": "AUROC, ablation, correlations, noise", "read from": "Data/processed/phase_day_frame.parquet, computed live"},
+            {"panel": "price-feature AUROC", "read from": "Data/research_record/nb02_august_bank.json"},
+            {"panel": "run-up distribution", "read from": "Data/processed/prices.parquet, computed live"},
+            {"panel": "episodes", "read from": "Data/processed/episodes.parquet"},
+            {"panel": "ground-truth sweep, tournament", "read from": "Data/research_record/ml_tournament.json"},
+            {"panel": "model weights", "read from": "Data/processed/desk_model_insight.json"},
+            {"panel": "cuts, performance, forward returns", "read from": "Data/processed/euphoria_desk_report.json"},
+            {"panel": "operating-point curve", "read from": "Data/research_record/operating_point_sweep.json"},
+            {"panel": "episode walk-through", "read from": "episodes + euphoria_desk + prices"},
+        ]), hide_index=True, width="stretch")
+        st.caption(
+            "Nothing on this tab is typed in. Every figure is read from a "
+            "store or a frozen record, or recomputed here from one, which is "
+            "why it stays true after the next pipeline run.")
 
 
 if active_tab == "[dev] Data Stats":

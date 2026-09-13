@@ -1,18 +1,18 @@
 {
  "threshold": 0.9,
- "built": "2026-09-11 05:51",
+ "built": "2026-09-13 08:08",
  "alerts": [
   {
    "name": "meme_stocks",
    "symbol": "ARKK",
-   "signed_readiness": -0.955,
+   "signed_readiness": -0.957,
    "side": "GET OUT",
    "as_of": "2026-09-08"
   },
   {
-   "name": "short_squeeze",
-   "symbol": "ARKK",
-   "signed_readiness": -0.901,
+   "name": "uranium_nuclear",
+   "symbol": "URA",
+   "signed_readiness": -0.918,
    "side": "GET OUT",
    "as_of": "2026-09-08"
   }
