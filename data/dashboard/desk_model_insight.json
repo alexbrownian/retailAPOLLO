@@ -43,16 +43,16 @@
   },
   "gbm_permutation_importance": {
    "attention_accel": 0.0001,
-   "hype_ratio": 0.0038,
-   "bull_inflection": -0.0007,
-   "influx_speed": -0.0001,
-   "attention_convexity": -0.0144,
-   "e1": 0.0026,
-   "e3": -0.001,
-   "bull_level": -0.0007,
-   "bull_persist": 0.0149,
-   "price_runup": 0.2103,
-   "price_ret21": 0.01
+   "hype_ratio": 0.0012,
+   "bull_inflection": -0.0017,
+   "influx_speed": -0.0003,
+   "attention_convexity": -0.0147,
+   "e1": 0.0015,
+   "e3": -0.0011,
+   "bull_level": -0.0018,
+   "bull_persist": 0.0191,
+   "price_runup": 0.1978,
+   "price_ret21": 0.0084
   }
  },
  "get_in": {
@@ -70,17 +70,17 @@
    "price_ret21": 1.427
   },
   "gbm_permutation_importance": {
-   "attention_accel": 0.0207,
-   "hype_ratio": -0.0004,
-   "bull_inflection": 0.0161,
-   "influx_speed": 0.0024,
-   "attention_convexity": 0.0157,
-   "e1": 0.0018,
-   "e3": 0.0002,
-   "bull_level": 0.0038,
-   "bull_persist": 0.0154,
-   "price_runup": 0.2108,
-   "price_ret21": 0.0704
+   "attention_accel": 0.0131,
+   "hype_ratio": -0.0031,
+   "bull_inflection": 0.0207,
+   "influx_speed": 0.0025,
+   "attention_convexity": 0.0115,
+   "e1": 0.0024,
+   "e3": 0.0001,
+   "bull_level": 0.012,
+   "bull_persist": 0.0233,
+   "price_runup": 0.1999,
+   "price_ret21": 0.0666
   }
  },
  "model": "ens"

@@ -36,7 +36,8 @@ SHIPPED_DIRS = ("Code/src", "Code/ingestion", "Code/tools", "Code/tests",
 SHIPPED_ROOT_FILES = ("Code/dashboard.py", "Code/update_data.py",
                       "Code/example.env", "README.md", ".gitignore",
                       "requirements.txt", "Reference Materials/RUNBOOK.md",
-                      "Reference Materials/research.ipynb")
+                      "Reference Materials/research.ipynb",
+                      "Reference Materials/ice_source_review.ipynb")
 
 # Words that must not appear in shipped code or docs. Matched
 # case-insensitively as whole words; each entry names the class of

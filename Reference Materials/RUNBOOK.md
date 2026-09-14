@@ -13,7 +13,7 @@ Layout:
 | `Code/` | Everything runnable: `dashboard.py`, `update_data.py`, `src/` (shared code and the model in `src/analytics/`), `ingestion/` (fetchers, bot screen, fold, price pull), `tools/` (operations), `tests/`, `config/` (everything a user edits), `.env`. |
 | `Data/` | `abstracted/` (committed text-free aggregates), `dashboard/` (the published display bundle), `research_record/` (the frozen research evidence), and the git-ignored runtime stores `raw/`, `processed/`, `prices/`, `reference/`. |
 | `Reports/` | One log per run in `logs/`, plus the bot-screen summary and the forum-panel review. Machine-local, git-ignored. |
-| `Reference Materials/` | This runbook and `research.ipynb`, the write-up of how the method works. `archive/` (git-ignored) holds long-form notes and research notebooks. |
+| `Reference Materials/` | This runbook; `research.ipynb`, the write-up of how the method works; and `ice_source_review.ipynb`, the completed assessment of a vendor Reddit source. `archive/` (git-ignored) holds long-form notes and older research notebooks. |
 | `Presentations/` | Decks and demo material. Nothing runnable reads from it. |
 
 The repository root also carries `README.md`, `requirements.txt` and

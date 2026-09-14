@@ -2532,11 +2532,14 @@ class TestStaleTabIsVisible:
         assert "server.port" in src
 
     def test_the_runbook_has_the_restart_recipe(self):
-        """RUNBOOK.md documents the stale-tab symptom and both ports."""
+        """RUNBOOK.md says an edit should land by itself, and gives the
+        recipe for the one case that still needs a hand: a second server
+        holding the next port."""
         from pathlib import Path
         rb = (Path(__file__).resolve().parents[2] / "Reference Materials"
               / "RUNBOOK.md").read_text(encoding="utf-8")
-        assert "A code or config edit is not showing" in rb
+        assert "An edit should appear on its own" in rb
+        assert "folderWatchBlacklist" in rb
         assert "8501" in rb and "8502" in rb
 
 
