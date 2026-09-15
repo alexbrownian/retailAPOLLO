@@ -52,6 +52,7 @@ Input files:
 """
 
 import argparse
+import datetime
 import glob
 import json
 import os
@@ -71,7 +72,6 @@ except Exception:
 
 from src import abstracted_data                               # noqa: E402
 from src.clean_data import read_json_lines                    # noqa: E402
-from src import config                                        # noqa: E402
 from src.config import DATA_DIR  # noqa: E402
 
 LEDGER_PATH = os.path.join(DATA_DIR, "reference",
@@ -87,12 +87,28 @@ NEEDED = ["id", "date", "title", "selftext", "source"]
 
 # ---------------------------------------------------------------- ledger
 def load_ledger():
-    """Return the fold ledger, or an empty one when absent or unreadable."""
+    """Return the fold ledger, or an empty one when it is absent.
+
+    An unreadable ledger is refused rather than treated as empty. It is
+    the only record of which blocks are already in the aggregates, and
+    merges are additive: folding without it would re-add every block it
+    lists, and that double count is permanent and invisible.
+
+    Raises:
+        SystemExit: When the ledger exists and cannot be read.
+    """
     if os.path.exists(LEDGER_PATH):
         try:
             return json.load(open(LEDGER_PATH, encoding="utf-8"))
-        except (ValueError, OSError):
-            pass
+        except (ValueError, OSError) as exc:
+            raise SystemExit(
+                f"REFUSED: the fold ledger cannot be read "
+                f"({type(exc).__name__}: {exc}):\n  {LEDGER_PATH}\n"
+                "It is the only record of what is already folded, and "
+                "merges add counts, so folding without it double counts "
+                "every block it lists - permanently and invisibly. "
+                "Restore it from a snapshot under Data/reference/_backups, "
+                "or move it aside deliberately to fold from scratch.")
     return {"blocks": {}}
 
 
@@ -279,9 +295,12 @@ def fold_file(path, led, args, subs, lo, hi):
             # now fully read, so the block is complete.
             _p = led["blocks"].get(k, {})
             prev = _p.get("posts", 0) if (args.force or _p.get("partial")) else 0
-            led["blocks"][k] = {"posts": n + prev,
-                                "folded_utc": pd.Timestamp.utcnow()
-                                .strftime("%Y-%m-%dT%H:%M:%S")}
+            # Naive UTC: the ledger stamp is a bare wall clock, so the
+            # tzinfo is dropped rather than carried into the format.
+            _stamp = (datetime.datetime.now(datetime.timezone.utc)
+                      .replace(tzinfo=None)
+                      .strftime("%Y-%m-%dT%H:%M:%S"))
+            led["blocks"][k] = {"posts": n + prev, "folded_utc": _stamp}
             save_ledger(led)
     print(f"  {base}: read {total:,} | kept {kept:,} | "
           f"outside window {skipped_win:,} | other subreddit {skipped_sub:,}")

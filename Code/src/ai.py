@@ -90,14 +90,15 @@ def _load_env() -> None:
     path = os.path.join(_ROOT, ".env")
     if not os.path.exists(path):
         return
-    for line in open(path, encoding="utf-8"):
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        k, v = k.strip(), v.strip()
-        if k and v and k not in os.environ:
-            os.environ[k] = v
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k, v = k.strip(), v.strip()
+            if k and v and k not in os.environ:
+                os.environ[k] = v
 
 
 _load_env()
@@ -312,6 +313,15 @@ def _call_openai(client, prompt, system, max_tokens, temperature) -> str:
     resp = client.chat.completions.create(
         model=MODEL, messages=messages,
         max_tokens=max_tokens, temperature=temperature)
+    if not getattr(resp, "choices", None):
+        # An answer with no choices at all indexes as a bare IndexError,
+        # which the retry loop reports as the failure of the whole call
+        # while naming neither the provider nor what came back. Report it
+        # the way an empty answer is reported.
+        raise RuntimeError(
+            "the model returned no choices "
+            f"(model={getattr(resp, 'model', '?')!r}, "
+            f"id={getattr(resp, 'id', '?')!r})")
     return resp.choices[0].message.content or ""
 
 

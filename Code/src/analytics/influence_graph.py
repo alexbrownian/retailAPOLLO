@@ -140,7 +140,10 @@ class Graph:
         if keep.dtype == bool:
             rows = np.flatnonzero(keep)
         else:
-            rows = np.array([self.idx[k] for k in keep if k in self.idx])
+            # dtype is explicit so that a keep list matching nothing still
+            # indexes as integers and yields an empty graph.
+            rows = np.array([self.idx[k] for k in keep if k in self.idx],
+                            dtype=int)
         return Graph(names=self.names[rows],
                      A=self.A[rows][:, rows].tocsr())
 
@@ -886,7 +889,9 @@ def kcore_subgraph(g: Graph, k: int | None = None, min_nodes: int = 40,
     """
     core = core_number(g)
     if k is None:
-        k = max(int(core.max()), 1)
+        # a graph with no nodes has no maximum to walk down from, so the
+        # depth falls back to 1 and the core comes out empty.
+        k = max(int(core.max()), 1) if len(core) else 1
         while k > 1 and int((core >= k).sum()) < min_nodes:
             k -= 1
     keep = core[core >= k].index.to_numpy()

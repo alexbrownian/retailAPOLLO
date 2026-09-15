@@ -50,7 +50,8 @@ leak the future into a backtest.
 
 from __future__ import annotations
 
-import numpy as np
+import weakref
+
 import pandas as pd
 
 from src.config import MIN_TOTAL
@@ -66,31 +67,48 @@ PRIOR_STRENGTH = MIN_TOTAL  # posts of evidence at which data outweighs prior
 # cached day-total tables (the same frames are passed once per instrument -
 # ~100x per pipeline run - so the groupby is paid once, not 100 times)
 # ---------------------------------------------------------------------------
+#
+# An entry is (weak reference to the source frame, cached table). `id()`
+# alone is not an identity: a freed frame's address is handed straight back
+# to the next allocation, so a later frame of the same length can land on
+# the same key and read another instrument's totals. The weak reference
+# settles it - it resolves to the frame the entry belongs to, or to None
+# once that frame is gone, and either way a mismatch simply recomputes.
+# Weak, so the cache never keeps a frame alive.
 _TOTALS_CACHE: dict = {}
+
+
+def _cached(key: tuple, frame: pd.DataFrame):
+    """The table cached under `key`, or None unless `frame` is the very
+    frame that entry belongs to."""
+    ref, hit = _TOTALS_CACHE.get(key, (None, None))
+    return hit if ref is not None and ref() is frame else None
 
 
 def _day_totals(counts_long: pd.DataFrame) -> pd.Series:
     """Total mentions per day, cached on the identity of the frame."""
     key = (id(counts_long), len(counts_long))
-    hit = _TOTALS_CACHE.get(key)
+    hit = _cached(key, counts_long)
     if hit is not None:
         return hit
     tot = counts_long.groupby("date")["mention_count"].sum()
     if len(_TOTALS_CACHE) > 16:      # a run touches ~4 tables; stay tiny
         _TOTALS_CACHE.clear()
-    _TOTALS_CACHE[key] = tot
+    _TOTALS_CACHE[key] = (weakref.ref(counts_long), tot)
     return tot
 
 
 def _source_totals(by_source: pd.DataFrame) -> pd.DataFrame:
     """date x source total-mention matrix, cached like _day_totals."""
     key = (id(by_source), len(by_source), "src")
-    hit = _TOTALS_CACHE.get(key)
+    hit = _cached(key, by_source)
     if hit is not None:
         return hit
+    # float BEFORE the unstack: mention_count is integer, and a 0.0
+    # fill_value cannot be held in an integer dtype
     tot = (by_source.groupby(["date", "source"])["mention_count"].sum()
-           .unstack(fill_value=0.0))
-    _TOTALS_CACHE[key] = tot
+           .astype("float64").unstack(fill_value=0.0))
+    _TOTALS_CACHE[key] = (weakref.ref(by_source), tot)
     return tot
 
 
@@ -130,7 +148,7 @@ def robust_share(counts_long: pd.DataFrame, entity_col: str, name: str,
         src_tot = _source_totals(by_source).reindex(all_days).fillna(0.0)
         if len(one):
             k_by = (one.groupby(["date", "source"])["mention_count"].sum()
-                    .unstack(fill_value=0.0)
+                    .astype("float64").unstack(fill_value=0.0)
                     .reindex(index=all_days, columns=src_tot.columns)
                     .fillna(0.0))
         else:

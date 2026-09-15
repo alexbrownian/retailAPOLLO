@@ -10,8 +10,9 @@ ev_clean_energy,LIT,LIT|XLY,yes,
 uranium_nuclear,URA,URA,yes,
 defense_aerospace,ITA,ITA|XLI,yes,
 europe_defense,EUAD,EUAD|ITA,yes,European A&D (Select STOXX). ITA is a US proxy (wrong region) and stays only as a fallback.
-short_squeeze,ARKK,ARKK,yes,"PROXY, weak by construction: no squeeze ETF exists. ARKK is the closest approved high-beta speculative basket, so it tracks the RISK APPETITE these names ride, not the names themselves. Read this theme's price panel as a regime indicator, not a tradeable line."
-meme_stocks,ARKK,ARKK,no,"PROXY, same caveat as short_squeeze: ARKK holds none of the meme names. It is the approved stand-in for speculative appetite. GME/AMC are tracked as single names in the store."
+short_squeeze,ARKK,ARKK,yes,"PROXY, weak by construction: no squeeze ETF exists. ARKK is the closest approved high-beta speculative basket, so it tracks the RISK APPETITE these names ride, not the names themselves. Read this theme's price panel as a regime indicator, not a tradeable line. Ticker membership is the curated squeeze names; counts stored through 2026-08-21 rest on a wider list and are not comparable with later days."
+meme_stocks,ARKK,ARKK,no,"PROXY, same caveat as short_squeeze: ARKK holds none of the meme names. It is the approved stand-in for speculative appetite. GME/AMC are tracked as single names in the store. Ticker membership is the curated meme names; counts stored through 2026-08-21 rest on a wider list and are not comparable with later days."
+disruptive_innovation,ARKK,ARKK|VUG|QQQ,yes,"ARKK is the theme's own fund, so the price line is direct. Stored counts begin 2025-08-21, where the raw text store begins; the 2017-2025 aggregate history holds nothing for this theme."
 biotech_pharma,XBI,XBI|XLV|BBH,yes,
 rates_bonds,,,yes,"Not in the tradeable universe (no anchor) - still tracked in the data; fill the etf cell (e.g. TLT, if approved) to enable."
 real_estate,,,yes,"Not in the tradeable universe (no anchor) - still tracked in the data; fill the etf cell to enable."

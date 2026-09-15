@@ -216,7 +216,6 @@ def get_engine_name() -> str:
 def _store_path() -> str:
     """Returns the score store path for the active engine."""
     import os
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     safe = get_engine_name().replace("+", "_")
     return os.path.join(DATA_DIR, "processed", f"sentiment_scores_{safe}.parquet")
 

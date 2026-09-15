@@ -35,7 +35,7 @@ from functools import lru_cache
 
 import pandas as pd
 
-from src.config import PROCESSED_DIR, PRICES_PATH
+from src.config import PROCESSED_DIR
 
 # Canonical filenames (stable across project generations, so projects'
 # outputs remain directly comparable file-for-file).

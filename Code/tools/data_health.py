@@ -15,7 +15,8 @@ check reports ``BAD``.
 Checks:
 
 freshness
-    How stale each aggregate and the price store are.
+    How stale each aggregate and the price store are, and how many price
+    series carry closes from more than one provider.
 corporate actions
     Single-session price moves consistent with an unadjusted split.
 coverage
@@ -55,7 +56,7 @@ try:
 except Exception:
     pass
 
-ABS = os.path.join(PROJECT_ROOT, "Data/abstracted")
+ABS = os.path.join(DATA_DIR, "abstracted")
 REF = os.path.join(DATA_DIR, "reference")
 RAW = os.path.join(DATA_DIR, "raw")
 PRICES = os.path.join(DATA_DIR, "prices", "prices.parquet")
@@ -84,23 +85,71 @@ def check_freshness(out, say):
     if os.path.exists(tc):
         d = pd.read_parquet(tc, columns=["date"])
         newest = pd.to_datetime(d["date"]).max()
-        lag = (pd.Timestamp.today().normalize() - newest.normalize()).days
-        st = OK if lag <= 4 else (WARN if lag <= 10 else BAD)
-        say(f"  aggregates newest day : {newest.date()}  ({lag}d old)", st)
-        out["aggregates_newest"] = str(newest.date())
-        out["aggregates_lag_days"] = int(lag)
+        # An empty store has no newest day. Saying so is the report; the
+        # arithmetic below would raise on NaT and take the price line
+        # with it.
+        if pd.isna(newest):
+            say("  aggregates newest day : the store holds no rows", BAD)
+        else:
+            lag = (pd.Timestamp.today().normalize() - newest.normalize()).days
+            st = OK if lag <= 4 else (WARN if lag <= 10 else BAD)
+            say(f"  aggregates newest day : {newest.date()}  ({lag}d old)", st)
+            out["aggregates_newest"] = str(newest.date())
+            out["aggregates_lag_days"] = int(lag)
     if os.path.exists(PRICES):
         p = pd.read_parquet(PRICES, columns=["date"])
         newest = pd.to_datetime(p["date"]).max()
-        lag = (pd.Timestamp.today().normalize() - newest.normalize()).days
-        # a close is only expected on trading days; 5d covers a long weekend
-        st = OK if lag <= 5 else (WARN if lag <= 12 else BAD)
-        say(f"  prices newest close   : {newest.date()}  ({lag}d old)", st)
-        out["prices_newest"] = str(newest.date())
-        out["prices_lag_days"] = int(lag)
-        if st != OK:
-            say("     -> signals cannot be judged past the last close",
-                WARN)
+        if pd.isna(newest):
+            say("  prices newest close   : the store holds no rows", BAD)
+        else:
+            lag = (pd.Timestamp.today().normalize() - newest.normalize()).days
+            # a close is only expected on trading days; 5d covers a long weekend
+            st = OK if lag <= 5 else (WARN if lag <= 12 else BAD)
+            say(f"  prices newest close   : {newest.date()}  ({lag}d old)", st)
+            out["prices_newest"] = str(newest.date())
+            out["prices_lag_days"] = int(lag)
+            if st != OK:
+                say("     -> signals cannot be judged past the last close",
+                    WARN)
+        _mixed_sources(out, say)
+
+
+def _mixed_sources(out, say):
+    """Report the price series that carry more than one ``source``.
+
+    A daily pull extends a stored series with whichever provider
+    answers, so a series can hold one vendor's past and another's
+    present. Two vendors' closes differ after a corporate action, and
+    such a step looks exactly like a price move to everything
+    downstream. Naming the series is what keeps the seam readable.
+
+    Args:
+        out: Dict the JSON status is assembled in (mutated).
+        say: Line reporter ``say(msg, status=None)``.
+    """
+    import pyarrow.parquet as pq
+
+    # The footer alone says whether the column is there, so a store
+    # whose columns predate provider tracking costs one stat, not a read.
+    if "source" not in pq.ParquetFile(PRICES).schema_arrow.names:
+        say("  mixed-source series  : no source column - every row reads "
+            "as bloomberg")
+        out["mixed_source_symbols"] = []
+        return
+    p = pd.read_parquet(PRICES, columns=["symbol", "source"])
+    n = p.dropna(subset=["source"]).groupby("symbol")["source"].nunique()
+    mixed = sorted(n[n > 1].index)
+    total = int(p["symbol"].nunique())
+    if not mixed:
+        say(f"  mixed-source series  : 0 of {total} symbols carry more "
+            "than one source", OK)
+    else:
+        say(f"  mixed-source series  : {len(mixed)} of {total} symbols "
+            f"carry more than one source: {', '.join(mixed[:8])}"
+            f"{' ...' if len(mixed) > 8 else ''}", WARN)
+        say("     -> a spliced series steps at the seam; re-pull the "
+            "symbol in full to put it back on one vendor", WARN)
+    out["mixed_source_symbols"] = mixed
 
 
 # Single-session close-to-close moves beyond these bars are reported for
@@ -222,8 +271,8 @@ def check_dedup(out, say):
         except Exception as e:                                # noqa: BLE001
             say(f"  legacy json ledger    : UNREADABLE ({e})", BAD)
     if n_par and n_json > n_par:
-        say(f"  -> the json holds MORE ids than the parquet; the next run "
-            f"merges them", WARN)
+        say("  -> the json holds MORE ids than the parquet; the next run "
+            "merges them", WARN)
     out["seen_ids_parquet"] = n_par
     out["seen_ids_legacy_json"] = n_json
 
@@ -280,19 +329,28 @@ def check_raw(out, say):
     """
     say("RAW STORE")
     total = tmp_bytes = tmp_n = 0
-    for root, _dirs, files in os.walk(RAW):
-        if "_to_delete" in root:
-            continue
-        for fn in files:
-            fp = os.path.join(root, fn)
-            try:
-                sz = os.path.getsize(fp)
-            except OSError:
+    # Every store is staged as <path>.tmp and swapped in with os.replace,
+    # so a killed run strands the staging file wherever it was writing -
+    # the committed directories included, where it sits beside a real
+    # store looking like one. Nothing else on the page names them, so the
+    # scan covers the directories that are written, not only the raw one.
+    for base in (RAW, ABS, os.path.join(DATA_DIR, "dashboard"), REF,
+                 os.path.join(DATA_DIR, "processed"),
+                 os.path.join(DATA_DIR, "prices")):
+        for root, _dirs, files in os.walk(base):
+            if "_to_delete" in root:
                 continue
-            total += sz
-            if fn.endswith(".tmp"):
-                tmp_bytes += sz
-                tmp_n += 1
+            for fn in files:
+                fp = os.path.join(root, fn)
+                try:
+                    sz = os.path.getsize(fp)
+                except OSError:
+                    continue
+                if base == RAW:
+                    total += sz
+                if fn.endswith(".tmp"):
+                    tmp_bytes += sz
+                    tmp_n += 1
     say(f"  raw on disk           : {total / 2**30:.2f} GiB")
     st = OK if tmp_n == 0 else WARN
     say(f"  dead .tmp files       : {tmp_n} ({tmp_bytes / 2**20:,.0f} MiB)",
@@ -401,7 +459,11 @@ def main() -> int:
         say("")
 
     out["overall"] = worst
-    out["checked_utc"] = datetime.datetime.utcnow().isoformat(timespec="seconds")
+    # Naive UTC: the stamp is read back as a bare wall clock, so the
+    # tzinfo is dropped rather than written as a +00:00 suffix.
+    out["checked_utc"] = (datetime.datetime.now(datetime.timezone.utc)
+                          .replace(tzinfo=None)
+                          .isoformat(timespec="seconds"))
     try:
         os.makedirs(REF, exist_ok=True)
         tmp = STATUS + ".tmp"
@@ -420,7 +482,7 @@ def main() -> int:
     print("\n".join(lines))
     print("=" * 62)
     print(f"OVERALL: {worst.upper()}")
-    print(f"written: {os.path.relpath(STATUS, PROJECT_ROOT)}")
+    print(f"written: {os.path.relpath(STATUS, os.path.dirname(PROJECT_ROOT))}")
     print("=" * 62)
     return 0 if worst != BAD else 1
 

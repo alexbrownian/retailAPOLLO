@@ -85,9 +85,8 @@ import os
 import numpy as np
 import pandas as pd
 
-from src.config import (PROCESSED_DIR, PRICES_PATH,
-                        EUPHORIA_COOLDOWN_DAYS)
-from src.analytics.euphoria import build_all_series, judgeable_window
+from src.config import PRICES_PATH
+from src.analytics.euphoria import build_all_series
 from src.analytics.euphoria_phases import (episode_catalog, build_day_frame,
                                        run_tournament_entry, _pregroup,
                                        _tally, desk_end_fit,
@@ -358,11 +357,15 @@ def _choose_threshold_fbeta(train_scored: pd.DataFrame,
     beta=1 balances the two (the STANDARD operating point); beta=0.5
     weights precision twice as heavily (the STRICT operating point -
     fewer false alarms, fewer captures). Tie -> the more conservative
-    (higher) threshold."""
+    (higher) threshold. With no train score at all (a store too thin to
+    have produced one) the cut is infinity - nothing can clear it, the
+    conservative default taken to its limit."""
+    scores = train_scored["score"].dropna()
+    if scores.empty:
+        return float("inf")
     years = sorted(train_scored.year.unique())
     in_years = lambda eps: eps.year.isin(years)          # noqa: E731
-    grid = np.unique(np.percentile(train_scored["score"].dropna(),
-                                   np.arange(50, 100, 2.5)))
+    grid = np.unique(np.percentile(scores, np.arange(50, 100, 2.5)))
     groups = _pregroup(train_scored, episodes)
     b2 = beta * beta
     best_thr, best_f = float(grid[-1]), -1.0
@@ -521,8 +524,7 @@ def run_ml_tournament(frame: pd.DataFrame, episodes: pd.DataFrame,
     _t_all = _time.time()
     _done = 0
     _crowd_too = cand_px is not None and not pinned
-    _total = len(entries) * 2 * (2 if cand_px is not None and not pinned
-                                 else 1)
+    _total = len(entries) * 2 * (2 if _crowd_too else 1)
     if pinned:
         print(f"  model family PINNED to {'+'.join(pinned)} "
               f"(src/config.py DESK_MODEL_FAMILY) - {_total} fits, not "
@@ -546,7 +548,6 @@ def run_ml_tournament(frame: pd.DataFrame, episodes: pd.DataFrame,
                 if cand_px is not None:
                     variants.append((mname, cand_px, DESK_ML_BANK))
             for vname, vframe, vbank in variants:
-                import time as _time
                 _t0 = _time.time()
                 # ANNOUNCE BEFORE, not only after: a model fitting in
                 # silence for minutes reads as the run having stopped.
@@ -623,7 +624,10 @@ def pick_winner(results: dict) -> str:
       where 40-60%% of candidate days are already labelled positive, so
       its raw AP is inflated by construction - "how many times better
       than guessing on your own frame" is the number that compares.
-    * Ties by combined AUROC, then by fewer total false alarms.
+    * Ties by combined AUROC, then by fewer total false alarms, then by
+      family name - a set iterates in an order that changes from process
+      to process, so the last tie-break has to be a property of the
+      entries themselves or the adopted family is not reproducible.
 
     Only deployable entries compete: the rule-based baseline and the
     crowd+price learners (the *_crowd variants are the clean-claim record,
@@ -648,7 +652,7 @@ def pick_winner(results: dict) -> str:
                 -sum(r.get("false_alarms") or 10**9 for r in rs))
     if not names:
         return "rules"
-    return max(names, key=key)
+    return max(sorted(names), key=key)
 
 
 # ---------------------------------------------------------------------------
@@ -752,8 +756,10 @@ def main(sweep: bool = False) -> int:
 
     out_path = os.path.join(DATA_DIR, "research_record", "ml_tournament.json")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    with open(out_path, "w") as f:
+    tmp = out_path + ".tmp"                  # atomic swap - never half-written
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=1, default=str)
+    os.replace(tmp, out_path)
     print(f"\nsaved {out_path}")
     return 0
 

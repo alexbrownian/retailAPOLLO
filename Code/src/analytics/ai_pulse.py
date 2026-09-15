@@ -856,7 +856,10 @@ def generate(log=print, as_of=None) -> tuple[bool, str]:
     doc = _drop_filler(doc)
     if AS_OF is not None:
         doc["as_of_override"] = f"{AS_OF:%Y-%m-%d}"
-    json.dump(doc, open(out_path, "w", encoding="utf-8"), indent=1)
+    tmp = out_path + ".tmp"                  # atomic swap - never half-written
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=1)
+    os.replace(tmp, out_path)
     log(f"AI PULSE: saved -> {os.path.relpath(out_path, ROOT)} "
         f"({len(doc.get('theme_briefs') or [])} theme briefs)")
     return True, "ok"
@@ -866,7 +869,8 @@ def load() -> dict | None:
     if not os.path.exists(OUT_PATH):
         return None
     try:
-        return json.load(open(OUT_PATH, encoding="utf-8"))
+        with open(OUT_PATH, encoding="utf-8") as f:
+            return json.load(f)
     except ValueError:
         return None
 

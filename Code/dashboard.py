@@ -149,15 +149,14 @@ def _approved_symbols():
         return [str(r.get("symbol", "")).strip()
                 for r in _csv.DictReader(f)
                 if str(r.get("symbol", "")).strip()]
-from src.analytics import overlays                                     # noqa: E402
 from src.analytics import influence_graph as ig                        # noqa: E402
-from src.analytics.plain_english import (PLAIN, censor,                # noqa: E402,F401,E501
-                                     censor_series, plain,         # noqa: E402,F401,E501
-                                     half_mask, half_mask_series,  # noqa: E402,F401,E501
-                                     theme_label)                  # noqa: E402,F401,E501
+from src.analytics.plain_english import (PLAIN,                        # noqa: E402,E501
+                                     half_mask, half_mask_series,  # noqa: E402,E501
+                                     theme_label)                  # noqa: E402,E501
 from src.analytics.euphoria import resolve_anchor                      # noqa: E402
 from src.analytics.loaders import (price_series, clip_window,          # noqa: E402
-                               THEME_COUNTS, TICKER_COUNTS)
+                               THEME_COUNTS, TICKER_COUNTS,
+                               TICKER_COUNTS_BY_SOURCE)
 from src.analytics.overlays import (mention_share_series,              # noqa: E402
                                 chatter_change_series, sentiment_series,
                                 relative_sentiment_series)
@@ -202,7 +201,14 @@ def _bootstrap_from_bundles():
                 and os.path.getmtime(dst) >= os.path.getmtime(src)):
             return
         os.makedirs(os.path.dirname(dst), exist_ok=True)
-        shutil.copy2(src, dst)
+        # Stage beside the destination and swap. A copy straight onto
+        # the destination truncates it before the first byte lands, so a
+        # container killed mid-bootstrap would leave a fragment under
+        # the real name - including under Data/research_record, which is
+        # committed. The mtime test above would then treat that fragment
+        # as placed and never repair it.
+        shutil.copy2(src, dst + ".tmp")
+        os.replace(dst + ".tmp", dst)
 
     # The five text-free aggregates travel in Data/abstracted already.
     abstracted_data.hydrate(verbose=False)
@@ -211,6 +217,12 @@ def _bootstrap_from_bundles():
         return
     for name in sorted(os.listdir(BUNDLE_DIR)):
         src = os.path.join(BUNDLE_DIR, name)
+        # A publish killed part-way leaves its staging file in the bundle.
+        # It is half a store, and placing it only spreads the leftover
+        # into the working folder where the next health check counts it
+        # twice.
+        if name.endswith(".tmp"):
+            continue
         if name == "prices.parquet":
             _place(src, os.path.join(PRICES_DIR, name))
         elif name in ("nasdaqlisted.txt", "otherlisted.txt"):
@@ -375,10 +387,16 @@ def _priced_symbols():
 
 @st.cache_data(show_spinner=False)
 def _cached_priced_symbols(mtime):
+    # A damaged price store prices nothing, the same answer an absent one
+    # gives: the anchor chain falls back to the configured instrument and
+    # the price panels say they have no closes.
     if not os.path.exists(PRICES_PATH):
         return frozenset()
-    return frozenset(pd.read_parquet(
-        PRICES_PATH, columns=["symbol"])["symbol"].unique())
+    try:
+        store = pd.read_parquet(PRICES_PATH, columns=["symbol"])
+    except Exception:                                    # noqa: BLE001
+        return frozenset()
+    return frozenset(store["symbol"].unique())
 
 # ---- TECHNICAL CONFIRMATION (the five gates) -----------------------------
 # A five-condition momentum screen, in two windows, computed from close
@@ -410,9 +428,16 @@ def _momentum_gates(mtime):
 
     TREAT THE RETURN VALUE AS READ-ONLY - it is shared, not copied.
     """
+    # A damaged price store gates nothing, the same answer an absent one
+    # gives: _tech_confirms reads no agreement and the annotation is left
+    # off, which is the display-only role this whole screen has.
     if not os.path.exists(PRICES_PATH):
         return {}
-    px = pd.read_parquet(PRICES_PATH, columns=["date", "symbol", "px_last"])
+    try:
+        px = pd.read_parquet(PRICES_PATH,
+                             columns=["date", "symbol", "px_last"])
+    except Exception:                                    # noqa: BLE001
+        return {}
     px["date"] = pd.to_datetime(px["date"])
     out = {}
     for sym, g in px.groupby("symbol"):
@@ -525,11 +550,17 @@ def _level_outcome_frame(lv_mtime, px_mtime):
     lv_path = os.path.join(PROCESSED_DIR, "euphoria_levels.parquet")
     if not (os.path.exists(lv_path) and os.path.exists(PRICES_PATH)):
         return None
-    lv = pd.read_parquet(lv_path,
-                         columns=["date", "name", "symbol", "kind", "level"])
+    # Either store damaged answers the question the same way an absent
+    # one does - no comparable days - so the caller drops the block and
+    # the chart draws without it.
+    try:
+        lv = pd.read_parquet(
+            lv_path, columns=["date", "name", "symbol", "kind", "level"])
+        px = pd.read_parquet(PRICES_PATH)
+    except Exception:                                    # noqa: BLE001
+        return None
     lv = lv[(lv["kind"] == "theme") & lv["level"].notna()]
     lv["date"] = pd.to_datetime(lv["date"])
-    px = pd.read_parquet(PRICES_PATH)
     px["date"] = pd.to_datetime(px["date"])
     out = []
     for sym, g in lv.groupby("symbol"):
@@ -1246,7 +1277,18 @@ def _mtime(path):
 
 @st.cache_data(show_spinner=False)
 def _read(path, mtime):
-    df = pd.read_parquet(path)
+    """One cached parquet store, or None when the file cannot be parsed.
+
+    A store truncated by a killed write, or a staging file swapped in
+    half-finished, is unreadable rather than absent. Returning None sends
+    it down the path a missing store already takes, so one damaged file
+    costs its own panel instead of the page. The verdict is cached against
+    the mtime it was read at, so it survives a rerun and a rewritten file
+    is read afresh."""
+    try:
+        df = pd.read_parquet(path)
+    except Exception:                                    # noqa: BLE001
+        return None
     for col in ("date", "action_date", "signal_date"):
         if col in df.columns:
             df[col] = pd.to_datetime(df[col])
@@ -1256,14 +1298,31 @@ def _read(path, mtime):
 @st.cache_data(show_spinner=False)
 def _read_json(path, mtime):
     """Small cached JSON read - the research record's verdict files, so
-    the dashboard can quote a measured number instead of restating it."""
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+    the dashboard can quote a measured number instead of restating it.
+
+    None when the file does not parse, on the same grounds as ``_read``:
+    a half-written or hand-edited record costs one panel its figure, not
+    the page."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
 
 
 def load(name, folder=PROCESSED_DIR):
     path = os.path.join(folder, name)
-    return _read(path, _mtime(path)) if os.path.exists(path) else None
+    if not os.path.exists(path):
+        return None
+    df = _read(path, _mtime(path))
+    if df is None:
+        # On disk but unreadable. Say so beside the panel that asked for
+        # it: a silent gap reads as "nothing collected yet", which sends
+        # the reader to re-run a pipeline that is not the problem.
+        st.warning(f"`{name}` is on disk but cannot be read - the file is "
+                   f"damaged. Panels that need it stay blank until a run "
+                   f"rewrites it.")
+    return df
 
 
 # ---------------------------------------------------------------------------
@@ -1282,9 +1341,10 @@ RESEARCH_DIR = os.path.join(DATA_DIR, "research_record")
 
 
 def _research(name):
-    """One research-record verdict dict, or {} if that record is absent."""
+    """One research-record verdict dict, or {} if that record is absent
+    or unreadable."""
     path = os.path.join(RESEARCH_DIR, f"{name}.json")
-    return _read_json(path, _mtime(path)) if os.path.exists(path) else {}
+    return (_read_json(path, _mtime(path)) or {}) if os.path.exists(path) else {}
 
 
 def _dig(obj, *keys, default=None):
@@ -1979,8 +2039,14 @@ def _mood_series(mode, sent_df, entity_col, name, lo, hi):
 
 def _attention_series(mode, entity_counts, entity_col, name, lo, hi):
     if mode.startswith("level"):
+        # The ticker branch feeds the per-source-stratified estimator the
+        # ticker score is computed on, so the line and the score beside it
+        # agree. Themes have no by-source aggregate, so they take the
+        # unstratified estimator.
+        by_src = (load(TICKER_COUNTS_BY_SOURCE)
+                  if entity_col == "ticker" else None)
         return (mention_share_series(entity_counts, entity_col, name,
-                                     lo, hi),
+                                     lo, hi, by_source=by_src),
                 "attention (share of chatter, %)",
                 "share of chatter (%)", False)
     return (chatter_change_series(entity_counts, entity_col, name, lo, hi),
@@ -2169,7 +2235,7 @@ def _desk_weights():
     if not os.path.exists(_p):
         return None
     try:
-        _j = json.load(open(_p))
+        _j = json.load(open(_p, encoding="utf-8"))
         return {"in": (_j.get("get_in") or {}).get("logit_weights")
                 or {},
                 "out": (_j.get("get_out") or {}).get("logit_weights")
@@ -2180,11 +2246,9 @@ def _desk_weights():
 euph = load("euphoria_levels.parquet")
 if euph is not None:
     euph["date"] = pd.to_datetime(euph["date"])
-euph_report = None
 _rep_path = os.path.join(PROCESSED_DIR, "euphoria_report.json")
-if os.path.exists(_rep_path):
-    import json as _json
-    euph_report = _json.load(open(_rep_path))
+euph_report = (_read_json(_rep_path, _mtime(_rep_path))
+               if os.path.exists(_rep_path) else None)
 
 # the ONSET detector's outputs (the phases study; produced by
 # `run_analytics --what phases` / any full analytics recompute)
@@ -2199,11 +2263,9 @@ if onset is not None:
 desk = load("euphoria_desk.parquet")
 if desk is not None:
     desk["date"] = pd.to_datetime(desk["date"])
-desk_report = None
 _dkrep_path = os.path.join(PROCESSED_DIR, "euphoria_desk_report.json")
-if os.path.exists(_dkrep_path):
-    import json as _json
-    desk_report = _json.load(open(_dkrep_path))
+desk_report = (_read_json(_dkrep_path, _mtime(_dkrep_path))
+               if os.path.exists(_dkrep_path) else None)
 
 # episodes.parquet is deliberately NOT loaded here. It is the ground truth
 # a scorecard would judge against, and nothing on this dashboard scores
@@ -2252,7 +2314,10 @@ def _ai_poll_load():
 prices = _read(PRICES_PATH, _mtime(PRICES_PATH)) if os.path.exists(PRICES_PATH) else None
 priced = set(prices["symbol"]) if prices is not None else set()
 
-if theme_counts is None:
+# A store with no rows in it answers no question this page asks - every
+# date, window and ranking below is derived from it - so it stops here
+# with the same sentence an absent store gets.
+if theme_counts is None or theme_counts.empty:
     st.error("No aggregate data - run update_data.py first.")
     st.stop()
 
@@ -2289,13 +2354,20 @@ _pub = (_read_json(_pub_path, _mtime(_pub_path))
         if os.path.exists(_pub_path) else None)
 _pub_through = _pub_at = None
 if isinstance(_pub, dict):
+    # The two fields are parsed independently: published_at is decoration
+    # on the notice, data_through is what the half-applied-deploy check
+    # below compares, so an unreadable timestamp in a hand-edited manifest
+    # costs the line its "published at" clause and nothing else.
     try:
         if _pub.get("data_through"):
             _pub_through = pd.Timestamp(_pub["data_through"])
+    except (ValueError, TypeError):       # a hand-edited manifest
+        _pub_through = None
+    try:
         if _pub.get("published_at"):
             _pub_at = pd.Timestamp(_pub["published_at"]).tz_localize(None)
-    except (ValueError, TypeError):       # a hand-edited manifest
-        _pub_through = _pub_at = None
+    except (ValueError, TypeError):
+        _pub_at = None
 # Only ONE direction is a fault. Published AHEAD of what loaded = the
 # deploy is half-applied. Published BEHIND = the pipeline host has run
 # the pipeline and not published yet, which is the normal state of a
@@ -2571,9 +2643,9 @@ def _launch_current_step():
 
 # ---- LAYMAN PROGRESS TRACKING -------------------------------------------
 # The pipeline scripts print known marker lines as they work ("DATA
-# COVERAGE", "pulling Bloomberg prices", ...). The panel scans the log for
-# those markers and translates them into a progress bar + a plain-English
-# stage checklist. Each stage is (label, [marker substrings]); a stage
+# COVERAGE", "pulling prices (provider: ...)", ...). The panel scans the
+# log for those markers and translates them into a progress bar + a
+# plain-English stage checklist. Each stage is (label, [marker substrings]); a stage
 # counts as REACHED once any of its markers appears in the log. The raw
 # log stays available in a "technical log" expander for debugging.
 STAGES = {
@@ -2593,9 +2665,11 @@ STAGES = {
                   "conviction (ticker", "signals (theme",
                   "phases (the onset detector", "influence (live board",
                   "THEME decisions", "analytics finished"]),
-    "prices":   ("Downloading prices from Bloomberg",
-                 ["BLOOMBERG PRICE PULL", "pulling Bloomberg prices",
-                  "requesting "]),
+    # provider-neutral on purpose: update_data.py logs the provider it was
+    # given (bloomberg / tiingo / auto) and ingestion/pull_prices.py heads
+    # its own run with PRICE PULL whichever provider answers.
+    "prices":   ("Downloading prices from the configured provider",
+                 ["PRICE PULL", "pulling prices (provider"]),
     "wrapup":   ("Safety check + wrap-up",
                  ["snapshot ->", "safety check", "RUN SUMMARY"]),
     "comments": ("Fetching Reddit comments (resumable - cancel is safe)",
@@ -2611,7 +2685,10 @@ STAGES = {
 # historical rebuild is a shell-only operation on the machine that
 # holds posts.parquet (python Code/update_data.py --full).
 PLANS = {
-    "live":      ["fetch", "store", "coverage", "analyse", "prices",
+    # the order is the order the scripts run in: update_data.py pulls
+    # prices between the window check and the analytics, and the QUICK
+    # UPDATE button runs pull_prices.py ahead of update_data.py.
+    "live":      ["fetch", "store", "coverage", "prices", "analyse",
                   "pulse", "wrapup"],
     "window":    ["prices", "coverage", "analyse", "pulse", "wrapup"],
     "comments":  ["comments", "influence"],
@@ -2782,7 +2859,7 @@ if LOCAL_CONTROLS and st.sidebar.button(
 _c_est = ""
 if LOCAL_CONTROLS:
     try:
-        from update_comments import estimate as _comment_estimate
+        from ingestion.update_comments import estimate as _comment_estimate
 
         from ingestion.fetch_reddit_comments import (default_lookback_days
                                                      as _c_lookback)
@@ -3725,10 +3802,6 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
     use_desk = dk is not None and len(dk)
     _mdl = (desk_report or {}).get("model", "rules")
     if use_desk and _mdl != "rules":
-        _mdl_words = {"ens": "logit + monotone-GBM ensemble",
-                      "logit": "logistic regression",
-                      "gbm": "monotone gradient boosting",
-                      "mlp": "neural network (MLP)"}.get(_mdl, _mdl)
         _ins_path = os.path.join(PROCESSED_DIR, "desk_model_insight.json")
         # Model weights are reference, not an action - the landing page
         # keeps only what changes a decision today.
@@ -3736,7 +3809,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
             with st.expander("what drives INCREASE EXPOSURE / CUT EXPOSURE — the "
                              "model's own weights", expanded=False):
                 import json as _json_i
-                _ins = _json_i.load(open(_ins_path))
+                _ins = _json_i.load(open(_ins_path, encoding="utf-8"))
                 st.caption(
                     "Two independent reads of the LIVE fit. **Logit "
                     "weight**: the linear member's coefficient — "
@@ -3800,13 +3873,6 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                         st.markdown(f"**{_ht}**")
                         st.dataframe(_df_i, hide_index=True,
                                      width="content")
-                _arch = os.path.join("docs", "figures", "deck",
-                                     "F21_model_architecture.png")
-                if os.path.exists(_arch):
-                    st.image(_arch, caption="how a call is made: 9 crowd "
-                             "measurements + 2 price measurements → two "
-                             "models → rank ensemble → frozen cut → "
-                             "INCREASE EXPOSURE / CUT EXPOSURE")
     if use_desk:
         src_in = dk[dk[sig_col("get_in", dk)].astype(bool)]
         # SINGLE-NAME DISPLAY BAR: a ticker
@@ -3968,81 +4034,6 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
               "frozen trigger while every gate is open."]
         md += [f"- {ln}" for ln in lines]
         return "\n".join(md)
-
-    # ---- SIGNAL OUTCOME RECORD: median time after a signal for price
-    # to move up / down by X%, plus the price change 5, 20 and 84 days
-    # after each signal.  The X% move is the SAME test the research
-    # record uses for the danger state: a >=10%-in-7d move STARTING within
-    # 30d of the signal (GAUGE_DROP / GAUGE_FWD / GAUGE_HORIZON there).
-    # Down-moves are measured after CUT, up-moves after INCREASE.
-    # 5/20/84 are TRADING days (a week / a month / the project's baseline
-    # window).  Alerts too new to judge are excluded, never counted
-    # against the signal - the same PENDING rule as the research record.
-    def _outcome_stats(name, win_lo=None, win_hi=None):
-        """Signal outcomes for one name, ALERTS CLIPPED TO THE SIDEBAR
-        WINDOW, so each chart's metrics follow the timeframe window.  The
-        JUDGING always uses the full price history - an alert near the
-        window edge is still judged on what actually followed it, the
-        window only selects WHICH alerts are in the record.  Few alerts
-        in a short window = a noisy median; n is always shown."""
-        li, _oi, _di = _rows_for(name)
-        if li is None or not len(li) or prices is None:
-            return None
-        sym_ = li["symbol"].iloc[0]
-        pr = prices[prices["symbol"] == sym_].sort_values("date")
-        if not len(pr):
-            return None
-        px_ = pr.set_index("date")["px_last"]
-        px_ = px_[~px_.index.duplicated(keep="last")]
-        # CALENDAR-DAILY series for the 10%-in-7d test - the SAME basis
-        # the research record judges on (pxd = asfreq("D").ffill()).  The
-        # 5/20/84 forward changes below stay on TRADING-day rows on
-        # purpose (they are labelled "td"); a weekly-move test on trading
-        # rows would span ~11 calendar days and overstate hits vs the
-        # record.
-        pxc = px_.asfreq("D").ffill()
-        co_, ct_ = coherent.get(name, ([], []))
-        if win_lo is not None:
-            co_ = [d for d in co_
-                   if d >= win_lo and (win_hi is None or d <= win_hi)]
-            ct_ = [d for d in ct_
-                   if d >= win_lo and (win_hi is None or d <= win_hi)]
-        out = {}
-        for side_, alerts_ in (("out", ct_), ("in", co_)):
-            sgn = -1.0 if side_ == "out" else 1.0
-            fwd_ext = (pxc.rolling(8).min() if side_ == "out"
-                       else pxc.rolling(8).max()).shift(-7)
-            week_move = (fwd_ext / pxc - 1) * sgn >= 0.10
-            chg, waits, hits, judged = {5: [], 20: [], 84: []}, [], 0, 0
-            for a in alerts_:
-                pos = px_.index.searchsorted(pd.Timestamp(a))
-                if pos >= len(px_):
-                    continue
-                p0 = float(px_.iloc[pos])
-                for h in (5, 20, 84):
-                    if pos + h < len(px_):
-                        chg[h].append(float(px_.iloc[pos + h]) / p0 - 1)
-                # the 10%-in-7d move: judgeable only with 30d of alert +
-                # 7d of measurement window after it
-                if pxc.index[-1] < (pd.Timestamp(a)
-                                    + pd.Timedelta(days=37)):
-                    continue
-                judged += 1
-                win = week_move.loc[pd.Timestamp(a):
-                                    pd.Timestamp(a) + pd.Timedelta(days=30)]
-                hit_days = win[win.fillna(False)]
-                if len(hit_days):
-                    hits += 1
-                    waits.append((hit_days.index[0]
-                                  - pd.Timestamp(a)).days)
-            out[side_] = {
-                "n": len(alerts_), "judged": judged, "hits": hits,
-                "med_wait": (float(pd.Series(waits).median())
-                             if waits else None),
-                "chg": {h: (float(pd.Series(v).median()) if v else None)
-                        for h, v in chg.items()},
-            }
-        return out
 
     # ---- THE SIGNAL, unmissable: euphoria ending (CUT) or euphoria
     # starting (INCREASE) - one red banner, one green banner, nothing to
@@ -4496,7 +4487,16 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                 _hist_r = pd.Series(dtype=float)
                 if _sc_col_r in dk_i.columns:
                     _hist_r = (dk_i[_sc_col_r].dropna() / _rd_cut * 100.0)
-                    _hist_r = _hist_r[_hist_r.index <= _lvl_ok.index[_pos]]
+                    # CLIPPED TO THE SELECTED WINDOW at both ends, the
+                    # way the level curve is: the dial's second line
+                    # says "window high", and the signal store reaches
+                    # back to 2017 while `lvl` starts at the sidebar's
+                    # window start. Unclipped at the near end, a name
+                    # that peaked in 2021 reports that peak as this
+                    # window's high on a window that opens in 2026.
+                    _hist_r = _hist_r[
+                        (_hist_r.index >= _lvl_ok.index[0])
+                        & (_hist_r.index <= _lvl_ok.index[_pos])]
                 _g_now = min(_rd_now, 130.0)
                 _g_ref = (float(_hist_r.iloc[-1 - ROLL])
                           if len(_hist_r) > ROLL else
@@ -5833,8 +5833,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
         #    reading over a year old would be presented as what to act
         #    on today. Anything older than ACTION_STALE_DAYS is therefore
         #    dropped, and every surviving row states the date its score
-        #    is from - the same 60-day convention readiness_alerts.json
-        #    already applies at source.
+        #    is from - a shorter shelf life than the 60-day staleness
+        #    rule readiness_alerts.json applies at source.
         _a_as_of = (dk["date"].max() if hi is None
                     else min(hi, dk["date"].max())) if dk is not None else None
         def _near_since(scored, col, thr):
@@ -5917,8 +5917,14 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                                  <= _row["date"] - pd.Timedelta(days=days_back)]
                     return float(_e.iloc[-1][_col]) if len(_e) else None
 
-                _sh = _a_share.get(_n) or _a_share.get(
-                    str(_row.get("symbol") or ""))
+                # BY NAME ONLY. _a_share holds theme slugs measured
+                # against the theme panel and tickers measured against
+                # the ticker panel, so falling back to the anchor ETF's
+                # symbol would print that ETF's share of TICKER chatter,
+                # and its rank among tickers, under a theme's label. A
+                # theme with nothing said about it in the window has no
+                # share, and the row says so.
+                _sh = _a_share.get(_n)
                 _a_rows.append({
                     "name": _n, "symbol": _row.get("symbol") or "-",
                     "side": _side,
@@ -6622,8 +6628,8 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
     # conclusions.
     #
     # What is below is the part a reader needs to interpret what is ON
-    # the chart - what the amber band is, why a START can be missing next
-    # to an END, and why a fresh alert has no verdict yet.  Those are
+    # the chart - what the amber band is and why a START can be missing
+    # next to an END.  Those are
     # behavioural rules, not claims about accuracy: they describe what the
     # detector DOES, and they stay true whatever the next re-measurement
     # says.  `desk_report` / `euph_report` are loaded and feed the alert
@@ -6635,8 +6641,7 @@ def render_euphoria_tab(kind, kind_label, key_prefix, mode="full"):
                "21 days of an END is suppressed as contradictory - so a "
                "lone END with no START before it is expected, not missing "
                "data. A fast START then END is a violent mania and the red "
-               "risk signal is never suppressed. Recent alerts read "
-               "PENDING until 45 days of price exists to judge them. The "
+               "risk signal is never suppressed. The "
                "measured record - walk-forward tables, ablation, ML "
                "challenger, tournament - is in the research record and "
                "research.ipynb, deliberately not here.")
@@ -7096,7 +7101,7 @@ def _reply_graph(edges_mtime: float, board_mtime: float):
     hundred nodes."""
     board = _read(_INFL_SCORES, board_mtime)
     scored = board.loc[board["composite"].notna(), "author"].to_numpy()
-    return ig.build_graph(pd.read_parquet(_INFL_EDGES), nodes=scored)
+    return ig.build_graph(_read(_INFL_EDGES, edges_mtime), nodes=scored)
 
 
 @st.cache_data(show_spinner=False)
@@ -7754,6 +7759,15 @@ if active_tab == "Influence tracker":
                 "from nothing takes two or three pulls. To do it in one "
                 "sitting instead, use the uncapped catch-up button in "
                 "the sidebar.")
+    elif _read(_INFL_SCORES, _mtime(_INFL_SCORES)) is None:
+        # Present and unparseable. The board is the spine of this tab -
+        # every panel below is cut from it - so there is nothing to draw,
+        # and the sentence names the file rather than sending the reader
+        # to rebuild data that is already collected.
+        st.warning("the influence store on this machine does not parse: "
+                   "`author_scores.parquet` is damaged. The next comment "
+                   "pull rewrites it; nothing is lost that a pull cannot "
+                   "rebuild.")
     else:
         _b_mt, _c_mt = _mtime(_INFL_SCORES), _mtime(_INFL_CALLS)
         board_all = _read(_INFL_SCORES, _b_mt)
@@ -7961,6 +7975,21 @@ if active_tab == "Influence tracker":
             if not os.path.exists(_INFL_EDGES):
                 st.info("no reply_edges.parquet in the store yet - the map "
                         "appears after one comment pull.")
+            elif _read(_INFL_EDGES, _mtime(_INFL_EDGES)) is None:
+                # Present and unparseable. The map is the only panel that
+                # reads the edges, so it is the only thing that goes.
+                st.warning("reply_edges.parquet does not parse - the map "
+                           "is drawn again after the next comment pull "
+                           "rewrites it. The rest of this tab is "
+                           "unaffected.")
+            elif not board_all["composite"].notna().any():
+                # The map is drawn over the people the board can SCORE
+                # (see _reply_graph), so with no composite anywhere it
+                # has no nodes to lay out at all.
+                st.info("no author carries a composite score yet - the map "
+                        "is drawn over the people the board can score, so "
+                        "it appears once the first calls have prices to "
+                        "be judged against.")
             else:
                 _e_mt = _mtime(_INFL_EDGES)
                 _mv = st.radio("view", ["the backbone (everyone who matters)",
@@ -7998,6 +8027,16 @@ if active_tab == "Influence tracker":
                         "call, which is a wider pool than the board above - "
                         f"the board needs {INFL_MIN_JUDGED}+ judged calls "
                         "before it will rank someone.")
+                elif not len(panel):
+                    # An empty panel means an empty option list, and the
+                    # selectbox then returns None - which is not a person
+                    # the graph can be centred on. The backbone above
+                    # still draws, because it needs a score, not a
+                    # ranked board.
+                    st.info(f"no author has {INFL_MIN_JUDGED}+ judged calls "
+                            "yet, so there is no panel to pick from. The "
+                            "backbone view draws every scored author in "
+                            "the meantime.")
                 else:
                     # `format_func`, NOT a masked option list: the value this
                     # widget returns is the key `_ego_frames` looks the person
@@ -8689,7 +8728,7 @@ if active_tab == "AI Pulse":
     # the full prompt panel - read straight from the editable CSV so the list
     # can never drift from what the poll actually asks; rendered
     # before the data branch so it shows even with no runs on record
-    _ppf = os.path.join("config", "ai_poll_prompts.csv")
+    _ppf = os.path.join(ROOT, "config", "ai_poll_prompts.csv")
     if os.path.exists(_ppf):
         with st.expander("the prompts the poll asks"):
             try:
@@ -8720,9 +8759,9 @@ if active_tab == "AI Pulse":
                    f"{_pl['run_date'].nunique()} run(s) on record · "
                    f"{_today['prompt_id'].nunique()} prompts answered")
         _tk = _today[_today["kind"] == "ticker"]
-        _cnt = (_tk.groupby(["name", "direction"]).size()
-                .reset_index(name="prompts"))
-        _cnt = _cnt.sort_values("prompts", ascending=False).head(15)
+        _picks = (_tk.groupby(["name", "direction"]).size()
+                  .reset_index(name="prompts"))
+        _picks = _picks.sort_values("prompts", ascending=False).head(15)
         _pc1, _pc2 = st.columns([1.2, 1])
         with _pc1:
             st.markdown("**most-recommended names today** (how many of "
@@ -8737,7 +8776,7 @@ if active_tab == "AI Pulse":
                          .astype(bool)]["name"])
                     | set(_dw2[_dw2[sig_col("get_in", _dw2)]
                                .astype(bool)]["name"]))
-            for r in _cnt.itertuples():
+            for r in _picks.itertuples():
                 _mark = ""
                 if r.name in _flagged:
                     _mark = ("  <span style='color:%s;font-weight:600'>"
@@ -9001,7 +9040,8 @@ def _hiw_runup(_key, _key2=None):
             continue
         v = pd.concat(out[kind])
         res[kind] = {"values": v.clip(upper=1.5).to_numpy(), "bar": bar,
-                     "n_instruments": len(out[kind]), "n_days": int(len(v)),
+                     "n_instruments": len(out[kind]),
+                     "n_instrument_days": int(len(v)),
                      "median": float(v.median()),
                      "pct_at_bar": float((v < bar).mean() * 100)}
     return res
@@ -9219,7 +9259,13 @@ def render_how_it_works(desk_report):
         try:
             _ts = load("daily_theme_sentiment.parquet")
             if _ts is not None and len(_ts):
-                _nm = "ai" if "ai" in set(_ts["theme"]) else _ts["theme"].iloc[0]
+                # The example is `ai` where the store has it; anywhere else
+                # it is the most-posted-about theme in the frame, ties
+                # broken alphabetically. Row order in the parquet decides
+                # nothing, so every copy draws the same chart.
+                _nm = ("ai" if "ai" in set(_ts["theme"])
+                       else _ts.groupby("theme")["n_posts"].sum()
+                       .sort_index().idxmax())
                 _s = _ts[_ts["theme"] == _nm].set_index("date").sort_index()
                 _f2 = _hiw_fig(f"net bullish for {theme_label(_nm)}, 14-day mean")
                 _f2.add_trace(go.Scatter(
@@ -9396,7 +9442,8 @@ def render_how_it_works(desk_report):
                                     key=f"hiw_runup_{_kind}")
                     st.caption(
                         f"{_d['n_instruments']} instruments, "
-                        f"{_d['n_days']:,} days. Median run-up "
+                        f"{_d['n_instrument_days']:,} instrument-days. "
+                        f"Median run-up "
                         f"{_d['median']:.0%}; the {_d['bar']:.0%} bar sits at "
                         f"the **{_d['pct_at_bar']:.0f}th percentile** - about "
                         f"one day in "
@@ -9742,11 +9789,11 @@ def render_how_it_works(desk_report):
         st.dataframe(pd.DataFrame([
             {"panel": "ticker screening", "read from": "src/screen_tickers.py + the wordfreq package, live"},
             {"panel": "bot screen", "read from": "ingestion/bot_screen.py, run live on six made-up posts"},
-            {"panel": "aggregate inventory, theme chart", "read from": "Data/abstracted/*.parquet"},
-            {"panel": "sentiment examples", "read from": "src/sentiment.py, scored live"},
+            {"panel": "aggregate inventory, theme chart", "read from": "Data/processed/*.parquet (hydrated from Data/abstracted)"},
+            {"panel": "sentiment examples, net-bullish chart", "read from": "src/sentiment.py scored live + Data/processed/daily_theme_sentiment.parquet"},
             {"panel": "AUROC, ablation, correlations, noise", "read from": "Data/processed/phase_day_frame.parquet, computed live"},
             {"panel": "price-feature AUROC", "read from": "Data/research_record/nb02_august_bank.json"},
-            {"panel": "run-up distribution", "read from": "Data/processed/prices.parquet, computed live"},
+            {"panel": "run-up distribution", "read from": "Data/prices/prices.parquet, else Data/processed/prices.parquet, with Data/processed/euphoria_desk.parquet, computed live"},
             {"panel": "episodes", "read from": "Data/processed/episodes.parquet"},
             {"panel": "ground-truth sweep, tournament", "read from": "Data/research_record/ml_tournament.json"},
             {"panel": "model weights", "read from": "Data/processed/desk_model_insight.json"},
@@ -9789,12 +9836,31 @@ if active_tab == "[dev] Data Stats":
                              "status": "MISSING"})
             continue
         _df_ds = load(_fn)
+        # On disk and unparseable - a truncated write or a half-swapped
+        # staging file. It is a distinct state from MISSING and the one
+        # this table exists to surface, because nothing else on the page
+        # can tell the reader which file to rewrite.
+        if _df_ds is None:
+            _rows_ds.append({
+                "store": _lab, "file": _fn, "status": "DAMAGED",
+                "file written": pd.Timestamp(
+                    os.path.getmtime(_pth), unit="s",
+                    tz="UTC").strftime("%Y-%m-%d %H:%M UTC"),
+                "size": f"{os.path.getsize(_pth) / 1e6:.1f} MB",
+            })
+            continue
         _dcol = "date" if "date" in _df_ds.columns else None
+        # A store rewritten to zero rows has a date column and no dates
+        # in it, so the max is NaT - and NaT has no strftime. An empty
+        # store is exactly the state this table exists to report, so it
+        # has to survive being told about one.
+        _dmax_ds = (pd.to_datetime(_df_ds[_dcol]).max() if _dcol
+                    else pd.NaT)
         _rows_ds.append({
             "store": _lab, "file": _fn,
             "rows": f"{len(_df_ds):,}",
-            "newest data day": (f"{pd.to_datetime(_df_ds[_dcol]).max():%Y-%m-%d}"
-                                if _dcol else "-"),
+            "newest data day": ("-" if pd.isna(_dmax_ds)
+                                else f"{_dmax_ds:%Y-%m-%d}"),
             "file written": pd.Timestamp(
                 os.path.getmtime(_pth), unit="s",
                 tz="UTC").strftime("%Y-%m-%d %H:%M UTC"),
@@ -9924,7 +9990,7 @@ if active_tab == "[dev] Data Stats":
                               "content": "(missing)"})
             continue
         try:
-            _d = _json_ds.load(open(_pth))
+            _d = _json_ds.load(open(_pth, encoding="utf-8"))
             _txt = _json_ds.dumps(_d)[:220]
         except (ValueError, OSError):
             _txt = "(unreadable)"

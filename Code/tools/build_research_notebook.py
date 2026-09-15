@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
 
 import nbformat
 from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
@@ -766,7 +765,7 @@ still gathering a crowd.
 """)
 
 code(r"""
-ins = json.load(open(PROCESSED / "desk_model_insight.json"))
+ins = json.load(open(PROCESSED / "desk_model_insight.json", encoding="utf-8"))
 lab = ins["plain_labels"]
 w = pd.DataFrame({"INCREASE (logit weight)": ins["get_in"]["logit_weights"],
                   "CUT (logit weight)": ins["get_out"]["logit_weights"],
@@ -813,9 +812,9 @@ cand = mld.attach_price_features(mld.candidate_frame(
     ep.build_day_frame(series_, pxmap_, episodes_, counts_, sents_)), series_, pxmap_)
 BANK = list(mld.DESK_ML_BANK)
 CROWD = [f for f in BANK if not f.startswith("price")]
-rep = json.load(open(PROCESSED / "euphoria_desk_report.json"))
+rep = json.load(open(PROCESSED / "euphoria_desk_report.json", encoding="utf-8"))
 desk = pd.read_parquet(PROCESSED / "euphoria_desk.parquet")
-labels = json.load(open(PROCESSED / "desk_model_insight.json"))["plain_labels"]
+labels = json.load(open(PROCESSED / "desk_model_insight.json", encoding="utf-8"))["plain_labels"]
 
 def pick_episode():
     # a theme mania with a CUT call inside the judged window, largest run-up first
@@ -923,7 +922,7 @@ surer calls.
 """)
 
 code(r"""
-rep = json.load(open(PROCESSED / "euphoria_desk_report.json"))
+rep = json.load(open(PROCESSED / "euphoria_desk_report.json", encoding="utf-8"))
 thr = pd.DataFrame({"INCREASE cut": rep["get_in"]["walk_forward"]["thresholds"],
                     "CUT cut": rep["get_out"]["walk_forward"]["thresholds"]}).round(3)
 thr.index.name = "test year (cut fitted on the years before it)"
@@ -1173,8 +1172,13 @@ def main(argv=None) -> int:
         client = NotebookClient(nb, timeout=a.timeout, kernel_name="python3",
                                 resources={"metadata": {"path": PROJECT}})
         client.execute()
-    with open(OUT, "w", encoding="utf-8") as f:
+    # Through a temp file next to it, then one rename: research.ipynb is
+    # committed, and a write killed partway would replace it with half a
+    # notebook that nbformat then refuses to open.
+    tmp = OUT + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         nbformat.write(nb, f)
+    os.replace(tmp, OUT)
     n_err = sum(1 for c in nb.cells if c.cell_type == "code"
                 for o in c.get("outputs", []) if o.get("output_type") == "error")
     print(f"wrote {OUT} ({len(nb.cells)} cells, {n_err} errors)")

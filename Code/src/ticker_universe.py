@@ -124,7 +124,8 @@ def load_us_ticker_universe(
     Combines nasdaqlisted + otherlisted (excluding test issues) with the
     DELISTED_TICKERS supplement. The raw .txt files are cached under
     cache_dir and re-downloaded when missing or older than
-    max_cache_age_days.
+    max_cache_age_days. A refresh that cannot reach the network falls back
+    to the cached copy and logs a warning.
 
     Args:
         cache_dir: Directory for the cached symbol files; created if
@@ -137,7 +138,8 @@ def load_us_ticker_universe(
         Set of uppercase symbols.
 
     Raises:
-        requests.HTTPError: If a download is needed and fails.
+        requests.RequestException: If a download is needed, fails, and no
+            cached copy of that file exists to fall back on.
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
     paths = {
@@ -157,7 +159,24 @@ def load_us_ticker_universe(
                 need = True
         if need:
             logger.info("Downloading %s", url)
-            dest.write_text(_fetch_text(url), encoding="utf-8")
+            try:
+                text = _fetch_text(url)
+            except Exception as exc:                        # noqa: BLE001
+                # No route to the symbol directories. A cached copy, even a
+                # stale one, is a universe; raising instead would stop every
+                # extraction on a machine that has the files already.
+                if not dest.exists():
+                    raise
+                logger.warning("Could not download %s (%s: %s); using the "
+                               "cached copy at %s", url, type(exc).__name__,
+                               exc, dest)
+            else:
+                # Write through a temp file: a download killed mid-write
+                # would otherwise leave a truncated directory that parses
+                # into a silently incomplete universe.
+                tmp = dest.with_name(dest.name + ".tmp")
+                tmp.write_text(text, encoding="utf-8")
+                tmp.replace(dest)
 
     nasdaq = _parse_nasdaq_listed((cache_dir / "nasdaqlisted.txt").read_text(encoding="utf-8"))
     other = _parse_other_listed((cache_dir / "otherlisted.txt").read_text(encoding="utf-8"))

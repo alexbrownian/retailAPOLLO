@@ -75,8 +75,7 @@ import pandas as pd
 from src.config import (ROLL, BASELINE, MIN_DAYS, PROCESSED_DIR,
                         SENT_CHANGE_HORIZON, CROWDED_ATT_Z, CROWDED_SENT_DROP,
                         CONV_BASELINE, CONV_EWM_HALFLIFE)
-from src.analytics.loaders import (load, to_wide, TICKER_SENT, THEME_SENT,
-                               TICKER_CONVICTION, THEME_CONVICTION)
+from src.analytics.loaders import load, to_wide, THEME_SENT, THEME_CONVICTION
 
 
 def ewm_z(frame: pd.DataFrame, roll: int = ROLL,
@@ -186,7 +185,10 @@ def compute_conviction(sent_df: pd.DataFrame, entity_col: str,
     # Bull pressure BEFORE pivoting (row-wise product on the long frame).
     df["bull_pressure"] = df["n_posts"] * df["net_bullish"]
 
-    all_days = pd.date_range(df["date"].min(), df["date"].max(), freq="D")
+    # an aggregate with no rows has no span to build a calendar from; the
+    # whole set is then empty rather than a NaT date_range
+    all_days = (pd.date_range(df["date"].min(), df["date"].max(), freq="D")
+                if len(df) else pd.DatetimeIndex([]))
 
     # Days with no posts carry zero pressure and zero volume - filling 0 is
     # semantically correct here (silence IS zero conviction evidence).

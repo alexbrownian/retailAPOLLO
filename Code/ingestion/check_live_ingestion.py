@@ -26,13 +26,17 @@ import datetime
 import glob
 import io
 import os
+import sys
 
 import pandas as pd
 import pyarrow.parquet as pq
 import zstandard
-from src.config import DATA_DIR, LOG_DIR  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)        # run as a script from anywhere; src/ is under ROOT
+
+from src.config import DATA_DIR, LOG_DIR  # noqa: E402
+
 TODAY = datetime.date.today()
 
 

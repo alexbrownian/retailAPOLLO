@@ -130,23 +130,44 @@ def main():
     print("aggregating (tickers + themes + sentiment - same code as the full build)...")
     new_aggs = abstracted_data.aggregate_posts(posts)
 
-    for name, (kind, keys) in abstracted_data.MERGE_RULES.items():
-        path = os.path.join(PROCESSED, name)
-        new_tail = new_aggs.get(name)
-        if new_tail is None:
-            continue
-        if not os.path.exists(path):
-            print(f"  (skip {name} - not in Data/processed; run the full chain once first)")
-            continue
-        old = pd.read_parquet(path)
-        merged = splice(old, new_tail, cutoff, keys)
-        changed = len(merged) - len(old)
-        if args.dry_run:
-            print(f"  would write {name:<40} {len(old):,} -> {len(merged):,} rows "
-                  f"({changed:+,})")
-            continue
-        abstracted_data._safe_write(merged, path)
-        print(f"  spliced {name:<40} {len(old):,} -> {len(merged):,} rows ({changed:+,})")
+    # Two passes, for the reason merge_into_abstracted takes two: every
+    # spliced frame is staged beside its target first and the staged files
+    # are swapped in only once all of them exist, so the batch lands
+    # together. A run that stopped mid-loop would leave the aggregates
+    # describing two different cutoffs, and nothing on disk records which
+    # files took the splice.
+    staged = []
+    try:
+        for name, (kind, keys) in abstracted_data.MERGE_RULES.items():
+            path = os.path.join(PROCESSED, name)
+            new_tail = new_aggs.get(name)
+            if new_tail is None:
+                continue
+            if not os.path.exists(path):
+                print(f"  (skip {name} - not in Data/processed; run the full chain once first)")
+                continue
+            old = pd.read_parquet(path)
+            merged = splice(old, new_tail, cutoff, keys)
+            changed = len(merged) - len(old)
+            if args.dry_run:
+                print(f"  would write {name:<40} {len(old):,} -> {len(merged):,} rows "
+                      f"({changed:+,})")
+                continue
+            staged.append((name, path,
+                           abstracted_data._stage_write(merged, path),
+                           len(old), len(merged), changed))
+    except BaseException:
+        # Nothing has been swapped in, so the aggregates still hold the
+        # pre-splice numbers; drop the staged files so none is left behind.
+        for _, _, tmp, _, _, _ in staged:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        raise
+    for name, path, tmp, n_old, n_new, changed in staged:
+        abstracted_data._swap_in(tmp, path)
+        print(f"  spliced {name:<40} {n_old:,} -> {n_new:,} rows ({changed:+,})")
 
     if args.dry_run:
         print("dry-run: nothing written.")

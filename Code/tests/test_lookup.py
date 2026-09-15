@@ -386,6 +386,64 @@ class TestPriceCacheFreshness:
             "would take the landing page with it")
         assert "st.error(" in block
 
+    def test_an_unreadable_cache_is_a_missing_cache(self, tmp_path,
+                                                    monkeypatch):
+        """A run killed mid-write leaves a cache file that is present and
+        unparseable. The lookup treats it the way it treats an absent
+        one - re-pull and overwrite - because the alternative is a panel
+        that raises on every visit until somebody deletes a file by
+        hand."""
+        monkeypatch.setattr(L, "LOOKUP_PRICE_DIR", str(tmp_path / "lookups"))
+        (tmp_path / "lookups").mkdir()
+        path = tmp_path / "lookups" / "ZZZZ.parquet"
+        path.write_bytes(b"PAR1" + b"\x00" * 96)
+        calls = []
+
+        def fetch(sym, a, b):
+            calls.append(sym)
+            return pd.DataFrame({"date": pd.to_datetime(["2026-09-09"]),
+                                 "symbol": [sym], "px_last": [1.0],
+                                 "source": ["tiingo"]})
+        out = L.price("ZZZZ", "20260901", "20260910", fetch=fetch,
+                      now=pd.Timestamp("2026-09-10 09:00"))
+        assert calls == ["ZZZZ"] and len(out) == 1
+        assert len(pd.read_parquet(path)) == 1, "the fragment is still there"
+
+    def test_clearing_the_cache_removes_the_file_it_wrote(self, tmp_path,
+                                                          monkeypatch):
+        """A symbol carrying a slash cannot be a filename, so the cache
+        writes it with an underscore. The clear has to look for the name
+        it wrote, or the stale file stays and the clear reports nothing
+        wrong."""
+        monkeypatch.setattr(L, "LOOKUP_PRICE_DIR", str(tmp_path / "lookups"))
+
+        def fetch(sym, a, b):
+            return pd.DataFrame({"date": pd.to_datetime(["2026-09-09"]),
+                                 "symbol": [sym], "px_last": [1.0],
+                                 "source": ["tiingo"]})
+        L.price("BRK/B", "20260901", "20260910", fetch=fetch,
+                now=pd.Timestamp("2026-09-10 09:00"))
+        written = tmp_path / "lookups" / "BRK_B.parquet"
+        assert written.exists()
+        L.clear_price_cache("BRK/B")
+        assert not written.exists()
+
+    def test_clearing_one_symbol_leaves_the_others(self, tmp_path,
+                                                   monkeypatch):
+        monkeypatch.setattr(L, "LOOKUP_PRICE_DIR", str(tmp_path / "lookups"))
+
+        def fetch(sym, a, b):
+            return pd.DataFrame({"date": pd.to_datetime(["2026-09-09"]),
+                                 "symbol": [sym], "px_last": [1.0],
+                                 "source": ["tiingo"]})
+        for sym in ("BRK/B", "ZZZZ"):
+            L.price(sym, "20260901", "20260910", fetch=fetch,
+                    now=pd.Timestamp("2026-09-10 09:00"))
+        L.clear_price_cache("BRK/B")
+        assert (tmp_path / "lookups" / "ZZZZ.parquet").exists()
+        L.clear_price_cache()
+        assert not list((tmp_path / "lookups").iterdir())
+
     def test_last_trading_day_skips_weekends(self):
         assert L.last_trading_day(pd.Timestamp("2026-09-14 09:00")) == pd.Timestamp("2026-09-11")  # Mon -> Fri
         assert L.last_trading_day(pd.Timestamp("2026-09-10 09:00")) == pd.Timestamp("2026-09-09")  # Wed -> Tue

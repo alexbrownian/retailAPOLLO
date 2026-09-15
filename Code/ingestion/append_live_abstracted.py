@@ -58,7 +58,6 @@ except Exception:
     pass
 
 import zstandard                                              # noqa: E402
-from src.config import REFERENCE_DIR                          # noqa: E402
 from src import abstracted_data                               # noqa: E402
 from src.clean_data import read_json_lines                    # noqa: E402
 from src.reddit_live_data import normalise_reddit_live_records  # noqa: E402

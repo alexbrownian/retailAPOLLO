@@ -60,7 +60,8 @@ def _date_of(record: dict) -> str:
     try:
         secs = float(raw)
         if secs > 1_000_000_000:                 # Sane epoch (>= 2001).
-            return datetime.datetime.utcfromtimestamp(secs).strftime("%Y-%m-%d")
+            return datetime.datetime.fromtimestamp(
+                secs, datetime.timezone.utc).strftime("%Y-%m-%d")
     except (TypeError, ValueError):
         pass
     parsed = pd.to_datetime(raw, errors="coerce", utc=True)

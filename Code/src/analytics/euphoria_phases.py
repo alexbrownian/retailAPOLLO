@@ -90,15 +90,13 @@ import pandas as pd
 
 from src.config import (EUPHORIA_CRASH_MIN_ETF, EUPHORIA_CRASH_MIN_SINGLE,
                         EUPHORIA_BOOM_LOOKBACK_D, EUPHORIA_CRASH_WINDOW_D,
-                        EUPHORIA_MIN_HISTORY,
                         EUPHORIA_FA_BUDGET_PER_IY,
                         EUPHORIA_INFLECTION_ENABLED, EUPHORIA_INFLECTION_CUT_Q,
                         EUPHORIA_INFLECTION_REARM_Q, EUPHORIA_INFLECTION_SPACING_D,
                         EUPHORIA_XP_ENABLED)
-from src.analytics.euphoria import (EuphoriaSeries, ground_truth_peaks,
-                                judgeable_window, trailing_pct_rank,
-                                log_convexity, _mention_share,
-                                _bullish_series)
+from src.analytics.euphoria import (ground_truth_peaks, judgeable_window,
+                                trailing_pct_rank, log_convexity,
+                                _mention_share)
 from src.analytics.loaders import load, TICKER_COUNTS_BY_SOURCE
 
 # The onset hit window length. Anchored to the
@@ -949,13 +947,18 @@ def choose_threshold(train_scored: pd.DataFrame, episodes: pd.DataFrame,
         n_instruments: Instruments in the frame (for the per-iy rate).
 
     Returns:
-        The chosen threshold as a float.
+        The chosen threshold as a float; infinity when the train years
+        carry no score at all (a store too thin to have produced one),
+        which is the do-no-harm default taken to its limit - a cut
+        nothing can clear.
     """
+    scores = train_scored["score"].dropna()
+    if scores.empty:
+        return float("inf")
     years = sorted(train_scored.year.unique())
     n_iy = max(n_instruments * len(years), 1)
     in_years = lambda eps: eps.year.isin(years)  # noqa: E731
-    grid = np.unique(np.percentile(train_scored["score"].dropna(),
-                                   np.arange(50, 100, 2.5)))
+    grid = np.unique(np.percentile(scores, np.arange(50, 100, 2.5)))
     groups = _pregroup(train_scored, episodes)
     best_thr, best_key = grid[-1], (-1, -np.inf)
     for thr in grid[::-1]:                     # conservative first
@@ -1097,7 +1100,8 @@ def _stored_onset_report() -> dict | None:
     if not _os.path.exists(path):
         return None
     try:
-        return _json.load(open(path))
+        with open(path, encoding="utf-8") as f:
+            return _json.load(f)
     except (ValueError, OSError):
         return None
 
@@ -1247,9 +1251,12 @@ def rebuild_phase_files(verbose: bool = True,
             "onset_window_days": ONSET_WINDOW_DAYS,
             "bank": ONSET_BANK,
         }
-        with open(_os.path.join(PROCESSED_DIR,
-                                "euphoria_onset_report.json"), "w") as f:
+        _onset_path = _os.path.join(PROCESSED_DIR,
+                                    "euphoria_onset_report.json")
+        _tmp = _onset_path + ".tmp"          # atomic swap - never half-written
+        with open(_tmp, "w", encoding="utf-8") as f:
             _json.dump(stored, f, indent=1, default=str)
+        _os.replace(_tmp, _onset_path)
         if verbose:
             print(f"  onset RESEARCH pass: {wf['captured']}/"
                   f"{wf['detectable']} detectable onsets captured, "
@@ -1312,7 +1319,8 @@ def rebuild_phase_files(verbose: bool = True,
     desk_stored = None
     if _os.path.exists(desk_path):
         try:
-            desk_stored = _json.load(open(desk_path))
+            with open(desk_path, encoding="utf-8") as f:
+                desk_stored = _json.load(f)
         except (ValueError, OSError):
             desk_stored = None
     desk_research = research or desk_needs_research(desk_stored,
@@ -1357,7 +1365,10 @@ def rebuild_phase_files(verbose: bool = True,
         """(standard F1 cut, strict F0.5 cut, train-median re-arm level)
         from ONE train scoring. The re-arm level is the GET IN trigger's
         'the crowd must fully cool before another start call' floor
-        (shaped-trigger convention)."""
+        (shaped-trigger convention). With no train score at all the
+        triple is infinity throughout, matching the choosers' own
+        do-no-harm limit: a cut nothing clears, so nothing fires and the
+        re-arm level is never consulted."""
         train = cand_j[cand_j["year"] < data_max_year]
         if train.empty:
             train = cand_j
@@ -1365,11 +1376,13 @@ def rebuild_phase_files(verbose: bool = True,
         train_scored = train.assign(score=fit(train, train,
                                               mld.DESK_ML_BANK))
         n = train["name"].nunique()
+        _scores = train_scored["score"].dropna()
         return (mld.choose_threshold_f1(train_scored, episodes, mode,
                                         fa_budget, n),
                 mld.choose_threshold_strict(train_scored, episodes, mode,
                                             fa_budget, n),
-                float(np.percentile(train_scored["score"].dropna(), 50)))
+                float(np.percentile(_scores, 50)) if len(_scores)
+                else float("inf"))
 
     if desk_research:
         from src.config import DESK_MODEL_FAMILY
@@ -1468,8 +1481,10 @@ def rebuild_phase_files(verbose: bool = True,
             "bank_get_in": (mld.DESK_ML_BANK if model_name != "rules"
                             else ONSET_BANK),
         }
-        with open(desk_path, "w") as f:
+        _tmp = desk_path + ".tmp"            # atomic swap - never half-written
+        with open(_tmp, "w", encoding="utf-8") as f:
             _json.dump(desk_stored, f, indent=1, default=str)
+        _os.replace(_tmp, desk_path)
         if verbose:
             print(f"  DESK research pass (winner: {model_name}): GET OUT "
                   f"cap {wf_out['captured']}/{wf_out['detectable']} FA "
@@ -1516,8 +1531,10 @@ def rebuild_phase_files(verbose: bool = True,
                 "evidence": "Data/research_record/alert_shape_sweep.json",
                 "decided": "2026-08-09",
             }
-            with open(desk_path, "w") as f:
+            _tmp = desk_path + ".tmp"        # atomic swap - never half-written
+            with open(_tmp, "w", encoding="utf-8") as f:
                 _json.dump(desk_stored, f, indent=1, default=str)
+            _os.replace(_tmp, desk_path)
             if verbose:
                 print(f"  desk record upgraded to conditioning v2 "
                       f"(strict in {thr_in_strict:.3f} / out "
@@ -1643,9 +1660,12 @@ def rebuild_phase_files(verbose: bool = True,
         try:
             insight = mld.model_insight(cand_j)
             insight["model"] = model_name
-            with open(_os.path.join(PROCESSED_DIR,
-                                    "desk_model_insight.json"), "w") as f:
+            _ins_path = _os.path.join(PROCESSED_DIR,
+                                      "desk_model_insight.json")
+            _tmp = _ins_path + ".tmp"        # atomic swap - never half-written
+            with open(_tmp, "w", encoding="utf-8") as f:
                 _json.dump(insight, f, indent=1)
+            _os.replace(_tmp, _ins_path)
             if verbose:
                 print("  saved desk_model_insight.json (feature weights "
                       "for the dashboard)")
@@ -1811,8 +1831,10 @@ def rebuild_phase_files(verbose: bool = True,
                 "role": ("CONTEXT MARKER - never a call, never in the "
                          "watchlist, never gates GET IN or GET OUT"),
                 "derived": _infl_src}
-            with open(desk_path, "w") as _f:
+            _tmp = desk_path + ".tmp"        # atomic swap - never half-written
+            with open(_tmp, "w", encoding="utf-8") as _f:
                 _json.dump(desk_stored, _f, indent=1, default=str)
+            _os.replace(_tmp, desk_path)
     # EXPERIMENTAL PRICE-BLIND COLUMNS. Same frozen-threshold contract as
     # the GET IN / GET OUT cuts and the inflection head: the cuts live in
     # euphoria_desk_report.json, are re-derived only on research (or
@@ -1853,8 +1875,10 @@ def rebuild_phase_files(verbose: bool = True,
                         _tr_sc["score"].dropna().median())}
             if isinstance(desk_stored, dict):
                 desk_stored["experimental_price_blind"] = _xp_rec
-                with open(desk_path, "w") as _f:
+                _tmp = desk_path + ".tmp"    # atomic swap - never half-written
+                with open(_tmp, "w", encoding="utf-8") as _f:
                     _json.dump(desk_stored, _f, indent=1, default=str)
+                _os.replace(_tmp, desk_path)
             _frozen_xp = _xp_rec
         if verbose:
             print(f"  price-blind pair ({_frozen_xp.get('derived')}): "
@@ -2005,12 +2029,13 @@ def rebuild_phase_files(verbose: bool = True,
                         "side": ("GET OUT" if _sr < 0 else "GET IN"),
                         "as_of": str(pd.Timestamp(_c["date"]).date())})
         _al_rows.sort(key=lambda r: r["signed_readiness"])
-        with open(_os.path.join(PROCESSED_DIR,
-                                "readiness_alerts.json"), "w",
-                  encoding="utf-8") as _fh:
+        _rd_path = _os.path.join(PROCESSED_DIR, "readiness_alerts.json")
+        _tmp = _rd_path + ".tmp"             # atomic swap - never half-written
+        with open(_tmp, "w", encoding="utf-8") as _fh:
             _json.dump({"threshold": 0.90, "built":
-                        pd.Timestamp.utcnow().strftime("%Y-%m-%d %H:%M"),
+                        pd.Timestamp.now("UTC").strftime("%Y-%m-%d %H:%M"),
                         "alerts": _al_rows}, _fh, indent=1)
+        _os.replace(_tmp, _rd_path)
         if verbose and _al_rows:
             print("  READINESS ALERTS (|signed readiness| >= 90% of the "
                   "cut):")

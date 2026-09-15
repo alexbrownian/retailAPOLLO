@@ -40,17 +40,29 @@ The preference comes from ``--provider`` on ``pull_prices.py`` /
 
 One symbol, one source
 ----------------------
-Two vendors' closes can differ after a corporate action, so a symbol's
-history is never spliced across providers: when the provider used for a
-symbol changes, its whole window is re-pulled and the old rows are
-replaced. The ``source`` column in ``prices.parquet`` is what makes that
-check possible.
+Two vendors' closes can differ after a corporate action, so a full pull
+keeps one provider per symbol inside the window it pulls: when the
+provider used for a symbol changes, that window is re-pulled and the
+stored rows sitting in it are replaced. The replacement is what earns
+the deletion, so the old rows go only for a symbol the new provider
+actually answered for - a provider with nothing for a symbol leaves that
+symbol's series exactly as it stands. Rows dated before the window start
+are outside what was re-pulled and are kept, which puts a seam at the
+window start rather than throwing away the years behind it. The
+``source`` column in ``prices.parquet`` records the vendor of every row,
+so ``tools/data_health.py`` names each series that carries a seam.
+
+``pull_prices.py --daily`` suspends that rule to keep a daily run down
+to a handful of requests: it extends a stored series with whichever
+provider answers and tags the rows it adds, so a series can carry one
+vendor's past and another's present. The seam sits in the ``source``
+column, and ``tools/data_health.py`` names every series that has one.
 """
 
 from __future__ import annotations
 
-import datetime as _dt
 import os
+import re
 import time
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -63,6 +75,31 @@ COLUMNS = ["date", "symbol", "px_last", "source"]
 class ProviderUnavailable(RuntimeError):
     """The provider cannot run on this machine (missing package, no
     Terminal, no network)."""
+
+
+# ---------------------------------------------------------------------------
+# store schema
+# ---------------------------------------------------------------------------
+def with_source(df: pd.DataFrame) -> pd.DataFrame:
+    """``df`` carrying every column in :data:`COLUMNS`, in that order.
+
+    Rows whose columns predate provider tracking hold no ``source``.
+    They are labelled ``bloomberg`` - the same convention
+    ``pull_prices._current_sources`` reads such a store under - so the
+    label is written down once rather than inferred again by every
+    reader that opens the file. A blank label counts as absent: the
+    readers group by this column - ``_current_sources`` to decide what
+    to re-pull, the health report to count series carrying two vendors -
+    and an empty string groups as a vendor of its own, so one unlabelled
+    row would read as a second source for its symbol.
+    """
+    out = df.copy()
+    if "source" not in out.columns:
+        out["source"] = "bloomberg"
+    out["source"] = (out["source"].fillna("bloomberg")
+                     .astype(str).str.strip()
+                     .replace("", "bloomberg"))
+    return out[COLUMNS]
 
 
 # ---------------------------------------------------------------------------
@@ -85,14 +122,34 @@ def to_bloomberg(symbol: str) -> str:
     return f"{symbol} US Equity"
 
 
+def is_us_listing(bloomberg_code: str) -> bool:
+    """Whether a Bloomberg code names a US-listed equity.
+
+    A code reads ``"<TICKER> <EXCH> Equity"``, and every US exchange
+    token starts with ``U``: ``US`` composite, ``UN`` NYSE, ``UQ`` and
+    ``UW`` Nasdaq, ``UP`` NYSE Arca, ``UA`` NYSE American, ``UR``,
+    ``UF``, ``UV``, ``UD``, ``UC``, ``UB``, ``UT``, ``UX``, ``UU``. A
+    foreign line carries its own market's token instead (``JT``, ``CS``,
+    ``CH``, ``LN``, ``GR``, ``HK``, ``T``, ``AU``), none of which begins
+    with ``U``. The test reads the exchange token rather than matching
+    whole suffixes, because a whitelist of suffixes silently calls every
+    venue it has not been told about foreign - and an ETF declared
+    foreign is an ETF never requested.
+    """
+    parts = bloomberg_code.split()
+    return (len(parts) == 3 and parts[2].lower() == "equity"
+            and parts[1].upper().startswith("U"))
+
+
 def to_tiingo(symbol: str) -> Optional[str]:
     """Tiingo ticker for a plain symbol, or ``None`` if unmappable.
 
     Plain US tickers map to themselves with ``.`` share classes written
     as ``-`` (``BRK.B`` -> ``BRK-B``). Instruments listed in
     ``approved_instruments.csv`` use the ``tiingo`` column if filled. A
-    symbol whose Bloomberg code is not a US equity and that has no
-    ``tiingo`` mapping returns ``None`` rather than guessing.
+    symbol whose Bloomberg code is not a US equity (see
+    :func:`is_us_listing`) and that has no ``tiingo`` mapping returns
+    ``None`` rather than guessing.
     """
     row = _approved_rows().get(symbol)
     if row:
@@ -100,27 +157,70 @@ def to_tiingo(symbol: str) -> Optional[str]:
         if t_sym:
             return t_sym
         bbg = (row.get("bloomberg") or "").strip()
-        if bbg and not bbg.endswith("US Equity") and not bbg.endswith(
-                "UQ Equity") and not bbg.endswith("UW Equity"):
+        if bbg and not is_us_listing(bbg):
             return None                       # foreign line, no mapping
     if " " in symbol:
         return None                           # e.g. "1622 JT" with no map
     return symbol.replace(".", "-")
 
 
-def tiingo_key() -> str:
-    """``TIINGO_API_KEY`` from the environment or the project ``.env``."""
-    key = os.environ.get("TIINGO_API_KEY", "").strip()
-    if key:
-        return key
+def _env_value(name: str) -> str:
+    """``name`` from the environment, else from the project ``.env``.
+
+    A ``.env`` line is ``NAME=value`` or ``NAME = value``; a comment line
+    is skipped and surrounding quotes are dropped. The fetchers read
+    their keys this way, so a key that lives only in the file is as
+    visible here as one exported into the environment.
+    """
+    val = os.environ.get(name, "").strip()
+    if val:
+        return val
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     path = os.path.join(root, ".env")
     if os.path.exists(path):
-        for line in open(path, encoding="utf-8"):
-            line = line.strip()
-            if line.startswith("TIINGO_API_KEY=") and "=" in line:
-                return line.split("=", 1)[1].strip().strip('"').strip("'")
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                if k.strip() == name:
+                    return v.strip().strip('"').strip("'")
     return ""
+
+
+def tiingo_key() -> str:
+    """``TIINGO_API_KEY`` from the environment or the project ``.env``."""
+    return _env_value("TIINGO_API_KEY")
+
+
+def redact(text: str) -> str:
+    """``text`` with any API key in it replaced by ``***``.
+
+    Every message that reports a failed request is written to the
+    console and to ``Reports/logs/``, and a request library puts the
+    URL it tried into the exception it raises. Keys are kept out of the
+    URL at the call site; this is the second line, for a message that
+    reaches a log by some other route.
+
+    Every credential the shipped code carries is masked, whichever of
+    the two names FetchLayer's is stored under. A value issued in spaced
+    blocks is masked in both spellings, because such a value is as often
+    stored with the spaces taken out as with them left in.
+    """
+    out = str(text)
+    keys = [tiingo_key()] + [_env_value(n) for n in
+                             ("FETCHLAYER_KEY", "FETCHLAYER_API_KEY",
+                              "X_BEARER_TOKEN",
+                              "ANTHROPIC_API_KEY", "REDDIT_SECRET",
+                              "REDDIT_PASSWORD")]
+    for key in keys:
+        if key and len(key) >= 8:
+            out = out.replace(key, "***")
+            if " " in key:
+                out = out.replace(key.replace(" ", ""), "***")
+    return re.sub(r"((?:token|apikey|api_key|key)=)[^&\s\"']+", r"\1***",
+                  out, flags=re.IGNORECASE)
 
 
 # ---------------------------------------------------------------------------
@@ -138,15 +238,19 @@ def tiingo_key() -> str:
 # The allowance is a setting rather than 1 because a single failure can be
 # a blip - a request that raced a Terminal restart - and giving up on the
 # first one would send a healthy Terminal to the fallback for the whole
-# run. It is counted per PROCESS: the next run tries again, which is the
-# right granularity, since a Terminal that comes back deserves a fresh
-# chance at the next run rather than mid-run.
+# run. The tally counts CONSECUTIVE failures: a span the Terminal answers
+# clears it, so blips scattered over a long multi-span pull never add up
+# to a verdict against a Terminal that is working. It is counted per
+# PROCESS: the next run tries again, which is the right granularity,
+# since a Terminal that comes back deserves a fresh chance at the next
+# run rather than mid-run.
 _BLOOMBERG_FAILURES: List[str] = []
 
 
 def bloomberg_max_failures() -> int:
-    """How many Terminal failures this process tolerates before it stops
-    trying (``bloomberg_max_failures`` in ``config/settings.csv``)."""
+    """How many consecutive Terminal failures this process tolerates
+    before it stops trying (``bloomberg_max_failures`` in
+    ``config/settings.csv``)."""
     try:
         from src import settings
         return max(1, settings.get_int("bloomberg_max_failures"))
@@ -156,11 +260,12 @@ def bloomberg_max_failures() -> int:
 
 def bloomberg_failed_this_process() -> str:
     """Why the Terminal is being skipped, or ``""`` while it is still
-    inside its allowance of failures."""
+    inside its allowance of consecutive failures."""
     n, allowed = len(_BLOOMBERG_FAILURES), bloomberg_max_failures()
     if n < allowed:
         return ""
-    return f"{n} failed attempt(s) this run, last: {_BLOOMBERG_FAILURES[-1]}"
+    return (f"{n} consecutive failed attempt(s) this run, last: "
+            f"{_BLOOMBERG_FAILURES[-1]}")
 
 
 def reset_bloomberg_failure() -> None:
@@ -183,17 +288,17 @@ class BloombergProvider:
         if down:
             return False, f"{down} - not retried this run"
         try:
-            import blpapi                                  # noqa: F401
+            import blpapi
         except ImportError:
             return False, "blpapi is not installed"
         try:
-            import blpapi
             session = blpapi.Session()
             if not session.start():
                 return False, "could not start a blpapi session (is the Terminal running?)"
             session.stop()
         except Exception as exc:                           # noqa: BLE001
-            return False, f"blpapi session failed: {type(exc).__name__}: {exc}"
+            return False, (f"blpapi session failed: {type(exc).__name__}: "
+                           f"{redact(exc)}")
         # A session that starts is NOT a Terminal that answers: opening
         # //blp/refdata is the real test, and it is left to the first
         # fetch rather than paid here, because it is the slow half.
@@ -208,15 +313,19 @@ class BloombergProvider:
         try:
             df = bloomberg_request(list(symbols), start, end, log=log)
         except Exception as exc:                           # noqa: BLE001
-            _BLOOMBERG_FAILURES.append(f"{type(exc).__name__}: {exc}")
+            _BLOOMBERG_FAILURES.append(f"{type(exc).__name__}: {redact(exc)}")
             n, allowed = len(_BLOOMBERG_FAILURES), bloomberg_max_failures()
             if n >= allowed:
-                log(f"  bloomberg: {n} failure(s) this run - the Terminal is "
-                    f"now skipped for the rest of it")
+                log(f"  bloomberg: {n} consecutive failure(s) this run - the "
+                    f"Terminal is skipped for the rest of it")
             else:
                 log(f"  bloomberg: failure {n} of {allowed} before the "
                     f"Terminal is skipped for this run")
             raise
+        # An answered span is the evidence that the Terminal is alive, so
+        # it retires the failures ahead of it; the allowance covers a run
+        # of failures, not a total spread over an entire pull.
+        _BLOOMBERG_FAILURES.clear()
         if df is None or df.empty:
             return pd.DataFrame(columns=COLUMNS)
         df = df.copy()
@@ -249,13 +358,20 @@ class TiingoProvider:
 
     def _get(self, sym: str, start: str, end: str) -> list:
         """The raw JSON rows for one ticker; ``[]`` when Tiingo has no
-        such ticker (HTTP 404). A quota answer (HTTP 429) raises."""
+        such ticker (HTTP 404). A quota answer (HTTP 429) raises.
+
+        The key travels in the ``Authorization`` header, never as a
+        query parameter: a failed request carries its URL into the
+        exception text, the console and the run log, and a key in that
+        URL is a key written to disk in clear.
+        """
         import requests
         r = requests.get(self.URL.format(sym=sym),
                          params={"startDate": f"{start[:4]}-{start[4:6]}-{start[6:]}",
                                  "endDate": f"{end[:4]}-{end[4:6]}-{end[6:]}",
-                                 "format": "json", "token": tiingo_key()},
+                                 "format": "json"},
                          headers={"Content-Type": "application/json",
+                                  "Authorization": f"Token {tiingo_key()}",
                                   "User-Agent": "retailAPOLLO/1.0"},
                          timeout=self.TIMEOUT_S)
         if r.status_code == 404:
@@ -442,7 +558,7 @@ def fetch_with_fallback(chain: List[object], symbols: List[str],
                     "(not listed yet, or no trading days)")
             return df, prov.name
         except Exception as exc:                           # noqa: BLE001
-            last_err = f"{prov.name}: {type(exc).__name__}: {exc}"
+            last_err = f"{prov.name}: {type(exc).__name__}: {redact(exc)}"
             log(f"  {prov.name} FAILED - {last_err}")
         if prov is not chain[-1]:
             log(f"  falling back to {chain[chain.index(prov) + 1].name}")
@@ -483,7 +599,7 @@ def selftest(provider: str = "tiingo", symbols: Iterable[str] = None,
     try:
         df = prov.fetch(symbols, a, b, log=log)
     except Exception as exc:                               # noqa: BLE001
-        log(f"  FAILED: {type(exc).__name__}: {exc}")
+        log(f"  FAILED: {type(exc).__name__}: {redact(exc)}")
         return 1
     if df is None or not len(df):
         log("  no rows returned")
@@ -493,9 +609,10 @@ def selftest(provider: str = "tiingo", symbols: Iterable[str] = None,
         if isinstance(prov, TiingoProvider) and symbols:
             try:
                 raw = prov._get(to_tiingo(symbols[0]) or symbols[0], a, b)
-                log(f"  raw answer for {symbols[0]}: {str(raw)[:300]}")
+                log(f"  raw answer for {symbols[0]}: {redact(raw)[:300]}")
             except Exception as exc:                       # noqa: BLE001
-                log(f"  raw request failed: {type(exc).__name__}: {exc}")
+                log(f"  raw request failed: {type(exc).__name__}: "
+                    f"{redact(exc)}")
         return 1
     df = df.copy()
     df["date"] = pd.to_datetime(df["date"])

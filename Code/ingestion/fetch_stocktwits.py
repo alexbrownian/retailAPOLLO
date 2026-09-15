@@ -63,12 +63,13 @@ def main():
     today = datetime.date.today().isoformat()
     out_path = os.path.join(OUT_DIR, f"stocktwits_{today}.jsonl.zst")
 
-    lines, fetched, skipped = [], 0, 0
+    lines, fetched, skipped, unreachable = [], 0, 0, 0
     for sym in symbols:
         try:
             r = requests.get(URL.format(sym=sym), headers=HEADERS, timeout=15)
         except Exception as exc:
             print(f"[warn] {sym}: {exc}")
+            unreachable += 1
             continue
         if r.status_code == 429:
             print("[stop] rate limited (429) - ending this run early; "
@@ -77,27 +78,55 @@ def main():
         if r.status_code != 200:
             skipped += 1
             continue
-        msgs = (r.json() or {}).get("messages", [])
+        # A 200 that is not the documented JSON object (an HTML error
+        # page, a captcha, a changed schema) is one symbol skipped, not a
+        # dead run.
+        try:
+            payload = r.json()
+        except ValueError:
+            print(f"[warn] {sym}: the response was not JSON")
+            skipped += 1
+            continue
+        msgs = payload.get("messages", []) if isinstance(payload, dict) else []
         for m in msgs:
             lines.append(json.dumps(m, ensure_ascii=False))
         fetched += len(msgs)
         time.sleep(PAUSE_S)
 
+    # Every request failing at the transport layer is a machine without a
+    # route to the API, not a quiet hour on the streams. The two states
+    # look identical in the store - no new messages - so they are told
+    # apart here, where the caller can still act on the difference:
+    # fetch_all.py prints this source as FAILED and update_data.py's run
+    # log carries it, instead of an empty fetch passing for a clean one.
+    if unreachable == len(symbols):
+        print(f"StockTwits is unreachable from this machine: all "
+              f"{unreachable} requests failed before reaching the API. "
+              f"Nothing was written; check the network route and re-run.")
+        return 1
+
     if not lines:
-        print("nothing fetched"); return
+        print("nothing fetched")
+        return 0
 
     # Append-compress: read existing day file (if any), add the new lines.
     old = b""
     if os.path.exists(out_path):
         old = zstandard.ZstdDecompressor().decompress(open(out_path, "rb").read())
     blob = old + ("\n".join(lines) + "\n").encode("utf-8")
-    with open(out_path, "wb") as f:
+    # Write beside the day file and swap: the whole day is rewritten in
+    # one blob, so a Ctrl-C part-way through an in-place write would
+    # leave a truncated zstd frame and lose every message already in it.
+    tmp = out_path + ".tmp"
+    with open(tmp, "wb") as f:
         f.write(zstandard.ZstdCompressor(level=10).compress(blob))
+    os.replace(tmp, out_path)
 
     print(f"fetched {fetched} messages from {len(symbols) - skipped} symbols "
           f"-> {out_path}")
     print("dedup happens at merge time (normalise_stocktwits, first seen wins).")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -319,8 +319,14 @@ class TestAbstractedSafety:
             checked += 1
         assert checked > 0, "no Data/abstracted files found to check"
 
-    def test_aggregate_posts_output_is_text_free(self):
+    def test_aggregate_posts_output_is_text_free(self, tmp_path,
+                                                 monkeypatch):
         """The live-fold aggregator itself must only emit safe columns."""
+        # The scorer appends every unseen id to a permanent store, so the
+        # store is pointed at the tmp directory: a test run leaves the
+        # machine's own scores exactly as it found them.
+        monkeypatch.setattr("src.sentiment._store_path",
+                            lambda *a, **k: str(tmp_path / "scores.parquet"))
         posts = pd.DataFrame({
             "id": ["a1", "a2"], "date": ["2026-07-01", "2026-07-01"],
             "title": ["NVDA to the moon", "buying $GME calls"],
@@ -329,6 +335,185 @@ class TestAbstractedSafety:
         for name, df in aggs.items():
             leaks = [c for c in df.columns if c.lower() in FORBIDDEN_COLS]
             assert not leaks, f"{name} would leak: {leaks}"
+
+
+# ---------------------------------------------------------------------------
+# 7b. THE COMMITTED STORE SURVIVES AN INTERRUPTED WRITE
+# ---------------------------------------------------------------------------
+def _kill_the_copy(monkeypatch, prefix=64):
+    """Make every file copy write ``prefix`` bytes and then die.
+
+    ``shutil.copy2`` reaches the kernel through ``os.sendfile`` on Linux
+    and through ``shutil.copyfileobj`` everywhere else, so both are
+    replaced and the test says the same thing on either platform. A
+    KeyboardInterrupt is what a Ctrl-C actually raises, and it is not an
+    Exception, so it also exercises the guards that catch BaseException
+    rather than the polite half of the hierarchy.
+    """
+    import shutil
+
+    def _sendfile(out_fd, in_fd, offset, count, *a, **k):
+        os.write(out_fd, os.read(in_fd, prefix))
+        raise KeyboardInterrupt("killed mid-copy")
+
+    def _copyfileobj(fsrc, fdst, length=0):
+        fdst.write(fsrc.read(prefix))
+        raise KeyboardInterrupt("killed mid-copy")
+
+    monkeypatch.setattr(os, "sendfile", _sendfile, raising=False)
+    monkeypatch.setattr(shutil, "copyfileobj", _copyfileobj)
+
+
+def _store(path, rows=50):
+    """A small parquet store shaped like a committed aggregate."""
+    pd.DataFrame({"date": pd.date_range("2026-01-01", periods=rows, freq="D"),
+                  "theme": "ai",
+                  "mention_count": range(rows)}).to_parquet(path, index=False)
+    return path
+
+
+class TestAnInterruptedWriteLeavesTheStoreWhole:
+    """Data/abstracted is committed, and it is the only copy of a history
+    no rebuild can recover: the posts behind it are not kept. A copy made
+    straight onto the destination truncates it at the first byte written,
+    so a run killed part-way through a publish would leave a fragment
+    under the real name. Every write lands beside its target and is
+    swapped in with os.replace instead."""
+
+    def test_export_cannot_truncate_the_store_it_publishes_into(
+            self, tmp_path, monkeypatch):
+        src_dir, dst_dir = tmp_path / "processed", tmp_path / "abstracted"
+        src_dir.mkdir()
+        dst_dir.mkdir()
+        name = abstracted_data.THEME_COUNTS
+        _store(src_dir / name, rows=80)
+        _store(dst_dir / name, rows=50)
+        before = (dst_dir / name).read_bytes()
+
+        _kill_the_copy(monkeypatch)
+        with pytest.raises(KeyboardInterrupt):
+            abstracted_data.export(str(src_dir), str(dst_dir), verbose=False)
+        monkeypatch.undo()
+
+        assert (dst_dir / name).read_bytes() == before, (
+            "the publish wrote through the destination, leaving a "
+            "committed aggregate as a fragment")
+        assert len(pd.read_parquet(dst_dir / name)) == 50
+
+    def test_the_bundle_bootstrap_cannot_truncate_what_it_places(
+            self, tmp_path, monkeypatch):
+        """The hosted bootstrap places the committed bundles on every
+        container start, and one of its destinations is under
+        Data/research_record, which is committed too. A fragment left
+        there would also be NEWER than the bundle it came from, so the
+        mtime test that decides what to place would treat it as placed
+        and never repair it."""
+        import dashboard as D
+        from src import abstracted_data as ad
+        from src import config as C
+
+        bundle, data = tmp_path / "bundle", tmp_path / "Data"
+        bundle.mkdir()
+        (data / "processed").mkdir(parents=True)
+        name = "euphoria_levels.parquet"
+        _store(bundle / name, rows=80)
+        _store(data / "processed" / name, rows=50)
+        os.utime(bundle / name, (2 ** 31, 2 ** 31))   # newer than the target
+        before = (data / "processed" / name).read_bytes()
+
+        monkeypatch.setattr(D, "BUNDLE_DIR", str(bundle))
+        monkeypatch.setattr(D, "PROCESSED_DIR", str(data / "processed"))
+        monkeypatch.setattr(D, "DATA_DIR", str(data))
+        monkeypatch.setattr(C, "PRICES_DIR", str(data / "prices"))
+        monkeypatch.setattr(ad, "hydrate", lambda **kw: [])
+        _kill_the_copy(monkeypatch)
+        with pytest.raises(KeyboardInterrupt):
+            D._bootstrap_from_bundles()
+        monkeypatch.undo()
+
+        assert (data / "processed" / name).read_bytes() == before
+        assert len(pd.read_parquet(data / "processed" / name)) == 50
+
+
+class TestAPublishNeverReplacesHistoryWithNothing:
+    """A source holding zero rows is a broken run, not an empty week.
+    The committed store is the only copy of the history, and callers
+    publish before their own row-count checks run."""
+
+    def test_export_refuses_a_source_with_no_rows(self, tmp_path, capsys):
+        src_dir, dst_dir = tmp_path / "processed", tmp_path / "abstracted"
+        src_dir.mkdir()
+        dst_dir.mkdir()
+        name = abstracted_data.THEME_COUNTS
+        _store(src_dir / name, rows=0)
+        _store(dst_dir / name, rows=50)
+
+        copied = abstracted_data.export(str(src_dir), str(dst_dir),
+                                        verbose=False)
+        assert name not in copied
+        assert len(pd.read_parquet(dst_dir / name)) == 50
+        assert "REFUSED" in capsys.readouterr().out, (
+            "a publish that skipped a file is never routine, so the "
+            "refusal is printed even when the caller asked for quiet")
+
+    def test_a_merge_stages_every_file_before_it_swaps_any_in(
+            self, tmp_path, monkeypatch):
+        """The caller records the folded post ids only after the merge
+        returns, and the aggregates carry no post ids. A batch that
+        reached some files and not others would be re-folded on the next
+        run into the files that already took it, and could never
+        afterwards be detected or undone."""
+        def _posts(ids, day, texts):
+            return pd.DataFrame({
+                "id": ids, "date": [day] * len(ids), "title": texts,
+                "selftext": [""] * len(ids),
+                "source": ["reddit"] * len(ids),
+                "sentiment": [0.5, -0.5][:len(ids)]})
+
+        target = tmp_path / "abstracted"
+        target.mkdir()
+        # The permanent per-post score store lives under Data/processed
+        # and is appended to for every id it has not seen. These posts
+        # are invented, so they are scored against a store of their own
+        # and the real one is left exactly as it was.
+        monkeypatch.setattr("src.sentiment._store_path",
+                            lambda: str(tmp_path / "scores.parquet"))
+        # the store as it stands, then a fresh batch to fold into it
+        for name, df in abstracted_data.aggregate_posts(
+                _posts(["o1", "o2"], "2026-06-01",
+                       ["NVDA earnings", "GME squeeze"])).items():
+            df.to_parquet(target / name, index=False)
+        aggs = abstracted_data.aggregate_posts(
+            _posts(["a1", "a2"], "2026-07-01",
+                   ["NVDA to the moon", "buying $GME calls"]))
+        assert set(aggs) == set(abstracted_data.FILES)
+        before = {name: (target / name).read_bytes()
+                  for name in abstracted_data.FILES}
+
+        # the LAST staging write raises, so several frames are already on
+        # disk under their .tmp names when the failure lands
+        real = abstracted_data._stage_write
+        staged = []
+
+        def _boom(df, path):
+            staged.append(path)
+            if len(staged) == len(abstracted_data.MERGE_RULES):
+                raise KeyboardInterrupt("killed mid-merge")
+            return real(df, path)
+        monkeypatch.setattr(abstracted_data, "_stage_write", _boom)
+
+        with pytest.raises(KeyboardInterrupt):
+            abstracted_data.merge_into_abstracted(aggs, target_dir=str(target),
+                                                  verbose=False)
+        monkeypatch.undo()
+        assert len(staged) > 1, "the merge swapped as it went; nothing staged"
+
+        for name in abstracted_data.FILES:
+            assert (target / name).read_bytes() == before[name], (
+                f"{name} took the batch while the others did not")
+        assert not list(target.glob("*.tmp")), (
+            "staged files were left behind: a '*.parquet.tmp' beside a "
+            "store is counted by the next health check")
 
 
 # ---------------------------------------------------------------------------
@@ -378,6 +563,36 @@ class TestExtraction:
         daily = build_daily_counts(posts, universe)
         row = daily[daily["ticker"] == "NVDA"].iloc[0]
         assert row["mention_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 8b. NORMALISATION - one raw record to the standard shape
+# ---------------------------------------------------------------------------
+class TestRecordNormalisation:
+    """``src/clean_data.normalise`` is the funnel every raw record passes
+    through, and the date it stamps is what the whole pipeline groups
+    by. A record it dates as "" is dropped by the date filter without a
+    word, so the stamp has to survive every spelling the sources use."""
+
+    def test_the_timestamp_is_read_in_every_spelling_the_sources_use(self):
+        """CSV and parquet inputs carry created_utc as a float, JSON
+        dumps as an int or a string. All three are the same instant."""
+        from src.clean_data import normalise
+        for stamp in (1612137600.0, 1612137600, "1612137600",
+                      "1612137600.0"):
+            assert normalise({"created_utc": stamp})["date"] == "2021-02-01", \
+                f"{stamp!r} ({type(stamp).__name__}) lost its date"
+
+    def test_a_record_with_no_usable_timestamp_gets_an_empty_date(self):
+        from src.clean_data import normalise
+        for stamp in (0, -1, "", None, "yesterday"):
+            assert normalise({"created_utc": stamp})["date"] == ""
+        assert normalise({})["date"] == ""
+
+    def test_a_comment_body_is_carried_into_selftext(self):
+        from src.clean_data import normalise
+        out = normalise({"created_utc": 1612137600.0, "body": "buying GME"})
+        assert out["selftext"] == "buying GME"
 
 
 if __name__ == "__main__":
@@ -587,6 +802,29 @@ class TestInfluenceGraph:
         assert k >= 2
         assert (sub.degree >= k).all()
         assert sub.n >= 3
+
+    def test_a_graph_with_no_nodes_yields_an_empty_core(self):
+        """The map is cut from the authors the tab can SCORE, and on a
+        machine whose board has no judged calls that node set is empty.
+        An empty graph has no maximum core depth to walk down from, so
+        the slice has to come back empty rather than reach into an empty
+        array for a maximum."""
+        from src.analytics import influence_graph as ig
+        g = ig.build_graph(self._two_triangles(), nodes=[])
+        assert g.n == 0
+        sub, k = ig.kcore_subgraph(g)
+        assert sub.n == 0 and sub.m == 0 and k >= 1
+
+    def test_an_unknown_author_yields_an_empty_neighbourhood(self):
+        """The ego map is drawn for whoever is selected, and the
+        selection outlives the store it was made against: a handle that
+        the next comment pull drops off the board is still in the
+        session. That must draw nothing, not raise under the tab."""
+        from src.analytics import influence_graph as ig
+        g = ig.build_graph(self._two_triangles())
+        ego = ig.ego_subgraph(g, "nobody")
+        assert ego.n == 0 and ego.m == 0
+        assert ig.ego_subgraph(g, "a").n > 1     # a known one still draws
 
     def test_homophily_splits_by_class(self):
         """On a graph where the positives are deliberately spread apart
@@ -1294,7 +1532,8 @@ class TestDeskConfiguration:
         model = "rules"
         if os.path.exists(rep_path):
             try:
-                model = json.load(open(rep_path)).get("model", "rules")
+                model = json.load(open(rep_path, encoding="utf-8")).get(
+                    "model", "rules")
             except (ValueError, OSError):
                 model = "rules"
         if model == "rules":
@@ -1375,7 +1614,6 @@ class TestEuphoriaGauge:
     def _zones():
         import json
         import os
-        import dashboard as D
         p = os.path.join(DATA_DIR, "research_record", "gauge_zones.json")
         assert os.path.exists(p), \
             "Data/research_record/gauge_zones.json is missing"
@@ -1404,8 +1642,12 @@ class TestEuphoriaGauge:
         import json
         import os
         import dashboard as D
-        thr = json.load(open(os.path.join(DATA_DIR, "processed", "euphoria_report.json"),
-            encoding="utf-8"))["thresholds"]
+        # through the dashboard's own constant: the hosted copy has no
+        # Data/processed until the bundle bootstrap places it, and that
+        # runs when dashboard.py is imported.
+        thr = json.load(open(os.path.join(D.PROCESSED_DIR,
+                                          "euphoria_report.json"),
+                             encoding="utf-8"))["thresholds"]
         assert self._zones()["red_edge"] == int(thr[max(thr)])
 
     def test_amber_edge_is_below_red_and_was_measured(self):
@@ -1880,7 +2122,6 @@ class TestWatchSideIsStable:
 
     @staticmethod
     def _frame(px):
-        import pandas as pd
         from src.analytics.euphoria_phases import boomed120_frame
 
         class _ES:
@@ -2628,10 +2869,28 @@ class TestTickerMappingsAreCurrent:
 
     @staticmethod
     def _universe():
+        """The listed symbol universe, or a skip when this machine has
+        no way to know it.
+
+        ``load_us_ticker_universe`` re-downloads the symbol directory
+        once its cache is older than a week and falls back to the cached
+        copy when the host is out of reach. With neither a reachable
+        host nor a cached copy there is no universe, and a mapping test
+        run against an empty one is a verdict on the machine rather than
+        on the mapping.
+        """
         from pathlib import Path
         from src.config import REFERENCE_DIR
         from src.ticker_universe import load_us_ticker_universe
-        return load_us_ticker_universe(Path(REFERENCE_DIR))
+        try:
+            uni = load_us_ticker_universe(Path(REFERENCE_DIR))
+        except Exception as e:                              # noqa: BLE001
+            pytest.skip("no symbol directory on this machine: the listing "
+                        "host could not be refreshed and nothing is cached "
+                        f"({type(e).__name__}: {e})")
+        if not uni:
+            pytest.skip("the cached symbol directory parsed to no symbols")
+        return uni
 
     @staticmethod
     def _rows(name):
@@ -2865,7 +3124,8 @@ class TestNothingCanDangle:
         import subprocess
         import sys
         r = subprocess.run([sys.executable, "tools/verify_deps.py"],
-                           cwd=self._root(), capture_output=True, text=True)
+                           cwd=self._root(), capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
         assert r.returncode == 0, (
             "verify_deps found dangling references:\n" + r.stdout[-3000:])
 
@@ -2881,6 +3141,29 @@ class TestNothingCanDangle:
             "the prefix list must include directories that DO NOT exist - "
             "that is the case the old checker could not see")
         assert "_KNOWN_ABSENT" in src
+
+    def test_a_lowercase_data_folder_is_the_same_checkout(self, tmp_path):
+        """A clone made from a case-insensitive checkout carries the data
+        folder as `data`, and every citation in the code and the docs
+        spells it `Data`. On a case-sensitive host those are different
+        names, so the sweep would report several dozen files as missing
+        while they sit on disk - and a report that long is one nobody
+        reads. src/config.py accepts both spellings; so does this."""
+        import shutil
+        import subprocess
+        import sys
+        copy = tmp_path / "checkout"
+        shutil.copytree(self._root().parent, copy,
+                        ignore=shutil.ignore_patterns(".git", "__pycache__",
+                                                      ".pytest_cache"))
+        (copy / "Data").rename(copy / "data")
+        r = subprocess.run([sys.executable, "tools/verify_deps.py",
+                            str(copy)], cwd=self._root(),
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace")
+        assert r.returncode == 0, (
+            "a lowercase data/ checkout reports its own files as "
+            "dangling:\n" + r.stdout[-3000:])
 
     def test_every_python_file_parses(self):
         """A syntax error anywhere is a broken pipeline, and several of
@@ -2999,7 +3282,8 @@ class TestPreflight:
         from pathlib import Path
         root = Path(__file__).resolve().parents[1]
         r = subprocess.run([sys.executable, "tools/preflight.py"],
-                           cwd=root, capture_output=True, text=True)
+                           cwd=root, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
         assert r.returncode == 0, (
             "preflight is FAILING - something downstream is already "
             "wrong:\n" + r.stdout[-2500:])
@@ -3017,6 +3301,426 @@ class TestPreflight:
             "the ticker conviction write is back - it is 164MB per run "
             "and nothing reads it")
         assert "THEME_CONVICTION" in loop, "the theme file must still ship"
+
+
+# The two Nasdaq Trader symbol-directory files, as the parsers expect
+# them: a header row, one pipe-separated row per symbol, and the trailing
+# "File Creation Time" line the real files carry.
+DIRECTORY_HEADERS = {
+    "nasdaqlisted.txt":
+        "Symbol|Security Name|Market Category|Test Issue|Financial "
+        "Status|Round Lot Size|ETF|NextShares",
+    "otherlisted.txt":
+        "ACT Symbol|Security Name|Exchange|CQS Symbol|ETF|Round Lot "
+        "Size|Test Issue|NASDAQ Symbol",
+}
+
+
+def _symbol_directory(fname, symbols):
+    """One symbol-directory file listing exactly ``symbols``."""
+    lines = [DIRECTORY_HEADERS[fname]]
+    for s in sorted(symbols):
+        if fname == "nasdaqlisted.txt":
+            lines.append(f"{s}|{s} Inc. Common Stock|Q|N|N|100|N|N")
+        else:
+            lines.append(f"{s}|{s} Inc. Common Stock|A|{s}|N|100|N|{s}")
+    lines.append("File Creation Time: 0914202605:00|||||||")
+    return "\n".join(lines) + "\n"
+
+
+class TestAnUnreachableHostIsNotABrokenProject:
+    """preflight has one network call: it refreshes the cached symbol
+    directory the ticker-liveness check reads. A host this machine
+    cannot reach - offline, behind a proxy, the site down - says nothing
+    about the project, so it warns and reads the cache. A ticker missing
+    from a directory that WAS fetched is a real rename or delisting and
+    still fails; the same finding against a directory that could not be
+    refreshed only warns, because a stale copy can simply predate a
+    listing."""
+
+    @classmethod
+    def _mapped(cls):
+        """The mapped tickers the liveness check expects to resolve."""
+        import csv
+        from pathlib import Path
+        p = Path(__file__).resolve().parents[1] / "config" / "theme_tickers.csv"
+        with open(p, newline="", encoding="utf-8-sig") as fh:
+            mapped = {r["ticker"].strip().upper() for r in csv.DictReader(fh)}
+        return {s for s in mapped
+                if "." not in s and not (len(s) == 5 and s.endswith("Y"))}
+
+    def _run_liveness(self, tmp_path, monkeypatch, *, cached, fetch_ok,
+                      absent="NVDA", age_days=0.0):
+        """Runs the liveness check alone and returns (exit code, results).
+
+        ``cached`` writes the two directory files into the cache first,
+        aged ``age_days`` days; ``fetch_ok`` decides whether the
+        download answers or raises a transport error.
+        """
+        import time
+        import requests
+        from src import config as C
+        from src import ticker_universe as tu
+        from tools import preflight as pf
+
+        symbols = self._mapped() - {absent}
+        cache = tmp_path / "reference"
+        cache.mkdir()
+        if cached:
+            when = time.time() - age_days * 86400
+            for fname in DIRECTORY_HEADERS:
+                (cache / fname).write_text(_symbol_directory(fname, symbols),
+                                           encoding="utf-8")
+                os.utime(cache / fname, (when, when))
+
+        def _fetch(url, timeout=120):
+            if not fetch_ok:
+                raise requests.ConnectionError("no route to the listing host")
+            return _symbol_directory(url.rsplit("/", 1)[-1], symbols)
+        monkeypatch.setattr(tu, "_fetch_text", _fetch)
+        monkeypatch.setattr(C, "REFERENCE_DIR", str(cache))
+        monkeypatch.setattr(pf, "CHECKS", [pf.check_mapped_tickers_still_exist])
+        pf._results.clear()
+        code = pf.main()
+        return code, list(pf._results)
+
+    def test_an_unreachable_host_with_nothing_cached_warns(self, tmp_path,
+                                                           monkeypatch):
+        from tools import preflight as pf
+        code, results = self._run_liveness(tmp_path, monkeypatch,
+                                           cached=False, fetch_ok=False)
+        assert code == 0, results
+        assert not [r for r in results if r[0] == pf.FAIL]
+        assert any(r[0] == pf.WARN and "unreachable" in r[1] for r in results), \
+            results
+
+    def test_an_unreachable_host_reads_the_cache_and_warns(self, tmp_path,
+                                                           monkeypatch):
+        """With a cache the loader absorbs the transport failure and
+        hands back a universe, so the only trace left is the age of the
+        files on disk. A ticker missing from a copy that old is not
+        evidence of a delisting."""
+        from tools import preflight as pf
+        code, results = self._run_liveness(tmp_path, monkeypatch, cached=True,
+                                           fetch_ok=False, age_days=30.0)
+        assert code == 0, results
+        assert not [r for r in results if r[0] == pf.FAIL]
+        assert any("not refreshed" in r[1] for r in results), results
+        assert any(r[0] == pf.WARN and "NVDA" in r[2] for r in results), results
+
+    def test_a_ticker_missing_from_a_fetched_directory_fails(self, tmp_path,
+                                                             monkeypatch):
+        from tools import preflight as pf
+        code, results = self._run_liveness(tmp_path, monkeypatch, cached=False,
+                                           fetch_ok=True)
+        assert code == 1, results
+        fails = [r for r in results if r[0] == pf.FAIL]
+        assert fails and "NVDA" in fails[0][2], results
+
+    def test_a_fetched_directory_that_covers_everything_passes(self, tmp_path,
+                                                              monkeypatch):
+        from tools import preflight as pf
+        code, results = self._run_liveness(tmp_path, monkeypatch, cached=False,
+                                           fetch_ok=True, absent="")
+        assert code == 0, results
+        assert any(r[0] == pf.OK for r in results), results
+
+
+class TestTheSymbolDirectoryFallsBackToItsCache:
+    """Every extraction pass needs the ticker universe. A machine that
+    already has the files must not be stopped by a host it cannot reach;
+    a machine that has neither must be told, rather than run on an empty
+    universe and count nothing forever."""
+
+    @staticmethod
+    def _write(cache, symbols=("NVDA", "GME")):
+        for fname in DIRECTORY_HEADERS:
+            (cache / fname).write_text(_symbol_directory(fname, symbols),
+                                       encoding="utf-8")
+
+    def test_a_failed_download_falls_back_to_the_cached_copy(self, tmp_path,
+                                                             monkeypatch):
+        import requests
+        from src import ticker_universe as tu
+        cache = tmp_path / "reference"
+        cache.mkdir()
+        self._write(cache)
+        monkeypatch.setattr(tu, "_fetch_text", lambda url, timeout=120: (
+            _ for _ in ()).throw(requests.ConnectionError("no route")))
+        uni = tu.load_us_ticker_universe(cache, force_refresh=True)
+        assert {"NVDA", "GME"} <= uni
+        assert tu.DELISTED_TICKERS <= uni
+
+    def test_a_failed_download_with_no_cache_raises(self, tmp_path,
+                                                    monkeypatch):
+        import requests
+        from src import ticker_universe as tu
+        monkeypatch.setattr(tu, "_fetch_text", lambda url, timeout=120: (
+            _ for _ in ()).throw(requests.ConnectionError("no route")))
+        with pytest.raises(requests.RequestException):
+            tu.load_us_ticker_universe(tmp_path / "empty")
+
+    def test_a_download_killed_part_way_cannot_shrink_the_universe(
+            self, tmp_path, monkeypatch):
+        """A directory written straight to its final name and then cut
+        short parses into a silently incomplete universe, and an
+        incomplete universe counts real tickers as unknown - quietly,
+        forever. The download lands beside the file and is swapped in,
+        so a fragment can only ever carry the staged name."""
+        from pathlib import Path
+        from src import ticker_universe as tu
+        cache = tmp_path / "reference"
+        cache.mkdir()
+        self._write(cache)
+        before = (cache / "nasdaqlisted.txt").read_text(encoding="utf-8")
+
+        real = Path.write_text
+
+        def _half(self, data, *a, **kw):
+            real(self, data[:len(data) // 2], *a, **kw)
+            raise KeyboardInterrupt("killed mid-download")
+        monkeypatch.setattr(tu, "_fetch_text",
+                            lambda url, timeout=120: _symbol_directory(
+                                url.rsplit("/", 1)[-1], ("NVDA", "GME", "AMC")))
+        monkeypatch.setattr(Path, "write_text", _half)
+        with pytest.raises(KeyboardInterrupt):
+            tu.load_us_ticker_universe(cache, force_refresh=True)
+        monkeypatch.undo()
+
+        assert (cache / "nasdaqlisted.txt").read_text(
+            encoding="utf-8") == before
+        assert all(p.name.endswith(".tmp") for p in cache.iterdir()
+                   if p.name not in ("nasdaqlisted.txt", "otherlisted.txt")), \
+            "a fragment was left under a name the parser reads"
+
+
+class TestABuildRefusesToPublishNothing:
+    """A build pass that produced no rows is a broken run, not an empty
+    week: the aggregates it would write over are years of history. Both
+    builders check before the first write and leave the store as it is."""
+
+    @staticmethod
+    def _posts(tmp_path, dates=("2020-05-01", "2020-05-02")):
+        """A tiny raw post store, with dates the builders can filter."""
+        path = tmp_path / "posts.parquet"
+        pd.DataFrame({"id": [f"p{i}" for i in range(len(dates))],
+                      "date": list(dates),
+                      "title": ["NVDA to the moon"] * len(dates),
+                      "selftext": [""] * len(dates),
+                      "source": ["reddit"] * len(dates)}
+                     ).to_parquet(path, index=False)
+        return path
+
+    def test_an_aggregate_build_with_no_posts_in_range_writes_nothing(
+            self, tmp_path, monkeypatch):
+        import ingestion.build_aggregates as ba
+        processed = tmp_path / "processed"
+        processed.mkdir()
+        name = abstracted_data.THEME_COUNTS
+        _store(processed / name, rows=50)
+        before = (processed / name).read_bytes()
+
+        monkeypatch.setattr(ba, "POSTS_PATH", str(self._posts(tmp_path)))
+        monkeypatch.setattr(ba, "PROCESSED", str(processed))
+        monkeypatch.setattr(sys, "argv", ["build_aggregates.py",
+                                          "--start", "2030-01-01"])
+        assert ba.main() == 1, "an empty pass reported success"
+        assert (processed / name).read_bytes() == before
+        assert not list(processed.glob("*.tmp"))
+
+    def test_a_term_count_build_over_an_empty_store_writes_nothing(
+            self, tmp_path, monkeypatch):
+        import ingestion.build_term_counts as bt
+        out = tmp_path / "daily_term_counts.parquet"
+        _store(out, rows=50)
+        before = out.read_bytes()
+        empty = tmp_path / "posts.parquet"
+        pd.DataFrame({"id": [], "date": [], "title": [], "selftext": [],
+                      "source": []}).to_parquet(empty, index=False)
+
+        monkeypatch.setattr(bt, "POSTS_PATH", str(empty))
+        monkeypatch.setattr(bt, "OUT_PATH", str(out))
+        assert bt.main() == 1, "an empty pass reported success"
+        assert out.read_bytes() == before
+        assert not list(tmp_path.glob("*.tmp"))
+
+
+class TestTheAutoPublishStepStepsAsideWhenGitIsBusy:
+    """update_data.py commits and pushes the refreshed DATA paths so a
+    hosted dashboard redeploys. It acts on a repository somebody else may
+    be in the middle of using, so every state where a commit would carry
+    more than the data paths is left alone - and none of them may fail
+    the run, which by then has already fetched, built and published."""
+
+    @staticmethod
+    def _publisher(root, data_dir):
+        """update_data.py's git publisher, compiled out of its source.
+
+        It is defined inside main(), which runs the whole pipeline, so
+        it is lifted out on its own - the same way the dashboard's pure
+        helpers are read out of a module that executes on import."""
+        import textwrap
+        import time
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1]
+               / "update_data.py").read_text(encoding="utf-8")
+        start = src.index("    def _git_autopush():")
+        end = src.index('    git_msg = "not run"', start)
+        ns = {"os": os, "time": time, "ROOT": str(root),
+              "DATA_DIR": str(data_dir)}
+        exec(textwrap.dedent(src[start:end]), ns)
+        return ns["_git_autopush"]
+
+    BUNDLE = "bundle.txt"          # one published file, in the data path
+
+    @staticmethod
+    def _git(repo, *args):
+        import subprocess
+        r = subprocess.run(["git", *args], cwd=str(repo), capture_output=True,
+                           text=True, encoding="utf-8", errors="replace")
+        assert r.returncode == 0, f"git {' '.join(args)}: {r.stderr}"
+        return r.stdout
+
+    def _repo(self, tmp_path):
+        """A repository with one commit and a Data/dashboard path."""
+        repo = tmp_path / "repo"
+        (repo / "Data" / "dashboard").mkdir(parents=True)
+        (repo / "Data" / "dashboard" / self.BUNDLE).write_text(
+            "published\n", encoding="utf-8")
+        self._git(repo, "init", "-q")
+        self._git(repo, "config", "user.email", "runner@example.invalid")
+        self._git(repo, "config", "user.name", "runner")
+        self._git(repo, "add", "-A")
+        self._git(repo, "commit", "-q", "-m", "first")
+        return repo
+
+    def test_a_tree_that_is_not_a_repository_is_left_alone(self, tmp_path):
+        (tmp_path / "Data" / "dashboard").mkdir(parents=True)
+        msg = self._publisher(tmp_path, tmp_path / "Data")()
+        assert msg.startswith("skipped") and "not a git repo" in msg
+
+    def test_a_machine_without_git_is_left_alone(self, tmp_path, monkeypatch):
+        """A copy that runs the pipeline without git installed still
+        fetches, builds and publishes locally; only the push is off."""
+        repo = self._repo(tmp_path)
+        empty = tmp_path / "nowhere"
+        empty.mkdir()
+        monkeypatch.setenv("PATH", str(empty))
+        msg = self._publisher(repo, repo / "Data")()
+        assert msg.startswith("skipped") and "git is not installed" in msg
+
+    def test_a_detached_head_is_left_alone(self, tmp_path):
+        """A commit on a detached HEAD lands on no branch, and the next
+        checkout loses it."""
+        repo = self._repo(tmp_path)
+        self._git(repo, "checkout", "--detach", "-q")
+        (repo / "Data" / "dashboard" / self.BUNDLE).write_text(
+            "refreshed\n", encoding="utf-8")
+        msg = self._publisher(repo, repo / "Data")()
+        assert msg.startswith("skipped") and "HEAD is detached" in msg
+
+    @pytest.mark.parametrize("marker", ["MERGE_HEAD", "CHERRY_PICK_HEAD",
+                                        "REVERT_HEAD", "rebase-merge",
+                                        "rebase-apply"])
+    def test_an_operation_in_progress_is_left_alone(self, tmp_path, marker):
+        """Mid-merge, `git commit` CONCLUDES that operation and sweeps in
+        every path already staged - somebody's own work, committed under
+        this script's message."""
+        repo = self._repo(tmp_path)
+        gitdir = repo / ".git"
+        if marker.startswith("rebase"):
+            (gitdir / marker).mkdir()
+        else:
+            (gitdir / marker).write_text("0" * 40 + "\n", encoding="utf-8")
+        (repo / "Data" / "dashboard" / self.BUNDLE).write_text(
+            "refreshed\n", encoding="utf-8")
+        msg = self._publisher(repo, repo / "Data")()
+        assert msg.startswith("skipped"), msg
+        assert marker in msg and "finish it and re-run" in msg
+
+    def test_work_already_staged_is_left_alone(self, tmp_path):
+        repo = self._repo(tmp_path)
+        (repo / "notes.txt").write_text("mine\n", encoding="utf-8")
+        self._git(repo, "add", "notes.txt")
+        msg = self._publisher(repo, repo / "Data")()
+        assert msg.startswith("skipped") and "already have files staged" in msg
+
+    def test_an_unchanged_tree_commits_nothing(self, tmp_path):
+        repo = self._repo(tmp_path)
+        msg = self._publisher(repo, repo / "Data")()
+        assert msg.startswith("nothing new"), msg
+        assert len(self._git(repo, "log", "--oneline").splitlines()) == 1
+
+    def test_a_refresh_commits_the_data_paths_and_nothing_else(self, tmp_path):
+        """The one state where it does act: the commit carries the data
+        paths, and a code edit sitting in the same tree is not swept in.
+        There is no remote here, so the push fails and says so - and
+        still does not fail the run."""
+        repo = self._repo(tmp_path)
+        (repo / "Data" / "dashboard" / self.BUNDLE).write_text(
+            "refreshed\n", encoding="utf-8")
+        (repo / "code.py").write_text("print('mine')\n", encoding="utf-8")
+        msg = self._publisher(repo, repo / "Data")()
+        assert "push FAILED" in msg, msg
+        touched = self._git(repo, "show", "--name-only", "--format=",
+                            "HEAD").split()
+        # built rather than written out: a literal repo path in a test is
+        # a citation, and tools/verify_deps.py checks that citations
+        # point at files that exist
+        assert touched == [f"Data/dashboard/{self.BUNDLE}"], touched
+
+
+class TestAnUnreachableSourceIsNotAQuietDay:
+    """A source that could not be reached and a source with nothing new
+    look identical in the store - no new messages - so they are told
+    apart where the caller can still act on the difference: the run log
+    records the first as a failed source rather than a clean fetch."""
+
+    @staticmethod
+    def _answer(payload):
+        class _Resp:
+            status_code = 200
+
+            def json(self):
+                return payload
+        return _Resp()
+
+    def _run(self, tmp_path, monkeypatch, get):
+        import ingestion.fetch_stocktwits as fs
+        monkeypatch.setattr(fs, "OUT_DIR", str(tmp_path / "StockTwits"))
+        monkeypatch.setattr(fs, "PAUSE_S", 0.0)
+        monkeypatch.setattr(fs.requests, "get", get)
+        monkeypatch.setattr(sys, "argv", ["fetch_stocktwits.py",
+                                          "--symbols", "GME,NVDA"])
+        return fs.main()
+
+    def test_every_request_failing_before_the_api_exits_nonzero(
+            self, tmp_path, monkeypatch, capsys):
+        def _down(url, **kw):
+            raise OSError("no route to host")
+        assert self._run(tmp_path, monkeypatch, _down) == 1
+        assert "unreachable" in capsys.readouterr().out
+        assert not (tmp_path / "StockTwits").exists() or \
+            not list((tmp_path / "StockTwits").iterdir())
+
+    def test_an_api_that_answers_with_nothing_exits_zero(
+            self, tmp_path, monkeypatch, capsys):
+        """A quiet hour on the streams is a clean run, not a failure."""
+        def _empty(url, **kw):
+            return self._answer({"messages": []})
+        assert self._run(tmp_path, monkeypatch, _empty) == 0
+        assert "nothing fetched" in capsys.readouterr().out
+
+    def test_one_unreachable_symbol_out_of_two_is_not_an_outage(
+            self, tmp_path, monkeypatch):
+        seen = []
+
+        def _mixed(url, **kw):
+            seen.append(url)
+            if len(seen) == 1:
+                raise OSError("no route to host")
+            return self._answer({"messages": []})
+        assert self._run(tmp_path, monkeypatch, _mixed) == 0
 
 
 class TestPulseRegister:
@@ -3511,6 +4215,46 @@ class TestRobustShare:
             lambda w: float(pinv[2] @ w), raw=True)
         assert np.allclose(fast.dropna(), slow.dropna())
 
+    def test_the_totals_cache_answers_only_for_the_frame_it_belongs_to(self):
+        """The day-total tables are cached on the identity of the frame
+        passed in, because the same frames arrive once per instrument -
+        about a hundred times a run. ``id()`` alone is not an identity:
+        a freed frame's address is handed straight to the next
+        allocation, so a later frame of the same length can key into the
+        entry and read another instrument's totals. The entry holds a
+        weak reference to the frame it was computed from, and a
+        reference that does not resolve to the caller's own frame
+        recomputes."""
+        import weakref
+        from src.analytics import robust_share as rs
+        counts, _by_source, _days = self._toy()
+        other = counts.copy()
+        other["mention_count"] = 999
+        stale = rs._day_totals(other)
+        # the entry a reused address would land on: same key, another
+        # frame's answer
+        rs._TOTALS_CACHE[(id(counts), len(counts))] = (weakref.ref(other),
+                                                       stale)
+        try:
+            got = rs._day_totals(counts)
+        finally:
+            rs._TOTALS_CACHE.clear()
+        expect = counts.groupby("date")["mention_count"].sum()
+        pd.testing.assert_series_equal(got, expect)
+        assert not got.equals(stale)
+
+    def test_the_totals_cache_does_answer_for_its_own_frame(self):
+        """The other half of the same rule: the cache still has to hit,
+        or the groupby is paid once per instrument."""
+        from src.analytics import robust_share as rs
+        counts, _by_source, _days = self._toy()
+        rs._TOTALS_CACHE.clear()
+        try:
+            first = rs._day_totals(counts)
+            assert rs._day_totals(counts) is first
+        finally:
+            rs._TOTALS_CACHE.clear()
+
 
 class TestMLDetector:
     """src/analytics/ml_detector.py - the learned production detectors."""
@@ -3919,3 +4663,68 @@ class TestPinnedModelFamily:
     def test_config_default_is_the_logit_gbm_ensemble(self):
         from src.config import DESK_MODEL_FAMILY
         assert DESK_MODEL_FAMILY == "ens"
+
+
+# ---------------------------------------------------------------------------
+# SINGLE-STAGE RUNS - the price step on its own
+# ---------------------------------------------------------------------------
+class TestAPricesOnlyRunTouchesNothingElse:
+    """`--prices-only` exists so the long, vendor-priced step can be run
+    by itself - to time it, to try a provider, to catch a series up
+    after a failure. Everything that WRITES a store is off in that mode,
+    and it is off through ONE derived flag rather than stage by stage,
+    so a stage added later cannot quietly start running in it."""
+
+    @staticmethod
+    def _plan(monkeypatch, tmp_path, argv):
+        """The child commands a --dry-run of `update_data` would issue."""
+        import update_data as U
+        ran = []
+        monkeypatch.setattr(U, "run",
+                            lambda cmd, fh, dry, show=False, stage=None:
+                            (ran.append(list(cmd)), 0)[1])
+        monkeypatch.setattr(U, "LOG_DIR", str(tmp_path))
+        # main() writes the view window into the environment for its
+        # children; registering the keys here hands them back afterwards.
+        monkeypatch.setenv("PIPELINE_START_DATE",
+                           os.environ.get("PIPELINE_START_DATE", ""))
+        monkeypatch.setenv("PIPELINE_END_DATE",
+                           os.environ.get("PIPELINE_END_DATE", ""))
+        monkeypatch.setattr(sys, "argv",
+                            ["update_data.py", "--dry-run"] + argv)
+        assert U.main() == 0
+        return ran
+
+    def test_the_price_step_is_the_only_step_that_runs(self, monkeypatch,
+                                                       tmp_path):
+        ran = self._plan(monkeypatch, tmp_path, ["--prices-only"])
+        assert len(ran) == 1, f"a prices-only run issued {len(ran)}: {ran}"
+        assert ran[0][1] == "ingestion/pull_prices.py", ran[0]
+
+    def test_the_daily_flag_reaches_the_price_step(self, monkeypatch,
+                                                   tmp_path):
+        ran = self._plan(monkeypatch, tmp_path, ["--prices-only", "--daily"])
+        assert len(ran) == 1 and "--daily" in ran[0], ran
+
+    def test_the_price_step_runs_the_full_universe_by_default(
+            self, monkeypatch, tmp_path):
+        ran = self._plan(monkeypatch, tmp_path, ["--prices-only"])
+        assert "--daily" not in ran[0], ran[0]
+
+    def test_the_store_writing_stages_are_switched_off_in_one_place(self):
+        """The snapshot, the recompute and the publish read one derived
+        flag, so both single-stage modes gate on the same question and a
+        stage added later inherits the answer."""
+        src = open(os.path.join(ROOT, "update_data.py"),
+                   encoding="utf-8").read()
+        assert "single_stage = ai_only or prices_only" in src
+        assert "([] if single_stage else SIGNAL_FILES)" in src, (
+            "the snapshot step names a mode instead of the derived flag")
+        assert "if compute and not single_stage:" in src, (
+            "the analytics step names a mode instead of the derived flag")
+        assert "and not dry and not single_stage:" in src, (
+            "the publish step names a mode instead of the derived flag")
+        for off in ("do_fetch = False", "args.skip_panel_review = True",
+                    "args.skip_publish = True"):
+            assert off in src.split("prices_only = args.prices_only")[1][:400], (
+                f"a prices-only run does not set {off}")

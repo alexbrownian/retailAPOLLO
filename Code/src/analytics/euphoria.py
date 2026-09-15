@@ -974,7 +974,8 @@ def _stored_report() -> dict | None:
     if not os.path.exists(path):
         return None
     try:
-        return json.load(open(path))
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
     except (ValueError, OSError):
         return None
 
@@ -1198,7 +1199,9 @@ def main(research: bool | None = None):
     from src.abstracted_data import _safe_write
     _safe_write(out, os.path.join(PROCESSED_DIR, "euphoria_levels.parquet"))
     import json
-    with open(os.path.join(PROCESSED_DIR, "euphoria_report.json"), "w") as f:
+    _report_path = os.path.join(PROCESSED_DIR, "euphoria_report.json")
+    _tmp = _report_path + ".tmp"             # atomic swap - never half-written
+    with open(_tmp, "w", encoding="utf-8") as f:
         json.dump({k: v for k, v in report.items() if k != "per_year"}
                   | {"per_year": {str(y): {kk: vv for kk, vv in r.items()
                                            if kk != "leads"}
@@ -1210,6 +1213,7 @@ def main(research: bool | None = None):
                                  "matched_comparison": matched},
                      "adopted": adopted},
                   f, indent=1)
+    os.replace(_tmp, _report_path)
     print(f"\nsaved euphoria_levels.parquet ({len(out):,} rows) "
           f"+ euphoria_report.json (live threshold {thr_now})")
     return 0

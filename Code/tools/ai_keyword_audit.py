@@ -46,6 +46,14 @@ from src.config import DATA_DIR  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KW_CSV = os.path.join(ROOT, "config", "theme_keywords.csv")
 
+# The proposals and notes printed below are model text and crowd terms,
+# which are not ASCII. A console encoding that cannot hold one of those
+# characters would end the audit on a print.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 
 def _unmapped_terms(top_n: int = 80) -> list[dict]:
     """Return high-frequency crowd terms (trailing 60d) not in any keyword list.
@@ -118,12 +126,21 @@ def audit() -> str:
           "Be conservative: additions only for terms with real volume "
           "and an unambiguous home; moves/removals only for clear "
           "errors.")
-    res = ai.chat(prompt, system=_SYSTEM, want_json=True,
-                  max_tokens=3200)
+    try:
+        res = ai.chat(prompt, system=_SYSTEM, want_json=True,
+                      max_tokens=3200)
+    except RuntimeError as exc:
+        # An unreachable gateway, a spent budget or an unparseable answer.
+        # None of them is a fault in the map, so say so in one line.
+        raise SystemExit(f"[SKIP] LLM call failed: {exc}")
     out_dir = os.path.join(DATA_DIR, "reference", "keyword_suggestions")
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, f"keyword_suggestions_{date.today()}.csv")
-    with open(out_path, "w", newline="", encoding="utf-8") as f:
+    # Staged and renamed, as the apply path below is: a second run on the
+    # same day writes over the file the reviewer is annotating, and a
+    # half-written proposal list reads as a complete one.
+    out_tmp = out_path + ".tmp"
+    with open(out_tmp, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["action", "theme", "keyword", "reason", "approved"])
         for r in res.get("additions", []):
@@ -137,6 +154,7 @@ def audit() -> str:
         for r in res.get("removals", []):
             w.writerow(["remove", r.get("theme", ""),
                         r.get("keyword", ""), r.get("reason", ""), ""])
+    os.replace(out_tmp, out_path)
     n = (len(res.get("additions", [])) + len(res.get("moves", []))
          + len(res.get("removals", [])))
     print(f"[OK] {n} suggestions -> {os.path.relpath(out_path, ROOT)}")
@@ -154,8 +172,11 @@ def apply(path: str) -> None:
             to ``YES`` (or ``Y``/``TRUE``/``1``) on the rows to apply.
 
     Raises:
-        SystemExit: When no row is approved.
+        SystemExit: When the file is absent, no row is approved, or the
+            keyword map has no header row.
     """
+    if not os.path.exists(path):
+        raise SystemExit(f"[SKIP] no suggestions file at {path}")
     rows = list(csv.DictReader(open(path, newline="",
                                     encoding="utf-8-sig")))
     approved = [r for r in rows
@@ -165,6 +186,9 @@ def apply(path: str) -> None:
         raise SystemExit("[SKIP] no approved rows (set approved=YES on "
                          "the ones you accept)")
     kw = list(csv.reader(open(KW_CSV, newline="", encoding="utf-8-sig")))
+    if not kw:
+        raise SystemExit(f"[SKIP] {os.path.relpath(KW_CSV, ROOT)} is empty; "
+                         "restore it before applying anything to it")
     hdr, body = kw[0], kw[1:]
     changed = []
     for r in approved:
@@ -194,10 +218,20 @@ def apply(path: str) -> None:
                        for b in body):
                 body.append([to, word])
             changed.append(f"~ {word}: {frm} -> {to}")
-    with open(KW_CSV, "w", newline="", encoding="utf-8") as f:
+    if not changed:
+        print(f"[SKIP] the approved rows leave "
+              f"{os.path.relpath(KW_CSV, ROOT)} exactly as it is; "
+              "nothing written.")
+        return
+    # Through a temp file in the same directory, then one rename. The
+    # keyword map is the human-owned source of truth for every count in
+    # the project, and a rewrite killed halfway would truncate it.
+    tmp = KW_CSV + ".tmp"
+    with open(tmp, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(hdr)
         w.writerows(body)
+    os.replace(tmp, KW_CSV)
     print(f"[OK] applied {len(changed)} change(s) to "
           f"{os.path.relpath(KW_CSV, ROOT)}:")
     for c in changed:
@@ -208,6 +242,12 @@ def apply(path: str) -> None:
 
 if __name__ == "__main__":
     if "--apply" in sys.argv:
-        apply(sys.argv[sys.argv.index("--apply") + 1])
+        _at = sys.argv.index("--apply") + 1
+        if _at >= len(sys.argv):
+            raise SystemExit("--apply takes the path of a suggestions CSV, "
+                             "e.g. --apply Data/reference/"
+                             "keyword_suggestions/keyword_suggestions_"
+                             "<date>.csv")
+        apply(sys.argv[_at])
     else:
         audit()

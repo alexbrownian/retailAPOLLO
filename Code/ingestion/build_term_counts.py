@@ -53,8 +53,15 @@ def main():
     # newest date first, so the retention floor is known before streaming
     newest = None
     for batch in pf.iter_batches(columns=["date"], batch_size=200_000):
-        s = max(str(d)[:10] for d in batch.column("date").to_pylist())
+        days = [str(d)[:10] for d in batch.column("date").to_pylist()]
+        if not days:
+            continue
+        s = max(days)
         newest = s if newest is None or s > newest else newest
+    if newest is None:
+        print("posts.parquet holds no rows - nothing to count. "
+              "Data/abstracted/daily_term_counts.parquet is left as it is.")
+        return 1
     floor = (pd.Timestamp(newest) - pd.Timedelta(days=RETAIN_DAYS)
              ).strftime("%Y-%m-%d")
     print(f"counting terms from {floor} -> {newest} "
@@ -89,6 +96,11 @@ def main():
             rows.append((date, term, n))
     for date, n in day_totals.items():
         rows.append((date, TOTAL_MARKER, n))
+
+    if not rows:
+        print(f"no posts dated >= {floor} produced a term - nothing "
+              "written; the committed term counts are left as they are.")
+        return 1
 
     daily = (pd.DataFrame(rows, columns=["date", "term", "mention_count"])
              .sort_values(["date", "term"]).reset_index(drop=True))

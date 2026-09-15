@@ -159,8 +159,8 @@ def scan(rebuild: bool = False, log=print) -> pd.DataFrame:
     pats = load_patterns()
     ledger = {}
     if os.path.exists(LEDGER) and not rebuild:
-        ledger = {_ledger_key(k): v for k, v in
-                  json.load(open(LEDGER, encoding="utf-8")).items()}
+        with open(LEDGER, encoding="utf-8") as fh:
+            ledger = {_ledger_key(k): v for k, v in json.load(fh).items()}
     old = (pd.read_parquet(OUT_PATH)
            if os.path.exists(OUT_PATH) and not rebuild else None)
 
@@ -229,10 +229,16 @@ def scan(rebuild: bool = False, log=print) -> pd.DataFrame:
     new = (new.groupby([new["date"], "category", "theme"], as_index=False)
            ["mention_count"].sum().sort_values(["date", "category"]))
     os.makedirs(PROCESSED_DIR, exist_ok=True)
-    new.to_parquet(OUT_PATH, index=False)
-    json.dump(ledger, open(LEDGER, "w", encoding="utf-8"), indent=0)
+    # Both files are written through a temp file and swapped in: a run
+    # killed mid-write would otherwise leave a truncated parquet or a
+    # truncated ledger, and the next run reads both back.
+    new.to_parquet(OUT_PATH + ".tmp", index=False)
+    os.replace(OUT_PATH + ".tmp", OUT_PATH)
+    os.makedirs(REFERENCE_DIR, exist_ok=True)
+    with open(LEDGER + ".tmp", "w", encoding="utf-8") as fh:
+        json.dump(ledger, fh, indent=0)
+    os.replace(LEDGER + ".tmp", LEDGER)
     if samples:
-        os.makedirs(REFERENCE_DIR, exist_ok=True)
         with open(SAMPLES, "a", encoding="utf-8") as f:
             for s in samples:
                 f.write(json.dumps(s) + "\n")
@@ -257,11 +263,12 @@ def recent_samples(days: int = 7, per_cat: int = 12) -> list[dict]:
         return []
     cutoff = (pd.Timestamp.now() - pd.Timedelta(days=days * 4))
     rows = []
-    for line in open(SAMPLES, encoding="utf-8"):
-        try:
-            rows.append(json.loads(line))
-        except ValueError:
-            continue
+    with open(SAMPLES, encoding="utf-8") as fh:
+        for line in fh:
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                continue
     rows = [r for r in rows
             if pd.Timestamp(r.get("date", "1970-01-01")) >= cutoff]
     out, seen = [], defaultdict(int)

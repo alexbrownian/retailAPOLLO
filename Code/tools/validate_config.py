@@ -118,6 +118,10 @@ def validate() -> List[str]:
                 settings.get_float(key)
         except (settings.ConfigError, KeyError) as exc:
             errors.append(f"settings.csv: {exc}")
+    if errors:
+        return errors                 # the range checks below re-read
+                                      # values that did not parse, and
+                                      # would raise instead of reporting
     prov = settings.get("price_provider").strip().lower()
     if prov not in ("auto", "bloomberg", "tiingo"):
         errors.append(f"settings.csv: price_provider must be auto, bloomberg "

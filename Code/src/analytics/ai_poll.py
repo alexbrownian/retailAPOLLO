@@ -164,7 +164,9 @@ def run(log=print) -> tuple[bool, str]:
         # one poll per day: a rerun the same day replaces that day
         old = old[old["run_date"] != pd.Timestamp(today)]
         new = pd.concat([old, new], ignore_index=True)
-    new.to_parquet(OUT_PATH, index=False)
+    tmp = OUT_PATH + ".tmp"
+    new.to_parquet(tmp, index=False)         # atomic swap - never half-written
+    os.replace(tmp, OUT_PATH)
     with open(ANSWERS, "a", encoding="utf-8") as f:
         for a in answers:
             f.write(json.dumps(a) + "\n")

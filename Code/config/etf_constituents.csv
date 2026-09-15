@@ -115,7 +115,7 @@ OIH,LBRT,Liberty Energy,17,yes
 OIH,WTTR,Select Energy Services,18,yes
 OIH,NBR,Nabors Industries,19,yes
 OIH,PUMP,ProPetro Holding,20,yes
-OIH,HLX,Helix Energy Solutions,21,yes
+OIH,HOS,Hornbeck Offshore Services,21,no
 OIH,INVX,Innovex International,22,yes
 OIH,XPRO,Expro Group,23,yes
 OIH,RES,RPC Inc,24,yes
@@ -556,7 +556,6 @@ ITB,HD,Home Depot,7,yes
 ITB,LOW,Lowes Companies,8,yes
 ITB,LII,Lennox International,9,yes
 ITB,MAS,Masco,10,yes
-ITB,TMHC,Taylor Morrison Home,11,yes
 ITB,OC,Owens Corning,12,yes
 ITB,IBP,Installed Building Products,13,yes
 ITB,MTH,Meritage Homes,14,yes

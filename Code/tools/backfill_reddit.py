@@ -56,10 +56,21 @@ import subprocess
 import sys
 import threading
 import time
-from src.config import DATA_DIR  # noqa: E402
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(THIS_DIR)
+sys.path.insert(0, PROJECT_ROOT)
+
+from src.config import DATA_DIR  # noqa: E402
+
+# The fetcher's progress lines carry post titles and subreddit names, so
+# this stream is not ASCII. A console encoding that cannot hold one of
+# those characters would end a multi-hour run on a print.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 FETCHER = os.path.join(PROJECT_ROOT, "ingestion", "fetch_reddit_arctic.py")
 LEDGER = os.path.join(DATA_DIR, "reference",
                       "reddit_backfill_progress.json")
@@ -71,12 +82,22 @@ DEFAULT_END = "2026-01-01"
 
 
 def load_ledger() -> dict:
-    """Return the progress ledger, or an empty one when absent or unreadable."""
+    """Return the progress ledger, or an empty one when absent or unreadable.
+
+    An unreadable ledger is said out loud: every finished chunk in it is
+    about to be treated as to-do and the next save replaces it, which
+    costs hours of re-fetching. Dedup is by post id, so the posts
+    themselves are safe either way.
+    """
     if os.path.exists(LEDGER):
         try:
             return json.load(open(LEDGER, encoding="utf-8"))
-        except (ValueError, OSError):
-            pass
+        except (ValueError, OSError) as exc:
+            print(f"  NOTE: the progress ledger is unreadable "
+                  f"({type(exc).__name__}: {exc}).\n        Every chunk "
+                  f"counts as TO DO and the first finished chunk replaces "
+                  f"the file.\n        Move it aside first if its record "
+                  f"is worth keeping:\n        {LEDGER}")
     return {"chunks": {}}
 
 
@@ -249,7 +270,8 @@ def print_next_steps(header: str) -> None:
         print("\n  (aggregates mode - no posts.parquet. fold_historical is")
         print("   the door for historical posts. `update_data.py --skip-fetch`")
         print("   would drop every one of them: append_live_abstracted keeps")
-        print("   only dates >= LIVE_START. See research.ipynb.)")
+        print("   only dates >= LIVE_START. See Reference Materials/"
+              "research.ipynb.)")
     else:
         print("  python Code/update_data.py --skip-fetch")
         print("  cd Code && python -m src.analytics.run_analytics --what phases --research")
@@ -387,10 +409,13 @@ def main() -> int:
         ok, posts = run_chunk(a, b)
         secs = time.time() - t0
         if ok:
+            # Naive UTC: the ledger stamp is a bare wall clock, so the
+            # tzinfo is dropped rather than written as a +00:00 suffix.
             led["chunks"][key_of(a, b)] = {
                 "posts": posts, "secs": round(secs, 1),
-                "done_utc": datetime.datetime.utcnow().isoformat(
-                    timespec="seconds")}
+                "done_utc": (datetime.datetime.now(datetime.timezone.utc)
+                             .replace(tzinfo=None)
+                             .isoformat(timespec="seconds"))}
             save_ledger(led)          # durable after EVERY chunk
             rate = posts / secs if secs else 0
             remaining = len(todo) - i

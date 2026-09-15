@@ -17,6 +17,12 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
+# ---- atomic-write staging leftovers ----
+# A store is staged as <path>.tmp and swapped in with os.replace, so a killed
+# run can strand one inside a committed directory (Data/abstracted/,
+# Data/dashboard/, Data/reference/influence/).
+*.tmp
+
 # ---- virtual environments ----
 .venv/
 venv/
@@ -110,3 +116,7 @@ Data/reference/subreddit_panel.json
 # fetches, spends API credit, or calls a Bloomberg Terminal. Written by
 # Code/tools/publish_dashboard.py; see LOCAL_CONTROLS in Code/dashboard.py.
 Code/config/settings.local.csv
+
+# ---- price-store recovery copies ----
+# A snapshot taken before a risky pull. Local safety net, not history.
+Data/prices/_recovery/

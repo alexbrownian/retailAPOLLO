@@ -233,8 +233,11 @@ def extract_calls_and_edges(paths):
         else:
             comment_author["t1_" + rid] = a
             replies.append((a, link_id, parent_id, rid))
-        tickers = set(extract_tickers_from_text(text, universe,
-                                                cashtags_only=False))
+        # sorted, not just de-duplicated: a set iterates in an order that
+        # changes from process to process, and these rows are written to a
+        # committed store whose row order has to be a function of the data
+        tickers = sorted(set(extract_tickers_from_text(text, universe,
+                                                       cashtags_only=False)))
         if not tickers:
             continue
         s = score_text(text)
@@ -572,13 +575,15 @@ def _safe_store_write(df: pd.DataFrame, path: str):
     if bad:
         raise RuntimeError(f"REFUSING to write {path}: text columns {bad} "
                            "would break the text-free git contract")
-    df.to_parquet(path, index=False)
+    tmp = path + ".tmp"                      # atomic swap - never half-written
+    df.to_parquet(tmp, index=False)
+    os.replace(tmp, path)
 
 
 def _load_ledger() -> dict:
     """The ingest ledger ({"files": {relative path: size}}), empty if absent."""
     if os.path.exists(LEDGER_PATH):
-        with open(LEDGER_PATH) as f:
+        with open(LEDGER_PATH, encoding="utf-8") as f:
             return json.load(f)
     return {"files": {}}
 
@@ -617,8 +622,10 @@ def _rebuild_board_and_save(calls: pd.DataFrame, edges: pd.DataFrame,
     _safe_store_write(board, SCORES_PATH)
     if len(edges):
         _safe_store_write(edges, EDGES_PATH)
-    with open(LEDGER_PATH, "w") as f:
+    tmp = LEDGER_PATH + ".tmp"               # atomic swap - never half-written
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(ledger, f, indent=1)
+    os.replace(tmp, LEDGER_PATH)
     judged = scored["outcome"].isin(["correct", "wrong"]).sum()
     n_high = int((board["tier"] == "HIGH").sum())
     print(f"influence store: {len(board)} authors ({n_high} HIGH tier), "

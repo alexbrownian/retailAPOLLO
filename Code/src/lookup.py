@@ -33,7 +33,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Optional
+from typing import Iterable, List, Optional
 
 import pandas as pd
 
@@ -574,6 +574,13 @@ def discussion_share(frame: pd.DataFrame, theme_counts: pd.DataFrame,
 # ---------------------------------------------------------------------------
 # 4. price, cached
 # ---------------------------------------------------------------------------
+def _cache_path(symbol: str) -> str:
+    """Cache file for one symbol. ``/`` is not a filename character, so a
+    symbol carrying one is written with an underscore instead."""
+    return os.path.join(LOOKUP_PRICE_DIR,
+                        f"{symbol.replace('/', '_')}.parquet")
+
+
 def price(symbol: str, start: str, end: str, provider: str = "auto",
           fetch=None, now=None) -> pd.DataFrame:
     """Daily closes for ``symbol``, cached per day under
@@ -594,10 +601,15 @@ def price(symbol: str, start: str, end: str, provider: str = "auto",
     except Exception:                                      # noqa: BLE001
         pass
     os.makedirs(LOOKUP_PRICE_DIR, exist_ok=True)
-    path = os.path.join(LOOKUP_PRICE_DIR, f"{symbol.replace('/', '_')}.parquet")
+    path = _cache_path(symbol)
     now = pd.Timestamp(now) if now is not None else pd.Timestamp.now()
     if os.path.exists(path):
-        cached = pd.read_parquet(path)
+        try:
+            cached = pd.read_parquet(path)
+        except Exception:                                  # noqa: BLE001
+            # An unreadable cache file (a run killed mid-write) is a
+            # missing cache: re-pull and overwrite it.
+            cached = pd.DataFrame()
         age_h = (now.timestamp() - os.path.getmtime(path)) / 3600.0
         # a cache is reused only while it is fresh AND already reaches the
         # last completed trading day; a series that stops earlier was
@@ -624,7 +636,11 @@ def price(symbol: str, start: str, end: str, provider: str = "auto",
         return pd.DataFrame(columns=["date", "symbol", "px_last", "source"])
     df = df.copy()
     df["date"] = pd.to_datetime(df["date"])
-    df.to_parquet(path, index=False)
+    # Write through a temp file so an interrupted run cannot leave a
+    # half-written parquet where the next lookup expects a cache.
+    tmp = path + ".tmp"
+    df.to_parquet(tmp, index=False)
+    os.replace(tmp, path)
     return df
 
 
@@ -643,8 +659,9 @@ def last_trading_day(now=None) -> pd.Timestamp:
 def clear_price_cache(symbol: Optional[str] = None) -> None:
     if not os.path.isdir(LOOKUP_PRICE_DIR):
         return
+    wanted = None if symbol is None else os.path.basename(_cache_path(symbol))
     for f in os.listdir(LOOKUP_PRICE_DIR):
-        if symbol is None or f == f"{symbol}.parquet":
+        if wanted is None or f == wanted:
             os.remove(os.path.join(LOOKUP_PRICE_DIR, f))
 
 

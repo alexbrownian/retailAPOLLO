@@ -181,7 +181,6 @@ def main():
     #      reach an aggregate. Scored across all batches at once so a
     #      copy-paste campaign split over two batches is still seen.
     from ingestion.bot_screen import apply_screen, format_report, write_report
-    from src.config import REFERENCE_DIR
     if batches:
         _all = pd.concat(batches, ignore_index=True)
         _kept, _rep = apply_screen(_all)
@@ -191,6 +190,14 @@ def main():
             batches = [_kept.iloc[i:i + BATCH]
                        for i in range(0, len(_kept), BATCH)]
             total = len(_kept)
+
+    # A pass with no posts in it would write five empty aggregates over a
+    # healthy store and report success. Stop while the store is intact.
+    if not total:
+        print(f"no posts dated >= {args.start} survive in posts.parquet - "
+              "nothing to build. The aggregates on disk are untouched; "
+              "check --start and the raw store.")
+        return 1
 
     if new_ids:
         chunks = [new_texts[i:i + 20_000] for i in range(0, len(new_texts), 20_000)]
@@ -242,6 +249,17 @@ def main():
         abstracted_data.THEME_COUNTS: theme_counts,
         abstracted_data.THEME_SENT: theme_sent_df,
     }
+    # The same rule one level down: an extraction pass that matched no
+    # ticker or theme is a broken run, not an empty week. Check every
+    # frame BEFORE the first write, so a store is never left half
+    # rewritten.
+    empty = [name for name, df in outputs.items() if df.empty]
+    if empty:
+        print("ABORT: this pass produced 0 rows for "
+              f"{', '.join(empty)} - nothing written, the aggregates on "
+              "disk are left as they are.")
+        return 1
+
     for name, df in outputs.items():
         df = df.copy()
         df["date"] = pd.to_datetime(df["date"])

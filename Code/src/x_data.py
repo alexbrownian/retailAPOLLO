@@ -64,9 +64,9 @@ STATUS_ID = re.compile(r"/status/(\d+)")
 def _dates_from(series) -> pd.Series:
     """Converts timestamps to 'YYYY-MM-DD' strings.
 
-    Handles ISO strings and unix seconds or milliseconds (dumps vary).
-    Mixed formats are expected, so pandas' per-element-parse warning is
-    suppressed.
+    Handles ISO strings and unix seconds or milliseconds (dumps vary), and
+    ``None`` for a dump that has no such column. Mixed formats are
+    expected, so pandas' per-element-parse warning is suppressed.
 
     The numeric path is range-guarded: a raw feed row can carry a huge
     numeric in created_at (a tweet/status id is ~2e18), and feeding that
@@ -80,6 +80,11 @@ def _dates_from(series) -> pd.Series:
     """
     import warnings
     import numpy as np
+    if series is None:
+        # The dump carries no timestamp column at all; every row is
+        # undatable and _finish() drops the lot, as it does for a row
+        # whose stamp will not parse.
+        return pd.Series(dtype="object")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         parsed = pd.to_datetime(series, errors="coerce", utc=True)

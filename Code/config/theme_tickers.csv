@@ -380,6 +380,49 @@ defense_aerospace,VRT,XLI constituent
 defense_aerospace,WM,XLI constituent
 defense_aerospace,WWD,ITA constituent
 defense_aerospace,XAR,curated
+disruptive_innovation,ACHR,ARKK constituent
+disruptive_innovation,AMD,ARKK constituent
+disruptive_innovation,AMZN,ARKK constituent
+disruptive_innovation,AVGO,ARKK constituent
+disruptive_innovation,BEAM,ARKK constituent
+disruptive_innovation,BLSH,ARKK constituent
+disruptive_innovation,BMNR,ARKK constituent
+disruptive_innovation,BWXT,ARKK constituent
+disruptive_innovation,CBRS,ARKK constituent
+disruptive_innovation,CERS,ARKK constituent
+disruptive_innovation,COIN,ARKK constituent
+disruptive_innovation,CRCL,ARKK constituent
+disruptive_innovation,CRSP,ARKK constituent
+disruptive_innovation,CRWV,ARKK constituent
+disruptive_innovation,DE,ARKK constituent
+disruptive_innovation,FIG,ARKK constituent
+disruptive_innovation,GOOG,ARKK constituent
+disruptive_innovation,GOOGL,ARKK constituent
+disruptive_innovation,HOOD,ARKK constituent
+disruptive_innovation,ILMN,ARKK constituent
+disruptive_innovation,KTOS,ARKK constituent
+disruptive_innovation,LLY,ARKK constituent
+disruptive_innovation,META,ARKK constituent
+disruptive_innovation,NTLA,ARKK constituent
+disruptive_innovation,NTRA,ARKK constituent
+disruptive_innovation,NVDA,ARKK constituent
+disruptive_innovation,PACB,ARKK constituent
+disruptive_innovation,PLTR,ARKK constituent
+disruptive_innovation,RBLX,ARKK constituent
+disruptive_innovation,RXRX,ARKK constituent
+disruptive_innovation,SHOP,ARKK constituent
+disruptive_innovation,SNOW,ARKK constituent
+disruptive_innovation,SOFI,ARKK constituent
+disruptive_innovation,TEM,ARKK constituent
+disruptive_innovation,TER,ARKK constituent
+disruptive_innovation,TSLA,ARKK constituent
+disruptive_innovation,TSM,ARKK constituent
+disruptive_innovation,TWST,ARKK constituent
+disruptive_innovation,TXG,ARKK constituent
+disruptive_innovation,VCYT,ARKK constituent
+disruptive_innovation,WGS,ARKK constituent
+disruptive_innovation,XE,ARKK constituent
+disruptive_innovation,XYZ,ARKK constituent
 energy,APA,XLE constituent
 energy,AR,XOP constituent
 energy,BKR,XLE constituent
@@ -398,7 +441,7 @@ energy,EXE,XLE constituent
 energy,FANG,curated
 energy,FTI,OIH constituent
 energy,HAL,curated
-energy,HLX,OIH constituent
+energy,HOS,OIH constituent
 energy,HP,OIH constituent
 energy,INVX,OIH constituent
 energy,KMI,XLE constituent
@@ -777,7 +820,6 @@ housing_builders,SKY,ITB constituent
 housing_builders,SSD,ITB constituent
 housing_builders,STLD,XLB constituent
 housing_builders,SW,XLB constituent
-housing_builders,TMHC,ITB constituent
 housing_builders,TOL,curated
 housing_builders,UFPI,ITB constituent
 housing_builders,VMC,XLB constituent
@@ -875,60 +917,18 @@ media_streaming,VZ,XLC constituent
 media_streaming,WBD,curated
 media_streaming,XLC,curated
 media_streaming,YELP,SOCL constituent
-meme_stocks,ACHR,ARKK constituent
 meme_stocks,AMC,curated
-meme_stocks,AMD,ARKK constituent
-meme_stocks,AMZN,ARKK constituent
-meme_stocks,AVGO,ARKK constituent
 meme_stocks,BB,curated
 meme_stocks,BBBY,curated
-meme_stocks,BEAM,ARKK constituent
-meme_stocks,BLSH,ARKK constituent
-meme_stocks,BMNR,ARKK constituent
-meme_stocks,BWXT,ARKK constituent
-meme_stocks,CBRS,ARKK constituent
-meme_stocks,CERS,ARKK constituent
 meme_stocks,CLOV,curated
-meme_stocks,COIN,ARKK constituent
-meme_stocks,CRCL,ARKK constituent
-meme_stocks,CRSP,ARKK constituent
-meme_stocks,CRWV,ARKK constituent
-meme_stocks,DE,ARKK constituent
 meme_stocks,EXPR,curated
-meme_stocks,FIG,ARKK constituent
 meme_stocks,GME,curated
-meme_stocks,GOOG,ARKK constituent
-meme_stocks,GOOGL,ARKK constituent
 meme_stocks,HOOD,curated
-meme_stocks,ILMN,ARKK constituent
 meme_stocks,KOSS,curated
-meme_stocks,KTOS,ARKK constituent
-meme_stocks,LLY,ARKK constituent
-meme_stocks,META,ARKK constituent
 meme_stocks,NOK,curated
-meme_stocks,NTLA,ARKK constituent
-meme_stocks,NTRA,ARKK constituent
-meme_stocks,NVDA,ARKK constituent
-meme_stocks,PACB,ARKK constituent
-meme_stocks,PLTR,ARKK constituent
-meme_stocks,RBLX,ARKK constituent
-meme_stocks,RXRX,ARKK constituent
-meme_stocks,SHOP,ARKK constituent
 meme_stocks,SNDL,curated
-meme_stocks,SNOW,ARKK constituent
-meme_stocks,SOFI,ARKK constituent
-meme_stocks,TEM,ARKK constituent
-meme_stocks,TER,ARKK constituent
 meme_stocks,TLRY,curated
-meme_stocks,TSLA,ARKK constituent
-meme_stocks,TSM,ARKK constituent
-meme_stocks,TWST,ARKK constituent
-meme_stocks,TXG,ARKK constituent
-meme_stocks,VCYT,ARKK constituent
-meme_stocks,WGS,ARKK constituent
 meme_stocks,WISH,curated
-meme_stocks,XE,ARKK constituent
-meme_stocks,XYZ,ARKK constituent
 memory,ADI,SMH constituent
 memory,ALAB,SMH constituent
 memory,AMAT,SMH constituent
@@ -1016,7 +1016,6 @@ real_estate,SHW,ITB constituent
 real_estate,SKY,ITB constituent
 real_estate,SPG,curated
 real_estate,SSD,ITB constituent
-real_estate,TMHC,ITB constituent
 real_estate,TOL,ITB constituent
 real_estate,UFPI,ITB constituent
 real_estate,VICI,XLRE constituent
@@ -1163,59 +1162,16 @@ shipping_logistics,UNP,curated
 shipping_logistics,UPS,curated
 shipping_logistics,XPO,IYT constituent
 shipping_logistics,ZIM,curated
-short_squeeze,ACHR,ARKK constituent
 short_squeeze,AMC,curated
-short_squeeze,AMD,ARKK constituent
-short_squeeze,AMZN,ARKK constituent
-short_squeeze,AVGO,ARKK constituent
 short_squeeze,BBBY,curated
-short_squeeze,BEAM,ARKK constituent
-short_squeeze,BLSH,ARKK constituent
-short_squeeze,BMNR,ARKK constituent
-short_squeeze,BWXT,ARKK constituent
-short_squeeze,CBRS,ARKK constituent
-short_squeeze,CERS,ARKK constituent
 short_squeeze,CLOV,curated
-short_squeeze,COIN,ARKK constituent
-short_squeeze,CRCL,ARKK constituent
-short_squeeze,CRSP,ARKK constituent
-short_squeeze,CRWV,ARKK constituent
-short_squeeze,DE,ARKK constituent
 short_squeeze,EXPR,curated
-short_squeeze,FIG,ARKK constituent
 short_squeeze,GME,curated
-short_squeeze,GOOG,ARKK constituent
-short_squeeze,GOOGL,ARKK constituent
-short_squeeze,HOOD,ARKK constituent
-short_squeeze,ILMN,ARKK constituent
 short_squeeze,KOSS,curated
-short_squeeze,KTOS,ARKK constituent
-short_squeeze,LLY,ARKK constituent
-short_squeeze,META,ARKK constituent
 short_squeeze,NAKD,curated
-short_squeeze,NTLA,ARKK constituent
-short_squeeze,NTRA,ARKK constituent
-short_squeeze,NVDA,ARKK constituent
-short_squeeze,PACB,ARKK constituent
-short_squeeze,PLTR,ARKK constituent
-short_squeeze,RBLX,ARKK constituent
-short_squeeze,RXRX,ARKK constituent
-short_squeeze,SHOP,ARKK constituent
-short_squeeze,SNOW,ARKK constituent
-short_squeeze,SOFI,ARKK constituent
 short_squeeze,SPCE,curated
-short_squeeze,TEM,ARKK constituent
-short_squeeze,TER,ARKK constituent
-short_squeeze,TSLA,ARKK constituent
-short_squeeze,TSM,ARKK constituent
-short_squeeze,TWST,ARKK constituent
-short_squeeze,TXG,ARKK constituent
-short_squeeze,VCYT,ARKK constituent
-short_squeeze,WGS,ARKK constituent
 short_squeeze,WISH,curated
 short_squeeze,WKHS,curated
-short_squeeze,XE,ARKK constituent
-short_squeeze,XYZ,ARKK constituent
 small_caps,IWM,curated
 solar,AEE,XLU constituent
 solar,AEP,XLU constituent

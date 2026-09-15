@@ -19,9 +19,12 @@ degrades quietly, and the screen keeps looking fine:
   run, which may be days away.
 
 Each check in ``CHECKS`` targets one such failure mode and makes it loud
-and early. The script never writes, never fetches, never calls the LLM
-gateway and never re-fits anything, so it is safe to run at any time,
-including mid-pipeline.
+and early. The script never writes an aggregate, a price or a ledger,
+never calls the LLM gateway and never re-fits anything, so it is safe to
+run at any time, including mid-pipeline. Its one network call refreshes
+the cached symbol directory the ticker-liveness check reads; a machine
+that cannot reach it warns and carries on, because an unreachable host
+is a fact about the machine, not about the project.
 """
 from __future__ import annotations
 
@@ -135,21 +138,57 @@ def check_anchor_substitutions() -> None:
         _say(FAIL, "anchor substitutions", f"{type(e).__name__}: {e}")
 
 
+# The symbol directory behind the ticker-liveness check, and the age at
+# which it is re-downloaded. The age is also what tells a directory that
+# is current from one the network could not refresh.
+SYMBOL_DIR_FILES = ("nasdaqlisted.txt", "otherlisted.txt")
+SYMBOL_DIR_MAX_AGE_D = 7.0
+
+
 def check_mapped_tickers_still_exist() -> None:
-    """Warn about mapped tickers absent from the listed symbol directory.
+    """Report mapped tickers absent from the listed symbol directory.
 
     A renamed or delisted ticker counts zero forever and raises nothing;
     this check is what surfaces it.
+
+    The directory is downloaded when its cache is stale, so this is the
+    one check that needs the network. A host this machine cannot reach -
+    offline, a proxy, the site down - says nothing about the project, so
+    a transport failure warns and names its cause and the check reads
+    the cached copy instead. A ticker missing from a CURRENT directory
+    is a real rename or delisting and fails; the same finding against a
+    directory that could not be refreshed only warns, because a stale
+    copy can simply predate a listing.
     """
     try:
         import csv
+        import time
         from pathlib import Path
+        import requests
         from src.config import REFERENCE_DIR
         from src.ticker_universe import load_us_ticker_universe
-        uni = load_us_ticker_universe(Path(REFERENCE_DIR))
+        cache = Path(REFERENCE_DIR)
+        try:
+            uni = load_us_ticker_universe(
+                cache, max_cache_age_days=SYMBOL_DIR_MAX_AGE_D)
+        except requests.RequestException as e:           # transport only
+            _say(WARN, "symbol directory unreachable",
+                 f"{type(e).__name__}: {str(e)[:140]}")
+            uni = set()
         if not uni:
             _say(WARN, "ticker liveness", "no symbol directory cached")
             return
+        # Age on disk is the signal that survives either outcome: the
+        # download failing here, or the loader absorbing it and handing
+        # back the cache.
+        cutoff = time.time() - SYMBOL_DIR_MAX_AGE_D * 86400
+        stale = [f for f in SYMBOL_DIR_FILES
+                 if not (cache / f).is_file()
+                 or (cache / f).stat().st_mtime < cutoff]
+        if stale:
+            _say(WARN, "symbol directory not refreshed",
+                 ", ".join(stale) + " - the listing host could not be "
+                 "reached; ticker liveness reads the cached copy")
         with open(os.path.join(ROOT, "config", "theme_tickers.csv"),
                   newline="", encoding="utf-8-sig") as fh:
             mapped = {r["ticker"].strip().upper()
@@ -161,7 +200,8 @@ def check_mapped_tickers_still_exist() -> None:
                          if s not in uni and "." not in s
                          and not (len(s) == 5 and s.endswith("Y")))
         if suspect:
-            _say(WARN, "mapped tickers not in the listed universe",
+            _say(WARN if stale else FAIL,
+                 "mapped tickers not in the listed universe",
                  ", ".join(suspect) + " - check for a rename or delisting")
         else:
             _say(OK, f"all {len(mapped)} mapped tickers resolve")
@@ -187,8 +227,14 @@ def check_no_dangling_paths() -> None:
 
     Note that tool's own caveat about partial clones.
     """
+    # The child's output is decoded as UTF-8 whatever the console is set
+    # to. text=True on its own decodes with the machine's locale encoding,
+    # and a cp1252 console meets a byte it has no character for in a path
+    # the child printed as UTF-8 - which would fail this check for the
+    # console's sake.
     r = subprocess.run([sys.executable, "tools/verify_deps.py", "--quiet"],
-                       cwd=ROOT, capture_output=True, text=True)
+                       cwd=ROOT, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
     if r.returncode == 0:
         _say(OK, "no dangling file references")
     else:

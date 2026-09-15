@@ -95,11 +95,17 @@ def normalise(record):
     lost. A record without a usable created_utc gets an empty date.
     """
     created = record.get("created_utc", 0)
-    created = int(created) if str(created).isdigit() else 0
-    if created == 0:
+    try:
+        # CSV and parquet inputs carry the stamp as a float (1612137600.0),
+        # JSON dumps as an int or a string; all three are the same instant.
+        created = int(float(created))
+    except (TypeError, ValueError, OverflowError):
+        created = 0
+    if created <= 0:
         date_string = ""
     else:
-        date_string = datetime.datetime.utcfromtimestamp(created).strftime("%Y-%m-%d")
+        date_string = datetime.datetime.fromtimestamp(
+            created, datetime.timezone.utc).strftime("%Y-%m-%d")
 
     title = record.get("title", "") or ""
     selftext = record.get("selftext", "") or ""

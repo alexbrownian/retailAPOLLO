@@ -29,10 +29,18 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(THIS_DIR)
 sys.path.insert(0, ROOT)
 
-from src.config import POSTS_PATH, REFERENCE_DIR                # noqa: E402
+from src.config import POSTS_PATH                               # noqa: E402
 from ingestion.bot_screen import (apply_screen, format_report,  # noqa: E402
                                   screen_posts)
 from src.config import REPORTS_DIR  # noqa: E402
+
+# The examples are post text and author handles, which are not ASCII. A
+# console encoding that cannot hold one of those characters would end
+# the report on a print.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 
 def _load(start: str) -> pd.DataFrame:

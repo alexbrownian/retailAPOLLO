@@ -10,12 +10,16 @@ building it:
 * the shipped code and documentation contain no project-internal
   vocabulary (people's names, organisation names, references to
   internal machines or to decisions made "by the desk");
-* nothing runnable depends on the untracked ``Reference Materials/archive/`` folder.
+* nothing runnable depends on the untracked ``Reference Materials/archive/`` folder;
+* no shipped module writes a store in place: every write to ``Data/`` or
+  ``Reports/`` is staged beside its target and swapped in;
+* every text file is opened with an explicit encoding, so the shipped
+  code reads the same on a machine whose console is not UTF-8.
 """
 
 from __future__ import annotations
 
-import os
+import ast
 import re
 import subprocess
 import sys
@@ -217,5 +221,259 @@ class TestRuntimeDoesNotNeedResearch:
         r = subprocess.run([sys.executable,
                             str(ROOT / "tools" / "validate_config.py"),
                             "--quiet"], capture_output=True, text=True,
-                           cwd=str(ROOT))
+                           encoding="utf-8", cwd=str(ROOT))
         assert r.returncode == 0, r.stdout + r.stderr
+
+
+# ---------------------------------------------------------------------------
+# Source-level sweeps: the whole shipped tree, one AST walk each.
+# ---------------------------------------------------------------------------
+# The pipeline: the code that writes to Data/ and Reports/. The tests
+# themselves are left out - a test writes into pytest's tmp_path, which
+# is the whole point of the rule below and not an exception to it.
+PIPELINE_DIRS = ("src", "ingestion", "tools")
+PIPELINE_FILES = ("dashboard.py", "update_data.py")
+
+
+def _pipeline_modules():
+    for d in PIPELINE_DIRS:
+        for p in sorted((ROOT / d).rglob("*.py")):
+            if "__pycache__" not in p.parts:
+                yield p
+    for name in PIPELINE_FILES:
+        if (ROOT / name).is_file():
+            yield ROOT / name
+
+
+def _shipped_modules():
+    """Every .py under Code/, the tests included."""
+    for p in sorted(ROOT.rglob("*.py")):
+        if "__pycache__" not in p.parts:
+            yield p
+
+
+def _parents(tree):
+    out = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            out[child] = node
+    return out
+
+
+def _mode_of(call):
+    """The mode string of an ``open()`` call, or None."""
+    if len(call.args) > 1 and isinstance(call.args[1], ast.Constant):
+        return call.args[1].value
+    for kw in call.keywords:
+        if kw.arg == "mode" and isinstance(kw.value, ast.Constant):
+            return kw.value.value
+    return None
+
+
+class TestNothingIsWrittenInPlace:
+    """Data/ and Reports/ hold the only copy of histories no rebuild can
+    recover, and a write straight onto a file truncates it at its first
+    byte. Every write therefore lands beside its target and is swapped
+    in with os.replace, so the name a reader opens is either the old
+    whole file or the new whole file and never a fragment.
+
+    The sweep reads the destination of every write in the shipped
+    pipeline and asks one question: is it staged? A destination is
+    staged when its expression ends in ``.tmp`` or is built from a name
+    that says tmp. ``json.dump`` writes to a handle rather than a path,
+    so the handle is resolved back to the ``with open(...)`` that made
+    it and that path is read instead."""
+
+    # Writes that are not staged, with the reason each is exempt. Keyed
+    # by the module and the destination exactly as it is written, so a
+    # NEW in-place write anywhere fails this test even in a file that
+    # already has an entry.
+    ALLOWED = {
+        # --- operator-facing CLIs. The destination is a path the person
+        # running the command typed, never a store under Data/: these
+        # three exist to produce a file somewhere for inspection.
+        ("src/clean_data.py", "output_path"):
+            "--out, a path given on the command line",
+        ("src/extract_tickers.py", "args.out"):
+            "--out, a path given on the command line",
+        ("src/extract_tickers.py", "args.daily_out"):
+            "--daily-out, a path given on the command line",
+        ("src/themes.py", "args.out"):
+            "--out, a path given on the command line",
+        # --- append-only journals. An append cannot truncate what is
+        # already in the file, and both are read a line at a time, so an
+        # interrupted write costs the last record rather than the
+        # journal.
+        ("src/agentic_watch.py", "SAMPLES"):
+            "Data/reference/agentic_samples.jsonl, appended one line "
+            "per sample",
+        ("src/analytics/ai_poll.py", "ANSWERS"):
+            "Data/reference/ai_poll_answers.jsonl, appended one line "
+            "per answer",
+        # --- run logs, under Reports/logs. Appended line by line as the
+        # run progresses, which is what makes them readable while it is
+        # still going; staging would hold the whole log until the end.
+        ("update_data.py", "os.path.join(LOG_DIR, f'run_{today}.log')"):
+            "the run log, appended as the run goes",
+        ("dashboard.py", "p['log']"):
+            "the same run log, appended by the sidebar's pipeline runner",
+        # --- not under Data/ or Reports/ at all.
+        ("ingestion/discover_subreddits.py", "FORUMS_FILE"):
+            "Code/config/forums.csv, a config file appended to",
+        ("tools/publish_dashboard.py", "SETTINGS_LOCAL"):
+            "Code/config/settings.local.csv, written once when absent",
+        # --- staged by a route the expression cannot show.
+        ("src/pipeline_budget.py", "os.fdopen(fd, 'w', encoding='utf-8')"):
+            "a descriptor from tempfile.mkstemp(suffix='.tmp'), swapped "
+            "in with os.replace",
+        ("ingestion/append_live_abstracted.py", "os.path.join(dest, fn)"):
+            "a backup copied into a directory created for this run, so "
+            "the destination cannot already exist",
+    }
+
+    @staticmethod
+    def _staged(expr):
+        """Whether a destination expression names a staging file."""
+        if expr is None:
+            return False
+        text = ast.unparse(expr)
+        return text.endswith('".tmp"') or text.endswith("'.tmp'") \
+            or "tmp" in text.lower()
+
+    @staticmethod
+    def _handle_source(fn, name):
+        """The ``with <expr> as name:`` a file handle came from."""
+        for node in ast.walk(fn):
+            if isinstance(node, ast.With):
+                for item in node.items:
+                    var = item.optional_vars
+                    if isinstance(var, ast.Name) and var.id == name:
+                        return item.context_expr
+        return None
+
+    @classmethod
+    def _destinations(cls, path):
+        """Every write in one module, as (lineno, destination expr)."""
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        parents = _parents(tree)
+
+        def enclosing(node):
+            while node in parents:
+                node = parents[node]
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    return node
+            return tree
+
+        found = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            name = (fn.attr if isinstance(fn, ast.Attribute)
+                    else fn.id if isinstance(fn, ast.Name) else "")
+            dest = None
+            if name in ("to_parquet", "to_csv") and node.args:
+                dest = node.args[0]
+            elif (name == "dump" and isinstance(fn, ast.Attribute)
+                    and getattr(fn.value, "id", "") == "json"
+                    and len(node.args) > 1):
+                dest = node.args[1]
+                if isinstance(dest, ast.Name):
+                    dest = cls._handle_source(enclosing(node),
+                                              dest.id) or dest
+            elif name == "copy2" and len(node.args) > 1:
+                dest = node.args[1]
+            elif name == "open" and isinstance(fn, ast.Name) and node.args:
+                mode = _mode_of(node)
+                if mode and ("w" in mode or "a" in mode):
+                    dest = node.args[0]
+            if dest is not None:
+                found.append((node.lineno, dest))
+        return found
+
+    def test_every_write_is_staged_or_explicitly_exempt(self):
+        unstaged = {}
+        for path in _pipeline_modules():
+            rel = path.relative_to(ROOT).as_posix()
+            for lineno, dest in self._destinations(path):
+                if self._staged(dest):
+                    continue
+                key = (rel, ast.unparse(dest))
+                if key not in self.ALLOWED:
+                    unstaged[key] = f"{rel}:{lineno}"
+        assert not unstaged, (
+            "a write goes straight onto its destination - a run killed "
+            "part-way leaves a fragment under the real name:\n  "
+            + "\n  ".join(f"{v}: {k[1]}" for k, v in sorted(
+                unstaged.items(), key=lambda kv: kv[1])))
+
+    def test_the_exempt_list_still_describes_writes_that_exist(self):
+        """An entry that no longer matches anything is a rule nobody is
+        reading: it would go on excusing a line that has moved."""
+        live = set()
+        for path in _pipeline_modules():
+            rel = path.relative_to(ROOT).as_posix()
+            for _lineno, dest in self._destinations(path):
+                live.add((rel, ast.unparse(dest)))
+        stale = sorted(set(self.ALLOWED) - live)
+        assert not stale, f"exemptions for writes that are gone: {stale}"
+
+    def test_the_committed_aggregates_are_written_through_one_helper(self):
+        """``_safe_write`` is the staging route, and every builder that
+        touches Data/abstracted goes through it rather than repeating
+        the stage-and-swap by hand."""
+        for rel in ("ingestion/build_term_counts.py",
+                    "ingestion/build_aggregates.py"):
+            src = (ROOT / rel).read_text(encoding="utf-8")
+            assert "_safe_write(" in src, f"{rel} writes its own way"
+
+
+class TestTextIsReadTheSameOnEveryMachine:
+    """Python opens a text file in the machine's locale encoding when it
+    is not told otherwise, so the same file reads differently on a
+    cp1252 console and a UTF-8 one - and a single character the locale
+    has no mapping for aborts whatever was reading it. Every text read
+    and write in the tree names its encoding, and so does every child
+    process whose output is decoded."""
+
+    def test_every_text_open_names_an_encoding(self):
+        bare = []
+        for path in _shipped_modules():
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name)
+                        and node.func.id == "open" and node.args):
+                    continue
+                mode = _mode_of(node)
+                if mode and "b" in mode:
+                    continue                      # bytes carry no encoding
+                if not any(kw.arg == "encoding" for kw in node.keywords):
+                    bare.append(
+                        f"{path.relative_to(ROOT).as_posix()}:{node.lineno}")
+        assert not bare, ("these open a text file in whatever the console "
+                          "is set to:\n  " + "\n  ".join(bare))
+
+    def test_every_decoded_subprocess_names_an_encoding(self):
+        """``text=True`` decodes the child's output with the locale
+        encoding. git and the tools here report paths as UTF-8, so a
+        non-ASCII filename in that output becomes a decode error on a
+        machine whose console is not - and the caller fails over a name
+        it only had to read."""
+        bare = []
+        for path in _shipped_modules():
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "run"):
+                    continue
+                kw = {k.arg: k.value for k in node.keywords}
+                text = kw.get("text")
+                if not (isinstance(text, ast.Constant) and text.value is True):
+                    continue
+                if "encoding" not in kw:
+                    bare.append(
+                        f"{path.relative_to(ROOT).as_posix()}:{node.lineno}")
+        assert not bare, ("these decode a child process with the console's "
+                          "encoding:\n  " + "\n  ".join(bare))

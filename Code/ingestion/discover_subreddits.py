@@ -111,6 +111,18 @@ def _save_json(path, obj):
     os.replace(path + ".tmp", path)
 
 
+def _save_parquet(df, path):
+    """Write a frame as parquet atomically (write beside, then replace).
+
+    Both stores here are read-modify-written in place, so an interrupted
+    write would leave a truncated file in place of the whole referral or
+    count history.
+    """
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    df.to_parquet(path + ".tmp", index=False)
+    os.replace(path + ".tmp", path)
+
+
 def read_panel() -> list:
     """Return the enabled forums from ``config/forums.csv``, lower-cased.
 
@@ -259,7 +271,7 @@ def scan_new_raw(verbose=True) -> int:
         if os.path.exists(REFERRALS):
             new_refs = (pd.concat([pd.read_parquet(REFERRALS), new_refs])
                         .drop_duplicates())
-        new_refs.to_parquet(REFERRALS, index=False)
+        _save_parquet(new_refs, REFERRALS)
 
     if post_rows:
         _extend_by_sub_counts(pd.DataFrame(post_rows))
@@ -303,7 +315,7 @@ def _extend_by_sub_counts(posts: pd.DataFrame):
         old = old[~old.apply(lambda r: (r["date"], r["subreddit"]) in keys,
                              axis=1)]
         new = pd.concat([old, new], ignore_index=True)
-    new.to_parquet(BY_SUB_COUNTS, index=False)
+    _save_parquet(new, BY_SUB_COUNTS)
 
 
 # ---------------------------------------------------------------------------
@@ -502,8 +514,13 @@ def _write_report(summary: dict, ranked: pd.DataFrame):
               f"only at ≥ {PANEL_SCREEN_FRACTION:.0%} of it (and only "
               f"{PANEL_ADD_CAP}/review). Manifest: "
               "`Data/reference/subreddit_panel.json`."]
-    with open(REPORT, "w", encoding="utf-8") as f:
+    # Staged and renamed, like the panel manifest above: the previous
+    # review is the only record until this one finishes, and a write cut
+    # short would replace it with half a table that still reads as a
+    # complete report.
+    with open(REPORT + ".tmp", "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
+    os.replace(REPORT + ".tmp", REPORT)
 
 
 def main() -> int:

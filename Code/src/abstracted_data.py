@@ -92,14 +92,46 @@ MERGE_RULES = {
 # ---------------------------------------------------------------------------
 # Copy helpers: export (full mode) and hydrate (aggregates mode).
 # ---------------------------------------------------------------------------
-def _copy_files(src_dir, dst_dir, verbose):
-    """Copies whichever of the aggregate files exist from src_dir to dst_dir."""
+def _row_count(path):
+    """Rows in a parquet file, read from its footer rather than its data.
+
+    Returns -1 when the count cannot be read, so a caller testing for an
+    empty source treats an unreadable file as "not known to be empty"
+    and leaves the decision to the guards downstream.
+    """
+    try:
+        import pyarrow.parquet as pq                  # noqa: PLC0415
+        return pq.ParquetFile(path).metadata.num_rows
+    except Exception:                                 # noqa: BLE001
+        return -1
+
+
+def _copy_files(src_dir, dst_dir, verbose, skip_empty=False):
+    """Copies whichever of the aggregate files exist from src_dir to dst_dir.
+
+    With skip_empty, a source holding zero rows is left where it is
+    instead of being copied over the destination, and the skip is
+    reported whatever `verbose` says.
+
+    Each file is copied beside its destination and swapped in with
+    os.replace. Copying straight onto the destination truncates it at
+    the first byte written, so a Ctrl-C part-way through leaves a
+    fragment under the real name - and for `export` that name is a
+    committed aggregate, the only copy of a history no rebuild can
+    recover. Only a whole file ever appears under the final name.
+    """
     os.makedirs(dst_dir, exist_ok=True)
     copied = []
     for name in FILES:
         src_path = os.path.join(src_dir, name)
         if os.path.exists(src_path):
-            shutil.copy2(src_path, os.path.join(dst_dir, name))
+            if skip_empty and _row_count(src_path) == 0:
+                print(f"  REFUSED {name}: the source holds zero rows; "
+                      f"{dst_dir} keeps the copy it has")
+                continue
+            dst_path = os.path.join(dst_dir, name)
+            shutil.copy2(src_path, dst_path + ".tmp")
+            os.replace(dst_path + ".tmp", dst_path)
             copied.append(name)
             if verbose:
                 size_kb = os.path.getsize(src_path) / 1024
@@ -115,6 +147,13 @@ def export(src_dir=PROCESSED_DIR, dst_dir=ABSTRACTED_DIR, verbose=True):
     Used in full mode, after the aggregates are rebuilt from the raw post
     store.
 
+    A source file holding zero rows is refused: the committed store is
+    the only copy of the history, callers publish before their own
+    row-count checks run, and an empty file copied over it would zero a
+    series that cannot be rebuilt from the text-free aggregates. The
+    refusal is printed even when quiet, since a publish that skipped a
+    file is never routine.
+
     Args:
         src_dir: Folder holding the freshly built aggregates.
         dst_dir: The committed store to publish into.
@@ -125,7 +164,7 @@ def export(src_dir=PROCESSED_DIR, dst_dir=ABSTRACTED_DIR, verbose=True):
     """
     if verbose:
         print(f"export: {src_dir} -> {dst_dir}")
-    copied = _copy_files(src_dir, dst_dir, verbose)
+    copied = _copy_files(src_dir, dst_dir, verbose, skip_empty=True)
     if verbose:
         print(f"export done: {len(copied)}/{len(FILES)} files in Data/abstracted")
     return copied
@@ -222,16 +261,25 @@ def merge_sentiment(old, new, keys):
     return grouped[cols].sort_values(keys).reset_index(drop=True)
 
 
-def _safe_write(df, path):
-    """Writes a parquet file atomically.
+def _stage_write(df, path):
+    """Writes the frame beside its target and returns the staged path.
 
-    Writes a .tmp file, then swaps it in with os.replace, which overwrites
-    the target in one step (on Windows too), so there is never a moment
-    with no file. If the target is locked by another process the manual
-    rename commands are printed and the PermissionError is re-raised rather
-    than leaving a half-written file."""
+    The staged name is the target plus a .tmp suffix, so it ends in
+    '.parquet.tmp' and no consumer's '*.parquet' glob can pick it up; a
+    staged file is invisible to every reader until it is swapped in."""
     tmp = path + ".tmp"
     df.to_parquet(tmp, index=False)
+    return tmp
+
+
+def _swap_in(tmp, path):
+    """Swaps a staged file in over its target.
+
+    os.replace overwrites the target in one step (on Windows too), so
+    there is never a moment with no file. If the target is locked by
+    another process the manual rename commands are printed and the
+    PermissionError is re-raised rather than leaving a half-written
+    file."""
     try:
         os.replace(tmp, path)
     except PermissionError:
@@ -245,14 +293,26 @@ def _safe_write(df, path):
         raise
 
 
+def _safe_write(df, path):
+    """Writes a parquet file atomically: stage it beside the target, then
+    swap it in."""
+    _swap_in(_stage_write(df, path), path)
+
+
 def merge_into_abstracted(new_aggs, target_dir=ABSTRACTED_DIR, verbose=True):
     """Folds a batch of new aggregates into the committed store.
 
-    Each file named in MERGE_RULES is read, merged by its rule (additive
-    for counts, n_posts-weighted for sentiment) and written back
-    atomically. Files that already exist accumulate; files that do not are
-    created. The term file is trimmed to its retention window after the
-    merge.
+    Each file named in MERGE_RULES is read and merged by its rule
+    (additive for counts, n_posts-weighted for sentiment). The batch is
+    written in two passes: every merged frame is staged beside its target
+    first, and the staged files are swapped in only once all of them
+    exist, so the whole batch lands together. That matters because the
+    caller records the folded post ids only after this returns and the
+    aggregates carry no post ids: a batch that reached some files and not
+    others would be re-folded on the next run into the files that already
+    took it, and could never afterwards be detected or undone. Files that
+    already exist accumulate; files that do not are created. The term
+    file is trimmed to its retention window before it is staged.
 
     Args:
         new_aggs: Mapping {filename: aggregate frame}, as returned by
@@ -264,29 +324,42 @@ def merge_into_abstracted(new_aggs, target_dir=ABSTRACTED_DIR, verbose=True):
         Mapping {filename: row count after the merge}.
     """
     os.makedirs(target_dir, exist_ok=True)
-    summary = {}
-    for name, (kind, keys) in MERGE_RULES.items():
-        new = new_aggs.get(name)
-        if new is None or len(new) == 0:
-            continue
-        path = os.path.join(target_dir, name)
-        if os.path.exists(path):
-            old = pd.read_parquet(path)
-            if kind == "counts":
-                merged = merge_counts(old, new, keys)
+    staged = []
+    try:
+        for name, (kind, keys) in MERGE_RULES.items():
+            new = new_aggs.get(name)
+            if new is None or len(new) == 0:
+                continue
+            path = os.path.join(target_dir, name)
+            if os.path.exists(path):
+                old = pd.read_parquet(path)
+                if kind == "counts":
+                    merged = merge_counts(old, new, keys)
+                else:
+                    merged = merge_sentiment(old, new, keys)
             else:
-                merged = merge_sentiment(old, new, keys)
-        else:
-            merged = _normalise_date(new)
-        if name == TERM_COUNTS:
-            # The term file rolls: old days fall off so it stays small
-            # enough to commit; the spike test never looks that far back.
-            from src.terms import trim_to_retention
-            merged = trim_to_retention(merged)
-        _safe_write(merged, path)
-        summary[name] = len(merged)
+                merged = _normalise_date(new)
+            if name == TERM_COUNTS:
+                # The term file rolls: old days fall off so it stays small
+                # enough to commit; the spike test never looks that far back.
+                from src.terms import trim_to_retention
+                merged = trim_to_retention(merged)
+            staged.append((name, path, _stage_write(merged, path), len(merged)))
+    except BaseException:
+        # Nothing has been swapped in, so the store still holds the
+        # pre-merge numbers; drop the staged files so none is left behind.
+        for _, _, tmp, _ in staged:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        raise
+    summary = {}
+    for name, path, tmp, rows in staged:
+        _swap_in(tmp, path)
+        summary[name] = rows
         if verbose:
-            print(f"  merged {name:<40} -> {len(merged):,} rows")
+            print(f"  merged {name:<40} -> {rows:,} rows")
     return summary
 
 

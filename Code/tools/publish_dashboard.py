@@ -154,12 +154,26 @@ def _copy(src: str, dst: str, dry_run: bool) -> int:
                 "post text or identities on a public page.")
     if not dry_run:
         os.makedirs(os.path.dirname(dst), exist_ok=True)
-        shutil.copy2(src, dst)
+        # Copy beside the target, then one rename. The bundle is committed
+        # and served; a copy killed partway would otherwise leave a
+        # truncated parquet in it that reads as a corrupt store rather
+        # than an absent one.
+        tmp = dst + ".tmp"
+        shutil.copy2(src, tmp)
+        # Stamp the published copy with the time it was published. copy2
+        # carries the SOURCE file's mtime over, and git decides a file is
+        # unchanged from (mtime, size) - on Windows it has nothing else,
+        # since the index records no usable inode there. A destination
+        # wearing a timestamp that predates its own index entry can be
+        # read as clean and skipped by `git add`, which publishes the
+        # bundle to disk and not to the repository.
+        os.utime(tmp, None)
+        os.replace(tmp, dst)
     return os.path.getsize(src)
 
 
 def publish(with_influence: bool = False, dry_run: bool = False,
-            log=print, per_file: bool = True) -> int:
+            log=print, per_file: bool = True, run_status=None) -> int:
     """Stages the display bundle. Returns the number of files published.
 
     Args:
@@ -169,6 +183,11 @@ def publish(with_influence: bool = False, dry_run: bool = False,
         lands in the run log with everything else.
       per_file: list every file. False gives the one-line summary the
         pipeline wants.
+      run_status: how the run that called this went, as the JSON-ready
+        dict update_data.py builds. It is written into the bundle beside
+        the manifest so that a checkout can read it. None - which is
+        what a hand-run publish passes - leaves whatever status the last
+        pipeline run wrote, since this publish has no run to describe.
     """
     staged, total_bytes, missing = 0, 0, []
 
@@ -236,7 +255,13 @@ def publish(with_influence: bool = False, dry_run: bool = False,
     # Written last, so a half-finished publish does not advertise
     # itself as complete. Failure-isolated: a bundle without a manifest
     # is an OLDER bundle to the dashboard, never a broken one.
-    if not dry_run:
+    #
+    # A run that staged NOTHING - a copy with no Data/processed, a fresh
+    # clone - publishes nothing, so it must not stamp the manifest
+    # either. Overwriting it would replace the record of the last real
+    # publish with a record of a no-op, and that record is the only
+    # thing that can tell a half-applied deploy from a stale pipeline.
+    if not dry_run and staged:
         try:
             import json as _json
             from datetime import datetime as _dt, timezone as _tz
@@ -247,16 +272,49 @@ def publish(with_influence: bool = False, dry_run: bool = False,
                 _d = _pd.read_parquet(_tc, columns=["date"])["date"]
                 if len(_d):
                     _through = str(_pd.to_datetime(_d).max().date())
-            with open(os.path.join(BUNDLE_DIR, "publish_manifest.json"),
-                      "w", encoding="utf-8") as _f:
+            # Temp file then rename: the dashboard parses this manifest
+            # without a guard, so a truncated one takes the page down.
+            _mf = os.path.join(BUNDLE_DIR, "publish_manifest.json")
+            with open(_mf + ".tmp", "w", encoding="utf-8") as _f:
                 _json.dump({"published_at": _dt.now(_tz.utc)
                             .strftime("%Y-%m-%dT%H:%M:%SZ"),
                             "data_through": _through,
                             "files": staged}, _f, indent=2)
+            os.replace(_mf + ".tmp", _mf)
             log(f"publish manifest written (data through "
                 f"{_through or 'unknown'})")
         except Exception as _e:                          # noqa: BLE001
             log(f"publish manifest skipped: {type(_e).__name__}: {_e}")
+
+    # ---- THE RUN STATUS ------------------------------------------
+    # The manifest says what the bundle holds; this says how the run
+    # that built it went. The two are separate because they answer
+    # different questions and have different lifetimes: a hand-run
+    # publish restamps the manifest and has no run to describe.
+    #
+    # It exists because a healthy-looking bundle is not a healthy run. A
+    # run can lose a stage, spend a paid dependency's last credit or
+    # have a key refused and still stage a bundle whose newest day is
+    # today, and from a checkout the two are indistinguishable. Written
+    # here, the verdict travels with the data it is invisible in.
+    #
+    # Whether the push landed is NOT in it: this runs before the commit
+    # and the push, so that answer does not exist yet.
+    #
+    # Same gate and same isolation as the manifest: a publish that
+    # staged nothing has nothing to describe, and a status that cannot
+    # be written costs the file rather than the publish.
+    if not dry_run and staged and run_status is not None:
+        try:
+            import json as _json
+            _sf = os.path.join(BUNDLE_DIR, "run_status.json")
+            with open(_sf + ".tmp", "w", encoding="utf-8") as _f:
+                _json.dump(run_status, _f, indent=2, sort_keys=True)
+            os.replace(_sf + ".tmp", _sf)
+            _fired = run_status.get("conditions") or []
+            log(f"run status written ({len(_fired)} condition(s))")
+        except Exception as _e:                          # noqa: BLE001
+            log(f"run status skipped: {type(_e).__name__}: {_e}")
 
     if not dry_run:
         # Enable the sidebar pipeline controls on the copy that publishes.

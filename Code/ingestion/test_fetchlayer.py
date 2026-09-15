@@ -43,6 +43,18 @@ def read_key():
     return None
 
 
+def mask(text, key):
+    """``text`` with the key in it replaced by ``***``.
+
+    Whatever the server says on a refusal is printed here, and a service
+    that quotes back the credential it rejected would put it on the
+    console and in the run log. Masking is done before any truncation,
+    so no fragment of the key survives the cut.
+    """
+    out = str(text)
+    return out.replace(key, "***") if key and len(key) >= 8 else out
+
+
 def main():
     """Make the one test call and print what came back.
 
@@ -63,7 +75,7 @@ def main():
                           timeout=30)
     except requests.exceptions.ConnectionError as e:
         print("FAIL: could not reach fetchlayer.dev at all - network/proxy/"
-              "firewall issue on this machine:", str(e)[:150])
+              "firewall issue on this machine:", mask(e, key)[:150])
         return 1
     except requests.exceptions.Timeout:
         print("FAIL: fetchlayer.dev timed out - try again / check network")
@@ -73,7 +85,7 @@ def main():
     if r.status_code == 401 or r.status_code == 403:
         print("FAIL: key REJECTED - copy it again from your fetchlayer.dev "
               "dashboard (no quotes, no spaces) into .env")
-        print("server said:", r.text[:200])
+        print("server said:", mask(r.text, key)[:200])
         return 1
     if r.status_code == 402:
         print("FAIL: out of credits - top up / subscribe at fetchlayer.dev")
@@ -81,19 +93,28 @@ def main():
     if r.status_code == 404:
         print("FAIL: endpoint not found - FetchLayer may have changed paths;")
         print("check https://fetchlayer.dev/reddit-scraper#endpoints")
-        print("server said:", r.text[:200])
+        print("server said:", mask(r.text, key)[:200])
         return 1
     if r.status_code != 200:
-        print("FAIL: unexpected response:", r.text[:300])
+        print("FAIL: unexpected response:", mask(r.text, key)[:300])
         return 1
 
-    payload = r.json()
+    try:
+        payload = r.json()
+    except ValueError:
+        print("FAIL: the response was not JSON:", mask(r.text, key)[:300])
+        return 1
     # FetchLayer returns the posts under "items" (seen in a real response);
-    # keep the other names as fallbacks in case the API changes.
-    posts = (payload.get("items") or payload.get("posts")
-             or payload.get("results") or payload.get("data") or [])
-    if not posts and isinstance(payload, list):
+    # keep the other names as fallbacks in case the API changes. The bare
+    # list is tested FIRST, because .get on a list raises.
+    if isinstance(payload, list):
         posts = payload
+    elif isinstance(payload, dict):
+        posts = (payload.get("items") or payload.get("posts")
+                 or payload.get("results") or payload.get("data") or [])
+    else:
+        print("FAIL: unexpected response shape:", mask(r.text, key)[:300])
+        return 1
     print(f"\nSUCCESS - {len(posts)} posts returned. Fields in a post:")
     if posts:
         print(" ", sorted(posts[0].keys()))

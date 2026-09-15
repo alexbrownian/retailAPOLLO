@@ -135,6 +135,8 @@ def sample_texts_from_parquet(posts_path, sample_size: int = 300_000, seed: int 
     them. Streaming means we never hold all 7.9M posts in memory, and the
     sample covers every subreddit block of the file."""
     pf = pq.ParquetFile(posts_path)
+    if not pf.metadata.num_rows:
+        return []
     frac = min(1.0, sample_size / pf.metadata.num_rows)
     rng = random.Random(seed)
     texts = []
@@ -172,7 +174,11 @@ def main(argv=None) -> int:
 
     df = screen_tickers(texts, candidates)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(args.out, index=False)
+    # extract_tickers.py reads this file at import, so a run killed
+    # mid-write must not leave a truncated table in its place.
+    tmp = args.out.with_name(args.out.name + ".tmp")
+    df.to_csv(tmp, index=False)
+    tmp.replace(args.out)
 
     demoted = (df["classification"] == "cashtag_only").sum()
     logger.info("wrote %s -> %s tickers demoted to cashtag-only, %s kept normal",

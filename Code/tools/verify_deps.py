@@ -72,6 +72,14 @@ def _walk(root):
             allf.add(p)
             if p.startswith("Code/"):
                 allf.add(p[len("Code/"):])
+            # A clone made from a case-insensitive checkout carries the
+            # data folder as "data"; every citation in the code and the
+            # docs spells it "Data". Register the cited spelling too, so
+            # such a clone reports the paths it has rather than several
+            # dozen dangling references to files that are present.
+            # src/config.py accepts the same two spellings.
+            if p.startswith("data/"):
+                allf.add("Data/" + p[len("data/"):])
             # the Python tree is Code/; a top-level .py (the hosting
             # entry point that runs Code/dashboard.py) is not a module
             # anything imports
@@ -192,8 +200,8 @@ def sweep_docs(root):
             continue
         try:
             txt = open(os.path.join(root, rel), encoding="utf-8").read()
-        except OSError:
-            continue
+        except (OSError, UnicodeDecodeError):
+            continue                 # not UTF-8 text: nothing to sweep
         for m in _cited_paths(txt):
             if m not in allf and not m.startswith(_OPTIONAL_PREFIXES):
                 out.append((rel, m))
@@ -220,7 +228,9 @@ def sweep(root):
         try:
             trees[p] = ast.parse(open(os.path.join(root, p),
                                       encoding="utf-8").read())
-        except (OSError, SyntaxError) as e:
+        except (OSError, SyntaxError, UnicodeDecodeError) as e:
+            # A file saved in the console codepage rather than UTF-8 is a
+            # finding of its own, not a reason for the sweep to stop.
             findings["module"].append((p, f"WILL NOT PARSE: {e}"))
             continue
         ns = set()

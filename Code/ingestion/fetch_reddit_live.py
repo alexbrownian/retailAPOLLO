@@ -42,6 +42,7 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(THIS_DIR)
 sys.path.insert(0, PROJECT_ROOT)
 from src.config import DATA_DIR  # noqa: E402
+from src.prices import redact  # noqa: E402
 
 try:                     # post titles contain emoji; don't die on cp1252
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -131,11 +132,16 @@ def fetchlayer_test(key):
                       timeout=30)
     print(f"POST community-posts(wallstreetbets, new, 5) -> {r.status_code}")
     if r.status_code != 200:
-        print(r.text[:300])
+        print(redact(r.text)[:300])
         return 1
-    payload = r.json()
-    posts = (payload.get("items") or payload.get("posts")
-             or payload.get("results") or [])
+    try:
+        payload = r.json()
+    except ValueError:
+        print("FAIL: the response was not JSON:", redact(r.text)[:300])
+        return 1
+    posts = ((payload.get("items") or payload.get("posts")
+              or payload.get("results") or [])
+             if isinstance(payload, dict) else [])
     print(f"got {len(posts)} posts; sample fields: "
           f"{sorted(list(posts[0].keys()))[:10] if posts else '-'}")
     for p in posts[:5]:
@@ -224,7 +230,8 @@ def fetchlayer_poll(key, limit, max_credits=60, lookback_days=7):
                         print(f"  {used + 1:>2}/{total_requests} r/{sub:<22} {sort:<4} "
                               "FAILED: timed out twice - skipping this one")
                 except Exception as exc:
-                    print(f"  {used + 1:>2}/{total_requests} r/{sub:<22} {sort:<4} FAILED: {exc}")
+                    print(f"  {used + 1:>2}/{total_requests} r/{sub:<22} "
+                          f"{sort:<4} FAILED: {redact(exc)}")
                     break
             if r is None:
                 continue
@@ -236,11 +243,20 @@ def fetchlayer_poll(key, limit, max_credits=60, lookback_days=7):
                 break
             if r.status_code != 200:
                 print(f"  {used:>2}/{total_requests} r/{sub:<22} {sort:<4} "
-                      f"HTTP {r.status_code}: {r.text[:80]}")
+                      f"HTTP {r.status_code}: {redact(r.text)[:80]}")
                 continue
-            payload = r.json()
-            posts = (payload.get("items") or payload.get("posts")
-                     or payload.get("results") or [])
+            # A 200 carrying something other than the documented JSON
+            # object costs one request, not the whole crawl and the posts
+            # already held.
+            try:
+                payload = r.json()
+            except ValueError:
+                print(f"  {used:>2}/{total_requests} r/{sub:<22} {sort:<4} "
+                      "the response was not JSON")
+                continue
+            posts = ((payload.get("items") or payload.get("posts")
+                      or payload.get("results") or [])
+                     if isinstance(payload, dict) else [])
             for p in posts:
                 p["_backend"] = "fetchlayer"
                 p.setdefault("subreddit", sub)
@@ -275,9 +291,14 @@ def official_token(creds):
     r = requests.post(TOKEN_URL, auth=auth, data=data,
                       headers={"User-Agent": ua}, timeout=20)
     if r.status_code != 200:
-        print(f"official OAuth token failed ({r.status_code}): {r.text[:150]}")
+        print(f"official OAuth token failed ({r.status_code}): "
+              f"{redact(r.text)[:150]}")
         return None, ua
-    return r.json().get("access_token"), ua
+    try:
+        return r.json().get("access_token"), ua
+    except (ValueError, AttributeError):
+        print("official OAuth token failed: the response was not a JSON object")
+        return None, ua
 
 
 def official_poll(creds, limit):
@@ -302,8 +323,13 @@ def official_poll(creds, limit):
     if r.status_code != 200:
         print(f"[warn] listing failed ({r.status_code})")
         return []
+    try:
+        children = r.json().get("data", {}).get("children", [])
+    except (ValueError, AttributeError):
+        print("[warn] listing failed: the response was not a JSON object")
+        return []
     posts = []
-    for child in r.json().get("data", {}).get("children", []):
+    for child in children:
         p = child.get("data", {})
         p["_backend"] = "official"
         posts.append(p)
@@ -314,16 +340,22 @@ def official_poll(creds, limit):
 def load_seen():
     """Return the rolling list of previously written post ids."""
     if os.path.exists(SEEN_FILE):
-        return list(json.load(open(SEEN_FILE)).get("ids", []))
+        try:
+            with open(SEEN_FILE, encoding="utf-8") as f:
+                return list(json.load(f).get("ids", []))
+        except (ValueError, OSError):
+            return []
     return []
 
 
 def save_seen(ids):
-    """Write the newest ``MAX_SEEN`` ids of ``ids`` with a timestamp."""
+    """Atomically write the newest ``MAX_SEEN`` ids of ``ids`` with a timestamp."""
     os.makedirs(os.path.dirname(SEEN_FILE), exist_ok=True)
-    json.dump({"ids": ids[-MAX_SEEN:],
-               "updated": datetime.datetime.now().isoformat(timespec="seconds")},
-              open(SEEN_FILE, "w"))
+    with open(SEEN_FILE + ".tmp", "w", encoding="utf-8") as f:
+        json.dump({"ids": ids[-MAX_SEEN:],
+                   "updated": datetime.datetime.now().isoformat(timespec="seconds")},
+                  f)
+    os.replace(SEEN_FILE + ".tmp", SEEN_FILE)
 
 
 def append_raw(posts):
@@ -342,8 +374,12 @@ def append_raw(posts):
     if os.path.exists(path):
         old = zstandard.ZstdDecompressor().decompress(open(path, "rb").read())
     lines = "\n".join(json.dumps(p, ensure_ascii=False) for p in posts) + "\n"
-    with open(path, "wb") as f:
+    # The day's whole blob is rewritten, so it goes beside the file and is
+    # swapped in: an in-place write interrupted part-way leaves a
+    # truncated zstd frame and every post already collected today is gone.
+    with open(path + ".tmp", "wb") as f:
         f.write(zstandard.ZstdCompressor(level=10).compress(old + lines.encode("utf-8")))
+    os.replace(path + ".tmp", path)
     return path
 
 

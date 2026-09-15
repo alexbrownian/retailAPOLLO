@@ -56,6 +56,7 @@ except Exception:
 
 from src.themes import THEME_ETFS  # noqa: E402
 from src.config import DATA_DIR  # noqa: E402
+from src.prices import redact  # noqa: E402
 
 OUT_FILE = os.path.join(DATA_DIR, "raw", "X Data", "x_api_live.csv.zst")
 FETCHLAYER_URL = "https://fetchlayer.dev/api/twitter/search"
@@ -222,11 +223,16 @@ def fetchlayer_test(key):
     r = fetchlayer_search(key, query, 5)
     print(f"-> HTTP {r.status_code}")
     if r.status_code != 200:
-        print(r.text[:300])
+        print(redact(r.text)[:300])
         return 1
-    payload = r.json()
-    results = (payload.get("results") or payload.get("tweets")
-               or payload.get("data") or [])
+    try:
+        payload = r.json()
+    except ValueError:
+        print("FAIL: the response was not JSON:", redact(r.text)[:300])
+        return 1
+    results = ((payload.get("results") or payload.get("tweets")
+                or payload.get("data") or [])
+               if isinstance(payload, dict) else [])
     print(f"got {len(results)} tweets; sample fields: "
           f"{sorted(results[0].keys())[:12] if results else '-'}")
     for t in results[:5]:
@@ -291,7 +297,7 @@ def fetchlayer_poll(key, max_tweets, max_credits=60, lookback_days=7):
                                             "count": per_chunk},
                                       timeout=(10, 60))
                 except Exception as exc:
-                    print(f"[warn] query failed: {exc}")
+                    print(f"[warn] query failed: {redact(exc)}")
                     r = None
                     break
                 if r.status_code != 429:
@@ -310,11 +316,20 @@ def fetchlayer_poll(key, max_tweets, max_credits=60, lookback_days=7):
                 stopped = True
                 break
             if r.status_code != 200:
-                print(f"[warn] query ({product}) {r.status_code}: {r.text[:120]}")
+                print(f"[warn] query ({product}) {r.status_code}: "
+                      f"{redact(r.text)[:120]}")
                 continue
-            payload = r.json()
-            results = (payload.get("results") or payload.get("tweets")
-                       or payload.get("data") or [])
+            # A 200 carrying something other than the documented JSON
+            # object costs one query, not the whole poll and the rows
+            # already held.
+            try:
+                payload = r.json()
+            except ValueError:
+                print(f"[warn] query ({product}): the response was not JSON")
+                continue
+            results = ((payload.get("results") or payload.get("tweets")
+                        or payload.get("data") or [])
+                       if isinstance(payload, dict) else [])
             got = 0
             for t in results:
                 row = _fl_row(t)
@@ -355,9 +370,19 @@ def official_poll(token, max_tweets):
             print("[stop] rate limited (429) - ending this run; next run catches up.")
             break
         if r.status_code != 200:
-            print(f"[warn] query failed ({r.status_code}): {r.text[:120]}")
+            print(f"[warn] query failed ({r.status_code}): "
+                  f"{redact(r.text)[:120]}")
             continue
-        payload = r.json()
+        # A 200 carrying something other than the documented JSON object
+        # costs one query, not the whole poll and the rows already held.
+        try:
+            payload = r.json()
+        except ValueError:
+            print(f"[warn] query ({query[:60]}): the response was not JSON")
+            continue
+        if not isinstance(payload, dict):
+            print(f"[warn] query ({query[:60]}): unexpected response shape")
+            continue
         users = {u["id"]: u.get("username", "")
                  for u in payload.get("includes", {}).get("users", [])}
         for t in payload.get("data", []):
@@ -390,8 +415,14 @@ def append_to_raw(rows):
     new = new.drop_duplicates(subset="id", keep="first")
     buf = new.to_csv(index=False).encode("utf-8")
     os.makedirs(os.path.dirname(OUT_FILE), exist_ok=True)
-    with open(OUT_FILE, "wb") as f:
+    # This one file is the whole X history and every append rewrites it
+    # end to end, so it is written beside itself and swapped in: a Ctrl-C
+    # during an in-place write leaves a truncated zstd frame in place of
+    # every tweet ever fetched.
+    tmp = OUT_FILE + ".tmp"
+    with open(tmp, "wb") as f:
         f.write(zstandard.ZstdCompressor(level=10).compress(buf))
+    os.replace(tmp, OUT_FILE)
     print(f"raw file now holds {len(new):,} unique tweets -> {OUT_FILE}")
 
 
