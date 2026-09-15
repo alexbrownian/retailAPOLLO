@@ -246,6 +246,13 @@ RUN_STATE_PATH = os.path.join(REPORTS_DIR, "run_state.json")
 # serving something older than this run.
 PUBLISH_OK_PREFIXES = ("pushed and verified", "nothing new - data unchanged")
 
+# How many days the newest data day may sit behind today before a clean
+# run counts as stale. Two absorbs a weekend: the crowd posts every day,
+# but a Saturday run after a quiet Friday night is not a fault. It also
+# has to clear the case of two runs on one day, which necessarily read
+# the same newest day as each other.
+DATA_STALE_DAYS = 2
+
 # Text that means a paid dependency is OUT, as opposed to unhappy. Each
 # marker is matched case-insensitively against the run log.
 #
@@ -409,22 +416,36 @@ def alert_conditions(facts, prev_state):
                     "a paid dependency stopped serving this account",
                     detail))
 
-    # ---- 4. the run was clean and the data still did not move ----
+    # ---- 4. the run was clean and the data has fallen behind ----
     # The case that has no other symptom: every stage returns 0, the
     # summary reads normally, the bundle publishes, and the dashboard
-    # serves the same day it served yesterday.
+    # serves a day that keeps getting older.
+    #
+    # The measure is the newest data day against TODAY, not against what
+    # the previous run saw. Two runs on one day legitimately read the
+    # same newest day, and so does a run made before that day's posts
+    # land; neither is a fault, and a rule that fires on them would put
+    # a false alarm in front of the owner often enough to be ignored.
+    # DATA_STALE_DAYS absorbs a weekend, where the crowd is quiet but
+    # nothing is broken.
     today_day = facts.get("newest_data_day") or ""
-    before = prev_state.get("newest_data_day") or ""
-    if rc == 0 and today_day and before and today_day == before:
-        since = prev_state.get("newest_data_day_since") or "an earlier run"
-        out.append(("data stale",
-                    f"the run finished clean and the newest data day is "
-                    f"still {today_day}",
-                    [f"it has been {today_day} since {since}",
-                     f"the previous run finished "
-                     f"{prev_state.get('finished') or 'at an unrecorded time'}",
-                     "nothing new reached the aggregates: check the fetch "
-                     "stage above, and whether the sources answered"]))
+    if rc == 0 and today_day:
+        try:
+            behind = (datetime.date.today()
+                      - datetime.date.fromisoformat(today_day)).days
+        except ValueError:
+            behind = None
+        if behind is not None and behind > DATA_STALE_DAYS:
+            since = prev_state.get("newest_data_day_since") or "an earlier run"
+            out.append(("data stale",
+                        f"the run finished clean and the newest data day is "
+                        f"{today_day}, {behind} day(s) behind today",
+                        [f"it has been {today_day} since {since}",
+                         f"the previous run finished "
+                         f"{prev_state.get('finished') or 'at an unrecorded time'}",
+                         "nothing new is reaching the aggregates: check the "
+                         "fetch stage above, and whether the sources "
+                         "answered"]))
     return out
 
 
