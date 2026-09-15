@@ -1,11 +1,11 @@
 {
   "conditions": [
     {
-      "reason": "the run finished clean and the newest data day is still 2026-09-15",
-      "tag": "data stale"
+      "reason": "the run exited 0 but 1 stage(s) failed",
+      "tag": "run failed"
     }
   ],
   "data_through": "2026-09-15",
   "exit_code": 0,
-  "finished": "2026-09-15 15:50"
+  "finished": "2026-09-15 21:06"
 }
