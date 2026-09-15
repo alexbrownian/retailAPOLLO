@@ -1,0 +1,59 @@
+# Is the hosted dashboard still being fed?
+#
+# The pipeline runs on one machine and reports on itself. Two failures are
+# invisible to it by construction: a run that never started (the machine was
+# off, the scheduled task did not fire, the interpreter died on import), and
+# a publish that finished locally but never reached this remote. Both look
+# identical from here - the committed bundle stops advancing - so this job
+# watches that one number from outside the machine.
+#
+# The bundle also carries run_status.json, the verdict the run reached on
+# itself, and the script fails on that too: a run can lose a stage or spend a
+# paid dependency's last credit and still publish a bundle whose newest day
+# is today.
+#
+# A failed run notifies the repository owner through GitHub's own notification
+# settings, so this needs no credential of any kind and no secrets.
+name: published bundle freshness
+
+on:
+  schedule:
+    # 13:00 UTC daily, a few hours after the machine's own 17:30 local slot,
+    # so a run that started on time has finished and pushed before this looks.
+    - cron: "0 13 * * *"
+  workflow_dispatch:        # run it by hand from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the published data day is still advancing
+        id: check
+        # `shell: bash` is `bash --noprofile --norc -eo pipefail`. The
+        # pipefail matters: without it the step's status is tee's, which is
+        # always 0, and a job that cannot fail notifies nobody.
+        shell: bash
+        run: |
+          python Code/tools/check_published_freshness.py \
+            --max-age-days "${MAX_AGE_DAYS}" | tee freshness.txt
+        env:
+          # How far behind today the newest PUBLISHED data day may fall
+          # before this job fails. Three days absorbs a weekend when the
+          # machine is off; tighten it to 2 once daily runs are reliable.
+          MAX_AGE_DAYS: "3"
+
+      - name: Put the result on the run summary
+        if: always()
+        run: |
+          {
+            echo "### Published bundle freshness"
+            echo ""
+            echo '```'
+            cat freshness.txt 2>/dev/null || echo "the check produced no output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
